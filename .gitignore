@@ -1,0 +1,24 @@
+# Build output
+buildDir/
+build/
+
+# Compiled objects and libraries
+*.o
+*.a
+*.so
+*.dylib
+
+# Build tooling
+compile_commands.json
+.cache/
+
+# IDE
+.idea/
+
+# OS
+.DS_Store
+
+# Meson wraps (downloaded sources)
+subprojects/Catch2-*/
+subprojects/SDL3-*/
+subprojects/packagecache/

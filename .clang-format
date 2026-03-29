@@ -1,0 +1,45 @@
+BasedOnStyle: LLVM
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+BreakBeforeBraces: Attach
+ColumnLimit: 100
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+PointerAlignment: Left
+Standard: Latest
+SpaceAfterCStyleCast: false
+SpaceBeforeParens: ControlStatements
+
+# Include ordering: system, then library (SDL3), then project — separated by blank lines
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex: '^<'
+    Priority: 1
+    SortPriority: 1
+  - Regex: '^<SDL3/'
+    Priority: 2
+    SortPriority: 2
+  - Regex: '^"'
+    Priority: 3
+    SortPriority: 3
+SortIncludes: CaseSensitive
+
+# Namespace and braces
+FixNamespaceComments: true
+NamespaceIndentation: None
+ShortNamespaceLines: 0
+
+# Alignment
+AlignAfterOpenBracket: Align
+AlignOperands: Align
+AlignTrailingComments:
+  Kind: Always
+  OverEmptyLines: 0
+BinPackArguments: false
+BinPackParameters: false
+
+# Penalties
+PenaltyBreakBeforeFirstCallParameter: 19
+PenaltyReturnTypeOnItsOwnLine: 1000
