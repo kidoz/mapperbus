@@ -32,7 +32,9 @@ bool Sdl3Video::initialize(int width, int height) {
         return false;
     }
 
-    SDL_SetRenderVSync(renderer_, 1);
+    // VSync disabled — frame pacing is handled by the software timer in App::run()
+    // at exact NTSC rate (~60.0988 Hz). Using both causes double-pacing jitter.
+    SDL_SetRenderVSync(renderer_, 0);
 
     int tex_w = width;
     int tex_h = height;

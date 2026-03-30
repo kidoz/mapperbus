@@ -1,7 +1,5 @@
 #include "core/ppu/ppu.hpp"
 
-#include <algorithm>
-
 #include "core/cartridge/cartridge.hpp"
 
 namespace mapperbus::core {
@@ -18,26 +16,90 @@ void Ppu::reset() {
     ppumask_ = 0;
     ppustatus_ = 0;
     oam_addr_ = 0;
-    ppu_addr_ = 0;
     read_buffer_ = 0;
-    scroll_x_ = 0;
-    scroll_y_ = 0;
-    address_latch_ = false;
     nmi_pending_ = false;
+    reg_v_ = 0;
+    reg_t_ = 0;
+    fine_x_ = 0;
+    write_latch_ = false;
     oam_.fill(0);
     vram_.fill(0);
     palette_.fill(0);
     frame_buffer_.pixels.fill(0xFF000000);
 }
 
+// === Loopy register operations (per Mesen2/FCEUX/NESDev wiki) ===
+
+void Ppu::increment_coarse_x() {
+    if ((reg_v_ & 0x001F) == 31) {
+        reg_v_ &= ~0x001F;
+        reg_v_ ^= 0x0400; // toggle horizontal nametable
+    } else {
+        ++reg_v_;
+    }
+}
+
+void Ppu::increment_fine_y() {
+    if ((reg_v_ & 0x7000) != 0x7000) {
+        reg_v_ += 0x1000;
+    } else {
+        reg_v_ &= ~0x7000;
+        int y = (reg_v_ >> 5) & 0x1F;
+        if (y == 29) {
+            y = 0;
+            reg_v_ ^= 0x0800; // toggle vertical nametable
+        } else if (y == 31) {
+            y = 0; // wrap without nametable toggle
+        } else {
+            ++y;
+        }
+        reg_v_ = (reg_v_ & ~0x03E0) | (y << 5);
+    }
+}
+
+void Ppu::copy_horizontal_from_t() {
+    // v: ....A.. ...EDCBA = t: ....A.. ...EDCBA
+    reg_v_ = (reg_v_ & ~0x041F) | (reg_t_ & 0x041F);
+}
+
+void Ppu::copy_vertical_from_t() {
+    // v: GHIA.BC DEF..... = t: GHIA.BC DEF.....
+    reg_v_ = (reg_v_ & ~0x7BE0) | (reg_t_ & 0x7BE0);
+}
+
+// === PPU step ===
+
 void Ppu::step(uint32_t cpu_cycles) {
     uint32_t ppu_dots = cpu_cycles * 3;
     for (uint32_t i = 0; i < ppu_dots; ++i) {
         ++cycle_;
 
-        // Visible scanlines: render at the end of the visible dot range
-        if (scanline_ < 240 && cycle_ == 257) {
+        bool visible_line = scanline_ < 240;
+        bool pre_render = scanline_ == timing_->pre_render_scanline;
+        bool rendering = rendering_enabled();
+
+        // Visible scanlines: render THEN update v for next scanline.
+        // Rendering uses current v. After rendering, v is advanced.
+        if (visible_line && cycle_ == 257) {
             render_scanline();
+            if (rendering) {
+                increment_fine_y();
+                copy_horizontal_from_t();
+            }
+        }
+
+        // Pre-render scanline: restore v from t for the new frame.
+        // Gated on rendering_enabled — games that disable rendering during
+        // VBlank for VRAM access may have $2006 values in t that would corrupt
+        // the scroll if copied unconditionally. Games re-enable rendering
+        // before this point, so t has the correct scroll from $2005 writes.
+        if (rendering && pre_render) {
+            if (cycle_ == 257) {
+                copy_horizontal_from_t();
+            }
+            if (cycle_ >= 280 && cycle_ <= 304) {
+                copy_vertical_from_t();
+            }
         }
 
         // VBlank start
@@ -50,14 +112,14 @@ void Ppu::step(uint32_t cpu_cycles) {
         }
 
         // Pre-render scanline: clear flags
-        if (scanline_ == timing_->pre_render_scanline && cycle_ == 1) {
-            ppustatus_ &= ~0xE0; // Clear VBlank, sprite 0 hit, sprite overflow
+        if (pre_render && cycle_ == 1) {
+            ppustatus_ &= ~0xE0;
             frame_ready_ = false;
         }
 
-        // Clock mapper IRQ counter on A12 rising edge (sprite fetch, cycle 260)
-        if (cycle_ == 260 && (ppumask_ & 0x18) != 0 && cartridge_) {
-            if (scanline_ < 240 || scanline_ == timing_->pre_render_scanline) {
+        // Clock mapper IRQ counter (A12 rising edge, cycle 260)
+        if (cycle_ == 260 && rendering && cartridge_) {
+            if (visible_line || pre_render) {
                 cartridge_->clock_irq_counter();
             }
         }
@@ -72,29 +134,31 @@ void Ppu::step(uint32_t cpu_cycles) {
     }
 }
 
+// === Register I/O (pure loopy model) ===
+
 Byte Ppu::read_register(uint8_t reg) {
     reg &= 0x07;
     switch (reg) {
-    case 0x02: {
+    case 0x02: { // PPUSTATUS
         Byte value = static_cast<Byte>((ppustatus_ & 0xE0) | (read_buffer_ & 0x1F));
         ppustatus_ &= ~0x80;
-        address_latch_ = false;
+        write_latch_ = false; // Reset w
         nmi_pending_ = false;
         return value;
     }
-    case 0x04:
+    case 0x04: // OAMDATA
         return oam_[oam_addr_];
-    case 0x07: {
-        Byte value = read_vram(ppu_addr_);
+    case 0x07: { // PPUDATA
+        Byte value = read_vram(reg_v_);
         Byte result = 0;
-        if ((ppu_addr_ & 0x3FFF) >= 0x3F00) {
+        if ((reg_v_ & 0x3FFF) >= 0x3F00) {
             result = value;
-            read_buffer_ = read_vram(static_cast<Address>(ppu_addr_ - 0x1000));
+            read_buffer_ = read_vram(static_cast<Address>(reg_v_ - 0x1000));
         } else {
             result = read_buffer_;
             read_buffer_ = value;
         }
-        ppu_addr_ = static_cast<Address>((ppu_addr_ + ((ppuctrl_ & 0x04) ? 32 : 1)) & 0x3FFF);
+        reg_v_ = (reg_v_ + ((ppuctrl_ & 0x04) ? 32 : 1)) & 0x7FFF;
         return result;
     }
     default:
@@ -106,40 +170,49 @@ Byte Ppu::read_register(uint8_t reg) {
 void Ppu::write_register(uint8_t reg, Byte value) {
     reg &= 0x07;
     switch (reg) {
-    case 0x00:
+    case 0x00: // PPUCTRL
         ppuctrl_ = value;
+        // t: ...GH.. ........ = d: ......GH
+        reg_t_ = (reg_t_ & ~0x0C00) | ((static_cast<uint16_t>(value) & 0x03) << 10);
         if ((ppuctrl_ & 0x80) != 0 && (ppustatus_ & 0x80) != 0) {
             nmi_pending_ = true;
         }
         break;
-    case 0x01:
+    case 0x01: // PPUMASK
         ppumask_ = value;
         break;
-    case 0x03:
+    case 0x03: // OAMADDR
         oam_addr_ = value;
         break;
-    case 0x04:
+    case 0x04: // OAMDATA
         oam_[oam_addr_++] = value;
         break;
-    case 0x05:
-        if (!address_latch_) {
-            scroll_x_ = value;
+    case 0x05: // PPUSCROLL
+        if (!write_latch_) {
+            // First write: t coarse X + fine X
+            reg_t_ = (reg_t_ & ~0x001F) | (value >> 3);
+            fine_x_ = value & 0x07;
         } else {
-            scroll_y_ = value;
+            // Second write: t fine Y + coarse Y
+            reg_t_ = (reg_t_ & ~0x73E0) | ((static_cast<uint16_t>(value) & 0x07) << 12) |
+                     ((static_cast<uint16_t>(value) & 0xF8) << 2);
         }
-        address_latch_ = !address_latch_;
+        write_latch_ = !write_latch_;
         break;
-    case 0x06:
-        if (!address_latch_) {
-            ppu_addr_ = static_cast<Address>((value & 0x3F) << 8);
+    case 0x06: // PPUADDR
+        if (!write_latch_) {
+            // First write: t high byte, clear bit 14
+            reg_t_ = (reg_t_ & 0x00FF) | ((static_cast<uint16_t>(value) & 0x3F) << 8);
         } else {
-            ppu_addr_ = static_cast<Address>((ppu_addr_ & 0x3F00) | value);
+            // Second write: t low byte, then v = t
+            reg_t_ = (reg_t_ & 0xFF00) | value;
+            reg_v_ = reg_t_;
         }
-        address_latch_ = !address_latch_;
+        write_latch_ = !write_latch_;
         break;
-    case 0x07:
-        write_vram(ppu_addr_, value);
-        ppu_addr_ = static_cast<Address>((ppu_addr_ + ((ppuctrl_ & 0x04) ? 32 : 1)) & 0x3FFF);
+    case 0x07: // PPUDATA
+        write_vram(reg_v_, value);
+        reg_v_ = (reg_v_ + ((ppuctrl_ & 0x04) ? 32 : 1)) & 0x7FFF;
         break;
     default:
         break;
@@ -155,6 +228,8 @@ bool Ppu::consume_nmi() {
 void Ppu::write_oam_dma(Byte value) {
     oam_[oam_addr_++] = value;
 }
+
+// === VRAM access ===
 
 Byte Ppu::read_vram(Address addr) const {
     addr &= 0x3FFF;
@@ -259,48 +334,61 @@ void Ppu::render_scanline() {
 }
 
 void Ppu::render_background_scanline(int y, std::array<bool, kScreenWidth>& bg_opaque) {
-    Address base_nametable = static_cast<Address>(0x2000 | ((ppuctrl_ & 0x03) * 0x0400));
+    // Tile fetches use v directly (per Mesen2/FCEUX).
+    //   tile_addr = 0x2000 | (v & 0x0FFF)
+    //   attr_addr = 0x23C0 | (v & 0x0C00) | ((v >> 4) & 0x38) | ((v >> 2) & 0x07)
+    //   fine_y    = (v >> 12) & 0x07
+    // Coarse X is incremented after every 8 pixels.
+    // fine_x_ provides the sub-pixel horizontal offset within the first tile.
+
     Address pattern_base = (ppuctrl_ & 0x10) ? 0x1000 : 0x0000;
     Byte universal_bg = read_palette(0x3F00);
-    bool clip_left = (ppumask_ & 0x02) == 0;
+    bool clip_left_bg = (ppumask_ & 0x02) == 0;
 
-    int world_y = base_nametable >= 0x2800 ? y + scroll_y_ + 240 : y + scroll_y_;
-    int wrapped_y = ((world_y % 480) + 480) % 480;
-    int nametable_y = wrapped_y / 240;
-    int local_y = wrapped_y % 240;
-    int tile_y = local_y / 8;
-    int fine_y = local_y % 8;
+    // Work on a local copy of v for the scanline; the real reg_v_ is updated
+    // by increment_fine_y / copy_horizontal in the step() function AFTER render.
+    uint16_t v = reg_v_;
 
     for (int x = 0; x < kScreenWidth; ++x) {
-        if (clip_left && x < 8) {
+        // Left-column BG clipping
+        if (clip_left_bg && x < 8) {
             frame_buffer_.pixels[y * kScreenWidth + x] = palette_color(universal_bg);
             bg_opaque[x] = false;
+            // Still advance coarse X at tile boundaries
+            if (((x + fine_x_) & 0x07) == 7) {
+                if ((v & 0x001F) == 31) {
+                    v &= ~0x001F;
+                    v ^= 0x0400;
+                } else {
+                    ++v;
+                }
+            }
             continue;
         }
 
-        int world_x =
-            ((base_nametable == 0x2400 || base_nametable == 0x2C00) ? 256 : 0) + x + scroll_x_;
-        int wrapped_x = ((world_x % 512) + 512) % 512;
-        int nametable_x = wrapped_x / 256;
-        int local_x = wrapped_x % 256;
-        int tile_x = local_x / 8;
-        int fine_x = local_x % 8;
-
-        Address nametable_addr =
-            static_cast<Address>(0x2000 + nametable_y * 0x0800 + nametable_x * 0x0400);
-        Address tile_addr = static_cast<Address>(nametable_addr + tile_y * 32 + tile_x);
+        // Derive tile address from v
+        Address tile_addr = static_cast<Address>(0x2000 | (v & 0x0FFF));
         Byte tile_index = read_vram(tile_addr);
 
-        Address attribute_addr =
-            static_cast<Address>(nametable_addr + 0x03C0 + (tile_y / 4) * 8 + (tile_x / 4));
-        Byte attribute = read_vram(attribute_addr);
-        int quadrant_shift = ((tile_y & 0x02) ? 4 : 0) | ((tile_x & 0x02) ? 2 : 0);
-        Byte palette_index = static_cast<Byte>((attribute >> quadrant_shift) & 0x03);
+        // Derive attribute address from v
+        Address attr_addr = static_cast<Address>(0x23C0 | (v & 0x0C00) |
+                                                 ((v >> 4) & 0x38) | ((v >> 2) & 0x07));
+        Byte attribute = read_vram(attr_addr);
 
+        int coarse_x = v & 0x1F;
+        int coarse_y = (v >> 5) & 0x1F;
+        int shift = ((coarse_y & 0x02) ? 4 : 0) | ((coarse_x & 0x02) ? 2 : 0);
+        Byte palette_index = static_cast<Byte>((attribute >> shift) & 0x03);
+
+        // Pattern table lookup using fine Y from v
+        int fine_y = (v >> 12) & 0x07;
         Address pattern_addr = static_cast<Address>(pattern_base + tile_index * 16 + fine_y);
         Byte plane0 = cartridge_ ? cartridge_->read_chr(pattern_addr) : 0;
         Byte plane1 = cartridge_ ? cartridge_->read_chr(pattern_addr + 8) : 0;
-        Byte bit = static_cast<Byte>(7 - fine_x);
+
+        // Pixel within tile
+        int pixel_in_tile = (x + fine_x_) & 0x07;
+        Byte bit = static_cast<Byte>(7 - pixel_in_tile);
         Byte color_index =
             static_cast<Byte>(((plane0 >> bit) & 0x01) | (((plane1 >> bit) & 0x01) << 1));
 
@@ -312,6 +400,16 @@ void Ppu::render_background_scanline(int y, std::array<bool, kScreenWidth>& bg_o
             palette_value = read_palette(pal_addr);
         }
         frame_buffer_.pixels[y * kScreenWidth + x] = palette_color(palette_value);
+
+        // Increment coarse X at tile boundaries
+        if (pixel_in_tile == 7) {
+            if ((v & 0x001F) == 31) {
+                v &= ~0x001F;
+                v ^= 0x0400;
+            } else {
+                ++v;
+            }
+        }
     }
 }
 
@@ -319,9 +417,8 @@ void Ppu::render_sprites_scanline(int y, const std::array<bool, kScreenWidth>& b
     bool sprite_size_8x16 = (ppuctrl_ & 0x20) != 0;
     Address sprite_pattern_base = (ppuctrl_ & 0x08) ? 0x1000 : 0x0000;
     int sprite_height = sprite_size_8x16 ? 16 : 8;
-    bool clip_left = (ppumask_ & 0x04) == 0;
+    bool clip_left_sp = (ppumask_ & 0x04) == 0;
 
-    // Collect sprites visible on this scanline (up to 8, with overflow detection)
     struct SpriteEntry {
         int index;
         Byte y_pos;
@@ -347,13 +444,12 @@ void Ppu::render_sprites_scanline(int y, const std::array<bool, kScreenWidth>& b
                 };
                 ++visible_count;
             } else {
-                ppustatus_ |= 0x20; // Sprite overflow
+                ppustatus_ |= 0x20;
                 break;
             }
         }
     }
 
-    // Render in reverse order (lowest index = highest priority, drawn last)
     for (int si = visible_count - 1; si >= 0; --si) {
         auto& sp = visible[si];
         int top = static_cast<int>(sp.y_pos) + 1;
@@ -386,8 +482,7 @@ void Ppu::render_sprites_scanline(int y, const std::array<bool, kScreenWidth>& b
             if (screen_x < 0 || screen_x >= kScreenWidth)
                 continue;
 
-            // Left-column sprite clipping
-            if (clip_left && screen_x < 8)
+            if (clip_left_sp && screen_x < 8)
                 continue;
 
             int bit_index = flip_h ? col : (7 - col);
@@ -396,7 +491,6 @@ void Ppu::render_sprites_scanline(int y, const std::array<bool, kScreenWidth>& b
             if (color_index == 0)
                 continue;
 
-            // Sprite 0 hit: immediate detection on this scanline
             if (sp.index == 0 && bg_opaque[screen_x] && screen_x != 255) {
                 ppustatus_ |= 0x40;
             }

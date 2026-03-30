@@ -79,11 +79,34 @@ void Emulator::step_frame() {
             }
         }
 
+        // OAM DMA stalls the CPU — advance PPU/APU/mapper by DMA cycles
+        uint32_t dma_cycles = bus_.take_dma_cycles();
+        if (dma_cycles > 0) {
+            ppu_.step(dma_cycles);
+            apu_.step(dma_cycles);
+            for (uint32_t c = 0; c < dma_cycles; ++c) {
+                if (cartridge_ && cartridge_->has_expansion_audio()) {
+                    cartridge_->clock_audio();
+                }
+                if (fds_.is_loaded()) {
+                    fds_.clock_audio();
+                }
+            }
+        }
+
         // DMC memory reads stall the CPU — advance PPU/APU by stall cycles
         uint32_t dmc_stall = apu_.take_dmc_stall_cycles();
         if (dmc_stall > 0) {
             ppu_.step(dmc_stall);
             apu_.step(dmc_stall);
+            for (uint32_t c = 0; c < dmc_stall; ++c) {
+                if (cartridge_ && cartridge_->has_expansion_audio()) {
+                    cartridge_->clock_audio();
+                }
+                if (fds_.is_loaded()) {
+                    fds_.clock_audio();
+                }
+            }
         }
     }
 

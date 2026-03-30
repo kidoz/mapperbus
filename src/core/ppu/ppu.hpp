@@ -78,14 +78,33 @@ class Ppu {
     Byte ppumask_ = 0;
     Byte ppustatus_ = 0;
     Byte oam_addr_ = 0;
-    Address ppu_addr_ = 0;
     Byte read_buffer_ = 0;
-    Byte scroll_x_ = 0;
-    Byte scroll_y_ = 0;
-    bool address_latch_ = false;
     bool nmi_pending_ = false;
 
+    // Loopy internal registers — pure model per Mesen2/FCEUX/NESDev wiki.
+    //
+    // v and t are 15-bit registers:
+    //   yyy NN YYYYY XXXXX
+    //   ||| || ||||| +++++-- coarse X scroll (0-31)
+    //   ||| || +++++-------- coarse Y scroll (0-29)
+    //   ||| ++-------------- nametable select (0-3)
+    //   +++----------------- fine Y scroll (0-7)
+    //
+    // $2005 and $2006 both write to t through the shared w toggle.
+    // $2006 second write copies t → v immediately.
+    // During rendering, v is used for tile fetches and updated per scanline.
+    uint16_t reg_v_ = 0; // Current VRAM address (used for rendering and $2007 access)
+    uint16_t reg_t_ = 0; // Temporary VRAM address (staging for $2005/$2006)
+    uint8_t fine_x_ = 0; // Fine X scroll (3 bits, from $2005 first write)
+    bool write_latch_ = false; // Shared w toggle for $2005/$2006, reset by $2002 read
+
     const RegionTiming* timing_ = &kNtscTiming;
+
+    bool rendering_enabled() const {
+        return (ppumask_ & 0x18) != 0;
+    }
+
+private:
 
     Byte read_vram(Address addr) const;
     void write_vram(Address addr, Byte value);
@@ -93,6 +112,11 @@ class Ppu {
     Byte read_palette(Address addr) const;
     void write_palette(Address addr, Byte value);
     std::uint32_t palette_color(Byte palette_value) const;
+
+    void increment_coarse_x();
+    void increment_fine_y();
+    void copy_horizontal_from_t();
+    void copy_vertical_from_t();
 
     void render_scanline();
     void render_background_scanline(int y, std::array<bool, kScreenWidth>& bg_opaque);

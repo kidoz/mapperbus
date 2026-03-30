@@ -69,6 +69,7 @@ void App::run() {
         float fill_ratio = static_cast<float>(queued) / static_cast<float>(target_buffer_samples);
         emulator_.update_audio_rate_control(fill_ratio);
 
+        // Software timer at exact NTSC rate (~60.0988 Hz)
         next_frame_time += frame_duration;
         auto now = clock::now();
         if (next_frame_time > now) {

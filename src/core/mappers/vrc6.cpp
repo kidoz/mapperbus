@@ -229,9 +229,9 @@ void Vrc6::write_prg(Address addr, Byte value) {
         irq_enabled_after_ack_ = (value & 0x01) != 0;
         irq_enabled_ = (value & 0x02) != 0;
         irq_cycle_mode_ = (value & 0x04) != 0;
+        irq_prescaler_ = 341;
         if (irq_enabled_) {
             irq_counter_ = irq_latch_;
-            irq_prescaler_ = 341;
         }
         irq_pending_ = false;
         break;

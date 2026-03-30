@@ -28,7 +28,7 @@ run-xbrz rom scale="3": build
 
 # Run with GPU-accelerated xBRZ upscaling (scale: 2-6)
 run-gpu rom scale="3": build
-    ./{{build_dir}}/src/app/mapperbus-sdl3 --scale {{scale}} --gpu {{rom}}
+    ./{{build_dir}}/src/app/mapperbus-sdl3 --scale {{scale}} --gpu {{rom}} --fsr
 
 # Run the headless CLI frontend (pass ROM path as argument)
 run-cli rom: build

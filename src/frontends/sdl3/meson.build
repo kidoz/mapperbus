@@ -2,6 +2,7 @@ sdl3_dep = dependency('sdl3', fallback : ['sdl3', 'sdl3_dep'])
 
 xbrz_sources = files(
     '../../platform/video/xbrz.cpp',
+    '../../platform/video/fsr1.cpp',
 )
 
 sdl3_sources = files(
