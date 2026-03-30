@@ -71,36 +71,31 @@ void Emulator::reset() {
     cpu_.reset();
 }
 
+void Emulator::clock_expansion_audio(uint32_t cycles) {
+    for (uint32_t c = 0; c < cycles; ++c) {
+        if (cartridge_ && cartridge_->has_expansion_audio()) {
+            cartridge_->clock_audio();
+        }
+        if (fds_.is_loaded()) {
+            fds_.clock_audio();
+        }
+    }
+}
+
 void Emulator::step_frame() {
     ppu_.clear_frame_ready();
     while (!ppu_.frame_ready()) {
         uint32_t cpu_cycles = cpu_.step();
         ppu_.step(cpu_cycles);
         apu_.step(cpu_cycles);
-
-        // Clock expansion audio (mapper + FDS audio channels run at CPU rate)
-        for (uint32_t c = 0; c < cpu_cycles; ++c) {
-            if (cartridge_ && cartridge_->has_expansion_audio()) {
-                cartridge_->clock_audio();
-            }
-            if (fds_.is_loaded()) {
-                fds_.clock_audio();
-            }
-        }
+        clock_expansion_audio(cpu_cycles);
 
         // OAM DMA stalls the CPU — advance PPU/APU/mapper by DMA cycles
         uint32_t dma_cycles = bus_.take_dma_cycles();
         if (dma_cycles > 0) {
             ppu_.step(dma_cycles);
             apu_.step(dma_cycles);
-            for (uint32_t c = 0; c < dma_cycles; ++c) {
-                if (cartridge_ && cartridge_->has_expansion_audio()) {
-                    cartridge_->clock_audio();
-                }
-                if (fds_.is_loaded()) {
-                    fds_.clock_audio();
-                }
-            }
+            clock_expansion_audio(dma_cycles);
         }
 
         // DMC memory reads stall the CPU — advance PPU/APU by stall cycles
@@ -108,14 +103,7 @@ void Emulator::step_frame() {
         if (dmc_stall > 0) {
             ppu_.step(dmc_stall);
             apu_.step(dmc_stall);
-            for (uint32_t c = 0; c < dmc_stall; ++c) {
-                if (cartridge_ && cartridge_->has_expansion_audio()) {
-                    cartridge_->clock_audio();
-                }
-                if (fds_.is_loaded()) {
-                    fds_.clock_audio();
-                }
-            }
+            clock_expansion_audio(dmc_stall);
         }
     }
 

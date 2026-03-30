@@ -69,6 +69,7 @@ class Emulator {
 
   private:
     void wire_apu();
+    void clock_expansion_audio(uint32_t cycles);
 
     Region region_ = Region::NTSC;
     MemoryBus bus_;
