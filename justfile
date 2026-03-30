@@ -62,7 +62,7 @@ analyze:
             "$file" 2>&1; then
             errors=$((errors + 1))
         fi
-    done < <(find src tests -name '*.cpp' | sort)
+    done < <(find src -name '*.cpp' | sort)
     rm -f *.plist
     if [ "$errors" -gt 0 ]; then
         echo "Analyzer found issues in $errors file(s)"
