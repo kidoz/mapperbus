@@ -70,12 +70,16 @@ void App::run() {
         if (n > 0) {
             audio_->queue_samples({audio_staging.data(), n});
         }
+
+        // Apply dynamic rate control
+        float fill_ratio = static_cast<float>(audio_->queued_samples()) / static_cast<float>(max_queued_samples);
+        emulator_.update_audio_rate_control(fill_ratio);
     }
 }
 
 void App::sync_input() {
     using core::Button;
-    constexpr Button buttons[] = {Button::A,
+    constexpr Button kButtons[] = {Button::A,
                                   Button::B,
                                   Button::Select,
                                   Button::Start,
@@ -84,7 +88,7 @@ void App::sync_input() {
                                   Button::Left,
                                   Button::Right};
 
-    for (auto btn : buttons) {
+    for (auto btn : kButtons) {
         emulator_.controller().set_button_state(0, btn, input_->is_button_pressed(0, btn));
     }
 }
