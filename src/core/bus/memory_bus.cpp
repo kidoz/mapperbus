@@ -30,10 +30,8 @@ void MemoryBus::update_mappings() {
         read_map_[i] = &MemoryBus::read_ppu;
         write_map_[i] = &MemoryBus::write_ppu;
     }
-    for (int i = 16; i < 17; ++i) {
-        read_map_[i] = &MemoryBus::read_apu_io;
-        write_map_[i] = &MemoryBus::write_apu_io;
-    }
+    read_map_[16] = &MemoryBus::read_apu_io;
+    write_map_[16] = &MemoryBus::write_apu_io;
     for (int i = 17; i < 24; ++i) {
         read_map_[i] = &MemoryBus::read_expansion;
         write_map_[i] = &MemoryBus::write_expansion;
