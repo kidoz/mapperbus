@@ -1525,7 +1525,7 @@ uint32_t Cpu::step() {
         a_ &= fetch_byte();
         a_ = ror(a_);
         set_flag(Carry, (a_ & 0x40) != 0);
-        set_flag(Overflow, ((a_ >> 6) ^ (a_ >> 5)) & 0x01);
+        set_flag(Overflow, (((a_ >> 6) ^ (a_ >> 5)) & 0x01) != 0);
         cycles = 2;
         break;
     }
@@ -1566,7 +1566,13 @@ uint32_t Cpu::step() {
         break;
     }
 
-    cycles += bus_.take_dma_cycles();
+    uint32_t dma_cycles = bus_.take_dma_cycles();
+    if (dma_cycles > 0) {
+        if ((total_cycles_ + cycles) % 2 != 0) {
+            dma_cycles += 1;
+        }
+        cycles += dma_cycles;
+    }
     total_cycles_ += cycles;
     status_ |= Unused;
     return cycles;
