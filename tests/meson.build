@@ -40,7 +40,7 @@ test_battle_city_render = executable('test-battle-city-render',
     'integration/test_battle_city_render.cpp',
     dependencies : [mapperbus_core_dep, catch2_dep],
 )
-test('battle-city-render', test_battle_city_render)
+test('battle-city-render', test_battle_city_render, workdir : meson.project_source_root())
 
 test_ring_buffer = executable('test-ring-buffer',
     'unit/test_ring_buffer.cpp',

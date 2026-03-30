@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "core/bus/memory_bus.hpp"
+#include "core/ppu/ppu.hpp"
 
 using namespace mapperbus::core;
 
@@ -30,5 +31,15 @@ TEST_CASE("MemoryBus RAM read/write", "[bus]") {
     SECTION("unconnected cartridge reads zero") {
         REQUIRE(bus.read(0x8000) == 0);
         REQUIRE(bus.read(0xFFFF) == 0);
+    }
+
+    SECTION("OAM DMA timing") {
+        // Needs PPU connected to trigger DMA properly
+        mapperbus::core::Ppu ppu;
+        bus.connect_ppu(&ppu);
+
+        bus.write(0x4014, 0x02);
+        REQUIRE(bus.take_dma_cycles() == 513);
+        // The +1 alignment cycle is modeled in Cpu::step, this confirms Bus returns base cost
     }
 }
