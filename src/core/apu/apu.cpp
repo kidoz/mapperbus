@@ -319,6 +319,7 @@ void Apu::reset() {
     blip_cycle_offset_ = 0;
     blip_buffer_.reset();
     dither_state_ = 1;
+    prev_dither_random_ = 0.0f;
 }
 
 void Apu::set_region(Region region) {
@@ -647,6 +648,10 @@ StereoSample Apu::mix_stereo() const {
 }
 
 float Apu::filter(float sample) {
+    if (settings_.filter_mode == FilterMode::Unfiltered) {
+        return sample;
+    }
+
     if (settings_.filter_mode == FilterMode::Enhanced) {
         // Second-order Butterworth filter chain
         sample = biquad_lp_.apply(sample);
@@ -670,10 +675,14 @@ float Apu::tpdf_dither() {
         return static_cast<float>(state) / static_cast<float>(UINT32_MAX) - 0.5f;
     };
     float r1 = xorshift(dither_state_);
-    float r2 = xorshift(dither_state_);
+    
+    // High-Pass TPDF dither (shapes noise to very high frequencies)
+    float dither = r1 - prev_dither_random_;
+    prev_dither_random_ = r1;
+
     // Scale to 1 LSB of 16-bit audio
     constexpr float kDitherScale = 1.0f / 32768.0f;
-    return (r1 + r2) * kDitherScale;
+    return dither * kDitherScale;
 }
 
 size_t Apu::drain_samples(float* dest, size_t max_count) {

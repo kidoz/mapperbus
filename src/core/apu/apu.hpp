@@ -396,6 +396,7 @@ class Apu {
 
     // TPDF dithering PRNG state
     uint32_t dither_state_ = 1;
+    float prev_dither_random_ = 0.0f;
 
     MemoryReader memory_reader_;
     ExpansionAudioSource expansion_audio_;
