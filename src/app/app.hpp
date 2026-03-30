@@ -24,6 +24,8 @@ class App {
     core::Result<void> initialize(const std::string& rom_path);
     void run();
 
+    core::Emulator& emulator() { return emulator_; }
+
   private:
     void sync_input();
 

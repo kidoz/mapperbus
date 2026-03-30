@@ -10,6 +10,7 @@ sdl3_sources = files(
     'sdl3_audio.cpp',
     'sdl3_input.cpp',
     'gpu_upscaler.cpp',
+    'gpu_fsr_upscaler.cpp',
 )
 
 mapperbus_sdl3_lib = static_library('mapperbus-sdl3',

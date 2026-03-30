@@ -10,62 +10,89 @@ namespace mapperbus::core {
 
 MemoryBus::MemoryBus() {
     ram_.fill(0);
+    update_mappings();
 }
 
 Byte MemoryBus::read(Address addr) {
-    if (addr < 0x2000) {
-        // Internal RAM with mirroring
-        return ram_[addr & 0x07FF];
+    return (this->*(read_map_[addr >> 10]))(addr);
+}
+
+void MemoryBus::write(Address addr, Byte value) {
+    (this->*(write_map_[addr >> 10]))(addr, value);
+}
+
+void MemoryBus::update_mappings() {
+    for (int i = 0; i < 8; ++i) {
+        read_map_[i] = &MemoryBus::read_ram;
+        write_map_[i] = &MemoryBus::write_ram;
     }
-    if (addr < 0x4000) {
-        // PPU registers, mirrored every 8 bytes
-        if (ppu_) {
-            return ppu_->read_register(addr & 0x0007);
-        }
-        return 0;
+    for (int i = 8; i < 16; ++i) {
+        read_map_[i] = &MemoryBus::read_ppu;
+        write_map_[i] = &MemoryBus::write_ppu;
     }
+    for (int i = 16; i < 17; ++i) {
+        read_map_[i] = &MemoryBus::read_apu_io;
+        write_map_[i] = &MemoryBus::write_apu_io;
+    }
+    for (int i = 17; i < 24; ++i) {
+        read_map_[i] = &MemoryBus::read_expansion;
+        write_map_[i] = &MemoryBus::write_expansion;
+    }
+    for (int i = 24; i < 64; ++i) {
+        read_map_[i] = &MemoryBus::read_prg;
+        write_map_[i] = &MemoryBus::write_prg;
+    }
+}
+
+Byte MemoryBus::read_ram(Address addr) {
+    return ram_[addr & 0x07FF];
+}
+
+Byte MemoryBus::read_ppu(Address addr) {
+    return ppu_ ? ppu_->read_register(addr & 0x0007) : 0;
+}
+
+Byte MemoryBus::read_apu_io(Address addr) {
     if (addr < 0x4018) {
-        // APU and I/O registers
-        if (addr == 0x4016 || addr == 0x4017) {
-            if (controller_) {
-                return controller_->read(addr - 0x4016);
-            }
-            return 0;
-        }
-        if (apu_) {
-            return apu_->read_register(addr);
-        }
-        return 0;
+        if (addr == 0x4016 || addr == 0x4017) return controller_ ? controller_->read(addr - 0x4016) : 0;
+        return apu_ ? apu_->read_register(addr) : 0;
     }
     // $4040-$4092: FDS audio registers
     if (addr >= 0x4040 && addr <= 0x4092 && fds_ && fds_->is_loaded()) {
         return fds_->read(addr);
     }
-    // $4018-$5FFF: Expansion area (cartridge expansion audio + PRG RAM)
-    if (addr < 0x6000) {
-        if (cartridge_) {
-            return cartridge_->read_expansion(addr);
-        }
-        return 0;
+    return 0;
+}
+
+Byte MemoryBus::read_expansion(Address addr) {
+    if (cartridge_) {
+        return cartridge_->read_expansion(addr);
     }
-    // $6000-$FFFF: Cartridge PRG space
+    return 0;
+}
+
+Byte MemoryBus::read_prg(Address addr) {
     if (cartridge_) {
         return cartridge_->read_prg(addr);
     }
     return 0;
 }
 
-void MemoryBus::write(Address addr, Byte value) {
-    if (addr < 0x2000) {
-        ram_[addr & 0x07FF] = value;
-        return;
+Byte MemoryBus::read_open_bus(Address) {
+    return 0;
+}
+
+void MemoryBus::write_ram(Address addr, Byte value) {
+    ram_[addr & 0x07FF] = value;
+}
+
+void MemoryBus::write_ppu(Address addr, Byte value) {
+    if (ppu_) {
+        ppu_->write_register(addr & 0x0007, value);
     }
-    if (addr < 0x4000) {
-        if (ppu_) {
-            ppu_->write_register(addr & 0x0007, value);
-        }
-        return;
-    }
+}
+
+void MemoryBus::write_apu_io(Address addr, Byte value) {
     if (addr < 0x4018) {
         if (addr == 0x4014) {
             if (ppu_) {
@@ -91,19 +118,22 @@ void MemoryBus::write(Address addr, Byte value) {
     // $4040-$4092: FDS audio registers
     if (addr >= 0x4040 && addr <= 0x4092 && fds_ && fds_->is_loaded()) {
         fds_->write(addr, value);
-        return;
     }
-    // $4018-$5FFF: Expansion area
-    if (addr < 0x6000) {
-        if (cartridge_) {
-            cartridge_->write_expansion(addr, value);
-        }
-        return;
+}
+
+void MemoryBus::write_expansion(Address addr, Byte value) {
+    if (cartridge_) {
+        cartridge_->write_expansion(addr, value);
     }
-    // $6000-$FFFF: Cartridge PRG space
+}
+
+void MemoryBus::write_prg(Address addr, Byte value) {
     if (cartridge_) {
         cartridge_->write_prg(addr, value);
     }
+}
+
+void MemoryBus::write_open_bus(Address, Byte) {
 }
 
 bool MemoryBus::poll_nmi() {

@@ -14,6 +14,17 @@ class Upscaler {
                        int src_width,
                        int src_height,
                        std::span<std::uint32_t> target) = 0;
+
+    // Optional hardware acceleration bindings
+    virtual bool supports_gpu_texture() const {
+        return false;
+    }
+
+    virtual void* get_gpu_texture() const {
+        return nullptr;
+    }
+
+    virtual void set_gpu_device(void* /*device_handle*/) {}
 };
 
 } // namespace mapperbus::platform

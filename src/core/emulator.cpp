@@ -1,4 +1,5 @@
 #include "core/emulator.hpp"
+#include "core/logger.hpp"
 
 namespace mapperbus::core {
 
@@ -44,8 +45,16 @@ Result<void> Emulator::load_cartridge(const std::string& path) {
     // Configure region from cartridge header
     region_ = cartridge_->header().region;
     if (region_ == Region::Multi) {
+        mapperbus::core::logger::info("Multi-region ROM detected, defaulting to NTSC");
         region_ = Region::NTSC; // default multi-region to NTSC
+    } else if (region_ == Region::NTSC) {
+        mapperbus::core::logger::info("Auto-detected NTSC ROM");
+    } else if (region_ == Region::PAL) {
+        mapperbus::core::logger::info("Auto-detected PAL ROM");
+    } else if (region_ == Region::Dendy) {
+        mapperbus::core::logger::info("Auto-detected Dendy ROM");
     }
+
     ppu_.set_region(region_);
     apu_.set_region(region_);
 

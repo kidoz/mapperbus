@@ -60,6 +60,12 @@ class Emulator {
     Region region() const {
         return region_;
     }
+    
+    void set_region(Region region) {
+        region_ = region;
+        ppu_.set_region(region_);
+        apu_.set_region(region_);
+    }
 
   private:
     void wire_apu();

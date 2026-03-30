@@ -38,19 +38,26 @@ core::Result<void> App::initialize(const std::string& rom_path) {
 }
 
 void App::run() {
-    using clock = std::chrono::steady_clock;
-
-    auto timing = core::timing_for_region(emulator_.region());
-    auto frame_duration = std::chrono::nanoseconds(timing.frame_duration_ns);
-    auto next_frame_time = clock::now();
-
-    int target_buffer_samples = audio_settings_.sample_rate / 10; // ~100ms
+    // Calculate maximum audio buffer capacity (50ms worth of frames)
+    int max_queued_samples = audio_settings_.sample_rate / 20;
 
     while (running_) {
         input_->poll();
         if (input_->should_quit()) {
             running_ = false;
             break;
+        }
+
+        // Hardware Audio Sync: Block emulator thread if SDL backend has 50ms of audio buffered.
+        // This naturally perfectly synchronizes emulation speed (NTSC/PAL/Dendy) to hardware DAC pull requests!
+        while (running_ && audio_->queued_samples() > max_queued_samples) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            // Edgecase: OS event pump during deep sleep
+            input_->poll();
+            if (input_->should_quit()) {
+                running_ = false;
+                break;
+            }
         }
 
         sync_input();
@@ -62,20 +69,6 @@ void App::run() {
         size_t n = emulator_.drain_audio(audio_staging.data(), audio_staging.size());
         if (n > 0) {
             audio_->queue_samples({audio_staging.data(), n});
-        }
-
-        // Dynamic rate control: keep audio buffer ~50% full
-        int queued = audio_->queued_samples();
-        float fill_ratio = static_cast<float>(queued) / static_cast<float>(target_buffer_samples);
-        emulator_.update_audio_rate_control(fill_ratio);
-
-        // Software timer at exact NTSC rate (~60.0988 Hz)
-        next_frame_time += frame_duration;
-        auto now = clock::now();
-        if (next_frame_time > now) {
-            std::this_thread::sleep_until(next_frame_time);
-        } else {
-            next_frame_time = now;
         }
     }
 }

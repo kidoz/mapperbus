@@ -28,6 +28,7 @@ class Sdl3Video : public platform::VideoBackend {
     std::vector<std::uint32_t> scaled_buffer_;
     int src_width_ = 0;
     int src_height_ = 0;
+    bool using_zero_copy_ = false;
 };
 
 } // namespace mapperbus::frontend

@@ -8,15 +8,15 @@
 
 namespace mapperbus::frontend {
 
-/// GPU-accelerated xBRZ upscaler using SDL3 GPU compute shaders.
-/// Uses Metal on macOS. Falls back to CPU xBRZ if GPU init fails.
-class GpuUpscaler : public platform::Upscaler {
+/// GPU-accelerated FSR1 upscaler using SDL3 GPU compute shaders.
+/// Dispatches EASU (scaling) and RCAS (sharpening) passes in VRAM.
+class GpuFsr1Upscaler : public platform::Upscaler {
   public:
-    explicit GpuUpscaler(int scale);
-    ~GpuUpscaler() override;
+    explicit GpuFsr1Upscaler(int scale);
+    ~GpuFsr1Upscaler() override;
 
-    GpuUpscaler(const GpuUpscaler&) = delete;
-    GpuUpscaler& operator=(const GpuUpscaler&) = delete;
+    GpuFsr1Upscaler(const GpuFsr1Upscaler&) = delete;
+    GpuFsr1Upscaler& operator=(const GpuFsr1Upscaler&) = delete;
 
     int scale_factor() const override {
         return scale_;
@@ -25,7 +25,7 @@ class GpuUpscaler : public platform::Upscaler {
     bool supports_gpu_texture() const override { return true; }
     void* get_gpu_texture() const override { return dst_texture_; }
     void set_gpu_device(void* device_handle) override;
-
+    
     void scale(std::span<const std::uint32_t> source,
                int src_width,
                int src_height,
@@ -44,8 +44,11 @@ class GpuUpscaler : public platform::Upscaler {
     int src_h_ = 0;
 
     SDL_GPUDevice* device_ = nullptr;
-    SDL_GPUComputePipeline* pipeline_ = nullptr;
+    SDL_GPUComputePipeline* easu_pipeline_ = nullptr;
+    SDL_GPUComputePipeline* rcas_pipeline_ = nullptr;
+    
     SDL_GPUTexture* src_texture_ = nullptr;
+    SDL_GPUTexture* temp_texture_ = nullptr;
     SDL_GPUTexture* dst_texture_ = nullptr;
     bool initialized_ = false;
     bool external_device_ = false;
