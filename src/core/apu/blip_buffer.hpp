@@ -13,8 +13,8 @@ namespace mapperbus::core {
 /// alias-free output samples using windowed sinc interpolation.
 class BlipBuffer {
   public:
-    static constexpr int kKernelSize = 16; // Sinc kernel half-width in samples
-    static constexpr int kPhaseBits = 6;   // Sub-sample phase resolution
+    static constexpr int kKernelSize = 64; // Sinc kernel width in samples
+    static constexpr int kPhaseBits = 8;   // Sub-sample phase resolution
     static constexpr int kPhaseCount = 1 << kPhaseBits;
 
     BlipBuffer();

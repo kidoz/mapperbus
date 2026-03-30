@@ -31,10 +31,11 @@ void BlipBuffer::init_kernel() {
                 sinc = std::sin(x) / x;
             }
 
-            // Blackman window
+            // Blackman-Nuttall window for maximum stopband attenuation (-114 dB)
             double window_pos = static_cast<double>(tap) / static_cast<double>(kKernelSize - 1);
-            double window = 0.42 - 0.5 * std::cos(2.0 * std::numbers::pi * window_pos) +
-                            0.08 * std::cos(4.0 * std::numbers::pi * window_pos);
+            double window = 0.3635819 - 0.4891775 * std::cos(2.0 * std::numbers::pi * window_pos) +
+                            0.1365995 * std::cos(4.0 * std::numbers::pi * window_pos) -
+                            0.0106411 * std::cos(6.0 * std::numbers::pi * window_pos);
 
             kernel_[phase][tap] = static_cast<float>(sinc * window);
             sum += sinc * window;
