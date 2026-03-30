@@ -11,10 +11,10 @@ using namespace mapperbus::core;
 
 TEST_CASE("AudioSettings defaults", "[audio]") {
     AudioSettings s;
-    REQUIRE(s.sample_rate == 48000);
+    REQUIRE(s.sample_rate == 96000);
     REQUIRE(s.buffer_size_samples == 2048);
     REQUIRE(s.resampling == ResamplingMode::BlipBuffer);
-    REQUIRE(s.filter_mode == FilterMode::HardwareAccurate);
+    REQUIRE(s.filter_mode == FilterMode::Unfiltered);
     REQUIRE(s.filter_profile == FilterProfile::NES);
     REQUIRE(s.stereo_mode == StereoMode::Mono);
     REQUIRE_FALSE(s.dithering_enabled);
@@ -32,7 +32,7 @@ TEST_CASE("APU settings constructor", "[audio]") {
 
 TEST_CASE("APU default constructor backward compat", "[audio]") {
     Apu apu;
-    REQUIRE(apu.settings().sample_rate == 48000);
+    REQUIRE(apu.settings().sample_rate == 96000);
     REQUIRE(apu.settings().resampling == ResamplingMode::BlipBuffer);
 }
 

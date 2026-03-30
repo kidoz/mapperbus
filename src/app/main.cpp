@@ -20,10 +20,10 @@ int main(int argc, char* argv[]) {
         mapperbus::core::logger::info("  --gpu                 GPU-accelerated upscaling (xBRZ)");
         mapperbus::core::logger::info("  --gpu-fsr             Use Native GPU MSL FSR1 upscaling");
         mapperbus::core::logger::info("  --fsr                 Use CPU FSR 1.0 upscaling");
-        mapperbus::core::logger::info("  --sample-rate N       audio sample rate (default: 48000)");
+        mapperbus::core::logger::info("  --sample-rate N       audio sample rate (default: 96000)");
         mapperbus::core::logger::info("  --resampling MODE     blip or cubic (default: blip)");
         mapperbus::core::logger::info(
-            "  --filter-mode MODE    accurate or enhanced (default: accurate)");
+            "  --filter-mode MODE    accurate, enhanced, or unfiltered (default: unfiltered)");
         mapperbus::core::logger::info("  --region R            ntsc, pal, or dendy (default: auto)");
         mapperbus::core::logger::info("  --filter-profile P    nes or famicom (default: nes)");
         mapperbus::core::logger::info("  --stereo              enable pseudo-stereo output");
@@ -63,8 +63,10 @@ int main(int argc, char* argv[]) {
             ++i;
             if (std::strcmp(argv[i], "enhanced") == 0) {
                 audio_settings.filter_mode = mapperbus::core::FilterMode::Enhanced;
-            } else {
+            } else if (std::strcmp(argv[i], "accurate") == 0) {
                 audio_settings.filter_mode = mapperbus::core::FilterMode::HardwareAccurate;
+            } else {
+                audio_settings.filter_mode = mapperbus::core::FilterMode::Unfiltered;
             }
         } else if (std::strcmp(argv[i], "--filter-profile") == 0 && i + 1 < argc) {
             ++i;
