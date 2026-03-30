@@ -86,10 +86,10 @@ void Sdl3Video::render(const core::FrameBuffer& frame) {
         int scale = upscaler_->scale_factor();
         int dst_w = src_width_ * scale;
         int dst_h = src_height_ * scale;
-        
-        upscaler_->scale(frame.pixels, src_width_, src_height_, scaled_buffer_);
 
         if (using_zero_copy_) {
+            // GPU path: scale dispatches compute shaders, target span unused
+            upscaler_->scale(frame.pixels, src_width_, src_height_, {});
             if (!texture_) {
                 void* gpu_tex = upscaler_->get_gpu_texture();
                 if (gpu_tex) {
@@ -109,6 +109,7 @@ void Sdl3Video::render(const core::FrameBuffer& frame) {
                 }
             }
         } else {
+            upscaler_->scale(frame.pixels, src_width_, src_height_, scaled_buffer_);
             SDL_UpdateTexture(texture_,
                               nullptr,
                               scaled_buffer_.data(),

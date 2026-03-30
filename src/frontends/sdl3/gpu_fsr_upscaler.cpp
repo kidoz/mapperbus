@@ -3,44 +3,10 @@
 #include <cstring>
 #include <vector>
 
+#include "frontends/sdl3/gpu_common.hpp"
 #include "frontends/sdl3/shaders/fsr1_shader.hpp"
 
-namespace {
-
-// ARGB (0xAARRGGBB) → R8G8B8A8_UNORM (byte 0=R, 1=G, 2=B, 3=A)
-void argb_to_rgba(std::span<const uint32_t> src, std::span<uint32_t> dst) {
-    for (std::size_t i = 0; i < src.size(); ++i) {
-        uint32_t c = src[i];
-        uint32_t a = (c >> 24) & 0xFF;
-        uint32_t r = (c >> 16) & 0xFF;
-        uint32_t g = (c >> 8) & 0xFF;
-        uint32_t b = c & 0xFF;
-        dst[i] = r | (g << 8) | (b << 16) | (a << 24);
-    }
-}
-
-// R8G8B8A8_UNORM (byte 0=R, 1=G, 2=B, 3=A) → ARGB (0xAARRGGBB)
-void rgba_to_argb(std::span<const uint32_t> src, std::span<uint32_t> dst) {
-    for (std::size_t i = 0; i < src.size(); ++i) {
-        uint32_t c = src[i];
-        uint32_t r = c & 0xFF;
-        uint32_t g = (c >> 8) & 0xFF;
-        uint32_t b = (c >> 16) & 0xFF;
-        uint32_t a = (c >> 24) & 0xFF;
-        dst[i] = (a << 24) | (r << 16) | (g << 8) | b;
-    }
-}
-
-} // namespace
-
 namespace mapperbus::frontend {
-
-struct GpuParams {
-    int32_t scale_factor;
-    int32_t src_width;
-    int32_t src_height;
-    int32_t padding; // align to 16 bytes
-};
 
 GpuFsr1Upscaler::GpuFsr1Upscaler(int scale) : scale_(scale) {
     if (scale_ < 2)
@@ -158,12 +124,30 @@ bool GpuFsr1Upscaler::init_gpu(int src_width, int src_height) {
         return false;
     }
 
+    // Pre-allocate persistent transfer buffers
+    SDL_GPUTransferBufferCreateInfo upload_info{};
+    upload_info.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
+    upload_info.size = static_cast<uint32_t>(src_width * src_height * sizeof(uint32_t));
+    upload_buf_ = SDL_CreateGPUTransferBuffer(device_, &upload_info);
+
+    if (!external_device_) {
+        SDL_GPUTransferBufferCreateInfo download_info{};
+        download_info.usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD;
+        download_info.size =
+            static_cast<uint32_t>(src_width * scale_ * src_height * scale_ * sizeof(uint32_t));
+        download_buf_ = SDL_CreateGPUTransferBuffer(device_, &download_info);
+    }
+
     initialized_ = true;
     return true;
 }
 
 void GpuFsr1Upscaler::cleanup_gpu() {
     if (device_) {
+        if (download_buf_)
+            SDL_ReleaseGPUTransferBuffer(device_, download_buf_);
+        if (upload_buf_)
+            SDL_ReleaseGPUTransferBuffer(device_, upload_buf_);
         if (dst_texture_)
             SDL_ReleaseGPUTexture(device_, dst_texture_);
         if (temp_texture_)
@@ -174,9 +158,8 @@ void GpuFsr1Upscaler::cleanup_gpu() {
             SDL_ReleaseGPUComputePipeline(device_, easu_pipeline_);
         if (rcas_pipeline_)
             SDL_ReleaseGPUComputePipeline(device_, rcas_pipeline_);
-        if (!external_device_) {
+        if (!external_device_)
             SDL_DestroyGPUDevice(device_);
-        }
     }
     device_ = nullptr;
     easu_pipeline_ = nullptr;
@@ -184,6 +167,8 @@ void GpuFsr1Upscaler::cleanup_gpu() {
     src_texture_ = nullptr;
     temp_texture_ = nullptr;
     dst_texture_ = nullptr;
+    upload_buf_ = nullptr;
+    download_buf_ = nullptr;
     initialized_ = false;
 }
 
@@ -212,23 +197,18 @@ void GpuFsr1Upscaler::scale(std::span<const std::uint32_t> source,
     if (!cmd)
         return;
 
-    // --- Upload CPU pixels to GPU src_texture ---
-    SDL_GPUTransferBufferCreateInfo upload_buf_info{};
-    upload_buf_info.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
-    upload_buf_info.size = static_cast<uint32_t>(source.size() * sizeof(uint32_t));
-
-    SDL_GPUTransferBuffer* upload_buf = SDL_CreateGPUTransferBuffer(device_, &upload_buf_info);
-    if (upload_buf) {
-        void* mapped = SDL_MapGPUTransferBuffer(device_, upload_buf, false);
+    // --- Upload CPU pixels to GPU src_texture (reuse persistent buffer) ---
+    if (upload_buf_) {
+        void* mapped = SDL_MapGPUTransferBuffer(device_, upload_buf_, false);
         if (mapped) {
             auto* dst_pixels = static_cast<uint32_t*>(mapped);
             argb_to_rgba(source, {dst_pixels, source.size()});
-            SDL_UnmapGPUTransferBuffer(device_, upload_buf);
+            SDL_UnmapGPUTransferBuffer(device_, upload_buf_);
         }
 
         SDL_GPUCopyPass* copy_pass = SDL_BeginGPUCopyPass(cmd);
         SDL_GPUTextureTransferInfo src_transfer{};
-        src_transfer.transfer_buffer = upload_buf;
+        src_transfer.transfer_buffer = upload_buf_;
         src_transfer.offset = 0;
 
         SDL_GPUTextureRegion src_region{};
@@ -283,21 +263,12 @@ void GpuFsr1Upscaler::scale(std::span<const std::uint32_t> source,
     }
 
     if (external_device_) {
-        // Zero-copy! Submit GPU commands natively.
         SDL_SubmitGPUCommandBuffer(cmd);
-        if (upload_buf) {
-            SDL_ReleaseGPUTransferBuffer(device_, upload_buf);
-        }
         return;
     }
 
-    // --- Download dst_texture to CPU RAM ---
-    SDL_GPUTransferBufferCreateInfo download_buf_info{};
-    download_buf_info.usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD;
-    download_buf_info.size = static_cast<uint32_t>(target.size() * sizeof(uint32_t));
-
-    SDL_GPUTransferBuffer* download_buf = SDL_CreateGPUTransferBuffer(device_, &download_buf_info);
-    if (download_buf) {
+    // --- Download dst_texture to CPU RAM (reuse persistent buffer) ---
+    if (download_buf_) {
         SDL_GPUCopyPass* copy_pass = SDL_BeginGPUCopyPass(cmd);
 
         SDL_GPUTextureRegion dst_region{};
@@ -307,31 +278,24 @@ void GpuFsr1Upscaler::scale(std::span<const std::uint32_t> source,
         dst_region.d = 1;
 
         SDL_GPUTextureTransferInfo dst_transfer{};
-        dst_transfer.transfer_buffer = download_buf;
+        dst_transfer.transfer_buffer = download_buf_;
         dst_transfer.offset = 0;
 
         SDL_DownloadFromGPUTexture(copy_pass, &dst_region, &dst_transfer);
         SDL_EndGPUCopyPass(copy_pass);
     }
 
-    // --- Submit and block until fence triggers ---
     SDL_GPUFence* fence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmd);
     SDL_WaitForGPUFences(device_, true, &fence, 1);
     SDL_ReleaseGPUFence(device_, fence);
 
-    // Read back and un-swizzle to ARGB
-    if (download_buf) {
-        void* mapped = SDL_MapGPUTransferBuffer(device_, download_buf, false);
+    if (download_buf_) {
+        void* mapped = SDL_MapGPUTransferBuffer(device_, download_buf_, false);
         if (mapped) {
             auto* src_pixels = static_cast<const uint32_t*>(mapped);
             rgba_to_argb({src_pixels, target.size()}, target);
-            SDL_UnmapGPUTransferBuffer(device_, download_buf);
+            SDL_UnmapGPUTransferBuffer(device_, download_buf_);
         }
-        SDL_ReleaseGPUTransferBuffer(device_, download_buf);
-    }
-
-    if (upload_buf) {
-        SDL_ReleaseGPUTransferBuffer(device_, upload_buf);
     }
 }
 

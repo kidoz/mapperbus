@@ -50,6 +50,8 @@ class GpuFsr1Upscaler : public platform::Upscaler {
     SDL_GPUTexture* src_texture_ = nullptr;
     SDL_GPUTexture* temp_texture_ = nullptr;
     SDL_GPUTexture* dst_texture_ = nullptr;
+    SDL_GPUTransferBuffer* upload_buf_ = nullptr;
+    SDL_GPUTransferBuffer* download_buf_ = nullptr;
     bool initialized_ = false;
     bool external_device_ = false;
 };
