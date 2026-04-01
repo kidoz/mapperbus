@@ -53,3 +53,9 @@ test_audio_pipeline = executable('test-audio-pipeline',
     dependencies : [mapperbus_core_dep, catch2_dep],
 )
 test('audio-pipeline', test_audio_pipeline)
+
+test_emulation_session = executable('test-emulation-session',
+    'unit/test_emulation_session.cpp',
+    dependencies : [mapperbus_app_dep, catch2_dep],
+)
+test('emulation-session', test_emulation_session, workdir : meson.project_source_root())
