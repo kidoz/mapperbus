@@ -181,6 +181,7 @@ MapperBusGuiController::MapperBusGuiController(nk::Application& app, nk::Window&
     wire_ui();
     clear_preview();
     refresh_ui();
+    focus_game_surface();
 
     tick_handle_ = app_.event_loop().set_interval(std::chrono::milliseconds(16), [this] {
         const auto result = actions_->tick();
@@ -241,6 +242,7 @@ void MapperBusGuiController::build_ui() {
 
     preview_ = PreviewCanvas::create();
     preview_->set_scale_mode(nk::ScaleMode::NearestNeighbor);
+    preview_->set_focusable(true);
     preview_->set_horizontal_size_policy(nk::SizePolicy::Expanding);
     preview_->set_vertical_size_policy(nk::SizePolicy::Expanding);
     preview_->set_horizontal_stretch(1);
@@ -304,6 +306,12 @@ void MapperBusGuiController::set_message(std::string message) {
     }
 }
 
+void MapperBusGuiController::focus_game_surface() {
+    if (preview_) {
+        preview_->grab_focus();
+    }
+}
+
 void MapperBusGuiController::browse_for_rom() {
     auto dialog_result = app_.open_file_dialog("Open ROM", {"*.nes", "*.fds"});
     if (dialog_result) {
@@ -314,11 +322,13 @@ void MapperBusGuiController::browse_for_rom() {
     if (dialog_result.error() != nk::FileDialogError::Cancelled) {
         set_message(file_dialog_error_text(dialog_result.error()));
     }
+    focus_game_surface();
 }
 
 void MapperBusGuiController::attempt_open(std::string rom_path) {
     if (rom_path.empty()) {
         set_message("Open a ROM to start playback.");
+        focus_game_surface();
         return;
     }
 
@@ -327,6 +337,7 @@ void MapperBusGuiController::attempt_open(std::string rom_path) {
         set_message("Failed to open ROM: " + result.error());
         refresh_ui();
         clear_preview();
+        focus_game_surface();
         return;
     }
 
@@ -334,11 +345,13 @@ void MapperBusGuiController::attempt_open(std::string rom_path) {
     refresh_preview();
     set_message("Loaded " + basename_for_display(rom_path) + ". " + gameplay_hint_text());
     refresh_ui();
+    focus_game_surface();
 }
 
 void MapperBusGuiController::toggle_pause() {
     actions_->toggle_pause();
     refresh_ui();
+    focus_game_surface();
 }
 
 void MapperBusGuiController::step_frame() {
@@ -350,6 +363,7 @@ void MapperBusGuiController::step_frame() {
     refresh_preview();
     set_message("Stepped one frame: " + tick_result_name(result) + ".");
     refresh_ui();
+    focus_game_surface();
 }
 
 void MapperBusGuiController::reset_session() {
@@ -357,6 +371,7 @@ void MapperBusGuiController::reset_session() {
     refresh_preview();
     set_message("Reset current ROM.");
     refresh_ui();
+    focus_game_surface();
 }
 
 void MapperBusGuiController::power_cycle_session() {
@@ -364,6 +379,7 @@ void MapperBusGuiController::power_cycle_session() {
     refresh_preview();
     set_message("Power-cycled current ROM.");
     refresh_ui();
+    focus_game_surface();
 }
 
 void MapperBusGuiController::close_current_rom() {
@@ -371,6 +387,7 @@ void MapperBusGuiController::close_current_rom() {
     clear_preview();
     set_message("Closed current ROM.");
     refresh_ui();
+    focus_game_surface();
 }
 
 void MapperBusGuiController::open_input_dialog() {
@@ -419,6 +436,7 @@ void MapperBusGuiController::open_input_dialog() {
     (void)input_dialog_->on_response().connect([this](nk::DialogResponse /*response*/) {
         input_dialog_.reset();
         refresh_ui();
+        focus_game_surface();
     });
     input_dialog_->present(window_);
 }
@@ -461,6 +479,8 @@ void MapperBusGuiController::handle_menu_action(std::string_view action) {
             nk::Dialog::create("About mapperbus GUI",
                                "mapperbus GUI\nNodalKit host for NES, Famicom, and FDS sessions");
         dialog->add_button("OK", nk::DialogResponse::Accept);
+        (void)dialog->on_response().connect(
+            [this](nk::DialogResponse /*response*/) { focus_game_surface(); });
         dialog->present(window_);
     }
 }

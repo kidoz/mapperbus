@@ -34,6 +34,7 @@ class MapperBusGuiController {
     void refresh_preview();
     void refresh_ui();
     void set_message(std::string message);
+    void focus_game_surface();
     void browse_for_rom();
     void attempt_open(std::string rom_path);
     void toggle_pause();
