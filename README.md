@@ -7,6 +7,8 @@
 
 A clean, extensible NES/Famicom emulator with FDS support, written in modern C++23.
 
+![Battle City running in MapperBus](docs/screenshots/battle-city.png)
+
 ## Features
 
 ### Emulation Core
@@ -78,11 +80,12 @@ meson compile -C buildDir
 
 ### Build Options
 
-| Option         | Default | Description          |
-|----------------|---------|----------------------|
-| `enable_sdl3`  | `true`  | Build SDL3 frontend  |
-| `enable_cli`   | `true`  | Build CLI frontend   |
-| `enable_tests` | `true`  | Build test suite     |
+| Option               | Default | Description              |
+|----------------------|---------|--------------------------|
+| `enable_sdl3`        | `true`  | Build SDL3 frontend      |
+| `enable_nodalkit_gui`| `false` | Build NodalKit GUI frontend |
+| `enable_cli`         | `true`  | Build CLI frontend       |
+| `enable_tests`       | `true`  | Build test suite         |
 
 ## Usage
 
@@ -128,7 +131,7 @@ mapperbus-sdl3 [options] <rom-file>
 just test
 ```
 
-9 test suites covering bus logic, mappers, APU, audio pipeline, region detection, and render integration.
+10 test suites covering bus logic, mappers, APU, audio pipeline, region detection, emulation session, and render integration.
 
 ## Project Structure
 
@@ -136,8 +139,8 @@ just test
 src/
   core/         # Emulation core (zero platform dependencies)
   platform/     # Platform abstraction interfaces
-  frontends/    # SDL3 and CLI implementations
-  app/          # Composition root
+  frontends/    # SDL3, NodalKit GUI, and CLI implementations
+  app/          # EmulationSession and composition root
 tests/
   unit/         # Deterministic headless tests
   integration/  # ROM-based render tests
