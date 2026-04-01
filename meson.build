@@ -17,7 +17,12 @@ subdir('src/platform')
 
 if get_option('enable_sdl3')
     subdir('src/frontends/sdl3')
-    subdir('src/app')
+endif
+
+subdir('src/app')
+
+if get_option('enable_nodalkit_gui')
+    subdir('src/frontends/nodalkit')
 endif
 
 if get_option('enable_cli')

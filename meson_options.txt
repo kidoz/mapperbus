@@ -1,3 +1,4 @@
 option('enable_sdl3', type : 'boolean', value : true, description : 'Build SDL3 frontend')
+option('enable_nodalkit_gui', type : 'boolean', value : false, description : 'Build NodalKit GUI frontend')
 option('enable_cli', type : 'boolean', value : true, description : 'Build CLI frontend')
 option('enable_tests', type : 'boolean', value : true, description : 'Build test suite')
