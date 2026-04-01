@@ -305,6 +305,7 @@ class Apu {
 
     void set_region(Region region);
     void set_sample_rate(int sample_rate);
+    void apply_settings(const AudioSettings& settings);
     void set_memory_reader(MemoryReader reader);
     void set_expansion_audio(ExpansionAudioSource source);
 

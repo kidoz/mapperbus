@@ -22,6 +22,7 @@ class Emulator {
     explicit Emulator(const AudioSettings& audio_settings);
 
     Result<void> load_cartridge(const std::string& path);
+    void unload_cartridge();
     void reset();
     void step_frame();
 
@@ -52,15 +53,21 @@ class Emulator {
     const AudioSettings& audio_settings() const {
         return apu_.settings();
     }
+    void apply_audio_settings(const AudioSettings& settings) {
+        apu_.apply_settings(settings);
+    }
 
     Controller& controller() {
         return controller_;
+    }
+    [[nodiscard]] bool has_cartridge() const {
+        return cartridge_ != nullptr;
     }
 
     Region region() const {
         return region_;
     }
-    
+
     void set_region(Region region) {
         region_ = region;
         ppu_.set_region(region_);

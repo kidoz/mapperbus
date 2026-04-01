@@ -1,4 +1,5 @@
 #include "core/emulator.hpp"
+
 #include "core/logger.hpp"
 
 namespace mapperbus::core {
@@ -59,6 +60,19 @@ Result<void> Emulator::load_cartridge(const std::string& path) {
     apu_.set_region(region_);
 
     return {};
+}
+
+void Emulator::unload_cartridge() {
+    cartridge_.reset();
+    bus_.connect_cartridge(nullptr);
+    ppu_.connect_cartridge(nullptr);
+    region_ = Region::NTSC;
+    ppu_.set_region(region_);
+    apu_.set_region(region_);
+    ppu_.reset();
+    apu_.reset();
+    fds_.reset();
+    cpu_.reset();
 }
 
 void Emulator::reset() {

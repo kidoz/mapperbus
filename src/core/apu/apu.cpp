@@ -356,6 +356,32 @@ void Apu::set_sample_rate(int sample_rate) {
     blip_buffer_.set_rates(cpu_clock_, static_cast<double>(sample_rate_));
 }
 
+void Apu::apply_settings(const AudioSettings& settings) {
+    settings_ = settings;
+    sample_rate_ = settings_.sample_rate;
+    base_cycles_per_sample_ = cpu_clock_ / static_cast<double>(sample_rate_);
+    cycles_per_sample_ = base_cycles_per_sample_;
+    init_filters();
+    lp_filter_.reset();
+    hp_filter1_.reset();
+    hp_filter2_.reset();
+    biquad_lp_.reset();
+    biquad_hp1_.reset();
+    biquad_hp2_.reset();
+    cycle_accumulator_ = 0.0;
+    current_mix_ = 0.0f;
+    sample_history_.fill(0.0f);
+    staging_buffer_.clear();
+    output_ring_.reset();
+    prev_blip_mix_ = 0.0f;
+    blip_cycle_offset_ = 0;
+    blip_buffer_.reset();
+    blip_buffer_.set_rates(cpu_clock_, static_cast<double>(sample_rate_));
+    dither_state_ = 1;
+    prev_dither_random_ = 0.0f;
+    drc_rate_ = 1.0;
+}
+
 void Apu::set_memory_reader(MemoryReader reader) {
     memory_reader_ = std::move(reader);
 }
@@ -675,7 +701,7 @@ float Apu::tpdf_dither() {
         return static_cast<float>(state) / static_cast<float>(UINT32_MAX) - 0.5f;
     };
     float r1 = xorshift(dither_state_);
-    
+
     // High-Pass TPDF dither (shapes noise to very high frequencies)
     float dither = r1 - prev_dither_random_;
     prev_dither_random_ = r1;
