@@ -1,15 +1,8 @@
 #pragma once
 
-#include <chrono>
-#include <memory>
 #include <string>
-#include <thread>
 
-#include "core/apu/audio_settings.hpp"
-#include "core/emulator.hpp"
-#include "platform/audio/audio_backend.hpp"
-#include "platform/input/input_backend.hpp"
-#include "platform/video/video_backend.hpp"
+#include "app/emulation_session.hpp"
 
 namespace mapperbus::app {
 
@@ -24,17 +17,21 @@ class App {
     core::Result<void> initialize(const std::string& rom_path);
     void run();
 
-    core::Emulator& emulator() { return emulator_; }
+    core::Emulator& emulator() {
+        return session_.emulator();
+    }
+    const core::Emulator& emulator() const {
+        return session_.emulator();
+    }
+    EmulationSession& session() {
+        return session_;
+    }
+    const EmulationSession& session() const {
+        return session_;
+    }
 
   private:
-    void sync_input();
-
-    core::AudioSettings audio_settings_;
-    core::Emulator emulator_;
-    std::unique_ptr<platform::VideoBackend> video_;
-    std::unique_ptr<platform::AudioBackend> audio_;
-    std::unique_ptr<platform::InputBackend> input_;
-    bool running_ = false;
+    EmulationSession session_;
 };
 
 } // namespace mapperbus::app

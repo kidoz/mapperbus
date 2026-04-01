@@ -5,8 +5,8 @@
 #include "core/apu/audio_settings.hpp"
 #include "core/logger.hpp"
 #include "core/mappers/mapper_registry.hpp"
-#include "frontends/sdl3/gpu_upscaler.hpp"
 #include "frontends/sdl3/gpu_fsr_upscaler.hpp"
+#include "frontends/sdl3/gpu_upscaler.hpp"
 #include "frontends/sdl3/sdl3_audio.hpp"
 #include "frontends/sdl3/sdl3_input.hpp"
 #include "frontends/sdl3/sdl3_video.hpp"
@@ -24,7 +24,8 @@ int main(int argc, char* argv[]) {
         mapperbus::core::logger::info("  --resampling MODE     blip or cubic (default: blip)");
         mapperbus::core::logger::info(
             "  --filter-mode MODE    accurate, enhanced, or unfiltered (default: unfiltered)");
-        mapperbus::core::logger::info("  --region R            ntsc, pal, or dendy (default: auto)");
+        mapperbus::core::logger::info(
+            "  --region R            ntsc, pal, or dendy (default: auto)");
         mapperbus::core::logger::info("  --filter-profile P    nes or famicom (default: nes)");
         mapperbus::core::logger::info("  --stereo              enable pseudo-stereo output");
         mapperbus::core::logger::info("  --dither              enable TPDF dithering");
@@ -106,9 +107,11 @@ int main(int argc, char* argv[]) {
 
     if (upscale_factor >= 2 && upscale_factor <= 6) {
         if (use_gpu_fsr) {
-            video->set_upscaler(std::make_unique<mapperbus::frontend::GpuFsr1Upscaler>(upscale_factor));
+            video->set_upscaler(
+                std::make_unique<mapperbus::frontend::GpuFsr1Upscaler>(upscale_factor));
         } else if (use_fsr) {
-            video->set_upscaler(std::make_unique<mapperbus::platform::Fsr1Upscaler>(upscale_factor));
+            video->set_upscaler(
+                std::make_unique<mapperbus::platform::Fsr1Upscaler>(upscale_factor));
         } else if (use_gpu) {
             video->set_upscaler(std::make_unique<mapperbus::frontend::GpuUpscaler>(upscale_factor));
         } else {
@@ -130,13 +133,13 @@ int main(int argc, char* argv[]) {
 
     if (region_override != nullptr) {
         if (std::strcmp(region_override, "ntsc") == 0) {
-            app.emulator().set_region(mapperbus::core::Region::NTSC);
+            app.session().set_region(mapperbus::core::Region::NTSC);
             mapperbus::core::logger::info("Forcing region to NTSC");
         } else if (std::strcmp(region_override, "pal") == 0) {
-            app.emulator().set_region(mapperbus::core::Region::PAL);
+            app.session().set_region(mapperbus::core::Region::PAL);
             mapperbus::core::logger::info("Forcing region to PAL");
         } else if (std::strcmp(region_override, "dendy") == 0) {
-            app.emulator().set_region(mapperbus::core::Region::Dendy);
+            app.session().set_region(mapperbus::core::Region::Dendy);
             mapperbus::core::logger::info("Forcing region to Dendy");
         } else {
             mapperbus::core::logger::warn("Unknown region '{}', ignoring", region_override);
