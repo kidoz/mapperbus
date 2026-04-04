@@ -61,7 +61,7 @@ void BlipBuffer::add_delta(uint32_t clock_offset, float delta) {
         return;
 
     // Convert clock offset to output sample position + fractional phase
-    double sample_pos = static_cast<double>(clock_offset) / clocks_per_sample_;
+    double sample_pos = static_cast<double>(clock_offset) / clocks_per_sample_ + fraction_;
     int output_index = static_cast<int>(sample_pos);
     double frac = sample_pos - output_index;
     int phase = static_cast<int>(frac * kPhaseCount) & (kPhaseCount - 1);
