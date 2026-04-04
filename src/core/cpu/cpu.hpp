@@ -14,8 +14,28 @@ class Cpu {
 
     void reset();
     uint32_t step();
-    uint64_t cycles() const {
+    [[nodiscard]] uint64_t cycles() const {
         return total_cycles_;
+    }
+
+    // Register inspection (for testing and future debugger support).
+    [[nodiscard]] Byte a() const {
+        return a_;
+    }
+    [[nodiscard]] Byte x() const {
+        return x_;
+    }
+    [[nodiscard]] Byte y() const {
+        return y_;
+    }
+    [[nodiscard]] Byte sp() const {
+        return sp_;
+    }
+    [[nodiscard]] Word pc() const {
+        return pc_;
+    }
+    [[nodiscard]] Byte status() const {
+        return status_;
     }
 
   private:

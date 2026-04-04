@@ -48,6 +48,20 @@ class Ppu {
         cartridge_ = cartridge;
     }
 
+    // Loopy register inspection (for testing and future debugger support).
+    [[nodiscard]] uint16_t loopy_v() const {
+        return reg_v_;
+    }
+    [[nodiscard]] uint16_t loopy_t() const {
+        return reg_t_;
+    }
+    [[nodiscard]] uint8_t fine_x() const {
+        return fine_x_;
+    }
+    [[nodiscard]] bool write_latch() const {
+        return write_latch_;
+    }
+
   private:
     // clang-format off
     static constexpr std::array<std::uint32_t, 64> kNesPalette = {
@@ -93,9 +107,9 @@ class Ppu {
     // $2005 and $2006 both write to t through the shared w toggle.
     // $2006 second write copies t → v immediately.
     // During rendering, v is used for tile fetches and updated per scanline.
-    uint16_t reg_v_ = 0; // Current VRAM address (used for rendering and $2007 access)
-    uint16_t reg_t_ = 0; // Temporary VRAM address (staging for $2005/$2006)
-    uint8_t fine_x_ = 0; // Fine X scroll (3 bits, from $2005 first write)
+    uint16_t reg_v_ = 0;       // Current VRAM address (used for rendering and $2007 access)
+    uint16_t reg_t_ = 0;       // Temporary VRAM address (staging for $2005/$2006)
+    uint8_t fine_x_ = 0;       // Fine X scroll (3 bits, from $2005 first write)
     bool write_latch_ = false; // Shared w toggle for $2005/$2006, reset by $2002 read
 
     const RegionTiming* timing_ = &kNtscTiming;
@@ -104,8 +118,7 @@ class Ppu {
         return (ppumask_ & 0x18) != 0;
     }
 
-private:
-
+  private:
     Byte read_vram(Address addr) const;
     void write_vram(Address addr, Byte value);
     Address mirror_nametable_address(Address addr) const;
@@ -118,9 +131,18 @@ private:
     void copy_horizontal_from_t();
     void copy_vertical_from_t();
 
-    void render_scanline();
-    void render_background_scanline(int y, std::array<bool, kScreenWidth>& bg_opaque);
-    void render_sprites_scanline(int y, const std::array<bool, kScreenWidth>& bg_opaque);
+    void render_pixel();
+    void evaluate_sprites(int y);
+
+    struct SpriteEntry {
+        int index;
+        Byte y_pos;
+        Byte tile;
+        Byte attr;
+        Byte x_pos;
+    };
+    std::array<SpriteEntry, 8> visible_sprites_{};
+    int visible_sprite_count_ = 0;
 };
 
 } // namespace mapperbus::core

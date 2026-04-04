@@ -21,20 +21,20 @@ class Emulator {
     Emulator();
     explicit Emulator(const AudioSettings& audio_settings);
 
-    Result<void> load_cartridge(const std::string& path);
+    [[nodiscard]] Result<void> load_cartridge(const std::string& path);
     void unload_cartridge();
     void reset();
     void step_frame();
 
-    const FrameBuffer& frame_buffer() const {
+    [[nodiscard]] const FrameBuffer& frame_buffer() const {
         return ppu_.frame_buffer();
     }
-    const Ppu& ppu() const {
+    [[nodiscard]] const Ppu& ppu() const {
         return ppu_;
     }
 
     /// Legacy audio buffer interface (drains ring buffer into staging vector).
-    std::span<const float> audio_buffer() const {
+    [[nodiscard]] std::span<const float> audio_buffer() const {
         return apu_.output_buffer();
     }
     void clear_audio_buffer() {
@@ -42,7 +42,7 @@ class Emulator {
     }
 
     /// Preferred: read available audio samples directly from ring buffer.
-    size_t drain_audio(float* dest, size_t max_count) {
+    [[nodiscard]] size_t drain_audio(float* dest, size_t max_count) {
         return apu_.drain_samples(dest, max_count);
     }
 
@@ -50,21 +50,21 @@ class Emulator {
         apu_.update_rate_control(buffer_fill_ratio);
     }
 
-    const AudioSettings& audio_settings() const {
+    [[nodiscard]] const AudioSettings& audio_settings() const {
         return apu_.settings();
     }
     void apply_audio_settings(const AudioSettings& settings) {
         apu_.apply_settings(settings);
     }
 
-    Controller& controller() {
+    [[nodiscard]] Controller& controller() {
         return controller_;
     }
     [[nodiscard]] bool has_cartridge() const {
         return cartridge_ != nullptr;
     }
 
-    Region region() const {
+    [[nodiscard]] Region region() const {
         return region_;
     }
 

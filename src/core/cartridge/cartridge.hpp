@@ -10,27 +10,27 @@ namespace mapperbus::core {
 
 class Cartridge {
   public:
-    static Result<Cartridge> from_file(const std::string& path);
-    static Result<Cartridge> from_data(std::span<const Byte> rom_data);
+    [[nodiscard]] static Result<Cartridge> from_file(const std::string& path);
+    [[nodiscard]] static Result<Cartridge> from_data(std::span<const Byte> rom_data);
 
     Cartridge(Cartridge&&) = default;
     Cartridge& operator=(Cartridge&&) = default;
 
-    Byte read_prg(Address addr);
+    [[nodiscard]] Byte read_prg(Address addr);
     void write_prg(Address addr, Byte value);
-    Byte read_chr(Address addr);
+    [[nodiscard]] Byte read_chr(Address addr);
     void write_chr(Address addr, Byte value);
 
-    const INesHeader& header() const {
+    [[nodiscard]] const INesHeader& header() const {
         return header_;
     }
     void reset() {
         mapper_->reset();
     }
-    MirrorMode mirror_mode() const {
+    [[nodiscard]] MirrorMode mirror_mode() const {
         return mapper_->mirror_mode();
     }
-    bool irq_pending() const {
+    [[nodiscard]] bool irq_pending() const {
         return mapper_->irq_pending();
     }
     void acknowledge_irq() {
@@ -39,16 +39,16 @@ class Cartridge {
     void clock_irq_counter() {
         mapper_->clock_irq_counter();
     }
-    bool has_expansion_audio() const {
+    [[nodiscard]] bool has_expansion_audio() const {
         return mapper_->has_expansion_audio();
     }
     void clock_audio() {
         mapper_->clock_audio();
     }
-    float audio_output() const {
+    [[nodiscard]] float audio_output() const {
         return mapper_->audio_output();
     }
-    Byte read_expansion(Address addr) {
+    [[nodiscard]] Byte read_expansion(Address addr) {
         return mapper_->read_expansion(addr);
     }
     void write_expansion(Address addr, Byte value) {
