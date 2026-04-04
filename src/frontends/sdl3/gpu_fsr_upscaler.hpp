@@ -22,10 +22,14 @@ class GpuFsr1Upscaler : public platform::Upscaler {
         return scale_;
     }
 
-    bool supports_gpu_texture() const override { return true; }
-    void* get_gpu_texture() const override { return dst_texture_; }
+    bool supports_gpu_texture() const override {
+        return true;
+    }
+    void* get_gpu_texture() const override {
+        return dst_texture_;
+    }
     void set_gpu_device(void* device_handle) override;
-    
+
     void scale(std::span<const std::uint32_t> source,
                int src_width,
                int src_height,
@@ -46,7 +50,7 @@ class GpuFsr1Upscaler : public platform::Upscaler {
     SDL_GPUDevice* device_ = nullptr;
     SDL_GPUComputePipeline* easu_pipeline_ = nullptr;
     SDL_GPUComputePipeline* rcas_pipeline_ = nullptr;
-    
+
     SDL_GPUTexture* src_texture_ = nullptr;
     SDL_GPUTexture* temp_texture_ = nullptr;
     SDL_GPUTexture* dst_texture_ = nullptr;

@@ -1,6 +1,5 @@
-#include <catch2/catch_test_macros.hpp>
-
 #include <algorithm>
+#include <catch2/catch_test_macros.hpp>
 #include <filesystem>
 #include <unordered_set>
 
@@ -50,12 +49,10 @@ TEST_CASE("BattleCity renders visible content after 180 frames", "[integration][
     std::size_t non_zero_palette = std::count_if(
         ppu.palette_ram().begin(), ppu.palette_ram().end(), [](Byte value) { return value != 0; });
 
-    INFO("unique_colors=" << unique_colors.size()
-         << " non_black_pixels=" << non_black_pixels
-         << " non_zero_vram=" << non_zero_vram
-         << " non_zero_palette=" << non_zero_palette
-         << " ppuctrl=" << static_cast<int>(ppu.ppuctrl())
-         << " ppumask=" << static_cast<int>(ppu.ppumask()));
+    INFO("unique_colors=" << unique_colors.size() << " non_black_pixels=" << non_black_pixels
+                          << " non_zero_vram=" << non_zero_vram << " non_zero_palette="
+                          << non_zero_palette << " ppuctrl=" << static_cast<int>(ppu.ppuctrl())
+                          << " ppumask=" << static_cast<int>(ppu.ppumask()));
 
     REQUIRE(unique_colors.size() >= 3);
     REQUIRE(non_black_pixels >= 2048);

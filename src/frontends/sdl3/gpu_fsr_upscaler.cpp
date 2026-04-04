@@ -56,7 +56,7 @@ bool GpuFsr1Upscaler::init_gpu(int src_width, int src_height) {
         cleanup_gpu();
         return false;
     }
-    
+
     // Pipeline 2: RCAS Compute
     SDL_GPUComputePipelineCreateInfo rcas_info{};
     rcas_info.code = reinterpret_cast<const uint8_t*>(shaders::kFsr1RcasComputeMsl);
@@ -96,7 +96,8 @@ bool GpuFsr1Upscaler::init_gpu(int src_width, int src_height) {
     SDL_GPUTextureCreateInfo tmp_tex_info{};
     tmp_tex_info.type = SDL_GPU_TEXTURETYPE_2D;
     tmp_tex_info.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
-    tmp_tex_info.usage = SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_READ | SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE;
+    tmp_tex_info.usage =
+        SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_READ | SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE;
     tmp_tex_info.width = static_cast<uint32_t>(src_width * scale_);
     tmp_tex_info.height = static_cast<uint32_t>(src_height * scale_);
     tmp_tex_info.layer_count_or_depth = 1;
@@ -112,7 +113,8 @@ bool GpuFsr1Upscaler::init_gpu(int src_width, int src_height) {
     SDL_GPUTextureCreateInfo dst_tex_info{};
     dst_tex_info.type = SDL_GPU_TEXTURETYPE_2D;
     dst_tex_info.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
-    dst_tex_info.usage = SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE | SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_READ | SDL_GPU_TEXTUREUSAGE_SAMPLER;
+    dst_tex_info.usage = SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE |
+                         SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_READ | SDL_GPU_TEXTUREUSAGE_SAMPLER;
     dst_tex_info.width = static_cast<uint32_t>(src_width * scale_);
     dst_tex_info.height = static_cast<uint32_t>(src_height * scale_);
     dst_tex_info.layer_count_or_depth = 1;
@@ -226,7 +228,8 @@ void GpuFsr1Upscaler::scale(std::span<const std::uint32_t> source,
         SDL_GPUStorageTextureReadWriteBinding easu_rw_tex_bindings[1]{};
         easu_rw_tex_bindings[0].texture = temp_texture_;
 
-        SDL_GPUComputePass* easu_compute = SDL_BeginGPUComputePass(cmd, easu_rw_tex_bindings, 1, nullptr, 0);
+        SDL_GPUComputePass* easu_compute =
+            SDL_BeginGPUComputePass(cmd, easu_rw_tex_bindings, 1, nullptr, 0);
         SDL_BindGPUComputePipeline(easu_compute, easu_pipeline_);
 
         SDL_GPUTexture* easu_read_textures[] = {src_texture_};
@@ -246,7 +249,8 @@ void GpuFsr1Upscaler::scale(std::span<const std::uint32_t> source,
         SDL_GPUStorageTextureReadWriteBinding rcas_rw_tex_bindings[1]{};
         rcas_rw_tex_bindings[0].texture = dst_texture_;
 
-        SDL_GPUComputePass* rcas_compute = SDL_BeginGPUComputePass(cmd, rcas_rw_tex_bindings, 1, nullptr, 0);
+        SDL_GPUComputePass* rcas_compute =
+            SDL_BeginGPUComputePass(cmd, rcas_rw_tex_bindings, 1, nullptr, 0);
         SDL_BindGPUComputePipeline(rcas_compute, rcas_pipeline_);
 
         SDL_GPUTexture* rcas_read_textures[] = {temp_texture_};

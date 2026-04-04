@@ -52,7 +52,8 @@ Byte MemoryBus::read_ppu(Address addr) {
 
 Byte MemoryBus::read_apu_io(Address addr) {
     if (addr < 0x4018) {
-        if (addr == 0x4016 || addr == 0x4017) return controller_ ? controller_->read(addr - 0x4016) : 0;
+        if (addr == 0x4016 || addr == 0x4017)
+            return controller_ ? controller_->read(addr - 0x4016) : 0;
         return apu_ ? apu_->read_register(addr) : 0;
     }
     // $4040-$4092: FDS audio registers
@@ -131,8 +132,7 @@ void MemoryBus::write_prg(Address addr, Byte value) {
     }
 }
 
-void MemoryBus::write_open_bus(Address, Byte) {
-}
+void MemoryBus::write_open_bus(Address, Byte) {}
 
 bool MemoryBus::poll_nmi() {
     return ppu_ ? ppu_->consume_nmi() : false;

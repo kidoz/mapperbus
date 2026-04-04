@@ -1,12 +1,14 @@
 #pragma once
 
-#include "platform/video/upscaler.hpp"
-
 #include <memory>
+
+#include "platform/video/upscaler.hpp"
 
 namespace mapperbus::platform {
 
-struct Rgb { float r, g, b; };
+struct Rgb {
+    float r, g, b;
+};
 
 class ThreadPool;
 

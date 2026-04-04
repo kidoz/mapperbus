@@ -37,8 +37,12 @@ class SessionActions {
     TickResult step_frame();
 
     [[nodiscard]] SessionSnapshot snapshot() const;
-    [[nodiscard]] EmulationSession& session() { return session_; }
-    [[nodiscard]] const EmulationSession& session() const { return session_; }
+    [[nodiscard]] EmulationSession& session() {
+        return session_;
+    }
+    [[nodiscard]] const EmulationSession& session() const {
+        return session_;
+    }
 
   private:
     EmulationSession& session_;

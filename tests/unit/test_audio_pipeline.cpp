@@ -1,6 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
-
 #include <cmath>
 #include <numbers>
 
@@ -97,8 +96,8 @@ TEST_CASE("Biquad lowpass attenuates high frequencies", "[audio][filter]") {
 
     float max_output = 0.0f;
     for (int i = 0; i < 2000; ++i) {
-        float input = std::sin(2.0f * std::numbers::pi_v<float> * 20000.0f *
-                               static_cast<float>(i) / 48000.0f);
+        float input = std::sin(2.0f * std::numbers::pi_v<float> * 20000.0f * static_cast<float>(i) /
+                               48000.0f);
         float output = lp.apply(input);
         if (i > 100 && std::abs(output) > max_output) {
             max_output = std::abs(output);
@@ -112,8 +111,8 @@ TEST_CASE("Biquad lowpass passes low frequencies", "[audio][filter]") {
 
     float max_output = 0.0f;
     for (int i = 0; i < 2000; ++i) {
-        float input = std::sin(2.0f * std::numbers::pi_v<float> * 1000.0f *
-                               static_cast<float>(i) / 48000.0f);
+        float input =
+            std::sin(2.0f * std::numbers::pi_v<float> * 1000.0f * static_cast<float>(i) / 48000.0f);
         float output = lp.apply(input);
         if (i > 100 && std::abs(output) > max_output) {
             max_output = std::abs(output);
@@ -177,7 +176,8 @@ TEST_CASE("Dithering adds noise to silence", "[audio][dither]") {
     float sum = 0.0f;
     for (size_t i = 0; i < n; ++i) {
         sum += samples[i];
-        if (samples[i] != 0.0f) has_nonzero = true;
+        if (samples[i] != 0.0f)
+            has_nonzero = true;
     }
 
     if (n > 0) {

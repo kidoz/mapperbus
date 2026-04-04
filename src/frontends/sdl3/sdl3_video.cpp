@@ -94,14 +94,19 @@ void Sdl3Video::render(const core::FrameBuffer& frame) {
                 void* gpu_tex = upscaler_->get_gpu_texture();
                 if (gpu_tex) {
                     SDL_PropertiesID tex_props = SDL_CreateProperties();
-                    SDL_SetNumberProperty(tex_props, SDL_PROP_TEXTURE_CREATE_FORMAT_NUMBER, SDL_PIXELFORMAT_RGBA32);
-                    SDL_SetNumberProperty(tex_props, SDL_PROP_TEXTURE_CREATE_ACCESS_NUMBER, SDL_TEXTUREACCESS_STATIC);
+                    SDL_SetNumberProperty(
+                        tex_props, SDL_PROP_TEXTURE_CREATE_FORMAT_NUMBER, SDL_PIXELFORMAT_RGBA32);
+                    SDL_SetNumberProperty(
+                        tex_props, SDL_PROP_TEXTURE_CREATE_ACCESS_NUMBER, SDL_TEXTUREACCESS_STATIC);
                     SDL_SetNumberProperty(tex_props, SDL_PROP_TEXTURE_CREATE_WIDTH_NUMBER, dst_w);
                     SDL_SetNumberProperty(tex_props, SDL_PROP_TEXTURE_CREATE_HEIGHT_NUMBER, dst_h);
-                    SDL_SetPointerProperty(tex_props, SDL_PROP_TEXTURE_CREATE_GPU_TEXTURE_POINTER, gpu_tex);
+                    SDL_SetPointerProperty(
+                        tex_props, SDL_PROP_TEXTURE_CREATE_GPU_TEXTURE_POINTER, gpu_tex);
                     texture_ = SDL_CreateTextureWithProperties(renderer_, tex_props);
                     if (!texture_) {
-                        SDL_LogCritical(SDL_LOG_CATEGORY_VIDEO, "Failed to create GPU Texture wrapper: %s", SDL_GetError());
+                        SDL_LogCritical(SDL_LOG_CATEGORY_VIDEO,
+                                        "Failed to create GPU Texture wrapper: %s",
+                                        SDL_GetError());
                     } else {
                         SDL_SetTextureBlendMode(texture_, SDL_BLENDMODE_NONE);
                     }

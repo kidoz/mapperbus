@@ -22,8 +22,12 @@ class GpuUpscaler : public platform::Upscaler {
         return scale_;
     }
 
-    bool supports_gpu_texture() const override { return true; }
-    void* get_gpu_texture() const override { return dst_texture_; }
+    bool supports_gpu_texture() const override {
+        return true;
+    }
+    void* get_gpu_texture() const override {
+        return dst_texture_;
+    }
     void set_gpu_device(void* device_handle) override;
 
     void scale(std::span<const std::uint32_t> source,

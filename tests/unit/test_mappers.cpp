@@ -1,5 +1,4 @@
 #include <catch2/catch_test_macros.hpp>
-
 #include <vector>
 
 #include "core/cartridge/ines_header.hpp"
@@ -60,8 +59,7 @@ TEST_CASE("UxROM bank switching", "[uxrom]") {
 }
 
 TEST_CASE("UxROM CHR RAM", "[uxrom]") {
-    Uxrom mapper(make_header(4, 0, MirrorMode::Horizontal),
-                 std::vector<Byte>(64 * 1024, 0), {});
+    Uxrom mapper(make_header(4, 0, MirrorMode::Horizontal), std::vector<Byte>(64 * 1024, 0), {});
 
     mapper.write_chr(0x0000, 0x42);
     REQUIRE(mapper.read_chr(0x0000) == 0x42);
@@ -76,8 +74,8 @@ TEST_CASE("CNROM fixed PRG", "[cnrom]") {
     prg[0] = 0xAA;
     prg[0x7FFF] = 0xBB;
 
-    Cnrom mapper(make_header(2, 4, MirrorMode::Horizontal),
-                 std::move(prg), std::vector<Byte>(32 * 1024, 0));
+    Cnrom mapper(
+        make_header(2, 4, MirrorMode::Horizontal), std::move(prg), std::vector<Byte>(32 * 1024, 0));
 
     REQUIRE(mapper.read_prg(0x8000) == 0xAA);
     REQUIRE(mapper.read_prg(0xFFFF) == 0xBB);
@@ -89,8 +87,8 @@ TEST_CASE("CNROM CHR bank switching", "[cnrom]") {
     chr[2 * 0x2000] = 0x33;
     chr[3 * 0x2000] = 0x44;
 
-    Cnrom mapper(make_header(2, 4, MirrorMode::Horizontal),
-                 std::vector<Byte>(32 * 1024, 0), std::move(chr));
+    Cnrom mapper(
+        make_header(2, 4, MirrorMode::Horizontal), std::vector<Byte>(32 * 1024, 0), std::move(chr));
 
     REQUIRE(mapper.read_chr(0x0000) == 0x11);
     mapper.write_prg(0x8000, 0x02);
@@ -101,7 +99,8 @@ TEST_CASE("CNROM CHR bank switching", "[cnrom]") {
 
 TEST_CASE("CNROM CHR ROM is read-only", "[cnrom]") {
     Cnrom mapper(make_header(1, 1, MirrorMode::Vertical),
-                 std::vector<Byte>(16 * 1024, 0), std::vector<Byte>(8 * 1024, 0xAA));
+                 std::vector<Byte>(16 * 1024, 0),
+                 std::vector<Byte>(8 * 1024, 0xAA));
 
     mapper.write_chr(0x0000, 0xFF);
     REQUIRE(mapper.read_chr(0x0000) == 0xAA);
@@ -125,8 +124,7 @@ TEST_CASE("AxROM 32KB bank switching", "[axrom]") {
 }
 
 TEST_CASE("AxROM mirroring control", "[axrom]") {
-    Axrom mapper(make_header(4, 0, MirrorMode::Horizontal),
-                 std::vector<Byte>(64 * 1024, 0), {});
+    Axrom mapper(make_header(4, 0, MirrorMode::Horizontal), std::vector<Byte>(64 * 1024, 0), {});
 
     REQUIRE(mapper.mirror_mode() == MirrorMode::SingleLower);
     mapper.write_prg(0x8000, 0x10);
@@ -136,8 +134,7 @@ TEST_CASE("AxROM mirroring control", "[axrom]") {
 }
 
 TEST_CASE("AxROM CHR RAM", "[axrom]") {
-    Axrom mapper(make_header(4, 0, MirrorMode::Horizontal),
-                 std::vector<Byte>(64 * 1024, 0), {});
+    Axrom mapper(make_header(4, 0, MirrorMode::Horizontal), std::vector<Byte>(64 * 1024, 0), {});
 
     mapper.write_chr(0x0000, 0x55);
     REQUIRE(mapper.read_chr(0x0000) == 0x55);
@@ -150,8 +147,8 @@ TEST_CASE("Color Dreams PRG bank", "[color-dreams]") {
     prg[0 * 0x8000] = 0x11;
     prg[1 * 0x8000] = 0x22;
 
-    ColorDreams mapper(make_header(4, 4, MirrorMode::Vertical),
-                       std::move(prg), std::vector<Byte>(32 * 1024, 0));
+    ColorDreams mapper(
+        make_header(4, 4, MirrorMode::Vertical), std::move(prg), std::vector<Byte>(32 * 1024, 0));
 
     REQUIRE(mapper.read_prg(0x8000) == 0x11);
     mapper.write_prg(0x8000, 0x01);
@@ -163,8 +160,8 @@ TEST_CASE("Color Dreams CHR bank", "[color-dreams]") {
     chr[0 * 0x2000] = 0xAA;
     chr[2 * 0x2000] = 0xCC;
 
-    ColorDreams mapper(make_header(2, 4, MirrorMode::Vertical),
-                       std::vector<Byte>(32 * 1024, 0), std::move(chr));
+    ColorDreams mapper(
+        make_header(2, 4, MirrorMode::Vertical), std::vector<Byte>(32 * 1024, 0), std::move(chr));
 
     REQUIRE(mapper.read_chr(0x0000) == 0xAA);
     mapper.write_prg(0x8000, 0x20);
@@ -177,8 +174,7 @@ TEST_CASE("Color Dreams combined PRG+CHR", "[color-dreams]") {
     std::vector<Byte> chr(64 * 1024, 0);
     chr[3 * 0x2000] = 0x88;
 
-    ColorDreams mapper(make_header(4, 8, MirrorMode::Horizontal),
-                       std::move(prg), std::move(chr));
+    ColorDreams mapper(make_header(4, 8, MirrorMode::Horizontal), std::move(prg), std::move(chr));
 
     mapper.write_prg(0x8000, 0x31);
     REQUIRE(mapper.read_prg(0x8000) == 0x77);
@@ -209,8 +205,7 @@ TEST_CASE("MMC1 PRG bank switching", "[mmc1]") {
 }
 
 TEST_CASE("MMC1 reset on bit 7", "[mmc1]") {
-    Mmc1 mapper(make_header(16, 0, MirrorMode::Horizontal),
-                std::vector<Byte>(256 * 1024, 0), {});
+    Mmc1 mapper(make_header(16, 0, MirrorMode::Horizontal), std::vector<Byte>(256 * 1024, 0), {});
 
     mapper.write_prg(0x8000, 0x01);
     mapper.write_prg(0x8000, 0x00);
@@ -221,8 +216,7 @@ TEST_CASE("MMC1 reset on bit 7", "[mmc1]") {
 }
 
 TEST_CASE("MMC1 mirroring control", "[mmc1]") {
-    Mmc1 mapper(make_header(8, 0, MirrorMode::Horizontal),
-                std::vector<Byte>(128 * 1024, 0), {});
+    Mmc1 mapper(make_header(8, 0, MirrorMode::Horizontal), std::vector<Byte>(128 * 1024, 0), {});
 
     mmc1_serial_write(mapper, 0x8000, 0x0E);
     REQUIRE(mapper.mirror_mode() == MirrorMode::Vertical);
@@ -236,7 +230,8 @@ TEST_CASE("MMC1 CHR 4KB mode", "[mmc1]") {
     chr[5 * 0x1000] = 0x55;
 
     Mmc1 mapper(make_header(8, 16, MirrorMode::Horizontal),
-                std::vector<Byte>(128 * 1024, 0), std::move(chr));
+                std::vector<Byte>(128 * 1024, 0),
+                std::move(chr));
 
     mmc1_serial_write(mapper, 0x8000, 0x1C);
     mmc1_serial_write(mapper, 0xA000, 0x05);
@@ -244,8 +239,7 @@ TEST_CASE("MMC1 CHR 4KB mode", "[mmc1]") {
 }
 
 TEST_CASE("MMC1 PRG RAM", "[mmc1]") {
-    Mmc1 mapper(make_header(8, 0, MirrorMode::Horizontal),
-                std::vector<Byte>(128 * 1024, 0), {});
+    Mmc1 mapper(make_header(8, 0, MirrorMode::Horizontal), std::vector<Byte>(128 * 1024, 0), {});
 
     mapper.write_prg(0x6000, 0x42);
     REQUIRE(mapper.read_prg(0x6000) == 0x42);
@@ -270,8 +264,8 @@ TEST_CASE("MMC3 CHR bank switching", "[mmc3]") {
     std::vector<Byte> chr(256 * 1024, 0);
     chr[10 * 0x0400] = 0xAA;
 
-    Mmc3 mapper(make_header(8, 32, MirrorMode::Vertical),
-                std::vector<Byte>(128 * 1024, 0), std::move(chr));
+    Mmc3 mapper(
+        make_header(8, 32, MirrorMode::Vertical), std::vector<Byte>(128 * 1024, 0), std::move(chr));
 
     mapper.write_prg(0x8000, 0x02);
     mapper.write_prg(0x8001, 10);
@@ -280,7 +274,8 @@ TEST_CASE("MMC3 CHR bank switching", "[mmc3]") {
 
 TEST_CASE("MMC3 mirroring", "[mmc3]") {
     Mmc3 mapper(make_header(8, 8, MirrorMode::Vertical),
-                std::vector<Byte>(128 * 1024, 0), std::vector<Byte>(64 * 1024, 0));
+                std::vector<Byte>(128 * 1024, 0),
+                std::vector<Byte>(64 * 1024, 0));
 
     REQUIRE(mapper.mirror_mode() == MirrorMode::Vertical);
     mapper.write_prg(0xA000, 0x01);
@@ -291,7 +286,8 @@ TEST_CASE("MMC3 mirroring", "[mmc3]") {
 
 TEST_CASE("MMC3 IRQ counter", "[mmc3]") {
     Mmc3 mapper(make_header(8, 8, MirrorMode::Vertical),
-                std::vector<Byte>(128 * 1024, 0), std::vector<Byte>(64 * 1024, 0));
+                std::vector<Byte>(128 * 1024, 0),
+                std::vector<Byte>(64 * 1024, 0));
 
     mapper.write_prg(0xC000, 0x03);
     mapper.write_prg(0xC001, 0x00);
@@ -314,7 +310,8 @@ TEST_CASE("MMC3 IRQ counter", "[mmc3]") {
 
 TEST_CASE("MMC3 PRG RAM", "[mmc3]") {
     Mmc3 mapper(make_header(8, 8, MirrorMode::Vertical),
-                std::vector<Byte>(128 * 1024, 0), std::vector<Byte>(64 * 1024, 0));
+                std::vector<Byte>(128 * 1024, 0),
+                std::vector<Byte>(64 * 1024, 0));
 
     mapper.write_prg(0x7000, 0xAB);
     REQUIRE(mapper.read_prg(0x7000) == 0xAB);
