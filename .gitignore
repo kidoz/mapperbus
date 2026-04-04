@@ -1,5 +1,6 @@
 # Build output
 buildDir/
+buildDir-*/
 build/
 
 # Compiled objects and libraries
@@ -12,13 +13,52 @@ build/
 compile_commands.json
 .cache/
 
+# Coverage
+*.gcno
+*.gcda
+*.gcov
+coverage/
+*.info
+
 # IDE
 .idea/
+.vscode/
+*.swp
+*.swo
 
 # OS
 .DS_Store
+Thumbs.db
 
 # Meson wraps (downloaded sources)
 subprojects/Catch2-*/
 subprojects/SDL3-*/
+subprojects/nodalkit-*/
 subprojects/packagecache/
+
+# Test ROM images (not redistributable)
+*.nes
+
+# Debug / screenshot artifacts
+*.png
+*.bmp
+*.jpg
+frame_dump.*
+
+# Patch / merge leftovers
+*.patch
+*.diff
+*.orig
+*.rej
+
+# Ad-hoc debug scripts and binaries (project root only)
+/test_*.py
+/test_*.cpp
+/check_dump
+/check_dump.cpp
+/test_renderer
+/test_shader
+/test_texture
+/enforce_*.sh
+/fix_*.sh
+/find_*.py
