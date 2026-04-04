@@ -1,8 +1,23 @@
 #include "core/ppu/ppu.hpp"
 
 #include "core/cartridge/cartridge.hpp"
+#include "core/ppu/loopy.hpp"
 
 namespace mapperbus::core {
+
+namespace {
+
+[[nodiscard]] std::uint16_t advance_coarse_x(std::uint16_t v) {
+    if (loopy::coarse_x(v) == 31) {
+        v &= ~loopy::kCoarseXMask;
+        v ^= loopy::kNametableHMask;
+    } else {
+        ++v;
+    }
+    return v;
+}
+
+} // namespace
 
 void Ppu::set_region(Region region) {
     timing_ = &timing_for_region(region);
@@ -31,40 +46,39 @@ void Ppu::reset() {
 // === Loopy register operations (per Mesen2/FCEUX/NESDev wiki) ===
 
 void Ppu::increment_coarse_x() {
-    if ((reg_v_ & 0x001F) == 31) {
-        reg_v_ &= ~0x001F;
-        reg_v_ ^= 0x0400; // toggle horizontal nametable
+    if (loopy::coarse_x(reg_v_) == 31) {
+        reg_v_ &= ~loopy::kCoarseXMask;
+        reg_v_ ^= loopy::kNametableHMask; // toggle horizontal nametable
     } else {
         ++reg_v_;
     }
 }
 
 void Ppu::increment_fine_y() {
-    if ((reg_v_ & 0x7000) != 0x7000) {
-        reg_v_ += 0x1000;
+    if ((reg_v_ & loopy::kFineYMask) != loopy::kFineYMask) {
+        reg_v_ += (1u << loopy::kFineYShift);
     } else {
-        reg_v_ &= ~0x7000;
-        int y = (reg_v_ >> 5) & 0x1F;
+        reg_v_ &= ~loopy::kFineYMask;
+        int y = static_cast<int>(loopy::coarse_y(reg_v_));
         if (y == 29) {
             y = 0;
-            reg_v_ ^= 0x0800; // toggle vertical nametable
+            reg_v_ ^= loopy::kNametableVMask; // toggle vertical nametable
         } else if (y == 31) {
             y = 0; // wrap without nametable toggle
         } else {
             ++y;
         }
-        reg_v_ = (reg_v_ & ~0x03E0) | (y << 5);
+        reg_v_ = static_cast<uint16_t>((reg_v_ & ~loopy::kCoarseYMask) |
+                                       (static_cast<uint16_t>(y) << loopy::kCoarseYShift));
     }
 }
 
 void Ppu::copy_horizontal_from_t() {
-    // v: ....A.. ...EDCBA = t: ....A.. ...EDCBA
-    reg_v_ = (reg_v_ & ~0x041F) | (reg_t_ & 0x041F);
+    reg_v_ = (reg_v_ & ~loopy::kHorizontalMask) | (reg_t_ & loopy::kHorizontalMask);
 }
 
 void Ppu::copy_vertical_from_t() {
-    // v: GHIA.BC DEF..... = t: GHIA.BC DEF.....
-    reg_v_ = (reg_v_ & ~0x7BE0) | (reg_t_ & 0x7BE0);
+    reg_v_ = (reg_v_ & ~loopy::kVerticalMask) | (reg_t_ & loopy::kVerticalMask);
 }
 
 // === PPU step ===
@@ -78,26 +92,31 @@ void Ppu::step(uint32_t cpu_cycles) {
         bool pre_render = scanline_ == timing_->pre_render_scanline;
         bool rendering = rendering_enabled();
 
-        // Visible scanlines: render THEN update v for next scanline.
-        // Rendering uses current v. After rendering, v is advanced.
-        if (visible_line && cycle_ == 257) {
-            render_scanline();
-            if (rendering) {
-                increment_fine_y();
-                copy_horizontal_from_t();
+        if (visible_line && cycle_ >= 1 && cycle_ <= 256) {
+            render_pixel();
+        }
+
+        if (cycle_ == 257) {
+            if (visible_line) {
+                evaluate_sprites(scanline_ + 1);
+            } else if (pre_render) {
+                evaluate_sprites(0);
             }
         }
 
-        // Pre-render scanline: restore v from t for the new frame.
-        // Gated on rendering_enabled — games that disable rendering during
-        // VBlank for VRAM access may have $2006 values in t that would corrupt
-        // the scroll if copied unconditionally. Games re-enable rendering
-        // before this point, so t has the correct scroll from $2005 writes.
-        if (rendering && pre_render) {
-            if (cycle_ == 257) {
-                copy_horizontal_from_t();
+        if (rendering) {
+            if (visible_line || pre_render) {
+                if (cycle_ >= 8 && cycle_ <= 256 && (cycle_ % 8 == 0)) {
+                    increment_coarse_x();
+                }
+                if (cycle_ == 256) {
+                    increment_fine_y();
+                }
+                if (cycle_ == 257) {
+                    copy_horizontal_from_t();
+                }
             }
-            if (cycle_ >= 280 && cycle_ <= 304) {
+            if (pre_render && cycle_ >= 280 && cycle_ <= 304) {
                 copy_vertical_from_t();
             }
         }
@@ -118,7 +137,7 @@ void Ppu::step(uint32_t cpu_cycles) {
         }
 
         // Clock mapper IRQ counter (A12 rising edge, cycle 260)
-        if (cycle_ == 260 && rendering && cartridge_) {
+        if (cycle_ == 260 && rendering && cartridge_ != nullptr) {
             if (visible_line || pre_render) {
                 cartridge_->clock_irq_counter();
             }
@@ -158,7 +177,7 @@ Byte Ppu::read_register(uint8_t reg) {
             result = read_buffer_;
             read_buffer_ = value;
         }
-        reg_v_ = (reg_v_ + ((ppuctrl_ & 0x04) ? 32 : 1)) & 0x7FFF;
+        reg_v_ = (reg_v_ + ((ppuctrl_ & 0x04) != 0 ? 32 : 1)) & 0x7FFF;
         return result;
     }
     default:
@@ -212,7 +231,7 @@ void Ppu::write_register(uint8_t reg, Byte value) {
         break;
     case 0x07: // PPUDATA
         write_vram(reg_v_, value);
-        reg_v_ = (reg_v_ + ((ppuctrl_ & 0x04) ? 32 : 1)) & 0x7FFF;
+        reg_v_ = (reg_v_ + ((ppuctrl_ & 0x04) != 0 ? 32 : 1)) & 0x7FFF;
         break;
     default:
         break;
@@ -234,7 +253,7 @@ void Ppu::write_oam_dma(Byte value) {
 Byte Ppu::read_vram(Address addr) const {
     addr &= 0x3FFF;
     if (addr < 0x2000) {
-        return cartridge_ ? cartridge_->read_chr(addr) : 0;
+        return cartridge_ != nullptr ? cartridge_->read_chr(addr) : 0;
     }
     if (addr < 0x3F00) {
         return vram_[mirror_nametable_address(addr)];
@@ -245,7 +264,7 @@ Byte Ppu::read_vram(Address addr) const {
 void Ppu::write_vram(Address addr, Byte value) {
     addr &= 0x3FFF;
     if (addr < 0x2000) {
-        if (cartridge_) {
+        if (cartridge_ != nullptr) {
             cartridge_->write_chr(addr, value);
         }
         return;
@@ -262,7 +281,8 @@ Address Ppu::mirror_nametable_address(Address addr) const {
     Address table = index / 0x0400;
     Address offset = index % 0x0400;
 
-    MirrorMode mirror_mode = cartridge_ ? cartridge_->mirror_mode() : MirrorMode::Horizontal;
+    MirrorMode mirror_mode =
+        cartridge_ != nullptr ? cartridge_->mirror_mode() : MirrorMode::Horizontal;
     Address physical_table = 0;
 
     switch (mirror_mode) {
@@ -308,201 +328,161 @@ std::uint32_t Ppu::palette_color(Byte palette_value) const {
 
 // === Scanline-based rendering ===
 
-void Ppu::render_scanline() {
-    int y = scanline_;
+void Ppu::evaluate_sprites(int y) {
+    visible_sprite_count_ = 0;
     if (y < 0 || y >= kScreenHeight)
         return;
 
-    bool show_bg = (ppumask_ & 0x08) != 0;
-    bool show_sp = (ppumask_ & 0x10) != 0;
-
-    std::array<bool, kScreenWidth> bg_opaque{};
-
-    if (show_bg) {
-        render_background_scanline(y, bg_opaque);
-    } else {
-        Byte universal_bg = read_palette(0x3F00);
-        auto color = palette_color(universal_bg);
-        for (int x = 0; x < kScreenWidth; ++x) {
-            frame_buffer_.pixels[y * kScreenWidth + x] = color;
-        }
-    }
-
-    if (show_sp) {
-        render_sprites_scanline(y, bg_opaque);
-    }
-}
-
-void Ppu::render_background_scanline(int y, std::array<bool, kScreenWidth>& bg_opaque) {
-    // Tile fetches use v directly (per Mesen2/FCEUX).
-    //   tile_addr = 0x2000 | (v & 0x0FFF)
-    //   attr_addr = 0x23C0 | (v & 0x0C00) | ((v >> 4) & 0x38) | ((v >> 2) & 0x07)
-    //   fine_y    = (v >> 12) & 0x07
-    // Coarse X is incremented after every 8 pixels.
-    // fine_x_ provides the sub-pixel horizontal offset within the first tile.
-
-    Address pattern_base = (ppuctrl_ & 0x10) ? 0x1000 : 0x0000;
-    Byte universal_bg = read_palette(0x3F00);
-    bool clip_left_bg = (ppumask_ & 0x02) == 0;
-
-    // Work on a local copy of v for the scanline; the real reg_v_ is updated
-    // by increment_fine_y / copy_horizontal in the step() function AFTER render.
-    uint16_t v = reg_v_;
-
-    for (int x = 0; x < kScreenWidth; ++x) {
-        // Left-column BG clipping
-        if (clip_left_bg && x < 8) {
-            frame_buffer_.pixels[y * kScreenWidth + x] = palette_color(universal_bg);
-            bg_opaque[x] = false;
-            // Still advance coarse X at tile boundaries
-            if (((x + fine_x_) & 0x07) == 7) {
-                if ((v & 0x001F) == 31) {
-                    v &= ~0x001F;
-                    v ^= 0x0400;
-                } else {
-                    ++v;
-                }
-            }
-            continue;
-        }
-
-        // Derive tile address from v
-        Address tile_addr = static_cast<Address>(0x2000 | (v & 0x0FFF));
-        Byte tile_index = read_vram(tile_addr);
-
-        // Derive attribute address from v
-        Address attr_addr = static_cast<Address>(0x23C0 | (v & 0x0C00) |
-                                                 ((v >> 4) & 0x38) | ((v >> 2) & 0x07));
-        Byte attribute = read_vram(attr_addr);
-
-        int coarse_x = v & 0x1F;
-        int coarse_y = (v >> 5) & 0x1F;
-        int shift = ((coarse_y & 0x02) ? 4 : 0) | ((coarse_x & 0x02) ? 2 : 0);
-        Byte palette_index = static_cast<Byte>((attribute >> shift) & 0x03);
-
-        // Pattern table lookup using fine Y from v
-        int fine_y = (v >> 12) & 0x07;
-        Address pattern_addr = static_cast<Address>(pattern_base + tile_index * 16 + fine_y);
-        Byte plane0 = cartridge_ ? cartridge_->read_chr(pattern_addr) : 0;
-        Byte plane1 = cartridge_ ? cartridge_->read_chr(pattern_addr + 8) : 0;
-
-        // Pixel within tile
-        int pixel_in_tile = (x + fine_x_) & 0x07;
-        Byte bit = static_cast<Byte>(7 - pixel_in_tile);
-        Byte color_index =
-            static_cast<Byte>(((plane0 >> bit) & 0x01) | (((plane1 >> bit) & 0x01) << 1));
-
-        bg_opaque[x] = color_index != 0;
-
-        Byte palette_value = universal_bg;
-        if (color_index != 0) {
-            Address pal_addr = static_cast<Address>(0x3F00 + palette_index * 4 + color_index);
-            palette_value = read_palette(pal_addr);
-        }
-        frame_buffer_.pixels[y * kScreenWidth + x] = palette_color(palette_value);
-
-        // Increment coarse X at tile boundaries
-        if (pixel_in_tile == 7) {
-            if ((v & 0x001F) == 31) {
-                v &= ~0x001F;
-                v ^= 0x0400;
-            } else {
-                ++v;
-            }
-        }
-    }
-}
-
-void Ppu::render_sprites_scanline(int y, const std::array<bool, kScreenWidth>& bg_opaque) {
     bool sprite_size_8x16 = (ppuctrl_ & 0x20) != 0;
-    Address sprite_pattern_base = (ppuctrl_ & 0x08) ? 0x1000 : 0x0000;
     int sprite_height = sprite_size_8x16 ? 16 : 8;
-    bool clip_left_sp = (ppumask_ & 0x04) == 0;
 
-    struct SpriteEntry {
-        int index;
-        Byte y_pos;
-        Byte tile;
-        Byte attr;
-        Byte x_pos;
-    };
-
-    std::array<SpriteEntry, 8> visible{};
-    int visible_count = 0;
-
-    for (int i = 0; i < 64; ++i) {
-        Byte sy = oam_[i * 4];
+    for (std::size_t i = 0; i < 64; ++i) {
+        const std::size_t base = i * 4;
+        Byte sy = oam_[base];
         int top = static_cast<int>(sy) + 1;
         if (y >= top && y < top + sprite_height) {
-            if (visible_count < 8) {
-                visible[visible_count] = {
-                    .index = i,
+            if (visible_sprite_count_ < 8) {
+                visible_sprites_[visible_sprite_count_] = {
+                    .index = static_cast<int>(i),
                     .y_pos = sy,
-                    .tile = oam_[i * 4 + 1],
-                    .attr = oam_[i * 4 + 2],
-                    .x_pos = oam_[i * 4 + 3],
+                    .tile = oam_[base + 1],
+                    .attr = oam_[base + 2],
+                    .x_pos = oam_[base + 3],
                 };
-                ++visible_count;
+                ++visible_sprite_count_;
             } else {
                 ppustatus_ |= 0x20;
                 break;
             }
         }
     }
+}
 
-    for (int si = visible_count - 1; si >= 0; --si) {
-        auto& sp = visible[si];
-        int top = static_cast<int>(sp.y_pos) + 1;
-        int row = y - top;
+void Ppu::render_pixel() {
+    int x = cycle_ - 1;
+    int y = scanline_;
+    if (x < 0 || x >= kScreenWidth || y < 0 || y >= kScreenHeight)
+        return;
 
-        bool flip_h = (sp.attr & 0x40) != 0;
-        bool flip_v = (sp.attr & 0x80) != 0;
-        bool behind_bg = (sp.attr & 0x20) != 0;
-        Byte palette_idx = static_cast<Byte>(sp.attr & 0x03);
+    bool show_bg = (ppumask_ & 0x08) != 0;
+    bool show_sp = (ppumask_ & 0x10) != 0;
+    bool clip_left_bg = (ppumask_ & 0x02) == 0;
+    bool clip_left_sp = (ppumask_ & 0x04) == 0;
 
-        int pattern_row = flip_v ? (sprite_height - 1 - row) : row;
-        Address pat_base = sprite_pattern_base;
-        Byte tile = sp.tile;
+    Byte universal_bg = read_palette(0x3F00);
+    Byte bg_palette_value = universal_bg;
+    bool bg_opaque = false;
 
-        if (sprite_size_8x16) {
-            pat_base = static_cast<Address>((sp.tile & 0x01) * 0x1000);
-            tile = static_cast<Byte>(sp.tile & 0xFE);
-            if (pattern_row >= 8) {
-                ++tile;
-                pattern_row -= 8;
-            }
+    // 1. Render Background Pixel
+    if (show_bg && !(clip_left_bg && x < 8)) {
+        const int scrolled_pixel = (x & 0x07) + fine_x_;
+        std::uint16_t bg_v = reg_v_;
+        int pixel_in_tile = scrolled_pixel;
+        if (pixel_in_tile >= 8) {
+            bg_v = advance_coarse_x(bg_v);
+            pixel_in_tile -= 8;
         }
 
-        Address pat_addr = static_cast<Address>(pat_base + tile * 16 + pattern_row);
-        Byte plane0 = cartridge_ ? cartridge_->read_chr(pat_addr) : 0;
-        Byte plane1 = cartridge_ ? cartridge_->read_chr(pat_addr + 8) : 0;
+        Address pattern_base = (ppuctrl_ & 0x10) != 0 ? 0x1000 : 0x0000;
+        Byte tile_index = read_vram(loopy::tile_address(bg_v));
+        Byte attribute = read_vram(loopy::attribute_address(bg_v));
 
-        for (int col = 0; col < 8; ++col) {
-            int screen_x = static_cast<int>(sp.x_pos) + col;
-            if (screen_x < 0 || screen_x >= kScreenWidth)
-                continue;
+        int coarse_x = static_cast<int>(loopy::coarse_x(bg_v));
+        int coarse_y = static_cast<int>(loopy::coarse_y(bg_v));
+        int shift = ((coarse_y & 0x02) != 0 ? 4 : 0) | ((coarse_x & 0x02) != 0 ? 2 : 0);
+        Byte palette_index = static_cast<Byte>((attribute >> shift) & 0x03);
 
-            if (clip_left_sp && screen_x < 8)
-                continue;
+        int fine_y = static_cast<int>(loopy::fine_y(bg_v));
+        Address pattern_addr = static_cast<Address>(pattern_base + tile_index * 16 + fine_y);
+        Byte plane0 = cartridge_ != nullptr ? cartridge_->read_chr(pattern_addr) : 0;
+        Byte plane1 = cartridge_ != nullptr ? cartridge_->read_chr(pattern_addr + 8) : 0;
 
-            int bit_index = flip_h ? col : (7 - col);
-            Byte color_index = static_cast<Byte>(((plane0 >> bit_index) & 0x01) |
-                                                 (((plane1 >> bit_index) & 0x01) << 1));
-            if (color_index == 0)
-                continue;
+        Byte bit = static_cast<Byte>(7 - pixel_in_tile);
+        Byte color_index =
+            static_cast<Byte>(((plane0 >> bit) & 0x01) | (((plane1 >> bit) & 0x01) << 1));
 
-            if (sp.index == 0 && bg_opaque[screen_x] && screen_x != 255) {
-                ppustatus_ |= 0x40;
+        if (color_index != 0) {
+            bg_opaque = true;
+            Address pal_addr = static_cast<Address>(0x3F00 + palette_index * 4 + color_index);
+            bg_palette_value = read_palette(pal_addr);
+        }
+    } else if (!show_bg && (reg_v_ & 0x3FFF) >= 0x3F00) {
+        bg_palette_value = read_palette(reg_v_);
+    }
+
+    // 2. Render Sprite Pixel
+    Byte sp_palette_value = 0;
+    bool sp_opaque = false;
+    bool sp_behind_bg = false;
+    int sp_index = 0;
+
+    if (show_sp && !(clip_left_sp && x < 8)) {
+        bool sprite_size_8x16 = (ppuctrl_ & 0x20) != 0;
+        Address sprite_pattern_base = (ppuctrl_ & 0x08) != 0 ? 0x1000 : 0x0000;
+        int sprite_height = sprite_size_8x16 ? 16 : 8;
+
+        for (int i = visible_sprite_count_ - 1; i >= 0; --i) {
+            auto& sp = visible_sprites_[i];
+            int sp_x = static_cast<int>(sp.x_pos);
+            if (x >= sp_x && x < sp_x + 8) {
+                int col = x - sp_x;
+                int top = static_cast<int>(sp.y_pos) + 1;
+                int row = y - top;
+
+                bool flip_h = (sp.attr & 0x40) != 0;
+                bool flip_v = (sp.attr & 0x80) != 0;
+                int pattern_row = flip_v ? (sprite_height - 1 - row) : row;
+
+                Address pat_base = sprite_pattern_base;
+                Byte tile = sp.tile;
+                if (sprite_size_8x16) {
+                    pat_base = static_cast<Address>((sp.tile & 0x01) * 0x1000);
+                    tile = static_cast<Byte>(sp.tile & 0xFE);
+                    if (pattern_row >= 8) {
+                        ++tile;
+                        pattern_row -= 8;
+                    }
+                }
+
+                Address pat_addr = static_cast<Address>(pat_base + tile * 16 + pattern_row);
+                Byte plane0 = cartridge_ != nullptr ? cartridge_->read_chr(pat_addr) : 0;
+                Byte plane1 = cartridge_ != nullptr ? cartridge_->read_chr(pat_addr + 8) : 0;
+
+                int bit_index = flip_h ? col : (7 - col);
+                Byte color_index = static_cast<Byte>(((plane0 >> bit_index) & 0x01) |
+                                                     (((plane1 >> bit_index) & 0x01) << 1));
+
+                if (color_index != 0) {
+                    Byte palette_idx = static_cast<Byte>(sp.attr & 0x03);
+                    Address pal_addr = static_cast<Address>(0x3F10 + palette_idx * 4 + color_index);
+                    sp_palette_value = read_palette(pal_addr);
+                    sp_opaque = true;
+                    sp_behind_bg = (sp.attr & 0x20) != 0;
+                    sp_index = sp.index;
+                }
             }
-
-            std::size_t fb_idx = static_cast<std::size_t>(y) * kScreenWidth + screen_x;
-            if (behind_bg && bg_opaque[screen_x])
-                continue;
-
-            Address pal_addr = static_cast<Address>(0x3F10 + palette_idx * 4 + color_index);
-            frame_buffer_.pixels[fb_idx] = palette_color(read_palette(pal_addr));
         }
     }
+
+    // 3. Combine and resolve Sprite 0 Hit
+    Byte final_palette_value = universal_bg;
+
+    // Sprite 0 Hit triggers ONLY if an opaque sprite pixel overlaps an opaque background pixel
+    if (bg_opaque && sp_opaque) {
+        if (sp_index == 0 && x != 255 && show_bg && show_sp) {
+            ppustatus_ |= 0x40; // Sprite 0 hit
+        }
+        // NES priority quirk: The Sprite 0 hit still occurs, but the Sprite's priority dictates the
+        // color
+        final_palette_value = sp_behind_bg ? bg_palette_value : sp_palette_value;
+    } else if (sp_opaque) {
+        final_palette_value = sp_palette_value;
+    } else if (bg_opaque || !show_bg) {
+        final_palette_value = bg_palette_value;
+    }
+
+    frame_buffer_.pixels[static_cast<std::size_t>(y) * kScreenWidth + static_cast<std::size_t>(x)] =
+        palette_color(final_palette_value);
 }
 
 } // namespace mapperbus::core
