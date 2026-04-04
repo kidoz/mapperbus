@@ -39,7 +39,7 @@ bool GuiAudioBackend::initialize(int sample_rate, int buffer_size, int channels)
 }
 
 void GuiAudioBackend::queue_samples(std::span<const float> samples) {
-    if (active_) {
+    if (active_ && !muted_) {
         active_->queue_samples(samples);
     }
 }
@@ -64,6 +64,9 @@ int GuiAudioBackend::queued_samples() const {
 
 std::string_view GuiAudioBackend::status_text() const {
 #if defined(MAPPERBUS_HAVE_SDL3_AUDIO)
+    if (muted_) {
+        return "Audio: muted";
+    }
     if (active_ == nullptr) {
         return "Audio: SDL3 if available";
     }
@@ -71,6 +74,14 @@ std::string_view GuiAudioBackend::status_text() const {
 #else
     return "Audio: disabled";
 #endif
+}
+
+bool GuiAudioBackend::is_muted() const {
+    return muted_;
+}
+
+void GuiAudioBackend::set_muted(bool muted) {
+    muted_ = muted;
 }
 
 } // namespace mapperbus::frontend
