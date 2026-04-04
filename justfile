@@ -1,6 +1,9 @@
 # MapperBus project commands
 
 build_dir := "buildDir"
+sanitize_dir := "buildDir-sanitize"
+coverage_dir := "buildDir-coverage"
+release_dir := "buildDir-release"
 
 # List available recipes
 default:
@@ -87,9 +90,65 @@ tidy: build
         xargs "$TIDY" -p {{build_dir}} --header-filter='src/.*' "${EXTRA_ARGS[@]}" 2>&1
     echo "clang-tidy passed"
 
+# Configure sanitizer build (ASan + UBSan by default; use `just setup-sanitize thread` for TSan)
+setup-sanitize sanitizer="address,undefined":
+    meson setup {{sanitize_dir}} -Db_sanitize={{sanitizer}} -Db_lto=false -Db_lundef=false --reconfigure --wipe
+
+# Build with sanitizers
+build-sanitize:
+    meson compile -C {{sanitize_dir}}
+
+# Run tests with sanitizers
+test-sanitize: build-sanitize
+    meson test -C {{sanitize_dir}} -v
+
+# Run SDL3 frontend with sanitizers (pass ROM path as argument)
+run-sanitize rom: build-sanitize
+    ./{{sanitize_dir}}/src/app/mapperbus-sdl3 {{rom}}
+
 # Clean the build directory
 clean:
     rm -rf {{build_dir}}
+
+# Clean the sanitizer build directory
+clean-sanitize:
+    rm -rf {{sanitize_dir}}
+
+# Configure a release build (debugoptimized: -O2 with debug info, asserts off)
+setup-release:
+    meson setup {{release_dir}} --buildtype=release -Denable_nodalkit_gui=false --reconfigure --wipe
+
+# Build the release configuration
+build-release:
+    meson compile -C {{release_dir}}
+
+# Run release tests
+test-release: build-release
+    meson test -C {{release_dir}} --print-errorlogs --suite=mapperbus
+
+# Clean the release build directory
+clean-release:
+    rm -rf {{release_dir}}
+
+# Configure a coverage build (instrumented for llvm-cov / gcov)
+setup-coverage:
+    meson setup {{coverage_dir}} -Db_coverage=true -Db_lto=false --reconfigure --wipe
+
+# Build + run tests + generate an HTML coverage report
+coverage: setup-coverage
+    #!/usr/bin/env bash
+    set -euo pipefail
+    meson compile -C {{coverage_dir}}
+    meson test -C {{coverage_dir}} --suite=mapperbus
+    if ninja -C {{coverage_dir}} coverage-html 2>/dev/null; then
+        echo "HTML report: {{coverage_dir}}/meson-logs/coveragereport/index.html"
+    else
+        echo "Install 'gcovr' or 'lcov' to generate HTML; raw data is in {{coverage_dir}}"
+    fi
+
+# Clean the coverage build directory
+clean-coverage:
+    rm -rf {{coverage_dir}}
 
 # Full rebuild from scratch
 rebuild: clean setup build
