@@ -4,13 +4,16 @@
 #include <chrono>
 #include <filesystem>
 #include <nk/widgets/label.h>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
 #include "core/mappers/mapper_registry.hpp"
+#include "platform/video/fsr1.hpp"
 #include "platform/video/null_video.hpp"
+#include "platform/video/xbrz.hpp"
 
 namespace mapperbus::frontend {
 namespace {
@@ -50,6 +53,223 @@ constexpr std::array<KeyBindingOption, 17> kKeyBindingOptions = {{
     {nk::KeyCode::RightShift, "Right Shift"},
     {nk::KeyCode::LeftShift, "Left Shift"},
 }};
+
+std::vector<nk::Menu> build_window_menus() {
+    return {
+        {"File",
+         {
+             nk::MenuItem::action("Open ROM...", "file.open"),
+             nk::MenuItem::action("Close ROM", "file.close"),
+             nk::MenuItem::make_separator(),
+             nk::MenuItem::action("Quit", "file.quit"),
+         }},
+        {"Emulation",
+         {
+             nk::MenuItem::action("Pause or Resume", "emu.pause"),
+             nk::MenuItem::action("Step Frame", "emu.step"),
+             nk::MenuItem::action("Reset", "emu.reset"),
+             nk::MenuItem::action("Power Cycle", "emu.power"),
+         }},
+        {"Settings",
+         {
+             nk::MenuItem::action("Settings...", "settings.open"),
+         }},
+        {"Help",
+         {
+             nk::MenuItem::action("About mapperbus", "help.about"),
+         }},
+    };
+}
+
+nk::NativeMenuShortcut command_shortcut(nk::KeyCode key) {
+    return nk::NativeMenuShortcut{
+        .key = key,
+        .modifiers = nk::NativeMenuModifier::Super,
+    };
+}
+
+std::vector<nk::NativeMenu> build_native_menus(std::string_view app_name) {
+    const std::string resolved_app_name = app_name.empty() ? "mapperbus" : std::string(app_name);
+    return {
+        {resolved_app_name,
+         {
+             nk::NativeMenuItem::action("About " + resolved_app_name, "help.about"),
+             nk::NativeMenuItem::make_separator(),
+             nk::NativeMenuItem::action(
+                 "Quit " + resolved_app_name, "file.quit", command_shortcut(nk::KeyCode::Q)),
+         }},
+        {"File",
+         {
+             nk::NativeMenuItem::action(
+                 "Open ROM...", "file.open", command_shortcut(nk::KeyCode::O)),
+             nk::NativeMenuItem::action("Close ROM", "file.close"),
+         }},
+        {"Emulation",
+         {
+             nk::NativeMenuItem::action("Pause or Resume", "emu.pause"),
+             nk::NativeMenuItem::action("Step Frame", "emu.step"),
+             nk::NativeMenuItem::action("Reset", "emu.reset"),
+             nk::NativeMenuItem::action("Power Cycle", "emu.power"),
+         }},
+        {"Settings",
+         {
+             nk::NativeMenuItem::action(
+                 "Settings...", "settings.open", command_shortcut(nk::KeyCode::Comma)),
+         }},
+        {"Help",
+         {
+             nk::NativeMenuItem::action("About " + resolved_app_name, "help.about"),
+         }},
+    };
+}
+
+constexpr std::array<std::string_view, 4> kPreviewScaleLabels = {
+    "Pixel Perfect",
+    "Smooth",
+    "xBRZ 2x",
+    "FSR 2x",
+};
+
+constexpr std::array<std::string_view, 4> kDensityLabels = {
+    "System Default",
+    "Standard",
+    "Comfortable",
+    "Compact",
+};
+
+constexpr std::array<std::string_view, 2> kAudioModeLabels = {
+    "Automatic",
+    "Muted",
+};
+
+std::vector<std::string> owned_labels(std::span<const std::string_view> labels) {
+    std::vector<std::string> items;
+    items.reserve(labels.size());
+    for (const auto label : labels) {
+        items.emplace_back(label);
+    }
+    return items;
+}
+
+int preview_scale_index(MapperBusGuiController::PreviewScaleOption option) {
+    switch (option) {
+    case MapperBusGuiController::PreviewScaleOption::Smooth:
+        return 1;
+    case MapperBusGuiController::PreviewScaleOption::Xbrz2x:
+        return 2;
+    case MapperBusGuiController::PreviewScaleOption::Fsr2x:
+        return 3;
+    case MapperBusGuiController::PreviewScaleOption::PixelPerfect:
+    default:
+        return 0;
+    }
+}
+
+MapperBusGuiController::PreviewScaleOption preview_scale_for_index(int index) {
+    switch (index) {
+    case 1:
+        return MapperBusGuiController::PreviewScaleOption::Smooth;
+    case 2:
+        return MapperBusGuiController::PreviewScaleOption::Xbrz2x;
+    case 3:
+        return MapperBusGuiController::PreviewScaleOption::Fsr2x;
+    case 0:
+    default:
+        return MapperBusGuiController::PreviewScaleOption::PixelPerfect;
+    }
+}
+
+std::string preview_scale_description(MapperBusGuiController::PreviewScaleOption option) {
+    switch (option) {
+    case MapperBusGuiController::PreviewScaleOption::Smooth:
+        return "Video scale set to smooth.";
+    case MapperBusGuiController::PreviewScaleOption::Xbrz2x:
+        return "Video scale set to xBRZ 2x.";
+    case MapperBusGuiController::PreviewScaleOption::Fsr2x:
+        return "Video scale set to FSR 2x.";
+    case MapperBusGuiController::PreviewScaleOption::PixelPerfect:
+    default:
+        return "Video scale set to pixel perfect.";
+    }
+}
+
+int density_index(nk::ThemeDensity density) {
+    switch (density) {
+    case nk::ThemeDensity::Standard:
+        return 1;
+    case nk::ThemeDensity::Comfortable:
+        return 2;
+    case nk::ThemeDensity::Compact:
+        return 3;
+    case nk::ThemeDensity::SystemDefault:
+    default:
+        return 0;
+    }
+}
+
+nk::ThemeDensity density_for_index(int index) {
+    switch (index) {
+    case 1:
+        return nk::ThemeDensity::Standard;
+    case 2:
+        return nk::ThemeDensity::Comfortable;
+    case 3:
+        return nk::ThemeDensity::Compact;
+    case 0:
+    default:
+        return nk::ThemeDensity::SystemDefault;
+    }
+}
+
+int audio_mode_index(bool muted) {
+    return muted ? 1 : 0;
+}
+
+std::string platform_family_name(nk::PlatformFamily family) {
+    switch (family) {
+    case nk::PlatformFamily::MacOS:
+        return "macOS";
+    case nk::PlatformFamily::Windows:
+        return "Windows";
+    case nk::PlatformFamily::Linux:
+        return "Linux";
+    case nk::PlatformFamily::Unknown:
+    default:
+        return "Unknown";
+    }
+}
+
+std::string renderer_backend_label(nk::RendererBackend backend) {
+    switch (backend) {
+    case nk::RendererBackend::Metal:
+        return "Metal";
+    case nk::RendererBackend::OpenGL:
+        return "OpenGL";
+    case nk::RendererBackend::Vulkan:
+        return "Vulkan";
+    case nk::RendererBackend::Software:
+    default:
+        return "Software";
+    }
+}
+
+std::shared_ptr<nk::TextField> read_only_value(std::string text) {
+    auto field = nk::TextField::create(std::move(text));
+    field->set_editable(false);
+    return field;
+}
+
+std::shared_ptr<Box> labeled_row(std::string label, std::shared_ptr<nk::Widget> value) {
+    auto row = Box::horizontal(14.0F);
+    row->set_horizontal_size_policy(nk::SizePolicy::Expanding);
+    auto name = FieldLabel::create(std::move(label));
+    auto label_slot = FixedWidthSlot::create(112.0F, name);
+    value->set_horizontal_size_policy(nk::SizePolicy::Expanding);
+    value->set_horizontal_stretch(1);
+    row->append(label_slot);
+    row->append(std::move(value));
+    return row;
+}
 
 std::string basename_for_display(std::string_view path) {
     if (path.empty()) {
@@ -183,15 +403,49 @@ MapperBusGuiController::MapperBusGuiController(nk::Application& app, nk::Window&
     refresh_ui();
     focus_game_surface();
 
-    tick_handle_ = app_.event_loop().set_interval(std::chrono::milliseconds(16), [this] {
-        const auto result = actions_->tick();
-        if (result == app::TickResult::FrameAdvanced) {
-            refresh_preview();
+    last_tick_time_ = std::chrono::steady_clock::now();
+    tick_handle_ = app_.event_loop().set_interval(std::chrono::milliseconds(1), [this] {
+        const auto now = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(now - last_tick_time_);
+        last_tick_time_ = now;
+
+        const auto snapshot = actions_->snapshot();
+        const auto target_frame_duration =
+            std::chrono::nanoseconds(core::timing_for_region(snapshot.region).frame_duration_ns);
+        const auto max_accumulated = target_frame_duration * 4;
+        if (elapsed > max_accumulated) {
+            elapsed = max_accumulated;
+        }
+        frame_accumulator_ = std::min(frame_accumulator_ + elapsed, max_accumulated);
+
+        if (!snapshot.has_cartridge) {
+            frame_accumulator_ = std::chrono::nanoseconds{0};
+            return;
         }
 
-        if (result == app::TickResult::FrameAdvanced || result == app::TickResult::Paused ||
-            result == app::TickResult::NoCartridge) {
-            refresh_ui();
+        int steps = 0;
+        while (frame_accumulator_ >= target_frame_duration && steps < 4) {
+            const auto result = actions_->tick();
+            if (result == app::TickResult::FrameAdvanced) {
+                refresh_preview();
+            }
+
+            if (result == app::TickResult::FrameAdvanced || result == app::TickResult::Paused ||
+                result == app::TickResult::NoCartridge) {
+                refresh_ui();
+            }
+
+            if (result == app::TickResult::AudioBackpressure) {
+                frame_accumulator_ = std::min(frame_accumulator_, target_frame_duration);
+                break;
+            }
+            if (result == app::TickResult::Stopped) {
+                frame_accumulator_ = std::chrono::nanoseconds{0};
+                break;
+            }
+
+            frame_accumulator_ -= target_frame_duration;
+            ++steps;
         }
     });
 }
@@ -203,42 +457,19 @@ void MapperBusGuiController::open_initial_rom(std::string_view rom_path) {
 }
 
 void MapperBusGuiController::build_ui() {
-    root_ = Box::vertical(10.0F);
+    root_ = Box::vertical(0.0F);
     root_->set_horizontal_size_policy(nk::SizePolicy::Expanding);
     root_->set_vertical_size_policy(nk::SizePolicy::Expanding);
     root_->set_vertical_stretch(1);
 
-    menu_bar_ = nk::MenuBar::create();
-    menu_bar_->add_menu({
-        "File",
-        {
-            nk::MenuItem::action("Open ROM...", "file.open"),
-            nk::MenuItem::action("Close ROM", "file.close"),
-            nk::MenuItem::make_separator(),
-            nk::MenuItem::action("Quit", "file.quit"),
-        },
-    });
-    menu_bar_->add_menu({
-        "Emulation",
-        {
-            nk::MenuItem::action("Pause / Resume", "emu.pause"),
-            nk::MenuItem::action("Step Frame", "emu.step"),
-            nk::MenuItem::action("Reset", "emu.reset"),
-            nk::MenuItem::action("Power Cycle", "emu.power"),
-        },
-    });
-    menu_bar_->add_menu({
-        "Input",
-        {
-            nk::MenuItem::action("Configure...", "input.configure"),
-        },
-    });
-    menu_bar_->add_menu({
-        "Help",
-        {
-            nk::MenuItem::action("About mapperbus GUI", "help.about"),
-        },
-    });
+    if (app_.supports_native_app_menu()) {
+        app_.set_native_app_menu(build_native_menus(app_.app_name()));
+    } else {
+        menu_bar_ = nk::MenuBar::create();
+        for (auto menu : build_window_menus()) {
+            menu_bar_->add_menu(std::move(menu));
+        }
+    }
 
     preview_ = PreviewCanvas::create();
     preview_->set_scale_mode(nk::ScaleMode::NearestNeighbor);
@@ -248,21 +479,13 @@ void MapperBusGuiController::build_ui() {
     preview_->set_horizontal_stretch(1);
     preview_->set_vertical_stretch(1);
 
-    auto preview_stage = InsetStage::create(preview_, 640.0F, 820.0F, 8.0F);
-    preview_stage->set_horizontal_stretch(1);
-    preview_stage->set_vertical_stretch(1);
-
-    auto body = Box::vertical(8.0F);
-    body->set_horizontal_size_policy(nk::SizePolicy::Expanding);
-    body->set_vertical_size_policy(nk::SizePolicy::Expanding);
-    body->set_vertical_stretch(1);
-    body->append(preview_stage);
-
     status_bar_ = nk::StatusBar::create();
     status_bar_->set_segments({"Stopped", "NTSC", "Ready"});
 
-    root_->append(menu_bar_);
-    root_->append(body);
+    if (menu_bar_) {
+        root_->append(menu_bar_);
+    }
+    root_->append(preview_);
     root_->append(status_bar_);
 
     window_.set_child(root_);
@@ -270,18 +493,22 @@ void MapperBusGuiController::build_ui() {
 
 void MapperBusGuiController::wire_ui() {
     (void)window_.on_close_request().connect([this] { app_.quit(0); });
-    (void)menu_bar_->on_action().connect(
+    (void)app_.on_native_app_menu_action().connect(
         [this](std::string_view action) { handle_menu_action(action); });
+    if (menu_bar_) {
+        (void)menu_bar_->on_action().connect(
+            [this](std::string_view action) { handle_menu_action(action); });
+    }
 }
 
 void MapperBusGuiController::clear_preview() {
-    preview_->update_pixel_buffer(
+    update_preview_surface(
         blank_frame_.pixels.data(), mapperbus::core::kScreenWidth, mapperbus::core::kScreenHeight);
 }
 
 void MapperBusGuiController::refresh_preview() {
     const auto& frame = session_->emulator().frame_buffer();
-    preview_->update_pixel_buffer(
+    update_preview_surface(
         frame.pixels.data(), mapperbus::core::kScreenWidth, mapperbus::core::kScreenHeight);
 }
 
@@ -342,6 +569,8 @@ void MapperBusGuiController::attempt_open(std::string rom_path) {
     }
 
     actions_->step_frame();
+    frame_accumulator_ = std::chrono::nanoseconds{0};
+    last_tick_time_ = std::chrono::steady_clock::now();
     refresh_preview();
     set_message("Loaded " + basename_for_display(rom_path) + ". " + gameplay_hint_text());
     refresh_ui();
@@ -384,61 +613,286 @@ void MapperBusGuiController::power_cycle_session() {
 
 void MapperBusGuiController::close_current_rom() {
     actions_->close_rom();
+    frame_accumulator_ = std::chrono::nanoseconds{0};
     clear_preview();
     set_message("Closed current ROM.");
     refresh_ui();
     focus_game_surface();
 }
 
-void MapperBusGuiController::open_input_dialog() {
-    if (input_dialog_ && input_dialog_->is_presented()) {
+void MapperBusGuiController::set_preview_scale_option(PreviewScaleOption option) {
+    if (preview_scale_option_ == option) {
         return;
     }
 
-    auto content = Box::vertical(10.0F);
-    auto intro = nk::Label::create("Remap player 1 keyboard controls. Changes apply immediately.");
-    content->append(intro);
-
-    auto labels = key_binding_labels();
-    for (const auto button : kBindingOrder) {
-        auto row = Box::horizontal(8.0F);
-        auto name = nk::Label::create(button_name(button));
-        auto combo = nk::ComboBox::create();
-        combo->set_items(labels);
-        combo->set_selected_index(combo_index_for_key(input_backend_->binding(button)));
-        (void)combo->on_selection_changed().connect([this, button](int index) {
-            input_backend_->set_binding(button, key_for_combo_index(index));
-            set_message(button_name(button) + " mapped to " +
-                        key_label(input_backend_->binding(button)) + ".");
-            refresh_ui();
-        });
-        row->append(name);
-        row->append(combo);
-        row->append(Spacer::create());
-        content->append(row);
+    preview_scale_option_ = option;
+    switch (preview_scale_option_) {
+    case PreviewScaleOption::Xbrz2x:
+        preview_upscaler_ = std::make_unique<platform::XbrzUpscaler>(2);
+        break;
+    case PreviewScaleOption::Fsr2x:
+        preview_upscaler_ = std::make_unique<platform::Fsr1Upscaler>(2);
+        break;
+    case PreviewScaleOption::PixelPerfect:
+    case PreviewScaleOption::Smooth:
+    default:
+        preview_upscaler_.reset();
+        break;
     }
 
-    auto reset_defaults = nk::Button::create("Restore Defaults");
-    (void)reset_defaults->on_clicked().connect([this] {
-        input_backend_->reset_default_bindings();
-        if (input_dialog_) {
-            input_dialog_->close(nk::DialogResponse::Custom);
-        }
-        set_message("Restored default keyboard bindings. " + gameplay_hint_text());
-        refresh_ui();
-        open_input_dialog();
-    });
-    content->append(reset_defaults);
+    if (actions_->snapshot().has_cartridge) {
+        refresh_preview();
+    } else {
+        clear_preview();
+    }
+}
 
-    input_dialog_ = nk::Dialog::create("Input Bindings");
-    input_dialog_->set_content(content);
-    input_dialog_->add_button("Close", nk::DialogResponse::Close);
-    (void)input_dialog_->on_response().connect([this](nk::DialogResponse /*response*/) {
-        input_dialog_.reset();
-        refresh_ui();
-        focus_game_surface();
+void MapperBusGuiController::update_preview_surface(const std::uint32_t* data,
+                                                    int width,
+                                                    int height) {
+    if (!preview_ || data == nullptr || width <= 0 || height <= 0) {
+        return;
+    }
+
+    if (preview_scale_option_ == PreviewScaleOption::PixelPerfect) {
+        preview_->set_scale_mode(nk::ScaleMode::NearestNeighbor);
+        preview_->update_pixel_buffer(data, width, height);
+        return;
+    }
+    if (preview_scale_option_ == PreviewScaleOption::Smooth) {
+        preview_->set_scale_mode(nk::ScaleMode::Bilinear);
+        preview_->update_pixel_buffer(data, width, height);
+        return;
+    }
+
+    if (!preview_upscaler_) {
+        preview_->set_scale_mode(nk::ScaleMode::NearestNeighbor);
+        preview_->update_pixel_buffer(data, width, height);
+        return;
+    }
+
+    const auto factor = preview_upscaler_->scale_factor();
+    const auto source_size = static_cast<std::size_t>(width) * static_cast<std::size_t>(height);
+    const auto scaled_width = width * factor;
+    const auto scaled_height = height * factor;
+    preview_staging_pixels_.resize(static_cast<std::size_t>(scaled_width) *
+                                   static_cast<std::size_t>(scaled_height));
+    preview_upscaler_->scale(std::span<const std::uint32_t>(data, source_size),
+                             width,
+                             height,
+                             std::span<std::uint32_t>(preview_staging_pixels_));
+    preview_->set_scale_mode(nk::ScaleMode::NearestNeighbor);
+    preview_->update_pixel_buffer(preview_staging_pixels_.data(), scaled_width, scaled_height);
+}
+
+std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_dialog_shell() {
+    auto content = Box::vertical(18.0F);
+    const auto page_index = [this]() {
+        switch (settings_page_) {
+        case SettingsPage::Video:
+            return 1;
+        case SettingsPage::Audio:
+            return 2;
+        case SettingsPage::Input:
+        default:
+            return 0;
+        }
+    };
+
+    auto tabs_row = Box::horizontal(12.0F);
+    settings_tabs_ = nk::SegmentedControl::create();
+    settings_tabs_->set_segments({"Input", "Video", "Audio"});
+    settings_tabs_->set_selected_index(page_index());
+    (void)settings_tabs_->on_selection_changed().connect([this](int index) {
+        const auto next_page = [index]() {
+            switch (index) {
+            case 1:
+                return SettingsPage::Video;
+            case 2:
+                return SettingsPage::Audio;
+            case 0:
+            default:
+                return SettingsPage::Input;
+            }
+        }();
+        if (settings_page_ == next_page) {
+            return;
+        }
+        settings_page_ = next_page;
+        refresh_settings_dialog_sections();
     });
-    input_dialog_->present(window_);
+    tabs_row->append(settings_tabs_);
+    tabs_row->append(Spacer::create());
+    content->append(tabs_row);
+
+    settings_page_slot_ = ContentSlot::create();
+    settings_page_slot_->set_horizontal_size_policy(nk::SizePolicy::Expanding);
+    content->append(settings_page_slot_);
+
+    settings_footer_slot_ = ContentSlot::create();
+    settings_footer_slot_->set_horizontal_size_policy(nk::SizePolicy::Expanding);
+    content->append(settings_footer_slot_);
+
+    refresh_settings_dialog_sections();
+    return content;
+}
+
+std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content() {
+    auto page = Box::vertical(12.0F);
+    page->set_horizontal_size_policy(nk::SizePolicy::Expanding);
+    if (settings_page_ == SettingsPage::Input) {
+        page->append(SecondaryText::create(
+            "Configure the keyboard mapping used by the embedded game surface."));
+
+        auto labels = key_binding_labels();
+        for (const auto button : kBindingOrder) {
+            auto combo = nk::ComboBox::create();
+            combo->set_items(labels);
+            combo->set_selected_index(combo_index_for_key(input_backend_->binding(button)));
+            (void)combo->on_selection_changed().connect([this, button](int index) {
+                input_backend_->set_binding(button, key_for_combo_index(index));
+                set_message(button_name(button) + " mapped to " +
+                            key_label(input_backend_->binding(button)) + ".");
+                refresh_ui();
+            });
+            page->append(labeled_row(button_name(button), combo));
+        }
+    } else if (settings_page_ == SettingsPage::Video) {
+        page->append(
+            SecondaryText::create("Tune how the preview surface and interface are presented."));
+
+        auto scale_combo = nk::ComboBox::create();
+        scale_combo->set_items(owned_labels(kPreviewScaleLabels));
+        scale_combo->set_selected_index(preview_scale_index(preview_scale_option_));
+        (void)scale_combo->on_selection_changed().connect([this](int index) {
+            const auto option = preview_scale_for_index(index);
+            set_preview_scale_option(option);
+            set_message(preview_scale_description(option));
+        });
+        page->append(labeled_row("Scale", scale_combo));
+
+        auto density_combo = nk::ComboBox::create();
+        density_combo->set_items(owned_labels(kDensityLabels));
+        density_combo->set_selected_index(density_index(app_.theme_selection().density));
+        (void)density_combo->on_selection_changed().connect([this](int index) {
+            auto selection = app_.theme_selection();
+            selection.density = density_for_index(index);
+            app_.set_theme_selection(selection);
+            set_message("Interface density updated.");
+        });
+        page->append(labeled_row("UI Density", density_combo));
+
+        page->append(labeled_row(
+            "Platform Theme",
+            read_only_value(platform_family_name(app_.system_preferences().platform_family))));
+        page->append(labeled_row("Features", read_only_value(video_features_text())));
+    } else {
+        page->append(
+            SecondaryText::create("Manage audio output behavior for this frontend session."));
+
+        auto output_combo = nk::ComboBox::create();
+        output_combo->set_items(owned_labels(kAudioModeLabels));
+        output_combo->set_selected_index(audio_mode_index(audio_backend_->is_muted()));
+        (void)output_combo->on_selection_changed().connect([this](int index) {
+            audio_backend_->set_muted(index == 1);
+            set_message(index == 1 ? "Audio muted." : "Audio output restored.");
+            refresh_ui();
+        });
+        page->append(labeled_row("Playback", output_combo));
+
+        page->append(
+            labeled_row("Backend", read_only_value(std::string(audio_backend_->status_text()))));
+        page->append(labeled_row(
+            "Queued Samples", read_only_value(std::to_string(audio_backend_->queued_samples()))));
+    }
+
+    return page;
+}
+
+std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_footer_content() {
+    auto footer = Box::horizontal(12.0F);
+    footer->set_horizontal_size_policy(nk::SizePolicy::Expanding);
+    if (settings_page_ == SettingsPage::Input) {
+        auto restore_defaults = nk::Button::create("Restore Defaults");
+        (void)restore_defaults->on_clicked().connect([this] {
+            input_backend_->reset_default_bindings();
+            set_message("Restored default keyboard bindings. " + gameplay_hint_text());
+            refresh_ui();
+            refresh_settings_dialog_sections();
+        });
+        footer->append(restore_defaults);
+    }
+    footer->append(Spacer::create());
+    auto close_button = nk::Button::create("Close");
+    (void)close_button->on_clicked().connect([this] {
+        if (settings_dialog_) {
+            settings_dialog_->close(nk::DialogResponse::Close);
+        }
+    });
+    footer->append(close_button);
+
+    return footer;
+}
+
+void MapperBusGuiController::refresh_settings_dialog_sections() {
+    if (!settings_dialog_) {
+        return;
+    }
+
+    const auto page_index = [this]() {
+        switch (settings_page_) {
+        case SettingsPage::Video:
+            return 1;
+        case SettingsPage::Audio:
+            return 2;
+        case SettingsPage::Input:
+        default:
+            return 0;
+        }
+    };
+
+    if (settings_tabs_) {
+        settings_tabs_->set_selected_index(page_index());
+    }
+    if (settings_page_slot_) {
+        settings_page_slot_->set_child(build_settings_page_content());
+    }
+    if (settings_footer_slot_) {
+        settings_footer_slot_->set_child(build_settings_footer_content());
+    }
+    if (settings_dialog_->is_presented()) {
+        settings_dialog_->queue_layout();
+        settings_dialog_->queue_redraw();
+    }
+}
+
+void MapperBusGuiController::open_settings_dialog() {
+    settings_page_ = SettingsPage::Input;
+    if (settings_dialog_ && settings_dialog_->is_presented()) {
+        refresh_settings_dialog_sections();
+        return;
+    }
+
+    settings_dialog_ = nk::Dialog::create("Settings");
+    settings_dialog_->set_content(build_settings_dialog_shell());
+    settings_dialog_->set_presentation_style(nk::DialogPresentationStyle::Sheet);
+    settings_dialog_->set_minimum_panel_width(560.0F);
+    auto dialog = settings_dialog_;
+    (void)settings_dialog_->on_response().connect([this, dialog](nk::DialogResponse /*response*/) {
+        app_.event_loop().post(
+            [this, dialog] {
+                settings_tabs_.reset();
+                settings_page_slot_.reset();
+                settings_footer_slot_.reset();
+                if (settings_dialog_ == dialog) {
+                    settings_dialog_.reset();
+                }
+                refresh_ui();
+                focus_game_surface();
+            },
+            "mapperbus.settings-dialog-close");
+    });
+    settings_dialog_->present(window_);
 }
 
 void MapperBusGuiController::handle_menu_action(std::string_view action) {
@@ -470,14 +924,13 @@ void MapperBusGuiController::handle_menu_action(std::string_view action) {
         power_cycle_session();
         return;
     }
-    if (action == "input.configure") {
-        open_input_dialog();
+    if (action == "settings.open") {
+        open_settings_dialog();
         return;
     }
     if (action == "help.about") {
-        auto dialog =
-            nk::Dialog::create("About mapperbus GUI",
-                               "mapperbus GUI\nNodalKit host for NES, Famicom, and FDS sessions");
+        auto dialog = nk::Dialog::create(
+            "About mapperbus", "mapperbus\nNodalKit host for NES, Famicom, and FDS sessions");
         dialog->add_button("OK", nk::DialogResponse::Accept);
         (void)dialog->on_response().connect(
             [this](nk::DialogResponse /*response*/) { focus_game_surface(); });
@@ -500,6 +953,10 @@ std::string MapperBusGuiController::gameplay_hint_text() const {
            key_label(input_backend_->binding(core::Button::Right)) + ", A " +
            key_label(input_backend_->binding(core::Button::A)) + ", B " +
            key_label(input_backend_->binding(core::Button::B)) + ".";
+}
+
+std::string MapperBusGuiController::video_features_text() const {
+    return "Renderer: " + renderer_backend_label(window_.renderer_backend());
 }
 
 } // namespace mapperbus::frontend

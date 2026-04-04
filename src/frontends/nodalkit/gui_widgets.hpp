@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <memory>
 #include <nk/layout/box_layout.h>
+#include <nk/platform/events.h>
+#include <nk/platform/key_codes.h>
 #include <nk/render/snapshot_context.h>
 #include <nk/text/font.h>
 #include <nk/ui_core/widget.h>
@@ -57,6 +59,97 @@ class Spacer : public nk::Widget {
 
   private:
     Spacer() = default;
+};
+
+class ContentSlot : public nk::Widget {
+  public:
+    static std::shared_ptr<ContentSlot> create() {
+        auto slot = std::shared_ptr<ContentSlot>(new ContentSlot());
+        slot->set_horizontal_size_policy(nk::SizePolicy::Expanding);
+        return slot;
+    }
+
+    void set_child(std::shared_ptr<nk::Widget> child) {
+        preserve_damage_regions_for_next_redraw();
+        if (child_) {
+            remove_child(*child_);
+        }
+        child_ = std::move(child);
+        if (child_) {
+            append_child(child_);
+        }
+        queue_layout();
+        queue_redraw();
+    }
+
+    [[nodiscard]] nk::SizeRequest measure(const nk::Constraints& constraints) const override {
+        if (!child_) {
+            return {0.0F, 0.0F, 0.0F, 0.0F};
+        }
+        return child_->measure(constraints);
+    }
+
+    void allocate(const nk::Rect& allocation) override {
+        Widget::allocate(allocation);
+        if (child_) {
+            child_->allocate(allocation);
+        }
+    }
+
+  private:
+    ContentSlot() = default;
+
+    std::shared_ptr<nk::Widget> child_;
+};
+
+class FixedWidthSlot : public nk::Widget {
+  public:
+    static std::shared_ptr<FixedWidthSlot> create(float width,
+                                                  std::shared_ptr<nk::Widget> child = nullptr) {
+        auto slot = std::shared_ptr<FixedWidthSlot>(new FixedWidthSlot(width));
+        if (child) {
+            slot->set_child(std::move(child));
+        }
+        return slot;
+    }
+
+    void set_child(std::shared_ptr<nk::Widget> child) {
+        if (child_) {
+            remove_child(*child_);
+        }
+        child_ = std::move(child);
+        if (child_) {
+            append_child(child_);
+        }
+        queue_layout();
+    }
+
+    [[nodiscard]] nk::SizeRequest measure(const nk::Constraints& constraints) const override {
+        if (!child_) {
+            return {width_, 0.0F, width_, 0.0F};
+        }
+
+        auto child_constraints = constraints;
+        child_constraints.min_width = width_;
+        child_constraints.max_width = width_;
+        const auto req = child_->measure(child_constraints);
+        return {width_, req.minimum_height, width_, req.natural_height};
+    }
+
+    void allocate(const nk::Rect& allocation) override {
+        Widget::allocate(allocation);
+        if (child_) {
+            child_->allocate(allocation);
+        }
+    }
+
+  private:
+    explicit FixedWidthSlot(float width) : width_(std::max(0.0F, width)) {
+        set_horizontal_size_policy(nk::SizePolicy::Fixed);
+    }
+
+    float width_ = 0.0F;
+    std::shared_ptr<nk::Widget> child_;
 };
 
 class SectionTitle : public nk::Widget {
@@ -439,11 +532,10 @@ class InsetStage : public nk::Widget {
   protected:
     void snapshot(nk::SnapshotContext& ctx) const override {
         const auto a = allocation();
-        constexpr float corner_radius = 14.0F;
-        ctx.add_rounded_rect(a, nk::Color{0.972F, 0.978F, 0.988F, 1.0F}, corner_radius);
-        ctx.add_border(a, nk::Color{0.88F, 0.90F, 0.93F, 1.0F}, 1.0F, corner_radius);
+        ctx.add_color_rect(a, nk::Color{0.972F, 0.978F, 0.988F, 1.0F});
+        ctx.add_border(a, nk::Color{0.88F, 0.90F, 0.93F, 1.0F}, 1.0F, 0.0F);
 
-        ctx.push_rounded_clip(a, corner_radius);
+        ctx.push_container(a);
         Widget::snapshot(ctx);
         ctx.pop_container();
     }
@@ -481,6 +573,10 @@ class PreviewCanvas : public nk::Widget {
             scale_mode_ = mode;
             queue_redraw();
         }
+    }
+
+    [[nodiscard]] nk::ScaleMode scale_mode() const {
+        return scale_mode_;
     }
 
     [[nodiscard]] nk::SizeRequest measure(const nk::Constraints& /*constraints*/) const override {

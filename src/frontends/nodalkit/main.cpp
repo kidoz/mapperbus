@@ -8,11 +8,13 @@
 int main(int argc, char** argv) {
     mapperbus::core::register_builtin_mappers();
 
-    nk::Application app(argc, argv);
+    nk::Application app({.app_id = "dev.mapperbus.gui", .app_name = "mapperbus"});
     nk::ThemeSelection theme_selection;
-    theme_selection.family = nk::ThemeFamily::LinuxGnome;
-    theme_selection.density = nk::ThemeDensity::Comfortable;
-    theme_selection.accent_color_override = nk::Color::from_rgb(38, 126, 122);
+    if (app.system_preferences().platform_family == nk::PlatformFamily::Linux) {
+        theme_selection.family = nk::ThemeFamily::LinuxGnome;
+        theme_selection.density = nk::ThemeDensity::Comfortable;
+        theme_selection.accent_color_override = nk::Color::from_rgb(38, 126, 122);
+    }
     app.set_theme_selection(theme_selection);
 
     nk::Window window({
