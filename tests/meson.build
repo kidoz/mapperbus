@@ -6,6 +6,18 @@ test_bus = executable('test-bus',
 )
 test('bus', test_bus)
 
+test_cpu = executable('test-cpu',
+    'unit/test_cpu.cpp',
+    dependencies : [mapperbus_core_dep, catch2_dep],
+)
+test('cpu', test_cpu)
+
+test_ppu = executable('test-ppu',
+    'unit/test_ppu.cpp',
+    dependencies : [mapperbus_core_dep, catch2_dep],
+)
+test('ppu', test_ppu)
+
 test_nrom = executable('test-nrom',
     'unit/test_nrom.cpp',
     dependencies : [mapperbus_core_dep, catch2_dep],
