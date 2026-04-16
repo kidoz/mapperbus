@@ -7,6 +7,12 @@ namespace mapperbus::core {
 
 namespace {
 
+// Hardware takes roughly 4 PPU dots to apply rendering enable/disable changes.
+// This core currently batches PPU stepping until after a full CPU instruction,
+// so the delay also compensates for the write otherwise taking effect at the
+// beginning of the CPU instruction instead of on its write cycle.
+constexpr uint8_t kPpumaskRenderDelayDots = 16;
+
 [[nodiscard]] std::uint16_t advance_coarse_x(std::uint16_t v) {
     if (loopy::coarse_x(v) == 31) {
         v &= ~loopy::kCoarseXMask;
@@ -29,6 +35,10 @@ void Ppu::reset() {
     frame_ready_ = false;
     ppuctrl_ = 0;
     ppumask_ = 0;
+    ppumask_render_ = 0;
+    pending_ppumask_render_ = 0;
+    ppumask_render_delay_ = 0;
+    ppumask_render_pending_ = false;
     ppustatus_ = 0;
     oam_addr_ = 0;
     read_buffer_ = 0;
@@ -79,6 +89,19 @@ void Ppu::copy_horizontal_from_t() {
 
 void Ppu::copy_vertical_from_t() {
     reg_v_ = (reg_v_ & ~loopy::kVerticalMask) | (reg_t_ & loopy::kVerticalMask);
+}
+
+void Ppu::tick_delayed_registers() {
+    if (!ppumask_render_pending_) {
+        return;
+    }
+    if (ppumask_render_delay_ > 0) {
+        --ppumask_render_delay_;
+    }
+    if (ppumask_render_delay_ == 0) {
+        ppumask_render_ = pending_ppumask_render_;
+        ppumask_render_pending_ = false;
+    }
 }
 
 // === PPU step ===
@@ -150,6 +173,8 @@ void Ppu::step(uint32_t cpu_cycles) {
                 scanline_ = 0;
             }
         }
+
+        tick_delayed_registers();
     }
 }
 
@@ -160,9 +185,13 @@ Byte Ppu::read_register(uint8_t reg) {
     switch (reg) {
     case 0x02: { // PPUSTATUS
         Byte value = static_cast<Byte>((ppustatus_ & 0xE0) | (read_buffer_ & 0x1F));
-        ppustatus_ &= ~0x80;
+        ppustatus_ &= ~0x80; // Clear VBlank flag
         write_latch_ = false; // Reset w
-        nmi_pending_ = false;
+        // Note: on real hardware, reading $2002 only suppresses NMI during
+        // the exact dot when VBlank starts (a 1-cycle race condition).
+        // In our sequential model that race cannot occur, so we must NOT
+        // clear nmi_pending_ here — doing so would silently eat NMIs
+        // whenever the game polls $2002 near VBlank.
         return value;
     }
     case 0x04: // OAMDATA
@@ -199,6 +228,9 @@ void Ppu::write_register(uint8_t reg, Byte value) {
         break;
     case 0x01: // PPUMASK
         ppumask_ = value;
+        pending_ppumask_render_ = value;
+        ppumask_render_delay_ = kPpumaskRenderDelayDots;
+        ppumask_render_pending_ = true;
         break;
     case 0x03: // OAMADDR
         oam_addr_ = value;
@@ -364,10 +396,10 @@ void Ppu::render_pixel() {
     if (x < 0 || x >= kScreenWidth || y < 0 || y >= kScreenHeight)
         return;
 
-    bool show_bg = (ppumask_ & 0x08) != 0;
-    bool show_sp = (ppumask_ & 0x10) != 0;
-    bool clip_left_bg = (ppumask_ & 0x02) == 0;
-    bool clip_left_sp = (ppumask_ & 0x04) == 0;
+    bool show_bg = (ppumask_render_ & 0x08) != 0;
+    bool show_sp = (ppumask_render_ & 0x10) != 0;
+    bool clip_left_bg = (ppumask_render_ & 0x02) == 0;
+    bool clip_left_sp = (ppumask_render_ & 0x04) == 0;
 
     Byte universal_bg = read_palette(0x3F00);
     Byte bg_palette_value = universal_bg;

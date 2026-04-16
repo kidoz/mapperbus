@@ -90,6 +90,10 @@ class Ppu {
 
     Byte ppuctrl_ = 0;
     Byte ppumask_ = 0;
+    Byte ppumask_render_ = 0;
+    Byte pending_ppumask_render_ = 0;
+    uint8_t ppumask_render_delay_ = 0;
+    bool ppumask_render_pending_ = false;
     Byte ppustatus_ = 0;
     Byte oam_addr_ = 0;
     Byte read_buffer_ = 0;
@@ -115,7 +119,7 @@ class Ppu {
     const RegionTiming* timing_ = &kNtscTiming;
 
     bool rendering_enabled() const {
-        return (ppumask_ & 0x18) != 0;
+        return (ppumask_render_ & 0x18) != 0;
     }
 
   private:
@@ -130,6 +134,7 @@ class Ppu {
     void increment_fine_y();
     void copy_horizontal_from_t();
     void copy_vertical_from_t();
+    void tick_delayed_registers();
 
     void render_pixel();
     void evaluate_sprites(int y);

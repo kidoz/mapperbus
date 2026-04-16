@@ -198,6 +198,7 @@ TEST_CASE("PPU background fetch crosses into the next tile when fine_x overflows
     ppu.connect_cartridge(&cartridge);
 
     ppu.write_register(0x01, 0x0A); // Show background, including the leftmost 8 pixels
+    ppu.step(6);                    // Let the delayed PPUMASK rendering bits become effective.
 
     reset_latch(ppu);
     ppu.write_register(0x06, 0x20);
@@ -216,13 +217,15 @@ TEST_CASE("PPU background fetch crosses into the next tile when fine_x overflows
     ppu.write_register(0x05, 0x00);
 
     reset_latch(ppu);
-    ppu.write_register(0x06, 0x20);
+    // Rendering consumes the logical Loopy scroll address. Use v=0 here so
+    // fine Y remains 0 while tile fetches still resolve through $2000.
+    ppu.write_register(0x06, 0x00);
     ppu.write_register(0x06, 0x00);
 
-    ppu.step(1); // 3 PPU dots => pixels x = 0, 1, 2
+    ppu.step(1); // 3 PPU dots => pixels x = 18, 19, 20 after the delay warmup above.
 
     const auto& frame = ppu.frame_buffer();
-    REQUIRE(frame.pixels[0] == 0xFF000000);
-    REQUIRE(frame.pixels[1] == 0xFFFFFEFF);
-    REQUIRE(frame.pixels[2] == 0xFFFFFEFF);
+    REQUIRE(frame.pixels[18] == 0xFFFFFEFF);
+    REQUIRE(frame.pixels[19] == 0xFFFFFEFF);
+    REQUIRE(frame.pixels[20] == 0xFFFFFEFF);
 }
