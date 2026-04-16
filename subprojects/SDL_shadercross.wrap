@@ -1,0 +1,9 @@
+[wrap-git]
+url = https://github.com/libsdl-org/SDL_shadercross.git
+revision = main
+depth = 1
+method = cmake
+clone-recursive = true
+
+[provide]
+dependency_names = sdl3-shadercross

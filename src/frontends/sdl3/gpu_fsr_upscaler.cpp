@@ -30,51 +30,89 @@ bool GpuFsr1Upscaler::init_gpu(int src_width, int src_height) {
     src_w_ = src_width;
     src_h_ = src_height;
 
+#ifdef HAVE_SDL_SHADERCROSS
+    if (!SDL_ShaderCross_Init()) {
+        return false;
+    }
+#endif
+
     if (!device_) {
-        device_ = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_MSL, false, nullptr);
+#ifdef HAVE_SDL_SHADERCROSS
+        SDL_GPUShaderFormat format = SDL_ShaderCross_GetHLSLShaderFormats();
+#else
+        SDL_GPUShaderFormat format = SDL_GPU_SHADERFORMAT_MSL;
+#endif
+        device_ = SDL_CreateGPUDevice(format, false, nullptr);
         if (!device_) {
+#ifdef HAVE_SDL_SHADERCROSS
+            SDL_ShaderCross_Quit();
+#endif
             return false;
         }
         external_device_ = false;
     }
 
-    // Pipeline 1: EASU Compute
-    SDL_GPUComputePipelineCreateInfo easu_info{};
-    easu_info.code = reinterpret_cast<const uint8_t*>(shaders::kFsr1EasuComputeMsl);
-    easu_info.code_size = std::strlen(shaders::kFsr1EasuComputeMsl);
-    easu_info.entrypoint = "fsr1_easu";
-    easu_info.format = SDL_GPU_SHADERFORMAT_MSL;
-    easu_info.num_readonly_storage_textures = 1;
-    easu_info.num_readwrite_storage_textures = 1;
-    easu_info.num_uniform_buffers = 1;
-    easu_info.threadcount_x = 16;
-    easu_info.threadcount_y = 16;
-    easu_info.threadcount_z = 1;
+#ifdef HAVE_SDL_SHADERCROSS
+    if (SDL_GetGPUShaderFormats(device_) & SDL_GPU_SHADERFORMAT_MSL) {
+#else
+    if (true) {
+#endif
+        // Pipeline 1: EASU Compute MSL
+        SDL_GPUComputePipelineCreateInfo easu_info{};
+        easu_info.code = reinterpret_cast<const uint8_t*>(shaders::kFsr1EasuComputeMsl);
+        easu_info.code_size = std::strlen(shaders::kFsr1EasuComputeMsl);
+        easu_info.entrypoint = "fsr1_easu";
+        easu_info.format = SDL_GPU_SHADERFORMAT_MSL;
+        easu_info.num_readonly_storage_textures = 1;
+        easu_info.num_readwrite_storage_textures = 1;
+        easu_info.num_uniform_buffers = 1;
+        easu_info.threadcount_x = 16;
+        easu_info.threadcount_y = 16;
+        easu_info.threadcount_z = 1;
 
-    easu_pipeline_ = SDL_CreateGPUComputePipeline(device_, &easu_info);
-    if (!easu_pipeline_) {
-        cleanup_gpu();
-        return false;
+        easu_pipeline_ = SDL_CreateGPUComputePipeline(device_, &easu_info);
+        if (!easu_pipeline_) {
+            cleanup_gpu();
+            return false;
+        }
+
+        // Pipeline 2: RCAS Compute MSL
+        SDL_GPUComputePipelineCreateInfo rcas_info{};
+        rcas_info.code = reinterpret_cast<const uint8_t*>(shaders::kFsr1RcasComputeMsl);
+        rcas_info.code_size = std::strlen(shaders::kFsr1RcasComputeMsl);
+        rcas_info.entrypoint = "fsr1_rcas";
+        rcas_info.format = SDL_GPU_SHADERFORMAT_MSL;
+        rcas_info.num_readonly_storage_textures = 1;
+        rcas_info.num_readwrite_storage_textures = 1;
+        rcas_info.num_uniform_buffers = 1;
+        rcas_info.threadcount_x = 16;
+        rcas_info.threadcount_y = 16;
+        rcas_info.threadcount_z = 1;
+
+        rcas_pipeline_ = SDL_CreateGPUComputePipeline(device_, &rcas_info);
+        if (!rcas_pipeline_) {
+            cleanup_gpu();
+            return false;
+        }
+#ifdef HAVE_SDL_SHADERCROSS
+    } else {
+        // Pipeline 1: EASU Compute HLSL
+        easu_pipeline_ = compile_hlsl_compute(device_, shaders::kFsr1EasuComputeHlsl, "fsr1_easu");
+        if (!easu_pipeline_) {
+            cleanup_gpu();
+            return false;
+        }
+
+        // Pipeline 2: RCAS Compute HLSL
+        rcas_pipeline_ = compile_hlsl_compute(device_, shaders::kFsr1RcasComputeHlsl, "fsr1_rcas");
+        if (!rcas_pipeline_) {
+            cleanup_gpu();
+            return false;
+        }
     }
-
-    // Pipeline 2: RCAS Compute
-    SDL_GPUComputePipelineCreateInfo rcas_info{};
-    rcas_info.code = reinterpret_cast<const uint8_t*>(shaders::kFsr1RcasComputeMsl);
-    rcas_info.code_size = std::strlen(shaders::kFsr1RcasComputeMsl);
-    rcas_info.entrypoint = "fsr1_rcas";
-    rcas_info.format = SDL_GPU_SHADERFORMAT_MSL;
-    rcas_info.num_readonly_storage_textures = 1;
-    rcas_info.num_readwrite_storage_textures = 1;
-    rcas_info.num_uniform_buffers = 1;
-    rcas_info.threadcount_x = 16;
-    rcas_info.threadcount_y = 16;
-    rcas_info.threadcount_z = 1;
-
-    rcas_pipeline_ = SDL_CreateGPUComputePipeline(device_, &rcas_info);
-    if (!rcas_pipeline_) {
-        cleanup_gpu();
-        return false;
+#else
     }
+#endif
 
     // Source Texture
     SDL_GPUTextureCreateInfo src_tex_info{};
@@ -130,14 +168,18 @@ bool GpuFsr1Upscaler::init_gpu(int src_width, int src_height) {
     SDL_GPUTransferBufferCreateInfo upload_info{};
     upload_info.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
     upload_info.size = static_cast<uint32_t>(src_width * src_height * sizeof(uint32_t));
-    upload_buf_ = SDL_CreateGPUTransferBuffer(device_, &upload_info);
+    for (int i = 0; i < 2; ++i) {
+        upload_bufs_[i] = SDL_CreateGPUTransferBuffer(device_, &upload_info);
+    }
 
     if (!external_device_) {
         SDL_GPUTransferBufferCreateInfo download_info{};
         download_info.usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD;
         download_info.size =
             static_cast<uint32_t>(src_width * scale_ * src_height * scale_ * sizeof(uint32_t));
-        download_buf_ = SDL_CreateGPUTransferBuffer(device_, &download_info);
+        for (int i = 0; i < 2; ++i) {
+            download_bufs_[i] = SDL_CreateGPUTransferBuffer(device_, &download_info);
+        }
     }
 
     initialized_ = true;
@@ -146,10 +188,14 @@ bool GpuFsr1Upscaler::init_gpu(int src_width, int src_height) {
 
 void GpuFsr1Upscaler::cleanup_gpu() {
     if (device_) {
-        if (download_buf_)
-            SDL_ReleaseGPUTransferBuffer(device_, download_buf_);
-        if (upload_buf_)
-            SDL_ReleaseGPUTransferBuffer(device_, upload_buf_);
+        for (int i = 0; i < 2; ++i) {
+            if (fences_[i])
+                SDL_ReleaseGPUFence(device_, fences_[i]);
+            if (download_bufs_[i])
+                SDL_ReleaseGPUTransferBuffer(device_, download_bufs_[i]);
+            if (upload_bufs_[i])
+                SDL_ReleaseGPUTransferBuffer(device_, upload_bufs_[i]);
+        }
         if (dst_texture_)
             SDL_ReleaseGPUTexture(device_, dst_texture_);
         if (temp_texture_)
@@ -160,8 +206,12 @@ void GpuFsr1Upscaler::cleanup_gpu() {
             SDL_ReleaseGPUComputePipeline(device_, easu_pipeline_);
         if (rcas_pipeline_)
             SDL_ReleaseGPUComputePipeline(device_, rcas_pipeline_);
-        if (!external_device_)
+        if (!external_device_) {
             SDL_DestroyGPUDevice(device_);
+        }
+#ifdef HAVE_SDL_SHADERCROSS
+        SDL_ShaderCross_Quit();
+#endif
     }
     device_ = nullptr;
     easu_pipeline_ = nullptr;
@@ -169,8 +219,11 @@ void GpuFsr1Upscaler::cleanup_gpu() {
     src_texture_ = nullptr;
     temp_texture_ = nullptr;
     dst_texture_ = nullptr;
-    upload_buf_ = nullptr;
-    download_buf_ = nullptr;
+    for (int i = 0; i < 2; ++i) {
+        upload_bufs_[i] = nullptr;
+        download_bufs_[i] = nullptr;
+        fences_[i] = nullptr;
+    }
     initialized_ = false;
 }
 
@@ -180,6 +233,9 @@ void GpuFsr1Upscaler::scale(std::span<const std::uint32_t> source,
                             std::span<std::uint32_t> target) {
     if (!initialized_) {
         if (!init_gpu(src_width, src_height)) {
+            if (target.empty()) {
+                return;
+            }
             // CPU Nearest-Neighbor fallback
             for (int y = 0; y < src_height * scale_; ++y) {
                 for (int x = 0; x < src_width * scale_; ++x) {
@@ -195,22 +251,32 @@ void GpuFsr1Upscaler::scale(std::span<const std::uint32_t> source,
     int dst_w = src_width * scale_;
     int dst_h = src_height * scale_;
 
+    uint32_t current_idx = frame_index_ % 2;
+    uint32_t prev_idx = (frame_index_ + 1) % 2;
+
+    // Ensure the buffer we are about to use is no longer in flight
+    if (fences_[current_idx]) {
+        SDL_WaitForGPUFences(device_, true, &fences_[current_idx], 1);
+        SDL_ReleaseGPUFence(device_, fences_[current_idx]);
+        fences_[current_idx] = nullptr;
+    }
+
     SDL_GPUCommandBuffer* cmd = SDL_AcquireGPUCommandBuffer(device_);
     if (!cmd)
         return;
 
     // --- Upload CPU pixels to GPU src_texture (reuse persistent buffer) ---
-    if (upload_buf_) {
-        void* mapped = SDL_MapGPUTransferBuffer(device_, upload_buf_, false);
+    if (upload_bufs_[current_idx]) {
+        void* mapped = SDL_MapGPUTransferBuffer(device_, upload_bufs_[current_idx], false);
         if (mapped) {
             auto* dst_pixels = static_cast<uint32_t*>(mapped);
             argb_to_rgba(source, {dst_pixels, source.size()});
-            SDL_UnmapGPUTransferBuffer(device_, upload_buf_);
+            SDL_UnmapGPUTransferBuffer(device_, upload_bufs_[current_idx]);
         }
 
         SDL_GPUCopyPass* copy_pass = SDL_BeginGPUCopyPass(cmd);
         SDL_GPUTextureTransferInfo src_transfer{};
-        src_transfer.transfer_buffer = upload_buf_;
+        src_transfer.transfer_buffer = upload_bufs_[current_idx];
         src_transfer.offset = 0;
 
         SDL_GPUTextureRegion src_region{};
@@ -256,7 +322,6 @@ void GpuFsr1Upscaler::scale(std::span<const std::uint32_t> source,
         SDL_GPUTexture* rcas_read_textures[] = {temp_texture_};
         SDL_BindGPUComputeStorageTextures(rcas_compute, 0, rcas_read_textures, 1);
 
-        // Parameters re-used (same scale/dims needed to keep geometry math perfect)
         GpuParams params{scale_, src_width, src_height, 0};
         SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
 
@@ -268,11 +333,12 @@ void GpuFsr1Upscaler::scale(std::span<const std::uint32_t> source,
 
     if (external_device_) {
         SDL_SubmitGPUCommandBuffer(cmd);
+        frame_index_++;
         return;
     }
 
-    // --- Download dst_texture to CPU RAM (reuse persistent buffer) ---
-    if (download_buf_) {
+    // --- Download dst_texture to CPU RAM ---
+    if (download_bufs_[current_idx]) {
         SDL_GPUCopyPass* copy_pass = SDL_BeginGPUCopyPass(cmd);
 
         SDL_GPUTextureRegion dst_region{};
@@ -282,25 +348,32 @@ void GpuFsr1Upscaler::scale(std::span<const std::uint32_t> source,
         dst_region.d = 1;
 
         SDL_GPUTextureTransferInfo dst_transfer{};
-        dst_transfer.transfer_buffer = download_buf_;
+        dst_transfer.transfer_buffer = download_bufs_[current_idx];
         dst_transfer.offset = 0;
 
         SDL_DownloadFromGPUTexture(copy_pass, &dst_region, &dst_transfer);
         SDL_EndGPUCopyPass(copy_pass);
     }
 
-    SDL_GPUFence* fence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmd);
-    SDL_WaitForGPUFences(device_, true, &fence, 1);
-    SDL_ReleaseGPUFence(device_, fence);
+    fences_[current_idx] = SDL_SubmitGPUCommandBufferAndAcquireFence(cmd);
 
-    if (download_buf_) {
-        void* mapped = SDL_MapGPUTransferBuffer(device_, download_buf_, false);
+    // Read back the previous frame to minimize blocking
+    if (frame_index_ > 0 && download_bufs_[prev_idx]) {
+        if (fences_[prev_idx]) {
+            SDL_WaitForGPUFences(device_, true, &fences_[prev_idx], 1);
+            // We do NOT release prev_idx fence here, because it will be released
+            // when it becomes current_idx on the next iteration.
+        }
+
+        void* mapped = SDL_MapGPUTransferBuffer(device_, download_bufs_[prev_idx], false);
         if (mapped) {
             auto* src_pixels = static_cast<const uint32_t*>(mapped);
             rgba_to_argb({src_pixels, target.size()}, target);
-            SDL_UnmapGPUTransferBuffer(device_, download_buf_);
+            SDL_UnmapGPUTransferBuffer(device_, download_bufs_[prev_idx]);
         }
     }
+
+    frame_index_++;
 }
 
 } // namespace mapperbus::frontend
