@@ -20,6 +20,19 @@ static std::vector<Byte> make_rom(Byte flags7_extra = 0, Byte byte9 = 0, Byte by
     return rom;
 }
 
+TEST_CASE("NES 2.0 mapper extension and submapper parsing", "[region][ines]") {
+    auto rom = make_rom(0x08, 0, 0);
+    rom[6] = 0x70;
+    rom[8] = 0x21;
+
+    auto r = parse_ines_header(rom);
+
+    REQUIRE(r.has_value());
+    REQUIRE(r->is_nes2);
+    REQUIRE(r->mapper_number == 0x107);
+    REQUIRE(r->submapper == 2);
+}
+
 TEST_CASE("NES 2.0 region detection", "[region]") {
     SECTION("NTSC") {
         auto r = parse_ines_header(make_rom(0x08, 0, 0x00));

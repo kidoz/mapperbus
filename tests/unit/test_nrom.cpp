@@ -11,6 +11,7 @@ static INesHeader make_header(uint8_t prg_banks, uint8_t chr_banks, MirrorMode m
         .prg_rom_banks = prg_banks,
         .chr_rom_banks = chr_banks,
         .mapper_number = 0,
+        .submapper = 0,
         .mirror_mode = mirror,
         .region = Region::NTSC,
         .has_battery = false,

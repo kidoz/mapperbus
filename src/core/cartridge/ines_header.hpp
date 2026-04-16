@@ -13,6 +13,7 @@ struct INesHeader {
     uint8_t prg_rom_banks; // 16 KB units
     uint8_t chr_rom_banks; // 8 KB units
     uint16_t mapper_number;
+    uint8_t submapper;
     MirrorMode mirror_mode;
     Region region;
     bool has_battery;

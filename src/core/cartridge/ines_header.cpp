@@ -41,6 +41,12 @@ Result<INesHeader> parse_ines_header(std::span<const Byte> rom_data) {
 
     // NES 2.0 detection
     header.is_nes2 = ((flags7 & 0x0C) == 0x08);
+    header.submapper = 0;
+    if (header.is_nes2) {
+        header.mapper_number =
+            static_cast<uint16_t>(header.mapper_number | ((rom_data[8] & 0x0F) << 8));
+        header.submapper = static_cast<uint8_t>(rom_data[8] >> 4);
+    }
 
     // Region / CPU-PPU timing
     header.region = Region::NTSC; // default
