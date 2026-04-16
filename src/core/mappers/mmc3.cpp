@@ -4,7 +4,8 @@ namespace mapperbus::core {
 
 Mmc3::Mmc3(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte> chr_rom)
     : prg_rom_(std::move(prg_rom)), chr_rom_(std::move(chr_rom)), use_chr_ram_(chr_rom_.empty()),
-      mirror_mode_(header.mirror_mode) {
+      mirror_mode_(header.mirror_mode),
+      irq_zero_latch_repeats_(!(header.is_nes2 && header.submapper == 4)) {
     num_prg_banks_8k_ = static_cast<uint8_t>(prg_rom_.size() / 0x2000);
     num_chr_banks_1k_ = use_chr_ram_ ? 8 : static_cast<uint16_t>(chr_rom_.size() / 0x0400);
     reset();
@@ -20,6 +21,8 @@ void Mmc3::reset() {
     irq_reload_flag_ = false;
     irq_enabled_ = false;
     irq_pending_ = false;
+    prg_ram_enabled_ = true;
+    prg_ram_write_protected_ = false;
     update_prg_banks();
     update_chr_banks();
 }
@@ -79,6 +82,9 @@ void Mmc3::update_chr_banks() {
 
 Byte Mmc3::read_prg(Address addr) {
     if (addr >= 0x6000 && addr < 0x8000) {
+        if (!prg_ram_enabled_) {
+            return 0;
+        }
         return prg_ram_[addr - 0x6000];
     }
     if (addr < 0x8000)
@@ -91,7 +97,9 @@ Byte Mmc3::read_prg(Address addr) {
 
 void Mmc3::write_prg(Address addr, Byte value) {
     if (addr >= 0x6000 && addr < 0x8000) {
-        prg_ram_[addr - 0x6000] = value;
+        if (prg_ram_enabled_ && !prg_ram_write_protected_) {
+            prg_ram_[addr - 0x6000] = value;
+        }
         return;
     }
     if (addr < 0x8000)
@@ -120,8 +128,10 @@ void Mmc3::write_prg(Address addr, Byte value) {
         if (even) {
             // $A000: Mirroring
             mirror_mode_ = (value & 0x01) ? MirrorMode::Horizontal : MirrorMode::Vertical;
+        } else {
+            prg_ram_enabled_ = (value & 0x80) != 0;
+            prg_ram_write_protected_ = (value & 0x40) != 0;
         }
-        // $A001: PRG RAM protect (ignored in this implementation)
     } else if (addr < 0xE000) {
         if (even) {
             // $C000: IRQ latch
@@ -143,7 +153,17 @@ void Mmc3::write_prg(Address addr, Byte value) {
     }
 }
 
+bool Mmc3::maps_prg(Address addr) const {
+    if (addr >= 0x8000) {
+        return true;
+    }
+    return addr >= 0x6000 && addr < 0x8000 && prg_ram_enabled_;
+}
+
 void Mmc3::clock_irq_counter() {
+    bool was_forced = irq_reload_flag_;
+    uint8_t old_counter = irq_counter_;
+
     if (irq_counter_ == 0 || irq_reload_flag_) {
         irq_counter_ = irq_reload_;
         irq_reload_flag_ = false;
@@ -151,7 +171,8 @@ void Mmc3::clock_irq_counter() {
         --irq_counter_;
     }
 
-    if (irq_counter_ == 0 && irq_enabled_) {
+    if (irq_counter_ == 0 && irq_enabled_ &&
+        (irq_zero_latch_repeats_ || old_counter > 0 || was_forced)) {
         irq_pending_ = true;
     }
 }

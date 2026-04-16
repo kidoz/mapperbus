@@ -75,6 +75,14 @@ void Namco163::write_prg(Address addr, Byte value) {
     }
 }
 
+bool Namco163::maps_prg(Address addr) const {
+    return addr >= 0x6000;
+}
+
+bool Namco163::maps_expansion(Address addr) const {
+    return addr == 0x4800 || addr == 0x5000 || addr == 0x5800;
+}
+
 Byte Namco163::read_chr(Address addr) {
     if (use_chr_ram_)
         return chr_ram_[addr % 0x2000];

@@ -2,10 +2,11 @@
 
 namespace mapperbus::core {
 
-Axrom::Axrom([[maybe_unused]] const INesHeader& header,
+Axrom::Axrom(const INesHeader& header,
              std::vector<Byte> prg_rom,
              [[maybe_unused]] std::vector<Byte> chr_rom)
-    : prg_rom_(std::move(prg_rom)), mirror_mode_(MirrorMode::SingleLower) {
+    : prg_rom_(std::move(prg_rom)), mirror_mode_(MirrorMode::SingleLower),
+      has_bus_conflicts_(header.is_nes2 && header.submapper == 2) {
     num_banks_ = static_cast<uint8_t>(prg_rom_.size() / 0x8000);
 }
 
@@ -18,6 +19,9 @@ Byte Axrom::read_prg(Address addr) {
 
 void Axrom::write_prg(Address addr, Byte value) {
     if (addr >= 0x8000) {
+        if (has_bus_conflicts_) {
+            value &= read_prg(addr);
+        }
         bank_select_ = value & (num_banks_ - 1);
         // Bit 4 selects single-screen nametable
         mirror_mode_ = (value & 0x10) ? MirrorMode::SingleUpper : MirrorMode::SingleLower;

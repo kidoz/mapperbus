@@ -245,6 +245,10 @@ void Vrc6::write_prg(Address addr, Byte value) {
     }
 }
 
+bool Vrc6::maps_prg(Address addr) const {
+    return addr >= 0x6000;
+}
+
 Byte Vrc6::read_chr(Address addr) {
     if (use_chr_ram_) {
         return chr_ram_[addr % 0x2000];

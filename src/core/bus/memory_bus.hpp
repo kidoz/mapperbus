@@ -22,6 +22,9 @@ class MemoryBus {
     bool poll_nmi();
     bool poll_irq();
     uint32_t take_dma_cycles();
+    [[nodiscard]] Byte open_bus() const {
+        return open_bus_;
+    }
 
     void connect_cartridge(Cartridge* cartridge) {
         cartridge_ = cartridge;
@@ -67,6 +70,7 @@ class MemoryBus {
     void write_open_bus(Address addr, Byte value);
 
     std::array<Byte, kRamSize> ram_{};
+    Byte open_bus_ = 0;
     uint32_t dma_cycles_ = 0;
 
     Cartridge* cartridge_ = nullptr;

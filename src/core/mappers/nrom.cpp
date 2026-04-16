@@ -26,6 +26,10 @@ void Nrom::write_prg(Address addr, Byte value) {
     }
 }
 
+bool Nrom::maps_prg(Address addr) const {
+    return addr >= 0x6000;
+}
+
 Byte Nrom::read_chr(Address addr) {
     std::size_t offset = addr % 0x2000;
     if (use_chr_ram_) {

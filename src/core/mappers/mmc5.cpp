@@ -94,6 +94,14 @@ void Mmc5::write_prg(Address addr, Byte value) {
     }
 }
 
+bool Mmc5::maps_prg(Address addr) const {
+    return addr >= 0x6000;
+}
+
+bool Mmc5::maps_expansion(Address addr) const {
+    return addr == 0x5015;
+}
+
 Byte Mmc5::read_chr(Address addr) {
     if (use_chr_ram_)
         return chr_ram_[addr % 0x2000];

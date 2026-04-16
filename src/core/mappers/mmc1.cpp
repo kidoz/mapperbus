@@ -69,6 +69,13 @@ void Mmc1::write_prg(Address addr, Byte value) {
     }
 }
 
+bool Mmc1::maps_prg(Address addr) const {
+    if (addr >= 0x8000) {
+        return true;
+    }
+    return addr >= 0x6000 && addr < 0x8000 && (prg_bank_ & 0x10) == 0;
+}
+
 void Mmc1::write_register(Address addr, Byte value) {
     if (addr < 0xA000) {
         // Control ($8000-$9FFF)

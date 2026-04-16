@@ -87,6 +87,10 @@ void Cartridge::write_prg(Address addr, Byte value) {
     mapper_->write_prg(addr, value);
 }
 
+bool Cartridge::maps_prg(Address addr) const {
+    return mapper_->maps_prg(addr);
+}
+
 Byte Cartridge::read_chr(Address addr) {
     return mapper_->read_chr(addr);
 }

@@ -27,6 +27,7 @@ class Axrom : public Mapper {
     std::vector<Byte> prg_rom_;
     std::array<Byte, 0x2000> chr_ram_{};
     MirrorMode mirror_mode_;
+    bool has_bus_conflicts_ = false;
     uint8_t bank_select_ = 0;
     uint8_t num_banks_ = 0; // Number of 32 KB banks
 };

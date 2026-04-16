@@ -10,6 +10,9 @@ class Mapper {
 
     virtual Byte read_prg(Address addr) = 0;
     virtual void write_prg(Address addr, Byte value) = 0;
+    virtual bool maps_prg(Address addr) const {
+        return addr >= 0x8000;
+    }
     virtual Byte read_chr(Address addr) = 0;
     virtual void write_chr(Address addr, Byte value) = 0;
 
@@ -29,6 +32,9 @@ class Mapper {
     virtual void clock_audio() {}
     virtual float audio_output() const {
         return 0.0f;
+    }
+    virtual bool maps_expansion(Address /*addr*/) const {
+        return false;
     }
     virtual Byte read_expansion(Address /*addr*/) {
         return 0;

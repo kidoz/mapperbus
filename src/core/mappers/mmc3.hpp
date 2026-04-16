@@ -18,6 +18,7 @@ class Mmc3 : public Mapper {
 
     Byte read_prg(Address addr) override;
     void write_prg(Address addr, Byte value) override;
+    bool maps_prg(Address addr) const override;
     Byte read_chr(Address addr) override;
     void write_chr(Address addr, Byte value) override;
     MirrorMode mirror_mode() const override;
@@ -63,6 +64,10 @@ class Mmc3 : public Mapper {
     bool irq_reload_flag_ = false;
     bool irq_enabled_ = false;
     bool irq_pending_ = false;
+    bool irq_zero_latch_repeats_ = true;
+
+    bool prg_ram_enabled_ = true;
+    bool prg_ram_write_protected_ = false;
 
     uint8_t num_prg_banks_8k_ = 0;
     uint16_t num_chr_banks_1k_ = 0;

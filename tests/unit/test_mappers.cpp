@@ -16,6 +16,7 @@ static INesHeader make_header(uint8_t prg_banks, uint8_t chr_banks, MirrorMode m
         .prg_rom_banks = prg_banks,
         .chr_rom_banks = chr_banks,
         .mapper_number = 0,
+        .submapper = 0,
         .mirror_mode = mirror,
         .region = Region::NTSC,
         .has_battery = false,
@@ -140,6 +141,25 @@ TEST_CASE("AxROM CHR RAM", "[axrom]") {
     REQUIRE(mapper.read_chr(0x0000) == 0x55);
 }
 
+TEST_CASE("AxROM NES 2.0 submapper 2 applies PRG-ROM bus conflicts", "[axrom]") {
+    auto header = make_header(4, 0, MirrorMode::Horizontal);
+    header.is_nes2 = true;
+    header.submapper = 2;
+
+    std::vector<Byte> prg(128 * 1024, 0);
+    prg[0x0000] = 0x03;
+    prg[2 * 0x8000] = 0xAA;
+    prg[2 * 0x8000 + 0x0001] = 0x10;
+
+    Axrom mapper(header, std::move(prg), {});
+
+    mapper.write_prg(0x8000, 0x02);
+    REQUIRE(mapper.read_prg(0x8000) == 0xAA);
+
+    mapper.write_prg(0x8001, 0x10);
+    REQUIRE(mapper.mirror_mode() == MirrorMode::SingleUpper);
+}
+
 // === Color Dreams ===
 
 TEST_CASE("Color Dreams PRG bank", "[color-dreams]") {
@@ -245,6 +265,16 @@ TEST_CASE("MMC1 PRG RAM", "[mmc1]") {
     REQUIRE(mapper.read_prg(0x6000) == 0x42);
 }
 
+TEST_CASE("MMC1 disabled PRG RAM is not mapped", "[mmc1]") {
+    Mmc1 mapper(make_header(8, 0, MirrorMode::Horizontal), std::vector<Byte>(128 * 1024, 0), {});
+
+    REQUIRE(mapper.maps_prg(0x6000));
+    mmc1_serial_write(mapper, 0xE000, 0x10);
+
+    REQUIRE_FALSE(mapper.maps_prg(0x6000));
+    REQUIRE(mapper.maps_prg(0x8000));
+}
+
 // === MMC3 ===
 
 TEST_CASE("MMC3 PRG bank switching", "[mmc3]") {
@@ -308,6 +338,26 @@ TEST_CASE("MMC3 IRQ counter", "[mmc3]") {
     REQUIRE_FALSE(mapper.irq_pending());
 }
 
+TEST_CASE("MMC3 submapper 4 suppresses repeated zero-latch IRQs", "[mmc3]") {
+    auto header = make_header(8, 8, MirrorMode::Vertical);
+    header.is_nes2 = true;
+    header.submapper = 4;
+
+    Mmc3 mapper(header, std::vector<Byte>(128 * 1024, 0), std::vector<Byte>(64 * 1024, 0));
+
+    mapper.write_prg(0xC000, 0x00);
+    mapper.write_prg(0xC001, 0x00);
+    mapper.write_prg(0xE001, 0x00);
+
+    mapper.clock_irq_counter();
+    REQUIRE(mapper.irq_pending());
+
+    mapper.write_prg(0xE000, 0x00);
+    mapper.write_prg(0xE001, 0x00);
+    mapper.clock_irq_counter();
+    REQUIRE_FALSE(mapper.irq_pending());
+}
+
 TEST_CASE("MMC3 PRG RAM", "[mmc3]") {
     Mmc3 mapper(make_header(8, 8, MirrorMode::Vertical),
                 std::vector<Byte>(128 * 1024, 0),
@@ -315,4 +365,12 @@ TEST_CASE("MMC3 PRG RAM", "[mmc3]") {
 
     mapper.write_prg(0x7000, 0xAB);
     REQUIRE(mapper.read_prg(0x7000) == 0xAB);
+
+    mapper.write_prg(0xA001, 0xC0);
+    mapper.write_prg(0x7000, 0xCD);
+    REQUIRE(mapper.read_prg(0x7000) == 0xAB);
+
+    mapper.write_prg(0xA001, 0x00);
+    REQUIRE_FALSE(mapper.maps_prg(0x7000));
+    REQUIRE(mapper.maps_prg(0x8000));
 }

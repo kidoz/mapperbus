@@ -141,6 +141,10 @@ void Sunsoft5b::write_prg(Address addr, Byte value) {
     }
 }
 
+bool Sunsoft5b::maps_prg(Address addr) const {
+    return addr >= 0x8000 || (addr >= 0x6000 && addr < 0x8000 && prg_ram_enabled_);
+}
+
 Byte Sunsoft5b::read_chr(Address addr) {
     if (use_chr_ram_)
         return chr_ram_[addr % 0x2000];

@@ -14,10 +14,13 @@ MemoryBus::MemoryBus() {
 }
 
 Byte MemoryBus::read(Address addr) {
-    return (this->*(read_map_[addr >> 10]))(addr);
+    Byte value = (this->*(read_map_[addr >> 10]))(addr);
+    open_bus_ = value;
+    return value;
 }
 
 void MemoryBus::write(Address addr, Byte value) {
+    open_bus_ = value;
     (this->*(write_map_[addr >> 10]))(addr, value);
 }
 
@@ -52,33 +55,43 @@ Byte MemoryBus::read_ppu(Address addr) {
 
 Byte MemoryBus::read_apu_io(Address addr) {
     if (addr < 0x4018) {
-        if (addr == 0x4016 || addr == 0x4017)
-            return controller_ ? controller_->read(addr - 0x4016) : 0;
+        if (addr == 0x4016 || addr == 0x4017) {
+            if (controller_) {
+                return static_cast<Byte>((open_bus_ & 0xE0) | controller_->read(addr - 0x4016));
+            }
+            return open_bus_;
+        }
         return apu_ ? apu_->read_register(addr) : 0;
     }
     // $4040-$4092: FDS audio registers
     if (addr >= 0x4040 && addr <= 0x4092 && fds_ && fds_->is_loaded()) {
         return fds_->read(addr);
     }
-    return 0;
+    return open_bus_;
 }
 
 Byte MemoryBus::read_expansion(Address addr) {
     if (cartridge_) {
+        if (!cartridge_->maps_expansion(addr)) {
+            return open_bus_;
+        }
         return cartridge_->read_expansion(addr);
     }
-    return 0;
+    return open_bus_;
 }
 
 Byte MemoryBus::read_prg(Address addr) {
     if (cartridge_) {
+        if (!cartridge_->maps_prg(addr)) {
+            return open_bus_;
+        }
         return cartridge_->read_prg(addr);
     }
-    return 0;
+    return open_bus_;
 }
 
 Byte MemoryBus::read_open_bus(Address) {
-    return 0;
+    return open_bus_;
 }
 
 void MemoryBus::write_ram(Address addr, Byte value) {

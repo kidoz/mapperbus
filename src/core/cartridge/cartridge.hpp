@@ -18,6 +18,7 @@ class Cartridge {
 
     [[nodiscard]] Byte read_prg(Address addr);
     void write_prg(Address addr, Byte value);
+    [[nodiscard]] bool maps_prg(Address addr) const;
     [[nodiscard]] Byte read_chr(Address addr);
     void write_chr(Address addr, Byte value);
 
@@ -50,6 +51,9 @@ class Cartridge {
     }
     [[nodiscard]] Byte read_expansion(Address addr) {
         return mapper_->read_expansion(addr);
+    }
+    [[nodiscard]] bool maps_expansion(Address addr) const {
+        return mapper_->maps_expansion(addr);
     }
     void write_expansion(Address addr, Byte value) {
         mapper_->write_expansion(addr, value);

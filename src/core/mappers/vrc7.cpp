@@ -146,6 +146,10 @@ void Vrc7::clock_irq_counter() {
     }
 }
 
+bool Vrc7::maps_prg(Address addr) const {
+    return addr >= 0x6000;
+}
+
 Byte Vrc7::read_chr(Address addr) {
     if (use_chr_ram_)
         return chr_ram_[addr % 0x2000];

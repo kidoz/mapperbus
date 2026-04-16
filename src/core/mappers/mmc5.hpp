@@ -39,6 +39,8 @@ class Mmc5 : public Mapper {
 
     Byte read_prg(Address addr) override;
     void write_prg(Address addr, Byte value) override;
+    bool maps_prg(Address addr) const override;
+    bool maps_expansion(Address addr) const override;
     Byte read_chr(Address addr) override;
     void write_chr(Address addr, Byte value) override;
     MirrorMode mirror_mode() const override;
