@@ -492,7 +492,7 @@ void MapperBusGuiController::build_ui() {
 }
 
 void MapperBusGuiController::wire_ui() {
-    (void)window_.on_close_request().connect([this] { app_.quit(0); });
+    (void)window_.on_close_requested().connect([this] { app_.quit(0); });
     (void)app_.on_native_app_menu_action().connect(
         [this](std::string_view action) { handle_menu_action(action); });
     if (menu_bar_) {
