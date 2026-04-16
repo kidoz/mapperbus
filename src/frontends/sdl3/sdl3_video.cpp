@@ -54,9 +54,7 @@ bool Sdl3Video::initialize(int width, int height) {
     if (upscaler_) {
         tex_w = width * upscaler_->scale_factor();
         tex_h = height * upscaler_->scale_factor();
-        if (!using_zero_copy_) {
-            scaled_buffer_.resize(static_cast<std::size_t>(tex_w) * tex_h);
-        }
+        scaled_buffer_.resize(static_cast<std::size_t>(tex_w) * tex_h);
 
         // Let SDL fit the upscaled texture into the window
         SDL_SetRenderLogicalPresentation(
@@ -88,8 +86,8 @@ void Sdl3Video::render(const core::FrameBuffer& frame) {
         int dst_h = src_height_ * scale;
 
         if (using_zero_copy_) {
-            // GPU path: scale dispatches compute shaders, target span unused
-            upscaler_->scale(frame.pixels, src_width_, src_height_, {});
+            // GPU path: scale dispatches compute shaders; the CPU buffer is fallback storage.
+            upscaler_->scale(frame.pixels, src_width_, src_height_, scaled_buffer_);
             if (!texture_) {
                 void* gpu_tex = upscaler_->get_gpu_texture();
                 if (gpu_tex) {
@@ -111,6 +109,19 @@ void Sdl3Video::render(const core::FrameBuffer& frame) {
                         SDL_SetTextureBlendMode(texture_, SDL_BLENDMODE_NONE);
                     }
                     SDL_DestroyProperties(tex_props);
+                } else {
+                    using_zero_copy_ = false;
+                    texture_ = SDL_CreateTexture(renderer_,
+                                                 SDL_PIXELFORMAT_ARGB8888,
+                                                 SDL_TEXTUREACCESS_STREAMING,
+                                                 dst_w,
+                                                 dst_h);
+                    if (texture_) {
+                        SDL_UpdateTexture(texture_,
+                                          nullptr,
+                                          scaled_buffer_.data(),
+                                          dst_w * static_cast<int>(sizeof(std::uint32_t)));
+                    }
                 }
             }
         } else {
@@ -125,6 +136,10 @@ void Sdl3Video::render(const core::FrameBuffer& frame) {
                           nullptr,
                           frame.pixels.data(),
                           core::kScreenWidth * static_cast<int>(sizeof(std::uint32_t)));
+    }
+
+    if (!texture_) {
+        return;
     }
 
     SDL_SetRenderDrawColor(renderer_, 0, 0, 0, 255);
