@@ -53,7 +53,6 @@ void BlipBuffer::init_kernel() {
 
 void BlipBuffer::set_rates(double clock_rate, double sample_rate) {
     clocks_per_sample_ = clock_rate / sample_rate;
-    fraction_ = 0.0;
 }
 
 void BlipBuffer::add_delta(uint32_t clock_offset, float delta) {
