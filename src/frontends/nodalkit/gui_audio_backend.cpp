@@ -80,6 +80,10 @@ bool GuiAudioBackend::is_muted() const {
     return muted_;
 }
 
+bool GuiAudioBackend::uses_realtime_output() const {
+    return active_ != nullptr && !using_fallback_ && !muted_;
+}
+
 void GuiAudioBackend::set_muted(bool muted) {
     muted_ = muted;
 }

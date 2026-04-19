@@ -37,6 +37,9 @@ class SessionActions {
     TickResult step_frame();
 
     [[nodiscard]] SessionSnapshot snapshot() const;
+    [[nodiscard]] int audio_queued_samples() const;
+    [[nodiscard]] int audio_low_watermark_samples() const;
+    [[nodiscard]] int audio_high_watermark_samples() const;
     [[nodiscard]] EmulationSession& session() {
         return session_;
     }

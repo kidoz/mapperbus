@@ -159,6 +159,18 @@ void EmulationSession::set_region(core::Region region) {
     emulator_.set_region(region);
 }
 
+int EmulationSession::audio_queued_samples() const {
+    return audio_ ? audio_->queued_samples() : 0;
+}
+
+int EmulationSession::audio_low_watermark_samples() const {
+    return audio_settings_.sample_rate / 40;
+}
+
+int EmulationSession::audio_high_watermark_samples() const {
+    return max_queued_samples();
+}
+
 core::Result<void> EmulationSession::apply_audio_settings(const core::AudioSettings& settings) {
     audio_settings_ = settings;
     emulator_.apply_audio_settings(audio_settings_);

@@ -56,6 +56,18 @@ TickResult SessionActions::step_frame() {
     return session_.step_frame();
 }
 
+int SessionActions::audio_queued_samples() const {
+    return session_.audio_queued_samples();
+}
+
+int SessionActions::audio_low_watermark_samples() const {
+    return session_.audio_low_watermark_samples();
+}
+
+int SessionActions::audio_high_watermark_samples() const {
+    return session_.audio_high_watermark_samples();
+}
+
 SessionSnapshot SessionActions::snapshot() const {
     return {
         .initialized = session_.initialized(),

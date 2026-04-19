@@ -62,6 +62,9 @@ class EmulationSession {
     [[nodiscard]] const std::string& current_rom_path() const {
         return current_rom_path_;
     }
+    [[nodiscard]] int audio_queued_samples() const;
+    [[nodiscard]] int audio_low_watermark_samples() const;
+    [[nodiscard]] int audio_high_watermark_samples() const;
 
     core::Emulator& emulator() {
         return emulator_;

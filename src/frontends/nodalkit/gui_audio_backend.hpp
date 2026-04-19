@@ -19,6 +19,7 @@ class GuiAudioBackend : public platform::AudioBackend {
 
     [[nodiscard]] std::string_view status_text() const;
     [[nodiscard]] bool is_muted() const;
+    [[nodiscard]] bool uses_realtime_output() const;
     void set_muted(bool muted);
 
   private:

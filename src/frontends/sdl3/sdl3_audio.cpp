@@ -1,17 +1,25 @@
 #include "frontends/sdl3/sdl3_audio.hpp"
 
+#include <algorithm>
+#include <string>
+
 namespace mapperbus::frontend {
 
 Sdl3Audio::~Sdl3Audio() {
     shutdown();
 }
 
-bool Sdl3Audio::initialize(int sample_rate, [[maybe_unused]] int buffer_size, int channels) {
+bool Sdl3Audio::initialize(int sample_rate, int buffer_size, int channels) {
     if (!SDL_Init(SDL_INIT_AUDIO)) {
         return false;
     }
 
     channels_ = channels;
+
+    const int requested_frames = std::max(256, buffer_size);
+    const std::string requested_frames_text = std::to_string(requested_frames);
+    SDL_SetHint(SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES, requested_frames_text.c_str());
+    SDL_SetHint(SDL_HINT_AUDIO_DEVICE_STREAM_NAME, "MapperBus");
 
     SDL_AudioSpec spec{};
     spec.freq = sample_rate;
