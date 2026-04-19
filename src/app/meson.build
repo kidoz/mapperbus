@@ -1,5 +1,5 @@
 mapperbus_app_lib = static_library('mapperbus-app',
-    files('app.cpp', 'emulation_session.cpp', 'session_actions.cpp'),
+    files('app.cpp', 'configuration.cpp', 'emulation_session.cpp', 'session_actions.cpp'),
     dependencies : [mapperbus_core_dep],
 )
 

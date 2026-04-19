@@ -1,7 +1,10 @@
+#include <algorithm>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 
 #include "app/app.hpp"
+#include "app/configuration.hpp"
 #include "core/apu/audio_settings.hpp"
 #include "core/logger.hpp"
 #include "core/mappers/mapper_registry.hpp"
@@ -31,6 +34,11 @@ int main(int argc, char* argv[]) {
         mapperbus::core::logger::info("  --dither              enable TPDF dithering");
         mapperbus::core::logger::info(
             "  --expansion-mixing M  simple or resistance (default: simple)");
+        mapperbus::core::logger::info("  --gamepad N           SDL gamepad index (default: 0)");
+        mapperbus::core::logger::info(
+            "  --gamepad-deadzone N  analog axis deadzone (default: 12000)");
+        mapperbus::core::logger::info(
+            "  --gamepad-map MAP     e.g. a=east,b=south,start=start,select=back");
         return EXIT_FAILURE;
     }
 
@@ -41,6 +49,8 @@ int main(int argc, char* argv[]) {
     const char* region_override = nullptr;
     const char* rom_path = nullptr;
     mapperbus::core::AudioSettings audio_settings;
+    auto mapperbus_config = mapperbus::app::load_mapperbus_configuration();
+    mapperbus::frontend::Sdl3InputConfig input_config = mapperbus_config.input.gamepad;
 
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--scale") == 0 && i + 1 < argc) {
@@ -88,6 +98,17 @@ int main(int argc, char* argv[]) {
             } else {
                 audio_settings.expansion_mixing = mapperbus::core::ExpansionMixingMode::SimpleSum;
             }
+        } else if (std::strcmp(argv[i], "--gamepad") == 0 && i + 1 < argc) {
+            input_config.gamepad_index = std::max(0, std::atoi(argv[++i]));
+        } else if (std::strcmp(argv[i], "--gamepad-deadzone") == 0 && i + 1 < argc) {
+            input_config.axis_deadzone =
+                static_cast<std::int16_t>(std::clamp(std::atoi(argv[++i]), 1, 32767));
+        } else if (std::strcmp(argv[i], "--gamepad-map") == 0 && i + 1 < argc) {
+            auto result = mapperbus::frontend::apply_gamepad_mapping(input_config, argv[++i]);
+            if (!result) {
+                mapperbus::core::logger::error("Invalid gamepad map: {}", result.error());
+                return EXIT_FAILURE;
+            }
         } else if (std::strcmp(argv[i], "--region") == 0 && i + 1 < argc) {
             region_override = argv[++i];
         } else {
@@ -121,7 +142,7 @@ int main(int argc, char* argv[]) {
     }
 
     auto audio = std::make_unique<mapperbus::frontend::Sdl3Audio>();
-    auto input = std::make_unique<mapperbus::frontend::Sdl3Input>();
+    auto input = std::make_unique<mapperbus::frontend::Sdl3Input>(input_config);
 
     // --- Wire into App and run ---
     mapperbus::app::App app(std::move(video), std::move(audio), std::move(input), audio_settings);
