@@ -152,6 +152,68 @@ class FixedWidthSlot : public nk::Widget {
     std::shared_ptr<nk::Widget> child_;
 };
 
+class PaddingSlot : public nk::Widget {
+  public:
+    static std::shared_ptr<PaddingSlot> create(nk::Insets padding,
+                                               std::shared_ptr<nk::Widget> child = nullptr) {
+        auto slot = std::shared_ptr<PaddingSlot>(new PaddingSlot(padding));
+        slot->set_horizontal_size_policy(nk::SizePolicy::Expanding);
+        if (child) {
+            slot->set_child(std::move(child));
+        }
+        return slot;
+    }
+
+    void set_child(std::shared_ptr<nk::Widget> child) {
+        if (child_) {
+            remove_child(*child_);
+        }
+        child_ = std::move(child);
+        if (child_) {
+            append_child(child_);
+        }
+        queue_layout();
+    }
+
+    [[nodiscard]] nk::SizeRequest measure(const nk::Constraints& constraints) const override {
+        const float horizontal = padding_.left + padding_.right;
+        const float vertical = padding_.top + padding_.bottom;
+        if (!child_) {
+            return {horizontal, vertical, horizontal, vertical};
+        }
+
+        auto child_constraints = constraints;
+        child_constraints.max_width = std::max(0.0F, constraints.max_width - horizontal);
+        child_constraints.max_height = std::max(0.0F, constraints.max_height - vertical);
+        const auto req = child_->measure(child_constraints);
+        return {
+            req.minimum_width + horizontal,
+            req.minimum_height + vertical,
+            req.natural_width + horizontal,
+            req.natural_height + vertical,
+        };
+    }
+
+    void allocate(const nk::Rect& allocation) override {
+        Widget::allocate(allocation);
+        if (!child_) {
+            return;
+        }
+        child_->allocate({
+            allocation.x + padding_.left,
+            allocation.y + padding_.top,
+            std::max(0.0F, allocation.width - padding_.left - padding_.right),
+            std::max(0.0F, allocation.height - padding_.top - padding_.bottom),
+        });
+    }
+
+  private:
+    explicit PaddingSlot(nk::Insets padding) : padding_(padding) {}
+
+    nk::Insets padding_{};
+    std::shared_ptr<nk::Widget> child_;
+};
+
 class SectionTitle : public nk::Widget {
   public:
     static std::shared_ptr<SectionTitle> create(std::string text) {
@@ -311,6 +373,13 @@ class ValueText : public nk::Widget {
         }
     }
 
+    void set_dimmed(bool dimmed) {
+        if (dimmed_ != dimmed) {
+            dimmed_ = dimmed;
+            queue_redraw();
+        }
+    }
+
     [[nodiscard]] nk::SizeRequest measure(const nk::Constraints& /*constraints*/) const override {
         if (!cached_size_) {
             cached_size_ = measure_text(text_, font_descriptor());
@@ -326,10 +395,9 @@ class ValueText : public nk::Widget {
             cached_size_ = measure_text(text_, font_descriptor());
         }
         const float text_y = a.y + std::max(0.0F, (a.height - cached_size_->height) * 0.5F);
-        ctx.add_text({a.x, text_y},
-                     text_,
-                     theme_color("text-color", nk::Color{0.16F, 0.18F, 0.22F, 1.0F}),
-                     font_descriptor());
+        const auto color =
+            dimmed_ ? nk::Color{0.56F, 0.60F, 0.66F, 1.0F} : nk::Color{0.16F, 0.18F, 0.22F, 1.0F};
+        ctx.add_text({a.x, text_y}, text_, theme_color("text-color", color), font_descriptor());
     }
 
   private:
@@ -344,7 +412,123 @@ class ValueText : public nk::Widget {
     }
 
     std::string text_;
+    bool dimmed_ = false;
     mutable std::optional<nk::Size> cached_size_;
+};
+
+class BoundedHeightSlot : public nk::Widget {
+  public:
+    static std::shared_ptr<BoundedHeightSlot> create(float max_height,
+                                                     std::shared_ptr<nk::Widget> child = nullptr) {
+        auto slot = std::shared_ptr<BoundedHeightSlot>(new BoundedHeightSlot(max_height));
+        slot->set_horizontal_size_policy(nk::SizePolicy::Expanding);
+        slot->set_vertical_size_policy(nk::SizePolicy::Expanding);
+        slot->set_vertical_stretch(1);
+        if (child) {
+            slot->set_child(std::move(child));
+        }
+        return slot;
+    }
+
+    void set_child(std::shared_ptr<nk::Widget> child) {
+        if (child_) {
+            remove_child(*child_);
+        }
+        child_ = std::move(child);
+        if (child_) {
+            append_child(child_);
+        }
+        queue_layout();
+    }
+
+    [[nodiscard]] nk::SizeRequest measure(const nk::Constraints& constraints) const override {
+        if (!child_) {
+            return {0.0F, 0.0F, 0.0F, max_height_};
+        }
+        const auto req = child_->measure(constraints);
+        return {
+            req.minimum_width,
+            std::min(req.minimum_height, max_height_),
+            req.natural_width,
+            std::min(req.natural_height, max_height_),
+        };
+    }
+
+    void allocate(const nk::Rect& allocation) override {
+        Widget::allocate(allocation);
+        if (child_) {
+            child_->allocate(allocation);
+        }
+    }
+
+  private:
+    explicit BoundedHeightSlot(float max_height) : max_height_(std::max(0.0F, max_height)) {}
+
+    float max_height_ = 0.0F;
+    std::shared_ptr<nk::Widget> child_;
+};
+
+class StripedRow : public nk::Widget {
+  public:
+    static std::shared_ptr<StripedRow> wrap(std::shared_ptr<nk::Widget> child,
+                                            bool striped,
+                                            float vertical_padding = 4.0F) {
+        auto row = std::shared_ptr<StripedRow>(new StripedRow(striped, vertical_padding));
+        row->set_horizontal_size_policy(nk::SizePolicy::Expanding);
+        row->set_content(std::move(child));
+        return row;
+    }
+
+    void set_content(std::shared_ptr<nk::Widget> content) {
+        if (content_) {
+            remove_child(*content_);
+        }
+        content_ = std::move(content);
+        if (content_) {
+            append_child(content_);
+        }
+        queue_layout();
+    }
+
+    [[nodiscard]] nk::SizeRequest measure(const nk::Constraints& constraints) const override {
+        if (!content_) {
+            return {0.0F, padding_ * 2.0F, 0.0F, padding_ * 2.0F};
+        }
+        const auto req = content_->measure(constraints);
+        return {
+            req.minimum_width,
+            req.minimum_height + (padding_ * 2.0F),
+            req.natural_width,
+            req.natural_height + (padding_ * 2.0F),
+        };
+    }
+
+    void allocate(const nk::Rect& allocation) override {
+        Widget::allocate(allocation);
+        if (content_) {
+            content_->allocate({
+                allocation.x,
+                allocation.y + padding_,
+                allocation.width,
+                std::max(0.0F, allocation.height - (padding_ * 2.0F)),
+            });
+        }
+    }
+
+  protected:
+    void snapshot(nk::SnapshotContext& ctx) const override {
+        if (striped_) {
+            ctx.add_color_rect(allocation(), nk::Color{0.96F, 0.97F, 0.98F, 1.0F});
+        }
+        Widget::snapshot(ctx);
+    }
+
+  private:
+    StripedRow(bool striped, float padding) : striped_(striped), padding_(padding) {}
+
+    bool striped_ = false;
+    float padding_ = 0.0F;
+    std::shared_ptr<nk::Widget> content_;
 };
 
 class SurfacePanel : public nk::Widget {

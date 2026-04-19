@@ -15,7 +15,7 @@ mapperbus_gui_cpp_args = []
 if sdl3_audio_dep.found()
     mapperbus_gui_sources += files('../sdl3/sdl3_audio.cpp')
     mapperbus_gui_deps += sdl3_audio_dep
-    mapperbus_gui_cpp_args += ['-DMAPPERBUS_HAVE_SDL3_AUDIO']
+    mapperbus_gui_cpp_args += ['-DMAPPERBUS_HAVE_SDL3_AUDIO', '-DMAPPERBUS_HAVE_SDL3_GAMEPAD']
 endif
 
 mapperbus_gui_target_name = 'mapperbus-gui'
