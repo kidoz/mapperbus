@@ -3,18 +3,16 @@
 #include <filesystem>
 #include <unordered_set>
 
+#include "../support/test_rom.hpp"
 #include "core/emulator.hpp"
 #include "core/mappers/mapper_registry.hpp"
 
 using namespace mapperbus::core;
 
-TEST_CASE("BattleCity renders visible content after 180 frames", "[integration][render]") {
+TEST_CASE("Generated NROM renders visible content after 180 frames", "[integration][render]") {
     register_builtin_mappers();
 
-    std::filesystem::path rom_path = "BattleCity.nes";
-    if (!std::filesystem::exists(rom_path)) {
-        rom_path = std::filesystem::path("..") / "BattleCity.nes";
-    }
+    const std::filesystem::path rom_path = mapperbus::tests::write_visible_nrom_test_rom("render");
     REQUIRE(std::filesystem::exists(rom_path));
 
     Emulator emulator;
