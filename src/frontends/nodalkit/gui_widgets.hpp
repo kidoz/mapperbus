@@ -152,6 +152,113 @@ class FixedWidthSlot : public nk::Widget {
     std::shared_ptr<nk::Widget> child_;
 };
 
+class FixedHeightSlot : public nk::Widget {
+  public:
+    static std::shared_ptr<FixedHeightSlot> create(float height,
+                                                   std::shared_ptr<nk::Widget> child = nullptr) {
+        auto slot = std::shared_ptr<FixedHeightSlot>(new FixedHeightSlot(height));
+        slot->set_horizontal_size_policy(nk::SizePolicy::Expanding);
+        if (child) {
+            slot->set_child(std::move(child));
+        }
+        return slot;
+    }
+
+    void set_child(std::shared_ptr<nk::Widget> child) {
+        if (child_) {
+            remove_child(*child_);
+        }
+        child_ = std::move(child);
+        if (child_) {
+            append_child(child_);
+        }
+        queue_layout();
+    }
+
+    [[nodiscard]] nk::SizeRequest measure(const nk::Constraints& constraints) const override {
+        if (!child_) {
+            return {0.0F, height_, 0.0F, height_};
+        }
+
+        auto child_constraints = constraints;
+        child_constraints.min_height = height_;
+        child_constraints.max_height = height_;
+        const auto req = child_->measure(child_constraints);
+        return {req.minimum_width, height_, req.natural_width, height_};
+    }
+
+    void allocate(const nk::Rect& allocation) override {
+        Widget::allocate(allocation);
+        if (child_) {
+            child_->allocate(allocation);
+        }
+    }
+
+  private:
+    explicit FixedHeightSlot(float height) : height_(std::max(0.0F, height)) {
+        set_vertical_size_policy(nk::SizePolicy::Fixed);
+    }
+
+    float height_ = 0.0F;
+    std::shared_ptr<nk::Widget> child_;
+};
+
+class RightBleedSlot : public nk::Widget {
+  public:
+    static std::shared_ptr<RightBleedSlot> create(float bleed,
+                                                  std::shared_ptr<nk::Widget> child = nullptr) {
+        auto slot = std::shared_ptr<RightBleedSlot>(new RightBleedSlot(bleed));
+        slot->set_horizontal_size_policy(nk::SizePolicy::Expanding);
+        slot->set_vertical_size_policy(nk::SizePolicy::Expanding);
+        slot->set_vertical_stretch(1);
+        if (child) {
+            slot->set_child(std::move(child));
+        }
+        return slot;
+    }
+
+    void set_child(std::shared_ptr<nk::Widget> child) {
+        if (child_) {
+            remove_child(*child_);
+        }
+        child_ = std::move(child);
+        if (child_) {
+            append_child(child_);
+        }
+        queue_layout();
+    }
+
+    [[nodiscard]] nk::SizeRequest measure(const nk::Constraints& constraints) const override {
+        if (!child_) {
+            return {0.0F, 0.0F, 0.0F, 0.0F};
+        }
+        return child_->measure(constraints);
+    }
+
+    void allocate(const nk::Rect& allocation) override {
+        Widget::allocate(allocation);
+        if (child_) {
+            child_->allocate({
+                allocation.x,
+                allocation.y,
+                allocation.width + right_bleed_,
+                allocation.height,
+            });
+        }
+    }
+
+    [[nodiscard]] bool hit_test(nk::Point point) const override {
+        const auto a = allocation();
+        return nk::Rect{a.x, a.y, a.width + right_bleed_, a.height}.contains(point);
+    }
+
+  private:
+    explicit RightBleedSlot(float bleed) : right_bleed_(std::max(0.0F, bleed)) {}
+
+    float right_bleed_ = 0.0F;
+    std::shared_ptr<nk::Widget> child_;
+};
+
 class PaddingSlot : public nk::Widget {
   public:
     static std::shared_ptr<PaddingSlot> create(nk::Insets padding,

@@ -137,12 +137,6 @@ class NodalKitInput : public platform::InputBackend {
 
         int count = 0;
         SDL_JoystickID* gamepads = gamepad_initialized_ ? SDL_GetGamepads(&count) : nullptr;
-        if (gamepads == nullptr || count == 0) {
-            if (gamepads != nullptr) {
-                SDL_free(gamepads);
-            }
-            return {"No gamepads detected"};
-        }
 
         const int slots = std::max({minimum_slots, count, gamepad_config_.gamepad_index + 1});
         labels.reserve(static_cast<std::size_t>(std::max(0, slots)));
@@ -209,21 +203,31 @@ class NodalKitInput : public platform::InputBackend {
 
     [[nodiscard]] std::optional<platform::GamepadControl> detect_pressed_gamepad_control(
         std::span<const platform::GamepadControl> controls) {
+        const auto pressed = pressed_gamepad_controls(controls);
+        if (!pressed.empty()) {
+            return pressed.front();
+        }
+        return std::nullopt;
+    }
+
+    [[nodiscard]] std::vector<platform::GamepadControl> pressed_gamepad_controls(
+        std::span<const platform::GamepadControl> controls) {
+        std::vector<platform::GamepadControl> pressed;
 #ifdef MAPPERBUS_HAVE_SDL3_GAMEPAD
         poll_gamepad();
         if (!gamepad_config_.enabled || gamepad_ == nullptr) {
-            return std::nullopt;
+            return pressed;
         }
 
         for (const auto& control : controls) {
             if (is_control_pressed(control)) {
-                return control;
+                pressed.push_back(control);
             }
         }
 #else
         (void)controls;
 #endif
-        return std::nullopt;
+        return pressed;
     }
 
     void reset_default_gamepad_bindings() {

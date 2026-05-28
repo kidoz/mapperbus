@@ -61,6 +61,7 @@ class MapperBusGuiController {
         RebindDevice device = RebindDevice::Keyboard;
         core::Button button = core::Button::A;
         std::chrono::steady_clock::time_point started_at{};
+        std::vector<platform::GamepadControl> initially_pressed_gamepad_controls;
     };
 
     void build_ui();
@@ -93,6 +94,7 @@ class MapperBusGuiController {
     void poll_pending_rebind();
     void apply_keyboard_rebind(core::Button button, nk::KeyCode key);
     void apply_gamepad_rebind(core::Button button, platform::GamepadControl control);
+    void apply_audio_settings_change(std::string message);
     void update_input_test_status();
     void update_settings_save_status(std::string text);
 
@@ -123,6 +125,7 @@ class MapperBusGuiController {
     std::shared_ptr<nk::ScrollArea> settings_scroll_area_;
     std::shared_ptr<SecondaryText> input_test_label_;
     std::shared_ptr<SecondaryText> settings_save_label_;
+    std::string status_message_ = "Ready";
     std::string settings_save_status_ = "Saved automatically";
     SettingsPage settings_page_ = SettingsPage::Input;
     PreviewScaleOption preview_scale_option_ = PreviewScaleOption::PixelPerfect;

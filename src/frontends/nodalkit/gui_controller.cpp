@@ -207,6 +207,44 @@ constexpr std::array<std::string_view, 2> kAudioModeLabels = {
     "Muted",
 };
 
+constexpr std::array<std::string_view, 3> kAudioSampleRateLabels = {
+    "44.1 kHz",
+    "48 kHz",
+    "96 kHz",
+};
+
+constexpr std::array<int, 3> kAudioSampleRateValues = {
+    44100,
+    48000,
+    96000,
+};
+
+constexpr std::array<std::string_view, 2> kAudioResamplingLabels = {
+    "Blip",
+    "Cubic",
+};
+
+constexpr std::array<std::string_view, 3> kAudioFilterModeLabels = {
+    "Unfiltered",
+    "Hardware Accurate",
+    "Enhanced",
+};
+
+constexpr std::array<std::string_view, 2> kAudioFilterProfileLabels = {
+    "NES",
+    "Famicom",
+};
+
+constexpr std::array<std::string_view, 2> kAudioStereoLabels = {
+    "Mono",
+    "Pseudo Stereo",
+};
+
+constexpr std::array<std::string_view, 2> kAudioExpansionMixingLabels = {
+    "Simple",
+    "Resistance",
+};
+
 std::vector<std::string> owned_labels(std::span<const std::string_view> labels) {
     std::vector<std::string> items;
     items.reserve(labels.size());
@@ -288,6 +326,83 @@ nk::ThemeDensity density_for_index(int index) {
 
 int audio_mode_index(bool muted) {
     return muted ? 1 : 0;
+}
+
+int audio_sample_rate_index(int sample_rate) {
+    int best_index = 0;
+    int best_distance = std::abs(sample_rate - kAudioSampleRateValues.front());
+    for (std::size_t index = 1; index < kAudioSampleRateValues.size(); ++index) {
+        const int distance = std::abs(sample_rate - kAudioSampleRateValues[index]);
+        if (distance < best_distance) {
+            best_index = static_cast<int>(index);
+            best_distance = distance;
+        }
+    }
+    return best_index;
+}
+
+int audio_sample_rate_for_index(int index) {
+    if (index < 0 || index >= static_cast<int>(kAudioSampleRateValues.size())) {
+        return kAudioSampleRateValues.back();
+    }
+    return kAudioSampleRateValues[static_cast<std::size_t>(index)];
+}
+
+int audio_resampling_index(core::ResamplingMode mode) {
+    return mode == core::ResamplingMode::CubicHermite ? 1 : 0;
+}
+
+core::ResamplingMode audio_resampling_for_index(int index) {
+    return index == 1 ? core::ResamplingMode::CubicHermite : core::ResamplingMode::BlipBuffer;
+}
+
+int audio_filter_mode_index(core::FilterMode mode) {
+    switch (mode) {
+    case core::FilterMode::HardwareAccurate:
+        return 1;
+    case core::FilterMode::Enhanced:
+        return 2;
+    case core::FilterMode::Unfiltered:
+    default:
+        return 0;
+    }
+}
+
+core::FilterMode audio_filter_mode_for_index(int index) {
+    switch (index) {
+    case 1:
+        return core::FilterMode::HardwareAccurate;
+    case 2:
+        return core::FilterMode::Enhanced;
+    case 0:
+    default:
+        return core::FilterMode::Unfiltered;
+    }
+}
+
+int audio_filter_profile_index(core::FilterProfile profile) {
+    return profile == core::FilterProfile::Famicom ? 1 : 0;
+}
+
+core::FilterProfile audio_filter_profile_for_index(int index) {
+    return index == 1 ? core::FilterProfile::Famicom : core::FilterProfile::NES;
+}
+
+int audio_stereo_index(core::StereoMode mode) {
+    return mode == core::StereoMode::PseudoStereo ? 1 : 0;
+}
+
+core::StereoMode audio_stereo_for_index(int index) {
+    return index == 1 ? core::StereoMode::PseudoStereo : core::StereoMode::Mono;
+}
+
+int audio_expansion_mixing_index(core::ExpansionMixingMode mode) {
+    return mode == core::ExpansionMixingMode::ResistanceModeled ? 1 : 0;
+}
+
+core::ExpansionMixingMode audio_expansion_mixing_for_index(int index) {
+    return index == 1 ? core::ExpansionMixingMode::ResistanceModeled
+                      : core::ExpansionMixingMode::SimpleSum;
 }
 
 std::string platform_family_name(nk::PlatformFamily family) {
@@ -684,8 +799,10 @@ MapperBusGuiController::MapperBusGuiController(nk::Application& app, nk::Window&
                 configuration_.input.keyboard_bindings[platform::button_index(button)]));
     }
 
-    session_ = std::make_unique<app::EmulationSession>(
-        std::make_unique<platform::NullVideo>(), std::move(audio), std::move(input));
+    session_ = std::make_unique<app::EmulationSession>(std::make_unique<platform::NullVideo>(),
+                                                       std::move(audio),
+                                                       std::move(input),
+                                                       configuration_.audio);
     actions_ = std::make_unique<app::SessionActions>(*session_);
 
     build_ui();
@@ -786,7 +903,7 @@ void MapperBusGuiController::build_ui() {
     preview_->set_vertical_stretch(1);
 
     status_bar_ = nk::StatusBar::create();
-    status_bar_->set_segments({"Stopped", "NTSC", "Ready"});
+    status_bar_->set_segments({"Stopped", "NTSC", "No ROM", status_message_});
 
     if (menu_bar_) {
         root_->append(menu_bar_);
@@ -830,15 +947,17 @@ void MapperBusGuiController::refresh_ui() {
     status_bar_->set_segments({
         state_text,
         region_name(snapshot.region),
-        loaded ? loaded_media : "Ready",
+        loaded ? loaded_media : "No ROM",
+        status_message_,
     });
 
     window_.set_title("mapperbus");
 }
 
 void MapperBusGuiController::set_message(std::string message) {
+    status_message_ = std::move(message);
     if (status_bar_) {
-        status_bar_->set_segment(2, std::move(message));
+        status_bar_->set_segment(3, status_message_);
     }
 }
 
@@ -849,16 +968,18 @@ void MapperBusGuiController::focus_game_surface() {
 }
 
 void MapperBusGuiController::browse_for_rom() {
-    auto dialog_result = app_.open_file_dialog("Open ROM", {"*.nes", "*.fds"});
-    if (dialog_result) {
-        attempt_open(*dialog_result);
-        return;
-    }
+    app_.open_file_dialog_async(
+        "Open ROM", {"*.nes", "*.fds"}, [this](nk::OpenFileDialogResult dialog_result) {
+            if (dialog_result) {
+                attempt_open(*dialog_result);
+                return;
+            }
 
-    if (dialog_result.error() != nk::FileDialogError::Cancelled) {
-        set_message(file_dialog_error_text(dialog_result.error()));
-    }
-    focus_game_surface();
+            if (dialog_result.error() != nk::FileDialogError::Cancelled) {
+                set_message(file_dialog_error_text(dialog_result.error()));
+            }
+            focus_game_surface();
+        });
 }
 
 void MapperBusGuiController::attempt_open(std::string rom_path) {
@@ -1000,6 +1121,7 @@ void MapperBusGuiController::update_configuration_from_state() {
             static_cast<int>(input_backend_->binding(button));
     }
     configuration_.input.gamepad = input_backend_->gamepad_config();
+    configuration_.audio = actions_->snapshot().audio_settings;
     configuration_.frontend.preview_scale_index = preview_scale_index(preview_scale_option_);
     configuration_.frontend.ui_density_index = density_index(app_.theme_selection().density);
     configuration_.frontend.audio_muted = audio_backend_->is_muted();
@@ -1023,6 +1145,10 @@ void MapperBusGuiController::open_rebind_dialog(RebindDevice device, core::Butto
         .button = button,
         .started_at = std::chrono::steady_clock::now(),
     };
+    if (device == RebindDevice::Gamepad) {
+        pending_rebind_->initially_pressed_gamepad_controls =
+            input_backend_->pressed_gamepad_controls(gamepad_capture_controls());
+    }
 
     const std::string target = button_name(button);
     const bool keyboard = device == RebindDevice::Keyboard;
@@ -1102,8 +1228,17 @@ void MapperBusGuiController::poll_pending_rebind() {
         return;
     }
 
-    if (auto control = input_backend_->detect_pressed_gamepad_control(gamepad_capture_controls())) {
-        apply_gamepad_rebind(pending_rebind_->button, *control);
+    const auto pressed = input_backend_->pressed_gamepad_controls(gamepad_capture_controls());
+    auto& initially_pressed = pending_rebind_->initially_pressed_gamepad_controls;
+    std::erase_if(initially_pressed, [&pressed](const platform::GamepadControl& control) {
+        return std::find(pressed.begin(), pressed.end(), control) == pressed.end();
+    });
+    for (const auto& control : pressed) {
+        if (std::find(initially_pressed.begin(), initially_pressed.end(), control) ==
+            initially_pressed.end()) {
+            apply_gamepad_rebind(pending_rebind_->button, control);
+            return;
+        }
     }
 }
 
@@ -1211,6 +1346,21 @@ void MapperBusGuiController::apply_gamepad_rebind(core::Button button,
     close_rebind_dialog();
 }
 
+void MapperBusGuiController::apply_audio_settings_change(std::string message) {
+    auto result = actions_->apply_audio_settings(configuration_.audio);
+    if (!result) {
+        configuration_.audio = actions_->snapshot().audio_settings;
+        set_message("Audio settings failed: " + result.error());
+        refresh_settings_dialog_sections();
+        refresh_ui();
+        return;
+    }
+
+    save_configuration_state();
+    set_message(std::move(message));
+    refresh_ui();
+}
+
 void MapperBusGuiController::update_input_test_status() {
     if (!input_test_label_) {
         return;
@@ -1277,15 +1427,15 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_dialog_shell(
 
     settings_footer_slot_ = ContentSlot::create();
     settings_footer_slot_->set_horizontal_size_policy(nk::SizePolicy::Expanding);
-    settings_footer_slot_->set_margin({4.0F, 0.0F, 0.0F, 0.0F});
+    settings_footer_slot_->set_margin({12.0F, 32.0F, 0.0F, 0.0F});
     content->append(settings_footer_slot_);
 
     refresh_settings_dialog_sections();
-    return content;
+    return RightBleedSlot::create(20.0F, FixedWidthSlot::create(640.0F, content));
 }
 
 std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content() {
-    auto page = Box::vertical(12.0F);
+    auto page = Box::vertical(16.0F);
     page->set_horizontal_size_policy(nk::SizePolicy::Expanding);
     if (settings_page_ == SettingsPage::Input) {
         page->append(SecondaryText::create("Configure controller input for the game surface."));
@@ -1311,25 +1461,22 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
             enabled_row->append(Spacer::create());
             page->append(labeled_row("Gamepad input", enabled_row));
 
-            const int gamepad_count = input_backend_->gamepad_device_count();
-            if (gamepad_count > 0) {
-                auto index_combo = nk::ComboBox::create();
-                auto device_labels = input_backend_->gamepad_device_labels();
-                index_combo->set_items(device_labels);
-                index_combo->set_selected_index(
-                    std::clamp(input_backend_->gamepad_config().gamepad_index,
-                               0,
-                               std::max(0, static_cast<int>(device_labels.size()) - 1)));
-                index_combo->set_sensitive(input_backend_->gamepad_config().enabled);
-                (void)index_combo->on_selection_changed().connect([this](int index) {
-                    input_backend_->set_gamepad_index(index);
-                    save_configuration_state();
-                    set_message("Preferred gamepad updated.");
-                    refresh_ui();
-                    refresh_settings_dialog_sections();
-                });
-                page->append(labeled_row("Preferred device", index_combo));
-            }
+            auto index_combo = nk::ComboBox::create();
+            auto device_labels = input_backend_->gamepad_device_labels();
+            index_combo->set_items(device_labels);
+            index_combo->set_selected_index(
+                std::clamp(input_backend_->gamepad_config().gamepad_index,
+                           0,
+                           std::max(0, static_cast<int>(device_labels.size()) - 1)));
+            index_combo->set_sensitive(input_backend_->gamepad_config().enabled);
+            (void)index_combo->on_selection_changed().connect([this](int index) {
+                input_backend_->set_gamepad_index(index);
+                save_configuration_state();
+                set_message("Preferred gamepad updated.");
+                refresh_ui();
+                refresh_settings_dialog_sections();
+            });
+            page->append(labeled_row("Preferred device", index_combo));
 
             auto deadzone_control = nk::SegmentedControl::create();
             deadzone_control->set_segments(owned_labels(kGamepadDeadzoneLabels));
@@ -1414,6 +1561,78 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
         page->append(
             SecondaryText::create("Manage audio output behavior for this frontend session."));
 
+        auto sample_rate_combo = nk::ComboBox::create();
+        sample_rate_combo->set_items(owned_labels(kAudioSampleRateLabels));
+        sample_rate_combo->set_selected_index(
+            audio_sample_rate_index(configuration_.audio.sample_rate));
+        (void)sample_rate_combo->on_selection_changed().connect([this](int index) {
+            configuration_.audio.sample_rate = audio_sample_rate_for_index(index);
+            apply_audio_settings_change("Audio sample rate updated.");
+        });
+        page->append(labeled_row("Sample Rate", sample_rate_combo));
+
+        auto resampling_control = nk::SegmentedControl::create();
+        resampling_control->set_segments(owned_labels(kAudioResamplingLabels));
+        resampling_control->set_selected_index(
+            audio_resampling_index(configuration_.audio.resampling));
+        (void)resampling_control->on_selection_changed().connect([this](int index) {
+            configuration_.audio.resampling = audio_resampling_for_index(index);
+            apply_audio_settings_change("Audio resampling updated.");
+        });
+        page->append(labeled_row("Resampling", resampling_control));
+
+        auto filter_mode_combo = nk::ComboBox::create();
+        filter_mode_combo->set_items(owned_labels(kAudioFilterModeLabels));
+        filter_mode_combo->set_selected_index(
+            audio_filter_mode_index(configuration_.audio.filter_mode));
+        (void)filter_mode_combo->on_selection_changed().connect([this](int index) {
+            configuration_.audio.filter_mode = audio_filter_mode_for_index(index);
+            apply_audio_settings_change("Audio filter mode updated.");
+        });
+        page->append(labeled_row("Filter", filter_mode_combo));
+
+        auto filter_profile_control = nk::SegmentedControl::create();
+        filter_profile_control->set_segments(owned_labels(kAudioFilterProfileLabels));
+        filter_profile_control->set_selected_index(
+            audio_filter_profile_index(configuration_.audio.filter_profile));
+        (void)filter_profile_control->on_selection_changed().connect([this](int index) {
+            configuration_.audio.filter_profile = audio_filter_profile_for_index(index);
+            apply_audio_settings_change("Audio filter profile updated.");
+        });
+        page->append(labeled_row("Profile", filter_profile_control));
+
+        auto stereo_control = nk::SegmentedControl::create();
+        stereo_control->set_segments(owned_labels(kAudioStereoLabels));
+        stereo_control->set_selected_index(audio_stereo_index(configuration_.audio.stereo_mode));
+        (void)stereo_control->on_selection_changed().connect([this](int index) {
+            configuration_.audio.stereo_mode = audio_stereo_for_index(index);
+            apply_audio_settings_change("Audio channel mode updated.");
+        });
+        page->append(labeled_row("Channels", stereo_control));
+
+        auto dither_row = Box::horizontal(10.0F);
+        dither_row->set_horizontal_size_policy(nk::SizePolicy::Expanding);
+        auto dither_switch = nk::Switch::create();
+        dither_switch->set_active(configuration_.audio.dithering_enabled);
+        (void)dither_switch->on_toggled().connect([this](bool active) {
+            configuration_.audio.dithering_enabled = active;
+            apply_audio_settings_change(active ? "Audio dithering enabled."
+                                               : "Audio dithering disabled.");
+        });
+        dither_row->append(dither_switch);
+        dither_row->append(Spacer::create());
+        page->append(labeled_row("Dithering", dither_row));
+
+        auto mixing_control = nk::SegmentedControl::create();
+        mixing_control->set_segments(owned_labels(kAudioExpansionMixingLabels));
+        mixing_control->set_selected_index(
+            audio_expansion_mixing_index(configuration_.audio.expansion_mixing));
+        (void)mixing_control->on_selection_changed().connect([this](int index) {
+            configuration_.audio.expansion_mixing = audio_expansion_mixing_for_index(index);
+            apply_audio_settings_change("Expansion audio mixing updated.");
+        });
+        page->append(labeled_row("Expansion", mixing_control));
+
         auto output_combo = nk::ComboBox::create();
         output_combo->set_items(owned_labels(kAudioModeLabels));
         output_combo->set_selected_index(audio_mode_index(audio_backend_->is_muted()));
@@ -1436,12 +1655,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_footer_conten
     auto container = Box::vertical(6.0F);
     container->set_horizontal_size_policy(nk::SizePolicy::Expanding);
 
-    auto status_row = Box::horizontal();
-    status_row->set_horizontal_size_policy(nk::SizePolicy::Expanding);
-    status_row->append(Spacer::create());
-    settings_save_label_ = SecondaryText::create(settings_save_status_);
-    status_row->append(settings_save_label_);
-    container->append(status_row);
+    settings_save_label_.reset();
 
     auto footer = Box::horizontal(12.0F);
     footer->set_horizontal_size_policy(nk::SizePolicy::Expanding);
@@ -1502,12 +1716,20 @@ void MapperBusGuiController::refresh_settings_dialog_sections() {
     }
     if (settings_page_slot_) {
         constexpr float kSettingsPageMaxHeight = 440.0F;
+        const float previous_h_offset =
+            settings_scroll_area_ ? settings_scroll_area_->h_offset() : 0.0F;
+        const float previous_v_offset =
+            settings_scroll_area_ ? settings_scroll_area_->v_offset() : 0.0F;
         auto page = build_settings_page_content();
         page->set_horizontal_size_policy(nk::SizePolicy::Expanding);
         page->set_horizontal_stretch(1);
+        page->set_vertical_size_policy(nk::SizePolicy::Preferred);
+        page->set_vertical_stretch(0);
 
-        auto padded = PaddingSlot::create({6.0F, 18.0F, 22.0F, 6.0F}, std::move(page));
+        auto padded = PaddingSlot::create({12.0F, 32.0F, 32.0F, 0.0F}, std::move(page));
         padded->set_horizontal_size_policy(nk::SizePolicy::Expanding);
+        padded->set_vertical_size_policy(nk::SizePolicy::Preferred);
+        padded->set_vertical_stretch(0);
 
         auto scroll = nk::ScrollArea::create();
         scroll->set_h_scroll_policy(nk::ScrollPolicy::Never);
@@ -1518,9 +1740,12 @@ void MapperBusGuiController::refresh_settings_dialog_sections() {
         scroll->set_content(std::move(padded));
         settings_scroll_area_ = scroll;
         settings_page_slot_->set_child(BoundedHeightSlot::create(kSettingsPageMaxHeight, scroll));
-        settings_scroll_area_->scroll_to(0.0F, 0.0F);
-        app_.event_loop().post([scroll] { scroll->scroll_to(0.0F, 0.0F); },
-                               "mapperbus.settings-scroll-top");
+        settings_scroll_area_->scroll_to(previous_h_offset, previous_v_offset);
+        app_.event_loop().post(
+            [scroll, previous_h_offset, previous_v_offset] {
+                scroll->scroll_to(previous_h_offset, previous_v_offset);
+            },
+            "mapperbus.settings-scroll-restore");
     }
     if (settings_footer_slot_) {
         settings_footer_slot_->set_child(build_settings_footer_content());
@@ -1541,7 +1766,7 @@ void MapperBusGuiController::open_settings_dialog() {
     settings_dialog_ = nk::Dialog::create("Settings");
     settings_dialog_->set_content(build_settings_dialog_shell());
     settings_dialog_->set_presentation_style(nk::DialogPresentationStyle::Sheet);
-    settings_dialog_->set_minimum_panel_width(600.0F);
+    settings_dialog_->set_minimum_panel_width(640.0F);
     auto dialog = settings_dialog_;
     (void)settings_dialog_->on_response().connect([this, dialog](nk::DialogResponse /*response*/) {
         app_.event_loop().post(
