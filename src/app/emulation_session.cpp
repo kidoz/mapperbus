@@ -1,15 +1,18 @@
 #include "app/emulation_session.hpp"
 
-#include <array>
+#include <algorithm>
 
 namespace mapperbus::app {
+namespace {
+constexpr std::size_t kAudioStagingSamples = 8192;
+} // namespace
 
 EmulationSession::EmulationSession(std::unique_ptr<platform::VideoBackend> video,
                                    std::unique_ptr<platform::AudioBackend> audio,
                                    std::unique_ptr<platform::InputBackend> input,
                                    const core::AudioSettings& audio_settings)
     : audio_settings_(audio_settings), emulator_(audio_settings), video_(std::move(video)),
-      audio_(std::move(audio)), input_(std::move(input)) {}
+      audio_(std::move(audio)), input_(std::move(input)), audio_staging_(kAudioStagingSamples) {}
 
 EmulationSession::~EmulationSession() {
     if (audio_) {
@@ -56,10 +59,6 @@ core::Result<void> EmulationSession::open_rom(const std::string& rom_path) {
         }
     }
 
-    if (rom_loaded_) {
-        close_rom();
-    }
-
     auto result = emulator_.load_cartridge(rom_path);
     if (!result) {
         return result;
@@ -70,6 +69,7 @@ core::Result<void> EmulationSession::open_rom(const std::string& rom_path) {
     running_ = true;
     rom_loaded_ = true;
     current_rom_path_ = rom_path;
+    reset_audio_fill_ratio_history();
     return {};
 }
 
@@ -83,6 +83,7 @@ void EmulationSession::close_rom() {
     running_ = false;
     paused_ = false;
     current_rom_path_.clear();
+    reset_audio_fill_ratio_history();
 }
 
 TickResult EmulationSession::tick() {
@@ -172,6 +173,7 @@ int EmulationSession::audio_high_watermark_samples() const {
 }
 
 core::Result<void> EmulationSession::apply_audio_settings(const core::AudioSettings& settings) {
+    const auto previous_settings = audio_settings_;
     audio_settings_ = settings;
     emulator_.apply_audio_settings(audio_settings_);
 
@@ -179,7 +181,22 @@ core::Result<void> EmulationSession::apply_audio_settings(const core::AudioSetti
         return {};
     }
 
-    return reinitialize_audio_backend();
+    auto result = reinitialize_audio_backend();
+    if (result) {
+        reset_audio_fill_ratio_history();
+        return {};
+    }
+
+    const std::string& original_error = result.error();
+    audio_settings_ = previous_settings;
+    emulator_.apply_audio_settings(audio_settings_);
+    auto restore_result = reinitialize_audio_backend();
+    if (!restore_result) {
+        running_ = false;
+        return std::unexpected(original_error + "; failed to restore previous audio settings: " +
+                               restore_result.error());
+    }
+    return std::unexpected(original_error);
 }
 
 core::Result<void> EmulationSession::set_upscaler(std::unique_ptr<platform::Upscaler> upscaler) {
@@ -226,15 +243,35 @@ void EmulationSession::sync_input() {
 void EmulationSession::submit_current_frame() {
     video_->render(emulator_.frame_buffer());
 
-    std::array<float, 8192> audio_staging{};
-    const std::size_t count = emulator_.drain_audio(audio_staging.data(), audio_staging.size());
+    const std::size_t count = emulator_.drain_audio(audio_staging_.data(), audio_staging_.size());
     if (count > 0) {
-        audio_->queue_samples({audio_staging.data(), count});
+        audio_->queue_samples({audio_staging_.data(), count});
     }
 
-    const float fill_ratio =
-        static_cast<float>(audio_->queued_samples()) / static_cast<float>(max_queued_samples());
-    emulator_.update_audio_rate_control(fill_ratio);
+    const float fill_ratio = std::clamp(static_cast<float>(audio_->queued_samples()) /
+                                            static_cast<float>(max_queued_samples()),
+                                        0.0f,
+                                        1.0f);
+    emulator_.update_audio_rate_control(smooth_audio_fill_ratio(fill_ratio));
+}
+
+float EmulationSession::smooth_audio_fill_ratio(float fill_ratio) {
+    audio_fill_ratio_sum_ -= audio_fill_ratio_history_[audio_fill_ratio_index_];
+    audio_fill_ratio_history_[audio_fill_ratio_index_] = fill_ratio;
+    audio_fill_ratio_sum_ += fill_ratio;
+
+    audio_fill_ratio_index_ = (audio_fill_ratio_index_ + 1) % audio_fill_ratio_history_.size();
+    audio_fill_ratio_count_ =
+        std::min(audio_fill_ratio_count_ + 1, audio_fill_ratio_history_.size());
+
+    return audio_fill_ratio_sum_ / static_cast<float>(audio_fill_ratio_count_);
+}
+
+void EmulationSession::reset_audio_fill_ratio_history() {
+    audio_fill_ratio_history_.fill(0.0f);
+    audio_fill_ratio_index_ = 0;
+    audio_fill_ratio_count_ = 0;
+    audio_fill_ratio_sum_ = 0.0f;
 }
 
 int EmulationSession::max_queued_samples() const {

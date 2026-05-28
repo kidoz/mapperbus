@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <string>
 
 #include "app/emulation_session.hpp"
@@ -15,7 +16,7 @@ class App {
     ~App();
 
     core::Result<void> initialize(const std::string& rom_path);
-    void run();
+    void run(const std::function<void(EmulationSession&)>& after_tick = {});
 
     core::Emulator& emulator() {
         return session_.emulator();

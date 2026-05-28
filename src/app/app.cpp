@@ -22,7 +22,7 @@ core::Result<void> App::initialize(const std::string& rom_path) {
     return session_.load_rom(rom_path);
 }
 
-void App::run() {
+void App::run(const std::function<void(EmulationSession&)>& after_tick) {
     while (session_.running()) {
         switch (session_.tick()) {
         case TickResult::AudioBackpressure:
@@ -34,6 +34,10 @@ void App::run() {
             break;
         case TickResult::Stopped:
             return;
+        }
+
+        if (after_tick) {
+            after_tick(session_);
         }
     }
 }

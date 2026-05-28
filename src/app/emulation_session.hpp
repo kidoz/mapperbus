@@ -1,7 +1,9 @@
 #pragma once
 
+#include <array>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "core/apu/audio_settings.hpp"
 #include "core/emulator.hpp"
@@ -76,6 +78,8 @@ class EmulationSession {
   private:
     void sync_input();
     void submit_current_frame();
+    [[nodiscard]] float smooth_audio_fill_ratio(float fill_ratio);
+    void reset_audio_fill_ratio_history();
     [[nodiscard]] int max_queued_samples() const;
     core::Result<void> reinitialize_audio_backend();
     core::Result<void> reinitialize_video_backend();
@@ -90,6 +94,11 @@ class EmulationSession {
     bool paused_ = false;
     bool rom_loaded_ = false;
     std::string current_rom_path_;
+    std::vector<float> audio_staging_;
+    std::array<float, 16> audio_fill_ratio_history_{};
+    std::size_t audio_fill_ratio_index_ = 0;
+    std::size_t audio_fill_ratio_count_ = 0;
+    float audio_fill_ratio_sum_ = 0.0f;
 };
 
 } // namespace mapperbus::app

@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <memory>
 
+#include "../support/test_rom.hpp"
 #include "app/emulation_session.hpp"
 #include "app/session_actions.hpp"
 #include "core/mappers/mapper_registry.hpp"
@@ -15,7 +16,15 @@ namespace {
 class TestAudioBackend : public platform::AudioBackend {
   public:
     bool initialize(int sample_rate, int buffer_size, int channels) override {
+        if (fail_initialize_calls > 0) {
+            --fail_initialize_calls;
+            return false;
+        }
+        if (!initialize_result) {
+            return false;
+        }
         initialized = true;
+        initialize_calls += 1;
         last_sample_rate = sample_rate;
         last_buffer_size = buffer_size;
         last_channels = channels;
@@ -36,7 +45,10 @@ class TestAudioBackend : public platform::AudioBackend {
     }
 
     bool initialized = false;
+    bool initialize_result = true;
     bool shutdown_called = false;
+    int fail_initialize_calls = 0;
+    int initialize_calls = 0;
     int last_sample_rate = 0;
     int last_buffer_size = 0;
     int last_channels = 0;
@@ -97,6 +109,10 @@ class TestUpscaler : public platform::Upscaler {
     int factor_ = 1;
 };
 
+[[nodiscard]] std::string test_rom_path() {
+    return tests::write_visible_nrom_test_rom("emulation-session").string();
+}
+
 } // namespace
 
 TEST_CASE("EmulationSession can initialize and advance frames headlessly", "[app][session]") {
@@ -110,7 +126,7 @@ TEST_CASE("EmulationSession can initialize and advance frames headlessly", "[app
 
     REQUIRE(session.initialize());
     REQUIRE(audio_ptr->initialized);
-    REQUIRE(session.load_rom("BattleCity.nes"));
+    REQUIRE(session.load_rom(test_rom_path()));
     REQUIRE(session.running());
     REQUIRE(session.has_cartridge());
 
@@ -129,7 +145,7 @@ TEST_CASE("EmulationSession reports audio backpressure and paused state", "[app]
                              std::move(audio),
                              std::make_unique<platform::NullInput>());
 
-    REQUIRE(session.load_rom("BattleCity.nes"));
+    REQUIRE(session.load_rom(test_rom_path()));
 
     audio_ptr->queued_sample_count = session.emulator().audio_settings().sample_rate;
     REQUIRE(session.tick() == TickResult::AudioBackpressure);
@@ -150,7 +166,7 @@ TEST_CASE("EmulationSession supports close, region change, and audio settings mu
                              std::move(audio),
                              std::make_unique<platform::NullInput>());
 
-    REQUIRE(session.open_rom("BattleCity.nes"));
+    REQUIRE(session.open_rom(test_rom_path()));
     session.set_region(core::Region::PAL);
     REQUIRE(session.emulator().region() == core::Region::PAL);
 
@@ -169,6 +185,47 @@ TEST_CASE("EmulationSession supports close, region change, and audio settings mu
     REQUIRE_FALSE(session.has_cartridge());
     REQUIRE_FALSE(session.running());
     REQUIRE(session.current_rom_path().empty());
+}
+
+TEST_CASE("EmulationSession keeps current ROM when opening a replacement fails", "[app][session]") {
+    core::register_builtin_mappers();
+
+    const std::string rom_path = test_rom_path();
+    EmulationSession session(std::make_unique<platform::NullVideo>(),
+                             std::make_unique<TestAudioBackend>(),
+                             std::make_unique<platform::NullInput>());
+
+    REQUIRE(session.open_rom(rom_path));
+    REQUIRE(session.has_cartridge());
+    REQUIRE(session.running());
+
+    auto result = session.open_rom("/definitely/not/a/mapperbus/rom.nes");
+    REQUIRE_FALSE(result);
+    REQUIRE(session.has_cartridge());
+    REQUIRE(session.running());
+    REQUIRE(session.current_rom_path() == rom_path);
+}
+
+TEST_CASE("EmulationSession rolls back audio settings when backend reinit fails",
+          "[app][session]") {
+    core::register_builtin_mappers();
+
+    auto audio = std::make_unique<TestAudioBackend>();
+    auto* audio_ptr = audio.get();
+    EmulationSession session(std::make_unique<platform::NullVideo>(),
+                             std::move(audio),
+                             std::make_unique<platform::NullInput>());
+
+    REQUIRE(session.initialize());
+    const auto previous = session.audio_settings();
+    audio_ptr->fail_initialize_calls = 1;
+
+    auto next = previous;
+    next.sample_rate = 48000;
+    auto result = session.apply_audio_settings(next);
+    REQUIRE_FALSE(result);
+    REQUIRE(session.audio_settings().sample_rate == previous.sample_rate);
+    REQUIRE(session.emulator().audio_settings().sample_rate == previous.sample_rate);
 }
 
 TEST_CASE("EmulationSession can swap the active upscaler through the video backend",
@@ -197,10 +254,11 @@ TEST_CASE("SessionActions exposes GUI-friendly transport and snapshot state", "[
                              std::make_unique<platform::NullInput>());
     SessionActions actions(session);
 
-    REQUIRE(actions.open_rom("BattleCity.nes"));
+    const std::string rom_path = test_rom_path();
+    REQUIRE(actions.open_rom(rom_path));
     REQUIRE(actions.snapshot().has_cartridge);
     REQUIRE(actions.snapshot().running);
-    REQUIRE(actions.snapshot().rom_path == "BattleCity.nes");
+    REQUIRE(actions.snapshot().rom_path == rom_path);
 
     actions.pause();
     REQUIRE(actions.snapshot().paused);
@@ -215,6 +273,24 @@ TEST_CASE("SessionActions exposes GUI-friendly transport and snapshot state", "[
     REQUIRE_FALSE(actions.snapshot().has_cartridge);
     REQUIRE_FALSE(actions.snapshot().running);
     REQUIRE(actions.snapshot().rom_path.empty());
+}
+
+TEST_CASE("SessionActions exposes audio queue watermarks", "[app][actions]") {
+    auto audio = std::make_unique<TestAudioBackend>();
+    auto* audio_ptr = audio.get();
+
+    core::AudioSettings settings;
+    settings.sample_rate = 96000;
+    EmulationSession session(std::make_unique<platform::NullVideo>(),
+                             std::move(audio),
+                             std::make_unique<platform::NullInput>(),
+                             settings);
+    SessionActions actions(session);
+
+    audio_ptr->queued_sample_count = 1234;
+    REQUIRE(actions.audio_queued_samples() == 1234);
+    REQUIRE(actions.audio_low_watermark_samples() == 2400);
+    REQUIRE(actions.audio_high_watermark_samples() == 4800);
 }
 
 } // namespace mapperbus::app
