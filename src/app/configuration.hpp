@@ -3,6 +3,7 @@
 #include <array>
 #include <filesystem>
 
+#include "core/apu/audio_settings.hpp"
 #include "core/types.hpp"
 #include "platform/input/gamepad_config.hpp"
 
@@ -25,6 +26,7 @@ struct MapperBusFrontendConfiguration {
 
 struct MapperBusConfiguration {
     int version = kMapperBusConfigurationVersion;
+    core::AudioSettings audio;
     MapperBusInputConfiguration input;
     MapperBusFrontendConfiguration frontend;
 };

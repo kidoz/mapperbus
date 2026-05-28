@@ -71,3 +71,9 @@ test_emulation_session = executable('test-emulation-session',
     dependencies : [mapperbus_app_dep, catch2_dep],
 )
 test('emulation-session', test_emulation_session, workdir : meson.project_source_root())
+
+test_configuration = executable('test-configuration',
+    'unit/test_configuration.cpp',
+    dependencies : [mapperbus_app_dep, catch2_dep],
+)
+test('configuration', test_configuration)

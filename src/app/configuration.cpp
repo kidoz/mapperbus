@@ -1,11 +1,15 @@
 #include "app/configuration.hpp"
 
 #include <algorithm>
+#include <charconv>
 #include <cstdlib>
 #include <fstream>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <system_error>
+
+#include "core/logger.hpp"
 
 namespace mapperbus::app {
 namespace {
@@ -44,17 +48,155 @@ namespace {
     return fallback;
 }
 
-[[nodiscard]] int parse_int(std::string_view value, int fallback) {
-    try {
-        std::size_t consumed = 0;
-        const std::string text(value);
-        const int parsed = std::stoi(text, &consumed);
-        if (consumed == text.size()) {
-            return parsed;
-        }
-    } catch (...) {
+[[nodiscard]] std::optional<int> parse_int_value(std::string_view value) {
+    int parsed = 0;
+    const auto* begin = value.data();
+    const auto* end = value.data() + value.size();
+    const auto [cursor, error] = std::from_chars(begin, end, parsed);
+    if (error == std::errc{} && cursor == end) {
+        return parsed;
     }
+    return std::nullopt;
+}
+
+[[nodiscard]] std::optional<double> parse_double_value(std::string_view value) {
+    double parsed = 0.0;
+    const auto* begin = value.data();
+    const auto* end = value.data() + value.size();
+    const auto [cursor, error] = std::from_chars(begin, end, parsed);
+    if (error == std::errc{} && cursor == end) {
+        return parsed;
+    }
+    return std::nullopt;
+}
+
+[[nodiscard]] int parse_int(std::string_view value, int fallback, std::string_view key) {
+    if (auto parsed = parse_int_value(value)) {
+        return *parsed;
+    }
+    core::logger::warn("Invalid integer for configuration key '{}': '{}'", key, value);
     return fallback;
+}
+
+[[nodiscard]] double parse_double(std::string_view value, double fallback, std::string_view key) {
+    if (auto parsed = parse_double_value(value)) {
+        return *parsed;
+    }
+    core::logger::warn("Invalid decimal for configuration key '{}': '{}'", key, value);
+    return fallback;
+}
+
+[[nodiscard]] bool parse_bool_setting(std::string_view value, bool fallback, std::string_view key) {
+    const std::string normalized = platform::normalized_token(value);
+    if (normalized == "1" || normalized == "true" || normalized == "yes" || normalized == "on" ||
+        normalized == "0" || normalized == "false" || normalized == "no" || normalized == "off") {
+        return parse_bool(value, fallback);
+    }
+    core::logger::warn("Invalid boolean for configuration key '{}': '{}'", key, value);
+    return fallback;
+}
+
+[[nodiscard]] core::ResamplingMode parse_resampling_mode(std::string_view value,
+                                                         core::ResamplingMode fallback,
+                                                         std::string_view key) {
+    const std::string normalized = platform::normalized_token(value);
+    if (normalized == "blip" || normalized == "blipbuffer" || normalized == "blip-buffer") {
+        return core::ResamplingMode::BlipBuffer;
+    }
+    if (normalized == "cubic" || normalized == "cubichermite" || normalized == "cubic-hermite") {
+        return core::ResamplingMode::CubicHermite;
+    }
+    core::logger::warn("Invalid resampling mode for configuration key '{}': '{}'", key, value);
+    return fallback;
+}
+
+[[nodiscard]] core::FilterMode parse_filter_mode(std::string_view value,
+                                                 core::FilterMode fallback,
+                                                 std::string_view key) {
+    const std::string normalized = platform::normalized_token(value);
+    if (normalized == "accurate" || normalized == "hardwareaccurate" ||
+        normalized == "hardware-accurate") {
+        return core::FilterMode::HardwareAccurate;
+    }
+    if (normalized == "enhanced") {
+        return core::FilterMode::Enhanced;
+    }
+    if (normalized == "unfiltered" || normalized == "off") {
+        return core::FilterMode::Unfiltered;
+    }
+    core::logger::warn("Invalid filter mode for configuration key '{}': '{}'", key, value);
+    return fallback;
+}
+
+[[nodiscard]] core::FilterProfile parse_filter_profile(std::string_view value,
+                                                       core::FilterProfile fallback,
+                                                       std::string_view key) {
+    const std::string normalized = platform::normalized_token(value);
+    if (normalized == "nes") {
+        return core::FilterProfile::NES;
+    }
+    if (normalized == "famicom") {
+        return core::FilterProfile::Famicom;
+    }
+    core::logger::warn("Invalid filter profile for configuration key '{}': '{}'", key, value);
+    return fallback;
+}
+
+[[nodiscard]] core::StereoMode parse_stereo_mode(std::string_view value,
+                                                 core::StereoMode fallback,
+                                                 std::string_view key) {
+    const std::string normalized = platform::normalized_token(value);
+    if (normalized == "mono") {
+        return core::StereoMode::Mono;
+    }
+    if (normalized == "stereo" || normalized == "pseudostereo" || normalized == "pseudo-stereo") {
+        return core::StereoMode::PseudoStereo;
+    }
+    core::logger::warn("Invalid stereo mode for configuration key '{}': '{}'", key, value);
+    return fallback;
+}
+
+[[nodiscard]] core::ExpansionMixingMode parse_expansion_mixing_mode(
+    std::string_view value, core::ExpansionMixingMode fallback, std::string_view key) {
+    const std::string normalized = platform::normalized_token(value);
+    if (normalized == "simple" || normalized == "simplesum" || normalized == "simple-sum") {
+        return core::ExpansionMixingMode::SimpleSum;
+    }
+    if (normalized == "resistance" || normalized == "resistancemodeled" ||
+        normalized == "resistance-modeled") {
+        return core::ExpansionMixingMode::ResistanceModeled;
+    }
+    core::logger::warn(
+        "Invalid expansion mixing mode for configuration key '{}': '{}'", key, value);
+    return fallback;
+}
+
+[[nodiscard]] std::string resampling_mode_token(core::ResamplingMode mode) {
+    return mode == core::ResamplingMode::CubicHermite ? "cubic" : "blip";
+}
+
+[[nodiscard]] std::string filter_mode_token(core::FilterMode mode) {
+    switch (mode) {
+    case core::FilterMode::HardwareAccurate:
+        return "accurate";
+    case core::FilterMode::Enhanced:
+        return "enhanced";
+    case core::FilterMode::Unfiltered:
+    default:
+        return "unfiltered";
+    }
+}
+
+[[nodiscard]] std::string filter_profile_token(core::FilterProfile profile) {
+    return profile == core::FilterProfile::Famicom ? "famicom" : "nes";
+}
+
+[[nodiscard]] std::string stereo_mode_token(core::StereoMode mode) {
+    return mode == core::StereoMode::PseudoStereo ? "pseudo-stereo" : "mono";
+}
+
+[[nodiscard]] std::string expansion_mixing_token(core::ExpansionMixingMode mode) {
+    return mode == core::ExpansionMixingMode::ResistanceModeled ? "resistance" : "simple";
 }
 
 [[nodiscard]] std::string scoped_key(std::string_view section, std::string_view key) {
@@ -74,32 +216,87 @@ void apply_setting(MapperBusConfiguration& configuration,
         return;
     }
     if (full_key == "mapperbus.version" || full_key == "version") {
-        configuration.version = parse_int(value, kMapperBusConfigurationVersion);
+        configuration.version = parse_int(value, kMapperBusConfigurationVersion, full_key);
         return;
     }
     if (full_key == "frontend.preview_scale" || full_key == "video.preview_scale") {
-        configuration.frontend.preview_scale_index = std::clamp(parse_int(value, 0), 0, 3);
+        configuration.frontend.preview_scale_index =
+            std::clamp(parse_int(value, 0, full_key), 0, 3);
         return;
     }
     if (full_key == "frontend.ui_density" || full_key == "ui.density") {
-        configuration.frontend.ui_density_index = std::clamp(parse_int(value, 0), 0, 3);
+        configuration.frontend.ui_density_index = std::clamp(parse_int(value, 0, full_key), 0, 3);
         return;
     }
     if (full_key == "frontend.audio_muted" || full_key == "audio.muted") {
-        configuration.frontend.audio_muted = parse_bool(value, false);
+        configuration.frontend.audio_muted = parse_bool_setting(value, false, full_key);
+        return;
+    }
+    if (full_key == "audio.sample_rate") {
+        configuration.audio.sample_rate =
+            std::clamp(parse_int(value, 96000, full_key), 8000, 192000);
+        return;
+    }
+    if (full_key == "audio.buffer_size") {
+        configuration.audio.buffer_size_samples =
+            std::clamp(parse_int(value, 2048, full_key), 128, 32768);
+        return;
+    }
+    if (full_key == "audio.resampling") {
+        configuration.audio.resampling =
+            parse_resampling_mode(value, core::ResamplingMode::BlipBuffer, full_key);
+        return;
+    }
+    if (full_key == "audio.filter_mode") {
+        configuration.audio.filter_mode =
+            parse_filter_mode(value, core::FilterMode::Unfiltered, full_key);
+        return;
+    }
+    if (full_key == "audio.filter_profile") {
+        configuration.audio.filter_profile =
+            parse_filter_profile(value, core::FilterProfile::NES, full_key);
+        return;
+    }
+    if (full_key == "audio.stereo") {
+        configuration.audio.stereo_mode =
+            parse_stereo_mode(value, core::StereoMode::Mono, full_key);
+        return;
+    }
+    if (full_key == "audio.dithering") {
+        configuration.audio.dithering_enabled = parse_bool_setting(value, false, full_key);
+        return;
+    }
+    if (full_key == "audio.expansion_mixing") {
+        configuration.audio.expansion_mixing =
+            parse_expansion_mixing_mode(value, core::ExpansionMixingMode::SimpleSum, full_key);
+        return;
+    }
+    if (full_key == "audio.drc_target_fill_ratio") {
+        configuration.audio.drc_target_fill_ratio =
+            static_cast<float>(std::clamp(parse_double(value, 0.5, full_key), 0.0, 1.0));
+        return;
+    }
+    if (full_key == "audio.drc_deadzone") {
+        configuration.audio.drc_deadzone =
+            static_cast<float>(std::clamp(parse_double(value, 0.05, full_key), 0.0, 1.0));
+        return;
+    }
+    if (full_key == "audio.drc_rate_adjustment" || full_key == "audio.drc_delta") {
+        configuration.audio.drc_rate_adjustment =
+            std::clamp(parse_double(value, 0.005, full_key), 0.0, 0.05);
         return;
     }
     if (full_key == "input.gamepad.enabled") {
-        configuration.input.gamepad.enabled = parse_bool(value, true);
+        configuration.input.gamepad.enabled = parse_bool_setting(value, true, full_key);
         return;
     }
     if (full_key == "input.gamepad.index") {
-        configuration.input.gamepad.gamepad_index = std::max(0, parse_int(value, 0));
+        configuration.input.gamepad.gamepad_index = std::max(0, parse_int(value, 0, full_key));
         return;
     }
     if (full_key == "input.gamepad.deadzone") {
         configuration.input.gamepad.axis_deadzone =
-            static_cast<std::int16_t>(std::clamp(parse_int(value, 12000), 1, 32767));
+            static_cast<std::int16_t>(std::clamp(parse_int(value, 12000, full_key), 1, 32767));
         return;
     }
 
@@ -107,13 +304,16 @@ void apply_setting(MapperBusConfiguration& configuration,
         const std::string button_name = controller_button_name(button);
         if (full_key == "input.keyboard." + button_name) {
             configuration.input.keyboard_bindings[platform::button_index(button)] =
-                parse_int(value, default_keyboard_code_for_button(button));
+                parse_int(value, default_keyboard_code_for_button(button), full_key);
             return;
         }
         if (full_key == "input.gamepad." + button_name) {
             auto control = platform::parse_gamepad_control(value);
             if (control) {
                 configuration.input.gamepad.bindings[platform::button_index(button)] = *control;
+            } else {
+                core::logger::warn(
+                    "Invalid gamepad control for configuration key '{}': '{}'", full_key, value);
             }
             return;
         }
@@ -250,7 +450,8 @@ core::Result<void> save_mapperbus_configuration_to_file(const MapperBusConfigura
         }
     }
 
-    std::ofstream file(path, std::ios::trunc);
+    const auto temp_path = path.parent_path() / (path.filename().string() + ".tmp");
+    std::ofstream file(temp_path, std::ios::trunc);
     if (!file) {
         return std::unexpected("failed to open configuration file for writing");
     }
@@ -265,6 +466,20 @@ core::Result<void> save_mapperbus_configuration_to_file(const MapperBusConfigura
     file << "preview_scale=" << configuration.frontend.preview_scale_index << '\n';
     file << "ui_density=" << configuration.frontend.ui_density_index << '\n';
     file << "audio_muted=" << (configuration.frontend.audio_muted ? "true" : "false") << "\n\n";
+
+    file << "[audio]\n";
+    file << "sample_rate=" << configuration.audio.sample_rate << '\n';
+    file << "buffer_size=" << configuration.audio.buffer_size_samples << '\n';
+    file << "resampling=" << resampling_mode_token(configuration.audio.resampling) << '\n';
+    file << "filter_mode=" << filter_mode_token(configuration.audio.filter_mode) << '\n';
+    file << "filter_profile=" << filter_profile_token(configuration.audio.filter_profile) << '\n';
+    file << "stereo=" << stereo_mode_token(configuration.audio.stereo_mode) << '\n';
+    file << "dithering=" << (configuration.audio.dithering_enabled ? "true" : "false") << '\n';
+    file << "expansion_mixing=" << expansion_mixing_token(configuration.audio.expansion_mixing)
+         << '\n';
+    file << "drc_target_fill_ratio=" << configuration.audio.drc_target_fill_ratio << '\n';
+    file << "drc_deadzone=" << configuration.audio.drc_deadzone << '\n';
+    file << "drc_rate_adjustment=" << configuration.audio.drc_rate_adjustment << "\n\n";
 
     file << "[input.keyboard]\n";
     for (const auto button : platform::controller_buttons()) {
@@ -286,6 +501,18 @@ core::Result<void> save_mapperbus_configuration_to_file(const MapperBusConfigura
 
     if (!file) {
         return std::unexpected("failed to write configuration file");
+    }
+
+    file.close();
+    if (!file) {
+        return std::unexpected("failed to close configuration file");
+    }
+
+    std::filesystem::rename(temp_path, path, error);
+    if (error) {
+        std::error_code cleanup_error;
+        std::filesystem::remove(temp_path, cleanup_error);
+        return std::unexpected("failed to replace configuration file: " + error.message());
     }
 
     return {};
