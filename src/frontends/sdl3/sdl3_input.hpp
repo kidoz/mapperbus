@@ -12,18 +12,37 @@ namespace mapperbus::frontend {
 using GamepadControl = platform::GamepadControl;
 using GamepadControlKind = platform::GamepadControlKind;
 using Sdl3InputConfig = platform::GamepadInputConfig;
+using Sdl3KeyboardBindings = std::array<int, 8>;
 using platform::apply_gamepad_mapping;
 using platform::gamepad_control_for_button;
 using platform::parse_gamepad_control;
 
+enum class Sdl3ScalerCommandKind {
+    None,
+    Native,
+    SetFactor,
+    CycleMode,
+};
+
+struct Sdl3ScalerCommand {
+    Sdl3ScalerCommandKind kind = Sdl3ScalerCommandKind::None;
+    int factor = 0;
+
+    [[nodiscard]] explicit operator bool() const {
+        return kind != Sdl3ScalerCommandKind::None;
+    }
+};
+
 class Sdl3Input : public platform::InputBackend {
   public:
-    explicit Sdl3Input(Sdl3InputConfig config = {});
+    explicit Sdl3Input(Sdl3InputConfig config = {}, Sdl3KeyboardBindings keyboard_bindings = {});
     ~Sdl3Input() override;
 
     void poll() override;
     bool is_button_pressed(int player, core::Button button) const override;
     bool should_quit() const override;
+    [[nodiscard]] Sdl3ScalerCommand consume_scaler_command();
+    [[nodiscard]] static Sdl3ScalerCommand scaler_command_for_scancode(SDL_Scancode scancode);
 
   private:
     void open_configured_gamepad();
@@ -35,11 +54,13 @@ class Sdl3Input : public platform::InputBackend {
     [[nodiscard]] bool is_control_pressed(const GamepadControl& control) const;
 
     Sdl3InputConfig config_;
+    Sdl3KeyboardBindings keyboard_bindings_{};
     bool quit_requested_ = false;
     bool gamepad_initialized_ = false;
     SDL_Gamepad* gamepad_ = nullptr;
     SDL_JoystickID gamepad_id_ = 0;
     std::array<std::uint8_t, 2> button_state_{};
+    Sdl3ScalerCommand pending_scaler_command_{};
 };
 
 } // namespace mapperbus::frontend

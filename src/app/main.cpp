@@ -2,6 +2,8 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <memory>
+#include <string_view>
 
 #include "app/app.hpp"
 #include "app/configuration.hpp"
@@ -15,6 +17,77 @@
 #include "frontends/sdl3/sdl3_video.hpp"
 #include "platform/video/fsr1.hpp"
 #include "platform/video/xbrz.hpp"
+
+namespace {
+
+enum class RuntimeScalerMode {
+    Xbrz,
+    Fsr,
+    GpuXbrz,
+    GpuFsr,
+};
+
+RuntimeScalerMode runtime_scaler_mode_from_flags(bool use_gpu, bool use_gpu_fsr, bool use_fsr) {
+    if (use_gpu_fsr) {
+        return RuntimeScalerMode::GpuFsr;
+    }
+    if (use_fsr) {
+        return RuntimeScalerMode::Fsr;
+    }
+    if (use_gpu) {
+        return RuntimeScalerMode::GpuXbrz;
+    }
+    return RuntimeScalerMode::Xbrz;
+}
+
+RuntimeScalerMode next_runtime_scaler_mode(RuntimeScalerMode mode) {
+    switch (mode) {
+    case RuntimeScalerMode::Xbrz:
+        return RuntimeScalerMode::Fsr;
+    case RuntimeScalerMode::Fsr:
+        return RuntimeScalerMode::GpuXbrz;
+    case RuntimeScalerMode::GpuXbrz:
+        return RuntimeScalerMode::GpuFsr;
+    case RuntimeScalerMode::GpuFsr:
+    default:
+        return RuntimeScalerMode::Xbrz;
+    }
+}
+
+std::string_view runtime_scaler_mode_label(RuntimeScalerMode mode) {
+    switch (mode) {
+    case RuntimeScalerMode::Fsr:
+        return "CPU FSR";
+    case RuntimeScalerMode::GpuXbrz:
+        return "GPU xBRZ";
+    case RuntimeScalerMode::GpuFsr:
+        return "GPU FSR";
+    case RuntimeScalerMode::Xbrz:
+    default:
+        return "CPU xBRZ";
+    }
+}
+
+std::unique_ptr<mapperbus::platform::Upscaler> make_runtime_upscaler(RuntimeScalerMode mode,
+                                                                     int factor) {
+    if (factor < 2 || factor > 6) {
+        return nullptr;
+    }
+
+    switch (mode) {
+    case RuntimeScalerMode::Fsr:
+        return std::make_unique<mapperbus::platform::Fsr1Upscaler>(factor);
+    case RuntimeScalerMode::GpuXbrz:
+        return std::make_unique<mapperbus::frontend::GpuUpscaler>(factor);
+    case RuntimeScalerMode::GpuFsr:
+        return std::make_unique<mapperbus::frontend::GpuFsr1Upscaler>(factor);
+    case RuntimeScalerMode::Xbrz:
+    default:
+        return std::make_unique<mapperbus::platform::XbrzUpscaler>(factor);
+    }
+}
+
+} // namespace
 
 int main(int argc, char* argv[]) {
     if (argc < 2) {
@@ -39,6 +112,8 @@ int main(int argc, char* argv[]) {
             "  --gamepad-deadzone N  analog axis deadzone (default: 12000)");
         mapperbus::core::logger::info(
             "  --gamepad-map MAP     e.g. a=east,b=south,start=start,select=back");
+        mapperbus::core::logger::info(
+            "Runtime scaler hotkeys: 0/1 native, 2-6 scale factor, F9 cycle scaler mode");
         return EXIT_FAILURE;
     }
 
@@ -48,8 +123,8 @@ int main(int argc, char* argv[]) {
     bool use_fsr = false;
     const char* region_override = nullptr;
     const char* rom_path = nullptr;
-    mapperbus::core::AudioSettings audio_settings;
     auto mapperbus_config = mapperbus::app::load_mapperbus_configuration();
+    mapperbus::core::AudioSettings audio_settings = mapperbus_config.audio;
     mapperbus::frontend::Sdl3InputConfig input_config = mapperbus_config.input.gamepad;
 
     for (int i = 1; i < argc; ++i) {
@@ -142,7 +217,9 @@ int main(int argc, char* argv[]) {
     }
 
     auto audio = std::make_unique<mapperbus::frontend::Sdl3Audio>();
-    auto input = std::make_unique<mapperbus::frontend::Sdl3Input>(input_config);
+    auto input = std::make_unique<mapperbus::frontend::Sdl3Input>(
+        input_config, mapperbus_config.input.keyboard_bindings);
+    auto* sdl_input = input.get();
 
     // --- Wire into App and run ---
     mapperbus::app::App app(std::move(video), std::move(audio), std::move(input), audio_settings);
@@ -167,6 +244,43 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    app.run();
+    RuntimeScalerMode runtime_scaler_mode =
+        runtime_scaler_mode_from_flags(use_gpu, use_gpu_fsr, use_fsr);
+    int runtime_scale_factor = (upscale_factor >= 2 && upscale_factor <= 6) ? upscale_factor : 0;
+
+    app.run([&](mapperbus::app::EmulationSession& session) {
+        const auto command = sdl_input->consume_scaler_command();
+        if (!command) {
+            return;
+        }
+
+        if (command.kind == mapperbus::frontend::Sdl3ScalerCommandKind::CycleMode) {
+            runtime_scaler_mode = next_runtime_scaler_mode(runtime_scaler_mode);
+            mapperbus::core::logger::info("Runtime scaler mode: {}",
+                                          runtime_scaler_mode_label(runtime_scaler_mode));
+            if (runtime_scale_factor < 2) {
+                return;
+            }
+        } else if (command.kind == mapperbus::frontend::Sdl3ScalerCommandKind::Native) {
+            runtime_scale_factor = 0;
+        } else if (command.kind == mapperbus::frontend::Sdl3ScalerCommandKind::SetFactor) {
+            runtime_scale_factor = std::clamp(command.factor, 2, 6);
+        }
+
+        auto result =
+            session.set_upscaler(make_runtime_upscaler(runtime_scaler_mode, runtime_scale_factor));
+        if (!result) {
+            mapperbus::core::logger::error("Failed to change scaler: {}", result.error());
+            return;
+        }
+
+        if (runtime_scale_factor < 2) {
+            mapperbus::core::logger::info("Runtime scaler disabled");
+        } else {
+            mapperbus::core::logger::info("Runtime scaler: {} {}x",
+                                          runtime_scaler_mode_label(runtime_scaler_mode),
+                                          runtime_scale_factor);
+        }
+    });
     return EXIT_SUCCESS;
 }

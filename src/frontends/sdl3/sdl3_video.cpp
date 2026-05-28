@@ -153,12 +153,12 @@ void Sdl3Video::set_upscaler(std::unique_ptr<platform::Upscaler> upscaler) {
 }
 
 void Sdl3Video::shutdown() {
-    if (upscaler_) {
-        upscaler_.reset();
-    }
     if (texture_) {
         SDL_DestroyTexture(texture_);
         texture_ = nullptr;
+    }
+    if (upscaler_) {
+        upscaler_.reset();
     }
     if (renderer_) {
         SDL_DestroyRenderer(renderer_);

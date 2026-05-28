@@ -5,6 +5,19 @@
 namespace mapperbus::frontend {
 namespace {
 
+[[nodiscard]] Sdl3KeyboardBindings default_keyboard_bindings() {
+    Sdl3KeyboardBindings bindings{};
+    bindings[platform::button_index(core::Button::Up)] = SDL_SCANCODE_UP;
+    bindings[platform::button_index(core::Button::Down)] = SDL_SCANCODE_DOWN;
+    bindings[platform::button_index(core::Button::Left)] = SDL_SCANCODE_LEFT;
+    bindings[platform::button_index(core::Button::Right)] = SDL_SCANCODE_RIGHT;
+    bindings[platform::button_index(core::Button::A)] = SDL_SCANCODE_X;
+    bindings[platform::button_index(core::Button::B)] = SDL_SCANCODE_Z;
+    bindings[platform::button_index(core::Button::Start)] = SDL_SCANCODE_RETURN;
+    bindings[platform::button_index(core::Button::Select)] = SDL_SCANCODE_RSHIFT;
+    return bindings;
+}
+
 [[nodiscard]] SDL_GamepadButton to_sdl_button(platform::GamepadButton button) {
     switch (button) {
     case platform::GamepadButton::South:
@@ -61,7 +74,12 @@ namespace {
 
 } // namespace
 
-Sdl3Input::Sdl3Input(Sdl3InputConfig config) : config_(config) {
+Sdl3Input::Sdl3Input(Sdl3InputConfig config, Sdl3KeyboardBindings keyboard_bindings)
+    : config_(config), keyboard_bindings_(keyboard_bindings) {
+    if (std::ranges::all_of(keyboard_bindings_, [](int code) { return code == 0; })) {
+        keyboard_bindings_ = default_keyboard_bindings();
+    }
+
     if (config_.enabled && SDL_InitSubSystem(SDL_INIT_GAMEPAD)) {
         gamepad_initialized_ = true;
         open_configured_gamepad();
@@ -73,6 +91,34 @@ Sdl3Input::~Sdl3Input() {
     if (gamepad_initialized_) {
         SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
     }
+}
+
+Sdl3ScalerCommand Sdl3Input::scaler_command_for_scancode(SDL_Scancode scancode) {
+    switch (scancode) {
+    case SDL_SCANCODE_0:
+    case SDL_SCANCODE_1:
+        return {.kind = Sdl3ScalerCommandKind::Native};
+    case SDL_SCANCODE_2:
+        return {.kind = Sdl3ScalerCommandKind::SetFactor, .factor = 2};
+    case SDL_SCANCODE_3:
+        return {.kind = Sdl3ScalerCommandKind::SetFactor, .factor = 3};
+    case SDL_SCANCODE_4:
+        return {.kind = Sdl3ScalerCommandKind::SetFactor, .factor = 4};
+    case SDL_SCANCODE_5:
+        return {.kind = Sdl3ScalerCommandKind::SetFactor, .factor = 5};
+    case SDL_SCANCODE_6:
+        return {.kind = Sdl3ScalerCommandKind::SetFactor, .factor = 6};
+    case SDL_SCANCODE_F9:
+        return {.kind = Sdl3ScalerCommandKind::CycleMode};
+    default:
+        return {};
+    }
+}
+
+Sdl3ScalerCommand Sdl3Input::consume_scaler_command() {
+    const auto command = pending_scaler_command_;
+    pending_scaler_command_ = {};
+    return command;
 }
 
 void Sdl3Input::poll() {
@@ -126,6 +172,13 @@ void Sdl3Input::handle_event(const SDL_Event& event) {
         return;
     }
 
+    if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat) {
+        if (auto command = scaler_command_for_scancode(event.key.scancode)) {
+            pending_scaler_command_ = command;
+            return;
+        }
+    }
+
     if (event.type == SDL_EVENT_GAMEPAD_ADDED) {
         open_configured_gamepad();
         return;
@@ -138,25 +191,16 @@ void Sdl3Input::handle_event(const SDL_Event& event) {
 }
 
 std::uint8_t Sdl3Input::keyboard_state() const {
-    const bool* keys = SDL_GetKeyboardState(nullptr);
+    int key_count = 0;
+    const bool* keys = SDL_GetKeyboardState(&key_count);
 
     std::uint8_t state = 0;
-    if (keys[SDL_SCANCODE_Z])
-        state |= static_cast<std::uint8_t>(core::Button::B);
-    if (keys[SDL_SCANCODE_X])
-        state |= static_cast<std::uint8_t>(core::Button::A);
-    if (keys[SDL_SCANCODE_RSHIFT])
-        state |= static_cast<std::uint8_t>(core::Button::Select);
-    if (keys[SDL_SCANCODE_RETURN])
-        state |= static_cast<std::uint8_t>(core::Button::Start);
-    if (keys[SDL_SCANCODE_UP])
-        state |= static_cast<std::uint8_t>(core::Button::Up);
-    if (keys[SDL_SCANCODE_DOWN])
-        state |= static_cast<std::uint8_t>(core::Button::Down);
-    if (keys[SDL_SCANCODE_LEFT])
-        state |= static_cast<std::uint8_t>(core::Button::Left);
-    if (keys[SDL_SCANCODE_RIGHT])
-        state |= static_cast<std::uint8_t>(core::Button::Right);
+    for (const auto button : platform::controller_buttons()) {
+        const int scancode = keyboard_bindings_[platform::button_index(button)];
+        if (scancode >= 0 && scancode < key_count && keys[scancode]) {
+            state |= static_cast<std::uint8_t>(button);
+        }
+    }
 
     return state;
 }
