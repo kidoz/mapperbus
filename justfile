@@ -17,6 +17,20 @@ setup:
 build:
     meson compile -C {{build_dir}}
 
+# Configure the Meson build with the GUI frontend enabled
+setup-gui:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -d "{{build_dir}}" ]; then
+        meson setup {{build_dir}} -Denable_nodalkit_gui=true --reconfigure
+    else
+        meson setup {{build_dir}} -Denable_nodalkit_gui=true
+    fi
+
+# Build the NodalKit GUI frontend
+build-gui: setup-gui
+    meson compile -C {{build_dir}} mapperbus-gui
+
 # Run all tests
 test: build
     meson test -C {{build_dir}}
@@ -40,6 +54,24 @@ run-gpu-fsr rom scale="4": build
 # Run the headless CLI frontend (pass ROM path as argument)
 run-cli rom: build
     ./{{build_dir}}/src/frontends/cli/mapperbus-cli {{rom}}
+
+# Run the NodalKit GUI frontend (optionally pass ROM path as argument)
+run-gui rom="": build-gui
+    #!/usr/bin/env bash
+    set -euo pipefail
+    gui="./{{build_dir}}/src/frontends/nodalkit/mapperbus"
+    if [ ! -x "$gui" ]; then
+        gui="./{{build_dir}}/src/frontends/nodalkit/mapperbus-gui"
+    fi
+    if [ ! -x "$gui" ]; then
+        echo "GUI frontend is not built. Reconfigure with: meson setup {{build_dir}} -Denable_nodalkit_gui=true --reconfigure"
+        exit 1
+    fi
+    echo "Launching $gui"
+    if [ -n "{{rom}}" ]; then
+        exec "$gui" "{{rom}}"
+    fi
+    exec "$gui"
 
 # Format all C++ source files in-place
 format:
@@ -65,7 +97,7 @@ analyze:
             "$file" 2>&1; then
             errors=$((errors + 1))
         fi
-    done < <(find src -name '*.cpp' | sort)
+    done < <(find src -name '*.cpp' ! -path 'src/frontends/nodalkit/*' | sort)
     rm -f *.plist
     if [ "$errors" -gt 0 ]; then
         echo "Analyzer found issues in $errors file(s)"
@@ -86,7 +118,7 @@ tidy: build
     if [ -n "$SYSROOT" ]; then
         EXTRA_ARGS+=(--extra-arg="-isysroot$SYSROOT")
     fi
-    find src -name '*.cpp' | sort | \
+    find src -name '*.cpp' ! -path 'src/frontends/nodalkit/*' | sort | \
         xargs "$TIDY" -p {{build_dir}} --header-filter='src/.*' "${EXTRA_ARGS[@]}" 2>&1
     echo "clang-tidy passed"
 

@@ -185,8 +185,9 @@ Byte Ppu::read_register(uint8_t reg) {
     switch (reg) {
     case 0x02: { // PPUSTATUS
         Byte value = static_cast<Byte>((ppustatus_ & 0xE0) | (read_buffer_ & 0x1F));
-        ppustatus_ &= ~0x80; // Clear VBlank flag
-        write_latch_ = false; // Reset w
+        // Clear VBlank flag and reset w.
+        ppustatus_ &= ~0x80;
+        write_latch_ = false;
         // Note: on real hardware, reading $2002 only suppresses NMI during
         // the exact dot when VBlank starts (a 1-cycle race condition).
         // In our sequential model that race cannot occur, so we must NOT
