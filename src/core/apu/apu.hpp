@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cmath>
@@ -242,12 +243,38 @@ template <typename T> class RingBuffer {
 
     bool try_push(T value) {
         size_t w = write_pos_.load(std::memory_order_relaxed);
-        size_t r = read_pos_.load(std::memory_order_acquire);
-        if (w - r >= buffer_.size())
+        const size_t capacity = buffer_.size();
+        if (w - producer_read_cache_ >= capacity) {
+            producer_read_cache_ = read_pos_.load(std::memory_order_acquire);
+        }
+        if (w - producer_read_cache_ >= capacity)
             return false;
         buffer_[w & mask_] = value;
         write_pos_.store(w + 1, std::memory_order_release);
         return true;
+    }
+
+    size_t try_push(std::span<const T> values) {
+        if (values.empty())
+            return 0;
+
+        const size_t w = write_pos_.load(std::memory_order_relaxed);
+        const size_t capacity = buffer_.size();
+        size_t used = w - producer_read_cache_;
+        if (used >= capacity || values.size() > capacity - used) {
+            producer_read_cache_ = read_pos_.load(std::memory_order_acquire);
+            used = w - producer_read_cache_;
+        }
+
+        if (used >= capacity)
+            return 0;
+
+        const size_t count = std::min(values.size(), capacity - used);
+        for (size_t i = 0; i < count; ++i) {
+            buffer_[(w + i) & mask_] = values[i];
+        }
+        write_pos_.store(w + count, std::memory_order_release);
+        return count;
     }
 
     size_t read(T* dest, size_t max_count) {
@@ -269,6 +296,7 @@ template <typename T> class RingBuffer {
     }
 
     void reset() {
+        producer_read_cache_ = 0;
         write_pos_.store(0, std::memory_order_relaxed);
         read_pos_.store(0, std::memory_order_relaxed);
     }
@@ -276,8 +304,9 @@ template <typename T> class RingBuffer {
   private:
     std::vector<T> buffer_;
     size_t mask_ = 0;
-    std::atomic<size_t> write_pos_{0};
-    std::atomic<size_t> read_pos_{0};
+    size_t producer_read_cache_ = 0;
+    alignas(64) std::atomic<size_t> write_pos_{0};
+    alignas(64) std::atomic<size_t> read_pos_{0};
 };
 
 using MemoryReader = std::function<Byte(Address)>;
@@ -293,11 +322,6 @@ class Apu {
 
     Byte read_register(Address addr);
     void write_register(Address addr, Byte value);
-
-    /// Legacy interface: returns a span over an internal staging buffer.
-    /// Prefer drain_samples() for new code.
-    std::span<const float> output_buffer() const;
-    void clear_output_buffer();
 
     /// Read available samples from the ring buffer into dest.
     /// Returns number of samples read.
@@ -385,9 +409,8 @@ class Apu {
 
     // Output ring buffer
     RingBuffer<float> output_ring_{16384};
-
-    // Legacy staging buffer for output_buffer() compat
-    mutable std::vector<float> staging_buffer_;
+    std::vector<float> blip_read_buffer_;
+    std::vector<float> frame_output_buffer_;
 
     // DMC CPU stall cycles (4 per memory read)
     uint32_t dmc_stall_cycles_ = 0;

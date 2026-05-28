@@ -1,7 +1,6 @@
 #pragma once
 
 #include <memory>
-#include <span>
 #include <string>
 
 #include "core/apu/apu.hpp"
@@ -33,15 +32,6 @@ class Emulator {
         return ppu_;
     }
 
-    /// Legacy audio buffer interface (drains ring buffer into staging vector).
-    [[nodiscard]] std::span<const float> audio_buffer() const {
-        return apu_.output_buffer();
-    }
-    void clear_audio_buffer() {
-        apu_.clear_output_buffer();
-    }
-
-    /// Preferred: read available audio samples directly from ring buffer.
     [[nodiscard]] size_t drain_audio(float* dest, size_t max_count) {
         return apu_.drain_samples(dest, max_count);
     }

@@ -1,3 +1,4 @@
+#include <array>
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
 
@@ -81,13 +82,14 @@ TEST_CASE("Pulse channel produces samples", "[apu]") {
     apu.step(5000);
     apu.end_audio_frame();
 
-    auto buffer = apu.output_buffer();
-    REQUIRE_FALSE(buffer.empty());
+    std::array<float, 2048> buffer{};
+    const std::size_t count = apu.drain_samples(buffer.data(), buffer.size());
+    REQUIRE(count > 0);
 
     float first = buffer[0];
     bool has_different = false;
-    for (float s : buffer) {
-        if (std::abs(s - first) > 0.0001f) {
+    for (std::size_t i = 0; i < count; ++i) {
+        if (std::abs(buffer[i] - first) > 0.0001f) {
             has_different = true;
             break;
         }
@@ -105,6 +107,29 @@ TEST_CASE("High-pass filter removes DC", "[apu][filter]") {
         output = filter.apply(0.5f);
     }
     REQUIRE(std::abs(output) < 0.01f);
+}
+
+TEST_CASE("IIR filters snap near-denormal state to zero", "[apu][filter]") {
+    SECTION("first-order filter") {
+        AudioFilter filter;
+        filter.alpha = 0.5f;
+        filter.is_highpass = true;
+        filter.prev_output = 1.0e-20f;
+
+        REQUIRE(filter.apply(0.0f) == 0.0f);
+        REQUIRE(filter.prev_output == 0.0f);
+    }
+
+    SECTION("biquad filter") {
+        BiquadFilter filter;
+        filter.b0 = 1.0f;
+        filter.z1 = 1.0e-20f;
+        filter.z2 = -1.0e-20f;
+
+        REQUIRE(filter.apply(0.0f) == 0.0f);
+        REQUIRE(filter.z1 == 0.0f);
+        REQUIRE(filter.z2 == 0.0f);
+    }
 }
 
 TEST_CASE("High-pass filter passes AC", "[apu][filter]") {

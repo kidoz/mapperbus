@@ -1,13 +1,12 @@
 #include "core/apu/blip_buffer.hpp"
 
 #include <algorithm>
-#include <cstring>
 
 namespace mapperbus::core {
 
 BlipBuffer::BlipBuffer() {
-    buffer_.resize(4096, 0.0f);
-    buffer_size_ = static_cast<int>(buffer_.size());
+    buffer_.resize(kBufferSize, 0.0f);
+    buffer_mask_ = kBufferSize - 1;
     init_kernel();
 }
 
@@ -67,9 +66,7 @@ void BlipBuffer::add_delta(uint32_t clock_offset, float delta) {
 
     // Scatter the delta across nearby output samples using the sinc kernel
     for (int tap = 0; tap < kKernelSize; ++tap) {
-        int buf_idx = (sample_offset_ + output_index + tap - kKernelSize / 2) % buffer_size_;
-        if (buf_idx < 0)
-            buf_idx += buffer_size_;
+        int buf_idx = (sample_offset_ + output_index + tap - kKernelSize / 2) & buffer_mask_;
         buffer_[buf_idx] += delta * kernel_[phase][tap];
     }
 }
@@ -89,14 +86,14 @@ int BlipBuffer::samples_available() const {
 int BlipBuffer::read_samples(float* dest, int max_samples) {
     int count = std::min(max_samples, sample_count_);
     for (int i = 0; i < count; ++i) {
-        int idx = (sample_offset_ + i) % buffer_size_;
+        int idx = (sample_offset_ + i) & buffer_mask_;
         // Integrate: the buffer holds the differentiated BLEP signal;
         // accumulating produces the actual band-limited waveform.
         integrator_ += buffer_[idx];
         dest[i] = integrator_;
         buffer_[idx] = 0.0f; // Clear after reading
     }
-    sample_offset_ = (sample_offset_ + count) % buffer_size_;
+    sample_offset_ = (sample_offset_ + count) & buffer_mask_;
     sample_count_ -= count;
     return count;
 }

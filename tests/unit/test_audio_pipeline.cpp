@@ -1,3 +1,4 @@
+#include <array>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <cmath>
@@ -5,6 +6,7 @@
 
 #include "core/apu/apu.hpp"
 #include "core/apu/audio_settings.hpp"
+#include "core/apu/blip_buffer.hpp"
 
 using namespace mapperbus::core;
 
@@ -18,6 +20,9 @@ TEST_CASE("AudioSettings defaults", "[audio]") {
     REQUIRE(s.stereo_mode == StereoMode::Mono);
     REQUIRE_FALSE(s.dithering_enabled);
     REQUIRE(s.expansion_mixing == ExpansionMixingMode::SimpleSum);
+    REQUIRE(s.drc_target_fill_ratio == 0.5f);
+    REQUIRE(s.drc_deadzone == 0.05f);
+    REQUIRE(s.drc_rate_adjustment == 0.005);
 }
 
 TEST_CASE("APU settings constructor", "[audio]") {
@@ -54,12 +59,14 @@ TEST_CASE("Sample rate affects sample count", "[audio]") {
     apu48.step(5000);
     apu96.step(5000);
 
-    auto buf48 = apu48.output_buffer();
-    auto buf96 = apu96.output_buffer();
+    std::array<float, 2048> buf48{};
+    std::array<float, 2048> buf96{};
+    const std::size_t count48 = apu48.drain_samples(buf48.data(), buf48.size());
+    const std::size_t count96 = apu96.drain_samples(buf96.data(), buf96.size());
 
-    REQUIRE_FALSE(buf48.empty());
-    REQUIRE_FALSE(buf96.empty());
-    double ratio = static_cast<double>(buf96.size()) / static_cast<double>(buf48.size());
+    REQUIRE(count48 > 0);
+    REQUIRE(count96 > 0);
+    double ratio = static_cast<double>(count96) / static_cast<double>(count48);
     REQUIRE(ratio > 1.5);
     REQUIRE(ratio < 2.5);
 }
@@ -187,6 +194,25 @@ TEST_CASE("Dithering adds noise to silence", "[audio][dither]") {
     }
 }
 
+TEST_CASE("Stereo dither is centered between channels", "[audio][dither][stereo]") {
+    AudioSettings s;
+    s.dithering_enabled = true;
+    s.stereo_mode = StereoMode::PseudoStereo;
+    s.resampling = ResamplingMode::CubicHermite;
+    Apu apu(s);
+
+    apu.step(5000);
+
+    float samples[4096];
+    size_t n = apu.drain_samples(samples, 4096);
+    REQUIRE(n > 0);
+    REQUIRE(n % 2 == 0);
+
+    for (size_t i = 0; i < n; i += 2) {
+        REQUIRE(samples[i] == samples[i + 1]);
+    }
+}
+
 TEST_CASE("BlipBuffer sample count accuracy", "[audio][blip]") {
     AudioSettings s;
     s.sample_rate = 48000;
@@ -208,4 +234,16 @@ TEST_CASE("BlipBuffer sample count accuracy", "[audio][blip]") {
     double expected = static_cast<double>(frame_cycles) / (kCpuClockNtsc / 48000.0);
     REQUIRE(n > static_cast<size_t>(expected * 0.9));
     REQUIRE(n < static_cast<size_t>(expected * 1.1));
+}
+
+TEST_CASE("BlipBuffer rate refresh preserves fractional carry", "[audio][blip]") {
+    BlipBuffer buffer;
+    buffer.set_rates(10.0, 4.0);
+
+    buffer.end_frame(1);
+    REQUIRE(buffer.samples_available() == 0);
+
+    buffer.set_rates(10.0, 4.0);
+    buffer.end_frame(2);
+    REQUIRE(buffer.samples_available() == 1);
 }

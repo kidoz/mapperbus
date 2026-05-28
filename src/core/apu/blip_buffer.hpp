@@ -16,6 +16,7 @@ class BlipBuffer {
     static constexpr int kKernelSize = 64; // Sinc kernel width in samples
     static constexpr int kPhaseBits = 8;   // Sub-sample phase resolution
     static constexpr int kPhaseCount = 1 << kPhaseBits;
+    static constexpr int kBufferSize = 4096;
 
     BlipBuffer();
 
@@ -46,7 +47,7 @@ class BlipBuffer {
 
     // Accumulation buffer (ring buffer of output samples + fractional)
     std::vector<float> buffer_;
-    int buffer_size_ = 0;
+    int buffer_mask_ = 0;
     int sample_offset_ = 0; // Read position
     int sample_count_ = 0;  // Available samples
 

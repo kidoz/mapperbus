@@ -19,6 +19,9 @@ struct AudioSettings {
     StereoMode stereo_mode = StereoMode::Mono;
     bool dithering_enabled = false;
     ExpansionMixingMode expansion_mixing = ExpansionMixingMode::SimpleSum;
+    float drc_target_fill_ratio = 0.5f;
+    float drc_deadzone = 0.05f;
+    double drc_rate_adjustment = 0.005;
 };
 
 } // namespace mapperbus::core

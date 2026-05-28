@@ -6,6 +6,15 @@
 
 namespace mapperbus::core {
 
+namespace {
+constexpr size_t kBlipFrameBufferSamples = 2048;
+constexpr float kDenormalThreshold = 1.0e-15f;
+
+[[nodiscard]] float snap_denormal(float value) {
+    return std::abs(value) < kDenormalThreshold ? 0.0f : value;
+}
+} // namespace
+
 // --- Envelope ---
 
 void Envelope::clock() {
@@ -169,26 +178,31 @@ void DmcChannel::clock_timer() {
 // --- AudioFilter (first-order IIR) ---
 
 float AudioFilter::apply(float input) {
+    input = snap_denormal(input);
     if (is_highpass) {
         // y[n] = alpha * (y[n-1] + x[n] - x[n-1])
         float output = alpha * (prev_output + input - prev_input);
         prev_input = input;
-        prev_output = output;
-        return output;
+        prev_output = snap_denormal(output);
+        return prev_output;
     }
     // Low-pass: y[n] = alpha * x[n] + (1 - alpha) * y[n-1]
     float output = alpha * input + (1.0f - alpha) * prev_output;
-    prev_output = output;
+    prev_output = snap_denormal(output);
     prev_input = input;
-    return output;
+    return prev_output;
 }
 
 // --- BiquadFilter (second-order IIR, Direct Form II Transposed) ---
 
 float BiquadFilter::apply(float input) {
+    input = snap_denormal(input);
     float output = b0 * input + z1;
     z1 = b1 * input - a1 * output + z2;
     z2 = b2 * input - a2 * output;
+    output = snap_denormal(output);
+    z1 = snap_denormal(z1);
+    z2 = snap_denormal(z2);
     return output;
 }
 
@@ -244,7 +258,8 @@ void MixerTables::compute() {
 
 Apu::Apu() : Apu(AudioSettings{}) {}
 
-Apu::Apu(const AudioSettings& settings) : settings_(settings) {
+Apu::Apu(const AudioSettings& settings)
+    : settings_(settings), blip_read_buffer_(kBlipFrameBufferSamples) {
     pulse1_.sweep.is_pulse1 = true;
     pulse2_.sweep.is_pulse1 = false;
 
@@ -254,6 +269,7 @@ Apu::Apu(const AudioSettings& settings) : settings_(settings) {
 
     mixer_.compute();
     init_filters();
+    frame_output_buffer_.reserve(kBlipFrameBufferSamples * 2);
 
     // Configure BlipBuffer
     blip_buffer_.set_rates(cpu_clock_, static_cast<double>(sample_rate_));
@@ -314,7 +330,6 @@ void Apu::reset() {
     drc_rate_ = 1.0;
     dmc_stall_cycles_ = 0;
     output_ring_.reset();
-    staging_buffer_.clear();
     prev_blip_mix_ = 0.0f;
     blip_cycle_offset_ = 0;
     blip_buffer_.reset();
@@ -371,7 +386,6 @@ void Apu::apply_settings(const AudioSettings& settings) {
     cycle_accumulator_ = 0.0;
     current_mix_ = 0.0f;
     sample_history_.fill(0.0f);
-    staging_buffer_.clear();
     output_ring_.reset();
     prev_blip_mix_ = 0.0f;
     blip_cycle_offset_ = 0;
@@ -397,17 +411,16 @@ uint32_t Apu::take_dmc_stall_cycles() {
 }
 
 void Apu::update_rate_control(float buffer_fill_ratio) {
-    // Target 50% buffer fill. Adjust rate by up to +/-0.5%.
-    constexpr float kTarget = 0.5f;
-    constexpr float kDeadzone = 0.05f;
-    constexpr double kDelta = 0.005;
+    const float target = std::clamp(settings_.drc_target_fill_ratio, 0.0f, 1.0f);
+    const float deadzone = std::clamp(settings_.drc_deadzone, 0.0f, 1.0f);
+    const double adjustment = std::clamp(settings_.drc_rate_adjustment, 0.0, 0.05);
 
-    float error = buffer_fill_ratio - kTarget;
-    if (std::abs(error) > kDeadzone) {
+    float error = buffer_fill_ratio - target;
+    if (std::abs(error) > deadzone && adjustment > 0.0) {
         if (error > 0.0f) {
-            drc_rate_ = std::max(drc_rate_ - kDelta, 0.995);
+            drc_rate_ = std::max(drc_rate_ - adjustment, 1.0 - adjustment);
         } else {
-            drc_rate_ = std::min(drc_rate_ + kDelta, 1.005);
+            drc_rate_ = std::min(drc_rate_ + adjustment, 1.0 + adjustment);
         }
     } else {
         // Slowly return to 1.0
@@ -497,15 +510,14 @@ void Apu::end_audio_frame() {
     if (avail <= 0)
         return;
 
-    // Use stack buffer to avoid per-frame heap allocation.
-    // ~800 samples/frame at 48kHz NTSC; 2048 covers all practical cases.
-    std::array<float, 2048> temp{};
-    int to_read = std::min(avail, static_cast<int>(temp.size()));
-    int count = blip_buffer_.read_samples(temp.data(), to_read);
+    // ~1600 samples/frame at 96kHz NTSC; 2048 covers all practical cases.
+    int to_read = std::min(avail, static_cast<int>(blip_read_buffer_.size()));
+    int count = blip_buffer_.read_samples(blip_read_buffer_.data(), to_read);
 
     bool stereo = settings_.stereo_mode == StereoMode::PseudoStereo;
+    frame_output_buffer_.clear();
     for (int i = 0; i < count; ++i) {
-        float sample = filter(temp[static_cast<size_t>(i)]);
+        float sample = filter(blip_read_buffer_[static_cast<size_t>(i)]);
         if (settings_.dithering_enabled) {
             sample += tpdf_dither();
         }
@@ -516,15 +528,17 @@ void Apu::end_audio_frame() {
             float left = filter(st.left);
             float right = filter(st.right);
             if (settings_.dithering_enabled) {
-                left += tpdf_dither();
-                right += tpdf_dither();
+                const float dither = tpdf_dither();
+                left += dither;
+                right += dither;
             }
-            output_ring_.try_push(left);
-            output_ring_.try_push(right);
+            frame_output_buffer_.push_back(left);
+            frame_output_buffer_.push_back(right);
         } else {
-            output_ring_.try_push(sample);
+            frame_output_buffer_.push_back(sample);
         }
     }
+    output_ring_.try_push(std::span<const float>(frame_output_buffer_));
 }
 
 void Apu::emit_sample() {
@@ -535,7 +549,7 @@ void Apu::emit_sample() {
     sample_history_[3] = current_mix_;
 
     // Cubic Hermite interpolation (Catmull-Rom) using fractional position
-    float t = static_cast<float>(cycle_accumulator_ / cycles_per_sample_);
+    float t = std::clamp(static_cast<float>(cycle_accumulator_ / cycles_per_sample_), 0.0f, 1.0f);
     float p0 = sample_history_[0];
     float p1 = sample_history_[1];
     float p2 = sample_history_[2];
@@ -552,8 +566,9 @@ void Apu::emit_sample() {
         float left = filter(stereo.left);
         float right = filter(stereo.right);
         if (settings_.dithering_enabled) {
-            left += tpdf_dither();
-            right += tpdf_dither();
+            const float dither = tpdf_dither();
+            left += dither;
+            right += dither;
         }
         output_ring_.try_push(left);
         output_ring_.try_push(right);
@@ -713,23 +728,6 @@ float Apu::tpdf_dither() {
 
 size_t Apu::drain_samples(float* dest, size_t max_count) {
     return output_ring_.read(dest, max_count);
-}
-
-std::span<const float> Apu::output_buffer() const {
-    // Legacy compat: drain ring into staging vector
-    staging_buffer_.clear();
-    size_t avail = output_ring_.available();
-    if (avail > 0) {
-        staging_buffer_.resize(avail);
-        size_t n = const_cast<RingBuffer<float>&>(output_ring_).read(staging_buffer_.data(), avail);
-        staging_buffer_.resize(n);
-    }
-    return staging_buffer_;
-}
-
-void Apu::clear_output_buffer() {
-    // Ring buffer is self-clearing on read; staging buffer cleared on next output_buffer() call
-    staging_buffer_.clear();
 }
 
 Byte Apu::read_register(Address addr) {
