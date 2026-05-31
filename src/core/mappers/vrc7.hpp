@@ -68,15 +68,21 @@ class Vrc7 : public Mapper {
     struct FmChannel {
         uint16_t frequency = 0; // 9-bit F-number
         uint8_t octave = 0;     // 3-bit octave
-        uint8_t instrument = 0; // 4-bit preset
+        uint8_t instrument = 0; // 4-bit patch (0 = user/custom)
         uint8_t volume = 0;     // 4-bit volume
         bool key_on = false;
         bool sustain = false;
-        uint32_t phase = 0; // Phase accumulator
+        uint32_t phase = 0;     // carrier phase accumulator
+        uint32_t mod_phase = 0; // modulator phase accumulator
     };
 
     std::array<FmChannel, 6> fm_channels_{};
+    // User-defined ("custom") instrument patch: the 8 bytes written to
+    // registers $00-$07. Channels whose patch number is 0 use this.
+    std::array<uint8_t, 8> custom_patch_{};
     uint16_t audio_divider_ = 0;
+
+    [[nodiscard]] const uint8_t* patch_for(uint8_t instrument) const;
 };
 
 } // namespace mapperbus::core
