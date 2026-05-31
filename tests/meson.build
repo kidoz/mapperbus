@@ -72,6 +72,12 @@ test_battery_save = executable('test-battery-save',
 )
 test('battery-save', test_battery_save)
 
+test_fds = executable('test-fds',
+    'unit/test_fds.cpp',
+    dependencies : [mapperbus_core_dep, catch2_dep],
+)
+test('fds', test_fds)
+
 test_audio_pipeline = executable('test-audio-pipeline',
     'unit/test_audio_pipeline.cpp',
     dependencies : [mapperbus_core_dep, catch2_dep],

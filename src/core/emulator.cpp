@@ -93,6 +93,20 @@ Result<void> Emulator::load_cartridge(const std::string& path) {
     return {};
 }
 
+Result<void> Emulator::load_disk(const std::string& path) {
+    std::ifstream file(path, std::ios::binary);
+    if (!file) {
+        return std::unexpected("Failed to open FDS disk image: " + path);
+    }
+    std::vector<Byte> data((std::istreambuf_iterator<char>(file)),
+                           std::istreambuf_iterator<char>());
+    if (!fds_.load_disk(data)) {
+        return std::unexpected("Invalid FDS disk image (not a whole number of sides): " + path);
+    }
+    logger::info("Mounted FDS disk: {} ({} side(s))", path, fds_.side_count());
+    return {};
+}
+
 void Emulator::unload_cartridge() {
     // Persist battery-backed RAM before tearing the cartridge down.
     if (cartridge_ && cartridge_->has_battery() && !rom_path_.empty()) {
@@ -142,6 +156,7 @@ void Emulator::step_frame() {
         uint32_t cpu_cycles = cpu_.step();
         ppu_.step(cpu_cycles);
         apu_.step(cpu_cycles);
+        fds_.step(cpu_cycles);
         clock_expansion_audio(cpu_cycles);
 
         // OAM DMA stalls the CPU — advance PPU/APU/mapper by DMA cycles

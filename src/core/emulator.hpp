@@ -28,6 +28,16 @@ class Emulator {
     void reset();
     void step_frame();
 
+    /// Mounts a Famicom Disk System `.fds` image into the disk drive.
+    [[nodiscard]] Result<void> load_disk(const std::string& path);
+
+    [[nodiscard]] Fds& fds() {
+        return fds_;
+    }
+    [[nodiscard]] const Fds& fds() const {
+        return fds_;
+    }
+
     /// Serializes the full machine state into a self-describing blob
     /// (magic + version + mapper id + region, then each subsystem).
     [[nodiscard]] std::vector<Byte> save_state() const;

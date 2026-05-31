@@ -76,8 +76,8 @@ Byte MemoryBus::read_apu_io(Address addr) {
         }
         return apu_ ? apu_->read_register(addr) : 0;
     }
-    // $4040-$4092: FDS audio registers
-    if (addr >= 0x4040 && addr <= 0x4092 && fds_ && fds_->is_loaded()) {
+    // $4020-$409F: FDS disk drive ($4030-$4033) and audio ($4040-$4092)
+    if (addr >= 0x4020 && addr <= 0x409F && fds_ && fds_->is_loaded()) {
         return fds_->read(addr);
     }
     return open_bus_;
@@ -140,8 +140,8 @@ void MemoryBus::write_apu_io(Address addr, Byte value) {
         }
         return;
     }
-    // $4040-$4092: FDS audio registers
-    if (addr >= 0x4040 && addr <= 0x4092 && fds_ && fds_->is_loaded()) {
+    // $4020-$409F: FDS disk drive ($4020-$4026) and audio ($4040-$4089)
+    if (addr >= 0x4020 && addr <= 0x409F && fds_ && fds_->is_loaded()) {
         fds_->write(addr, value);
     }
 }
@@ -171,6 +171,9 @@ bool MemoryBus::poll_irq() {
     }
     if (apu_) {
         irq |= apu_->irq_pending();
+    }
+    if (fds_) {
+        irq |= fds_->irq_pending();
     }
     return irq;
 }
