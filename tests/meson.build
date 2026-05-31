@@ -66,6 +66,12 @@ test_save_state = executable('test-save-state',
 )
 test('save-state', test_save_state)
 
+test_battery_save = executable('test-battery-save',
+    'unit/test_battery_save.cpp',
+    dependencies : [mapperbus_core_dep, catch2_dep],
+)
+test('battery-save', test_battery_save)
+
 test_audio_pipeline = executable('test-audio-pipeline',
     'unit/test_audio_pipeline.cpp',
     dependencies : [mapperbus_core_dep, catch2_dep],

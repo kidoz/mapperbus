@@ -331,4 +331,66 @@ void Sunsoft5b::load_state(StateReader& r) {
     r.read(audio_divider_);
 }
 
+// --- Battery-backed PRG-RAM accessors ---
+//
+// Every board below exposes an 8 KB ($2000-byte) PRG-RAM window at
+// $6000-$7FFF. set_battery_ram copies in at most the available bytes so a
+// short or oversized .sav file can never overrun the buffer.
+namespace {
+template <std::size_t N>
+void restore_prg_ram(std::array<Byte, N>& ram, std::span<const Byte> data) {
+    const std::size_t count = std::min(data.size(), ram.size());
+    std::copy_n(data.begin(), count, ram.begin());
+}
+} // namespace
+
+std::span<const Byte> Nrom::battery_ram() const {
+    return prg_ram_;
+}
+void Nrom::set_battery_ram(std::span<const Byte> data) {
+    restore_prg_ram(prg_ram_, data);
+}
+
+std::span<const Byte> Mmc1::battery_ram() const {
+    return prg_ram_;
+}
+void Mmc1::set_battery_ram(std::span<const Byte> data) {
+    restore_prg_ram(prg_ram_, data);
+}
+
+std::span<const Byte> Mmc3::battery_ram() const {
+    return prg_ram_;
+}
+void Mmc3::set_battery_ram(std::span<const Byte> data) {
+    restore_prg_ram(prg_ram_, data);
+}
+
+std::span<const Byte> Vrc6::battery_ram() const {
+    return prg_ram_;
+}
+void Vrc6::set_battery_ram(std::span<const Byte> data) {
+    restore_prg_ram(prg_ram_, data);
+}
+
+std::span<const Byte> Vrc7::battery_ram() const {
+    return prg_ram_;
+}
+void Vrc7::set_battery_ram(std::span<const Byte> data) {
+    restore_prg_ram(prg_ram_, data);
+}
+
+std::span<const Byte> Namco163::battery_ram() const {
+    return prg_ram_;
+}
+void Namco163::set_battery_ram(std::span<const Byte> data) {
+    restore_prg_ram(prg_ram_, data);
+}
+
+std::span<const Byte> Sunsoft5b::battery_ram() const {
+    return prg_ram_;
+}
+void Sunsoft5b::set_battery_ram(std::span<const Byte> data) {
+    restore_prg_ram(prg_ram_, data);
+}
+
 } // namespace mapperbus::core

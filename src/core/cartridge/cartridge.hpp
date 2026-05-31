@@ -22,6 +22,18 @@ class Cartridge {
     void save_state(StateWriter& writer) const;
     void load_state(StateReader& reader);
 
+    /// True when the iNES/NES 2.0 header marks the board as battery-backed.
+    [[nodiscard]] bool has_battery() const {
+        return header_.has_battery;
+    }
+    /// Battery-backed PRG-RAM contents (empty if the mapper has none).
+    [[nodiscard]] std::span<const Byte> battery_ram() const {
+        return mapper_->battery_ram();
+    }
+    void set_battery_ram(std::span<const Byte> data) {
+        mapper_->set_battery_ram(data);
+    }
+
     [[nodiscard]] Byte read_prg(Address addr);
     void write_prg(Address addr, Byte value);
     [[nodiscard]] bool maps_prg(Address addr) const;

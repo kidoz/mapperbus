@@ -64,6 +64,8 @@ class Vrc6 : public Mapper {
     void write_expansion(Address addr, Byte value) override;
     void save_state(StateWriter& writer) const override;
     void load_state(StateReader& reader) override;
+    std::span<const Byte> battery_ram() const override;
+    void set_battery_ram(std::span<const Byte> data) override;
 
   private:
     void update_banks();

@@ -53,7 +53,9 @@ MirrorMode Nrom::mirror_mode() const {
 }
 
 void Nrom::reset() {
-    prg_ram_.fill(0);
+    // PRG-RAM persists across a soft reset (and may be battery-backed), so it
+    // is intentionally left untouched here; it is zeroed once at power-on in
+    // the constructor.
 }
 
 } // namespace mapperbus::core

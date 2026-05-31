@@ -14,6 +14,10 @@ namespace {
 // "MBST" — MapperBus STate. Bump kStateVersion on any layout change.
 constexpr std::array<Byte, 4> kStateMagic = {'M', 'B', 'S', 'T'};
 constexpr std::uint32_t kStateVersion = 1;
+
+[[nodiscard]] std::string battery_path_for(const std::string& rom_path) {
+    return std::filesystem::path(rom_path).replace_extension(".sav").string();
+}
 } // namespace
 
 Emulator::Emulator() : cpu_(bus_) {
@@ -71,10 +75,34 @@ Result<void> Emulator::load_cartridge(const std::string& path) {
     ppu_.set_region(region_);
     apu_.set_region(region_);
 
+    rom_path_ = path;
+
+    // Auto-load a sibling .sav for battery-backed carts (best effort).
+    if (cartridge_->has_battery()) {
+        const std::string sav = battery_path_for(rom_path_);
+        if (std::filesystem::exists(sav)) {
+            auto loaded = load_battery_ram(sav);
+            if (!loaded) {
+                logger::warn("Failed to load battery save: {}", loaded.error());
+            } else {
+                logger::info("Loaded battery save: {}", sav);
+            }
+        }
+    }
+
     return {};
 }
 
 void Emulator::unload_cartridge() {
+    // Persist battery-backed RAM before tearing the cartridge down.
+    if (cartridge_ && cartridge_->has_battery() && !rom_path_.empty()) {
+        auto saved = save_battery_ram(battery_path_for(rom_path_));
+        if (!saved) {
+            logger::warn("Failed to write battery save: {}", saved.error());
+        }
+    }
+    rom_path_.clear();
+
     cartridge_.reset();
     bus_.connect_cartridge(nullptr);
     ppu_.connect_cartridge(nullptr);
@@ -228,6 +256,39 @@ Result<void> Emulator::load_state_from_file(const std::string& path) {
     if (!load_state(blob)) {
         return std::unexpected("Save-state is invalid or does not match the loaded ROM: " + path);
     }
+    return {};
+}
+
+Result<void> Emulator::save_battery_ram(const std::string& path) const {
+    if (!cartridge_ || !cartridge_->has_battery()) {
+        return {}; // Nothing to persist.
+    }
+    const std::span<const Byte> ram = cartridge_->battery_ram();
+    if (ram.empty()) {
+        return {};
+    }
+    std::ofstream file(path, std::ios::binary);
+    if (!file) {
+        return std::unexpected("Failed to open battery save for writing: " + path);
+    }
+    file.write(reinterpret_cast<const char*>(ram.data()), static_cast<std::streamsize>(ram.size()));
+    if (!file) {
+        return std::unexpected("Failed to write battery save: " + path);
+    }
+    return {};
+}
+
+Result<void> Emulator::load_battery_ram(const std::string& path) {
+    if (!cartridge_) {
+        return std::unexpected("No cartridge loaded");
+    }
+    std::ifstream file(path, std::ios::binary);
+    if (!file) {
+        return std::unexpected("Failed to open battery save: " + path);
+    }
+    std::vector<Byte> data((std::istreambuf_iterator<char>(file)),
+                           std::istreambuf_iterator<char>());
+    cartridge_->set_battery_ram(data);
     return {};
 }
 

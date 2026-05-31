@@ -1,5 +1,7 @@
 #pragma once
 
+#include <span>
+
 #include "core/types.hpp"
 
 namespace mapperbus::core {
@@ -27,6 +29,14 @@ class Mapper {
     // Immutable ROM data is never serialized.
     virtual void save_state(StateWriter&) const {}
     virtual void load_state(StateReader&) {}
+
+    // Battery-backed PRG-RAM ($6000-$7FFF). Mappers without persistent RAM
+    // return an empty span; the cartridge only persists this when the iNES
+    // header marks the board as battery-backed.
+    [[nodiscard]] virtual std::span<const Byte> battery_ram() const {
+        return {};
+    }
+    virtual void set_battery_ram(std::span<const Byte> /*data*/) {}
 
     virtual bool irq_pending() const {
         return false;

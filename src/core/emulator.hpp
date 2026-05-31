@@ -40,6 +40,16 @@ class Emulator {
     [[nodiscard]] Result<void> save_state_to_file(const std::string& path) const;
     [[nodiscard]] Result<void> load_state_from_file(const std::string& path);
 
+    /// True when a battery-backed cartridge is loaded (its PRG-RAM persists).
+    [[nodiscard]] bool has_battery() const {
+        return cartridge_ && cartridge_->has_battery();
+    }
+    /// Writes battery-backed PRG-RAM to a .sav file. No-op (success) when the
+    /// cartridge is not battery-backed.
+    [[nodiscard]] Result<void> save_battery_ram(const std::string& path) const;
+    /// Loads battery-backed PRG-RAM from a .sav file into the cartridge.
+    [[nodiscard]] Result<void> load_battery_ram(const std::string& path);
+
     [[nodiscard]] const FrameBuffer& frame_buffer() const {
         return ppu_.frame_buffer();
     }
@@ -83,6 +93,7 @@ class Emulator {
     void wire_apu();
     void clock_expansion_audio(uint32_t cycles);
 
+    std::string rom_path_;
     Region region_ = Region::NTSC;
     MemoryBus bus_;
     Cpu cpu_;

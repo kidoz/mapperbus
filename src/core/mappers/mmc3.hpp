@@ -34,6 +34,8 @@ class Mmc3 : public Mapper {
     void clock_irq_counter() override;
     void save_state(StateWriter& writer) const override;
     void load_state(StateReader& reader) override;
+    std::span<const Byte> battery_ram() const override;
+    void set_battery_ram(std::span<const Byte> data) override;
 
   private:
     void update_prg_banks();
