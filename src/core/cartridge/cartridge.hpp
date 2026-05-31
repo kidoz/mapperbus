@@ -58,6 +58,9 @@ class Cartridge {
     void clock_irq_counter() {
         mapper_->clock_irq_counter();
     }
+    void on_ppu_frame_start() {
+        mapper_->on_ppu_frame_start();
+    }
     [[nodiscard]] bool has_expansion_audio() const {
         return mapper_->has_expansion_audio();
     }

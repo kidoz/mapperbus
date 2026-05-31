@@ -44,6 +44,11 @@ class Mapper {
     virtual void acknowledge_irq() {}
     virtual void clock_irq_counter() {}
 
+    // Called by the PPU at the start of each rendered frame (pre-render
+    // scanline) while rendering is enabled. MMC5 uses it to reset its
+    // in-frame scanline IRQ counter; other mappers ignore it.
+    virtual void on_ppu_frame_start() {}
+
     // Expansion audio support (Famicom cartridges only)
     virtual bool has_expansion_audio() const {
         return false;

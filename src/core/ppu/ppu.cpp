@@ -208,6 +208,9 @@ void Ppu::step(uint32_t cpu_cycles) {
         if (pre_render && cycle_ == 1) {
             ppustatus_ &= ~0xE0;
             frame_ready_ = false;
+            if (rendering && cartridge_ != nullptr) {
+                cartridge_->on_ppu_frame_start();
+            }
         }
 
         // Clock mapper IRQ counter (A12 rising edge, cycle 260)

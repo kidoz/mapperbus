@@ -66,32 +66,95 @@ Mmc5::Mmc5(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte
 void Mmc5::reset() {
     prg_mode_ = 3;
     prg_banks_.fill(0);
-    prg_banks_[4] = num_prg_8k_ - 1; // Last bank at $E000
+    prg_banks_[4] = static_cast<uint8_t>((num_prg_8k_ - 1) & 0x7F); // $5117: last bank
+    chr_mode_ = 3;
     chr_banks_1k_.fill(0);
     pulse1_ = {};
     pulse2_ = {};
     pcm_output_ = 0;
     audio_cycle_ = 0;
+    irq_target_ = 0;
+    irq_scanline_ = 0;
+    irq_enabled_ = false;
+    irq_pending_ = false;
+    in_frame_ = false;
 }
+
+namespace {
+// Per PRG mode, for each of the four 8 KB CPU slots ($8000/$A000/$C000/$E000):
+// which $511x register controls it, the region size in 8 KB units, and the
+// slot's sub-index within that region.
+constexpr uint8_t kPrgReg[4][4] = {{4, 4, 4, 4}, {2, 2, 4, 4}, {2, 2, 3, 4}, {1, 2, 3, 4}};
+constexpr uint8_t kPrgSize[4][4] = {{4, 4, 4, 4}, {2, 2, 2, 2}, {2, 2, 1, 1}, {1, 1, 1, 1}};
+constexpr uint8_t kPrgSub[4][4] = {{0, 1, 2, 3}, {0, 1, 0, 1}, {0, 1, 0, 0}, {0, 0, 0, 0}};
+} // namespace
 
 Byte Mmc5::read_prg(Address addr) {
     if (addr >= 0x6000 && addr < 0x8000) {
-        return exram_[addr - 0x6000];
+        const uint32_t bank = (prg_banks_[0] & 0x07) % num_prg_ram_8k_;
+        return prg_ram_[bank * 0x2000 + (addr - 0x6000)];
     }
     if (addr < 0x8000)
         return 0;
 
-    // Mode 3: four 8KB banks
-    uint8_t bank_idx = (addr - 0x8000) / 0x2000;
-    uint8_t bank = prg_banks_[bank_idx + 1] % num_prg_8k_;
-    uint32_t offset = static_cast<uint32_t>(bank) * 0x2000 + ((addr - 0x8000) % 0x2000);
-    return prg_rom_[offset % prg_rom_.size()];
+    const uint8_t slot = static_cast<uint8_t>((addr - 0x8000) / 0x2000);
+    const uint32_t in_bank = (addr - 0x8000) & 0x1FFF;
+    const uint8_t reg_index = kPrgReg[prg_mode_][slot];
+    const uint8_t size8k = kPrgSize[prg_mode_][slot];
+    const uint8_t sub = kPrgSub[prg_mode_][slot];
+    const uint8_t reg = prg_banks_[reg_index];
+
+    // $5117 is always ROM; $5114-$5116 use bit7 to select ROM vs PRG-RAM.
+    const bool is_rom = (reg_index == 4) || (reg & 0x80) != 0;
+    if (is_rom) {
+        uint32_t bank8k = (reg & 0x7F) & ~static_cast<uint32_t>(size8k - 1);
+        bank8k += sub;
+        const uint32_t offset = bank8k * 0x2000 + in_bank;
+        return prg_rom_.empty() ? 0 : prg_rom_[offset % prg_rom_.size()];
+    }
+    const uint32_t bank = (reg & 0x07) % num_prg_ram_8k_;
+    return prg_ram_[bank * 0x2000 + in_bank];
 }
 
 void Mmc5::write_prg(Address addr, Byte value) {
     if (addr >= 0x6000 && addr < 0x8000) {
-        exram_[addr - 0x6000] = value;
+        const uint32_t bank = (prg_banks_[0] & 0x07) % num_prg_ram_8k_;
+        prg_ram_[bank * 0x2000 + (addr - 0x6000)] = value;
+        return;
     }
+    if (addr < 0x8000)
+        return;
+
+    // Writes to a ROM-mapped window are ignored; a RAM-mapped window is writable.
+    const uint8_t slot = static_cast<uint8_t>((addr - 0x8000) / 0x2000);
+    const uint8_t reg_index = kPrgReg[prg_mode_][slot];
+    if (reg_index == 4) {
+        return; // $5117 region is always ROM
+    }
+    const uint8_t reg = prg_banks_[reg_index];
+    if ((reg & 0x80) != 0) {
+        return; // ROM-mapped
+    }
+    const uint32_t in_bank = (addr - 0x8000) & 0x1FFF;
+    const uint32_t bank = (reg & 0x07) % num_prg_ram_8k_;
+    prg_ram_[bank * 0x2000 + in_bank] = value;
+}
+
+void Mmc5::clock_irq_counter() {
+    // Driven once per rendered scanline (PPU dot 260). The in-frame flag is
+    // armed by on_ppu_frame_start at the top of each rendered frame.
+    in_frame_ = true;
+    ++irq_scanline_;
+    if (irq_scanline_ == irq_target_ && irq_target_ != 0) {
+        if (irq_enabled_) {
+            irq_pending_ = true;
+        }
+    }
+}
+
+void Mmc5::on_ppu_frame_start() {
+    irq_scanline_ = 0;
+    in_frame_ = true;
 }
 
 bool Mmc5::maps_prg(Address addr) const {
@@ -99,16 +162,39 @@ bool Mmc5::maps_prg(Address addr) const {
 }
 
 bool Mmc5::maps_expansion(Address addr) const {
-    return addr == 0x5015;
+    return addr >= 0x5000 && addr <= 0x5FFF;
 }
 
 Byte Mmc5::read_chr(Address addr) {
     if (use_chr_ram_)
         return chr_ram_[addr % 0x2000];
-    uint8_t bank_idx = (addr / 0x0400) & 0x07;
-    uint32_t offset = static_cast<uint32_t>(chr_banks_1k_[bank_idx]) * 0x0400 + (addr % 0x0400);
     if (chr_rom_.empty())
         return 0;
+
+    addr &= 0x1FFF;
+    uint32_t offset = 0;
+    switch (chr_mode_) {
+    case 0: { // single 8 KB bank ($5127)
+        offset = static_cast<uint32_t>(chr_banks_1k_[7]) * 0x2000 + addr;
+        break;
+    }
+    case 1: { // two 4 KB banks ($5123 / $5127)
+        const uint16_t bank = (addr < 0x1000) ? chr_banks_1k_[3] : chr_banks_1k_[7];
+        offset = static_cast<uint32_t>(bank) * 0x1000 + (addr & 0x0FFF);
+        break;
+    }
+    case 2: { // four 2 KB banks ($5121/$5123/$5125/$5127)
+        static constexpr std::array<uint8_t, 4> kRegs = {1, 3, 5, 7};
+        const uint16_t bank = chr_banks_1k_[kRegs[addr / 0x0800]];
+        offset = static_cast<uint32_t>(bank) * 0x0800 + (addr & 0x07FF);
+        break;
+    }
+    default: { // mode 3: eight 1 KB banks
+        const uint8_t idx = static_cast<uint8_t>((addr / 0x0400) & 0x07);
+        offset = static_cast<uint32_t>(chr_banks_1k_[idx]) * 0x0400 + (addr & 0x03FF);
+        break;
+    }
+    }
     return chr_rom_[offset % chr_rom_.size()];
 }
 
@@ -129,6 +215,14 @@ Byte Mmc5::read_expansion(Address addr) {
             status |= 0x01;
         if (pulse2_.length_counter > 0)
             status |= 0x02;
+        return status;
+    }
+    // $5204: Scanline IRQ status (bit7 in-frame, bit6 pending); read clears it.
+    if (addr == 0x5204) {
+        Byte status = 0;
+        status |= in_frame_ ? 0x40 : 0x00;
+        status |= irq_pending_ ? 0x80 : 0x00;
+        irq_pending_ = false;
         return status;
     }
     return 0;
@@ -191,24 +285,37 @@ void Mmc5::write_expansion(Address addr, Byte value) {
             pulse2_.length_counter = 0;
         break;
 
-    // PRG banking
+    // PRG/CHR banking modes
     case 0x5100:
         prg_mode_ = value & 0x03;
         break;
+    case 0x5101:
+        chr_mode_ = value & 0x03;
+        break;
+
+    // PRG bank registers ($5114-$5117 keep bit7 = ROM/RAM select)
     case 0x5113:
-        prg_banks_[0] = value & 0x7F;
+        prg_banks_[0] = value;
         break;
     case 0x5114:
-        prg_banks_[1] = value & 0x7F;
+        prg_banks_[1] = value;
         break;
     case 0x5115:
-        prg_banks_[2] = value & 0x7F;
+        prg_banks_[2] = value;
         break;
     case 0x5116:
-        prg_banks_[3] = value & 0x7F;
+        prg_banks_[3] = value;
         break;
     case 0x5117:
-        prg_banks_[4] = value & 0x7F;
+        prg_banks_[4] = value;
+        break;
+
+    // Scanline IRQ
+    case 0x5203:
+        irq_target_ = value;
+        break;
+    case 0x5204:
+        irq_enabled_ = (value & 0x80) != 0;
         break;
 
     // CHR banking
