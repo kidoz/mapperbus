@@ -12,6 +12,8 @@ class Fds;
 class Ppu;
 class Apu;
 class Controller;
+class StateWriter;
+class StateReader;
 
 class MemoryBus {
   public:
@@ -19,6 +21,9 @@ class MemoryBus {
 
     Byte read(Address addr);
     void write(Address addr, Byte value);
+
+    void save_state(StateWriter& writer) const;
+    void load_state(StateReader& reader);
     bool poll_nmi();
     bool poll_irq();
     uint32_t take_dma_cycles();

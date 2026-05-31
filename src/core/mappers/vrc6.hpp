@@ -62,6 +62,8 @@ class Vrc6 : public Mapper {
     void clock_audio() override;
     float audio_output() const override;
     void write_expansion(Address addr, Byte value) override;
+    void save_state(StateWriter& writer) const override;
+    void load_state(StateReader& reader) override;
 
   private:
     void update_banks();

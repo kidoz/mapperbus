@@ -60,6 +60,12 @@ test_ring_buffer = executable('test-ring-buffer',
 )
 test('ring-buffer', test_ring_buffer)
 
+test_save_state = executable('test-save-state',
+    'unit/test_save_state.cpp',
+    dependencies : [mapperbus_core_dep, catch2_dep],
+)
+test('save-state', test_save_state)
+
 test_audio_pipeline = executable('test-audio-pipeline',
     'unit/test_audio_pipeline.cpp',
     dependencies : [mapperbus_core_dep, catch2_dep],

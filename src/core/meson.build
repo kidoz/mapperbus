@@ -11,6 +11,7 @@ core_sources = files(
     'cartridge/rom_crc32.cpp',
     'cartridge/rom_database.cpp',
     'mappers/mapper_registry.cpp',
+    'mappers/mapper_state.cpp',
     'mappers/nrom.cpp',
     'mappers/mmc1.cpp',
     'mappers/uxrom.cpp',

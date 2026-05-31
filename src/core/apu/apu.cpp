@@ -4,6 +4,8 @@
 #include <cmath>
 #include <numbers>
 
+#include "core/state/state.hpp"
+
 namespace mapperbus::core {
 
 namespace {
@@ -14,6 +16,40 @@ constexpr float kDenormalThreshold = 1.0e-15f;
     return std::abs(value) < kDenormalThreshold ? 0.0f : value;
 }
 } // namespace
+
+void Apu::save_state(StateWriter& writer) const {
+    writer.write(pulse1_);
+    writer.write(pulse2_);
+    writer.write(triangle_);
+    writer.write(noise_);
+    writer.write(dmc_);
+    writer.write(frame_counter_cycles_);
+    writer.write(frame_counter_mode_);
+    writer.write(frame_irq_inhibit_);
+    writer.write(frame_irq_pending_);
+    writer.write(dmc_stall_cycles_);
+}
+
+void Apu::load_state(StateReader& reader) {
+    reader.read(pulse1_);
+    reader.read(pulse2_);
+    reader.read(triangle_);
+    reader.read(noise_);
+    reader.read(dmc_);
+    reader.read(frame_counter_cycles_);
+    reader.read(frame_counter_mode_);
+    reader.read(frame_irq_inhibit_);
+    reader.read(frame_irq_pending_);
+    reader.read(dmc_stall_cycles_);
+    // Re-prime the output pipeline so stale filter/resampler history does not
+    // leak across a load. Channel state above fully determines future audio.
+    lp_filter_.reset();
+    hp_filter1_.reset();
+    hp_filter2_.reset();
+    biquad_lp_.reset();
+    biquad_hp1_.reset();
+    biquad_hp2_.reset();
+}
 
 // --- Envelope ---
 

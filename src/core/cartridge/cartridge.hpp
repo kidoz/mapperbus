@@ -8,6 +8,9 @@
 
 namespace mapperbus::core {
 
+class StateWriter;
+class StateReader;
+
 class Cartridge {
   public:
     [[nodiscard]] static Result<Cartridge> from_file(const std::string& path);
@@ -15,6 +18,9 @@ class Cartridge {
 
     Cartridge(Cartridge&&) = default;
     Cartridge& operator=(Cartridge&&) = default;
+
+    void save_state(StateWriter& writer) const;
+    void load_state(StateReader& reader);
 
     [[nodiscard]] Byte read_prg(Address addr);
     void write_prg(Address addr, Byte value);

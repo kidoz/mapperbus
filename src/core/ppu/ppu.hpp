@@ -8,6 +8,8 @@
 namespace mapperbus::core {
 
 class Cartridge;
+class StateWriter;
+class StateReader;
 
 class Ppu {
   public:
@@ -16,6 +18,9 @@ class Ppu {
     void set_region(Region region);
     void reset();
     void step(uint32_t cpu_cycles);
+
+    void save_state(StateWriter& writer) const;
+    void load_state(StateReader& reader);
 
     bool frame_ready() const {
         return frame_ready_;

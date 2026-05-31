@@ -312,6 +312,9 @@ template <typename T> class RingBuffer {
 using MemoryReader = std::function<Byte(Address)>;
 using ExpansionAudioSource = std::function<float()>;
 
+class StateWriter;
+class StateReader;
+
 class Apu {
   public:
     Apu();
@@ -319,6 +322,12 @@ class Apu {
 
     void reset();
     void step(uint32_t cpu_cycles);
+
+    /// Serializes channel + frame-counter + DMC state. The audio output
+    /// pipeline (filters, resampler, ring buffer) is intentionally not
+    /// serialized; it re-primes within a frame after a load.
+    void save_state(StateWriter& writer) const;
+    void load_state(StateReader& reader);
 
     Byte read_register(Address addr);
     void write_register(Address addr, Byte value);

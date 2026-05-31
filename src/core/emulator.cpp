@@ -1,8 +1,20 @@
 #include "core/emulator.hpp"
 
+#include <array>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
+
 #include "core/logger.hpp"
+#include "core/state/state.hpp"
 
 namespace mapperbus::core {
+
+namespace {
+// "MBST" — MapperBus STate. Bump kStateVersion on any layout change.
+constexpr std::array<Byte, 4> kStateMagic = {'M', 'B', 'S', 'T'};
+constexpr std::uint32_t kStateVersion = 1;
+} // namespace
 
 Emulator::Emulator() : cpu_(bus_) {
     wire_apu();
@@ -123,6 +135,100 @@ void Emulator::step_frame() {
 
     // Flush BlipBuffer at end of frame
     apu_.end_audio_frame();
+}
+
+std::vector<Byte> Emulator::save_state() const {
+    StateWriter writer;
+    writer.write_array(kStateMagic);
+    writer.write(kStateVersion);
+    const std::uint16_t mapper_number =
+        cartridge_ ? cartridge_->header().mapper_number : std::uint16_t{0xFFFF};
+    writer.write(mapper_number);
+    writer.write(region_);
+
+    cpu_.save_state(writer);
+    ppu_.save_state(writer);
+    apu_.save_state(writer);
+    bus_.save_state(writer);
+    controller_.save_state(writer);
+    fds_.save_state(writer);
+    if (cartridge_) {
+        cartridge_->save_state(writer);
+    }
+    return writer.take();
+}
+
+bool Emulator::load_state(std::span<const Byte> data) {
+    StateReader reader(data);
+
+    std::array<Byte, 4> magic{};
+    reader.read_array(magic);
+    if (!reader.ok() || magic != kStateMagic) {
+        logger::warn("Save-state rejected: bad magic");
+        return false;
+    }
+    if (reader.read<std::uint32_t>() != kStateVersion) {
+        logger::warn("Save-state rejected: unsupported version");
+        return false;
+    }
+    const auto mapper_number = reader.read<std::uint16_t>();
+    const std::uint16_t expected =
+        cartridge_ ? cartridge_->header().mapper_number : std::uint16_t{0xFFFF};
+    if (!reader.ok() || mapper_number != expected) {
+        logger::warn("Save-state rejected: mapper mismatch (state does not match loaded ROM)");
+        return false;
+    }
+    const auto region = reader.read<Region>();
+    if (!reader.ok()) {
+        return false;
+    }
+
+    // Header validated — region affects subsystem timing tables, so apply it
+    // before deserializing the timing-dependent subsystems.
+    set_region(region);
+
+    cpu_.load_state(reader);
+    ppu_.load_state(reader);
+    apu_.load_state(reader);
+    bus_.load_state(reader);
+    controller_.load_state(reader);
+    fds_.load_state(reader);
+    if (cartridge_) {
+        cartridge_->load_state(reader);
+    }
+
+    if (!reader.ok()) {
+        logger::error("Save-state load failed: blob truncated; machine state may be inconsistent");
+        return false;
+    }
+    return true;
+}
+
+Result<void> Emulator::save_state_to_file(const std::string& path) const {
+    const std::vector<Byte> blob = save_state();
+    std::ofstream file(path, std::ios::binary);
+    if (!file) {
+        return std::unexpected("Failed to open save-state file for writing: " + path);
+    }
+    file.write(reinterpret_cast<const char*>(blob.data()),
+               static_cast<std::streamsize>(blob.size()));
+    if (!file) {
+        return std::unexpected("Failed to write save-state file: " + path);
+    }
+    return {};
+}
+
+Result<void> Emulator::load_state_from_file(const std::string& path) {
+    std::ifstream file(path, std::ios::binary);
+    if (!file) {
+        return std::unexpected("Failed to open save-state file: " + path);
+    }
+    std::vector<Byte> blob((std::istreambuf_iterator<char>(file)),
+                           std::istreambuf_iterator<char>());
+    if (!load_state(blob)) {
+        return std::unexpected("Save-state is invalid or does not match the loaded ROM: " + path);
+    }
+    return {};
 }
 
 } // namespace mapperbus::core

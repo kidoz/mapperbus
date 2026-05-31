@@ -2,8 +2,59 @@
 
 #include "core/cartridge/cartridge.hpp"
 #include "core/ppu/loopy.hpp"
+#include "core/state/state.hpp"
 
 namespace mapperbus::core {
+
+void Ppu::save_state(StateWriter& writer) const {
+    writer.write(scanline_);
+    writer.write(cycle_);
+    writer.write(frame_ready_);
+    writer.write_array(oam_);
+    writer.write_array(vram_);
+    writer.write_array(palette_);
+    writer.write(ppuctrl_);
+    writer.write(ppumask_);
+    writer.write(ppumask_render_);
+    writer.write(pending_ppumask_render_);
+    writer.write(ppumask_render_delay_);
+    writer.write(ppumask_render_pending_);
+    writer.write(ppustatus_);
+    writer.write(oam_addr_);
+    writer.write(read_buffer_);
+    writer.write(nmi_pending_);
+    writer.write(reg_v_);
+    writer.write(reg_t_);
+    writer.write(fine_x_);
+    writer.write(write_latch_);
+    writer.write_array(visible_sprites_);
+    writer.write(visible_sprite_count_);
+}
+
+void Ppu::load_state(StateReader& reader) {
+    reader.read(scanline_);
+    reader.read(cycle_);
+    reader.read(frame_ready_);
+    reader.read_array(oam_);
+    reader.read_array(vram_);
+    reader.read_array(palette_);
+    reader.read(ppuctrl_);
+    reader.read(ppumask_);
+    reader.read(ppumask_render_);
+    reader.read(pending_ppumask_render_);
+    reader.read(ppumask_render_delay_);
+    reader.read(ppumask_render_pending_);
+    reader.read(ppustatus_);
+    reader.read(oam_addr_);
+    reader.read(read_buffer_);
+    reader.read(nmi_pending_);
+    reader.read(reg_v_);
+    reader.read(reg_t_);
+    reader.read(fine_x_);
+    reader.read(write_latch_);
+    reader.read_array(visible_sprites_);
+    reader.read(visible_sprite_count_);
+}
 
 namespace {
 

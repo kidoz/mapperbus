@@ -35,6 +35,8 @@ class Sunsoft5b : public Mapper {
     }
     void clock_audio() override;
     float audio_output() const override;
+    void save_state(StateWriter& writer) const override;
+    void load_state(StateReader& reader) override;
 
   private:
     std::vector<Byte> prg_rom_;

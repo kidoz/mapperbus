@@ -4,6 +4,9 @@
 
 namespace mapperbus::core {
 
+class StateWriter;
+class StateReader;
+
 class Mapper {
   public:
     virtual ~Mapper() = default;
@@ -18,6 +21,12 @@ class Mapper {
 
     virtual MirrorMode mirror_mode() const = 0;
     virtual void reset() = 0;
+
+    // Save-state hooks. Each mapper serializes its mutable runtime state
+    // (bank registers, latches, IRQ counters, CHR/PRG RAM, audio phase).
+    // Immutable ROM data is never serialized.
+    virtual void save_state(StateWriter&) const {}
+    virtual void load_state(StateReader&) {}
 
     virtual bool irq_pending() const {
         return false;

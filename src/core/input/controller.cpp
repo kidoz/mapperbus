@@ -1,6 +1,20 @@
 #include "core/input/controller.hpp"
 
+#include "core/state/state.hpp"
+
 namespace mapperbus::core {
+
+void Controller::save_state(StateWriter& writer) const {
+    writer.write_array(button_state_);
+    writer.write_array(shift_register_);
+    writer.write(strobe_);
+}
+
+void Controller::load_state(StateReader& reader) {
+    reader.read_array(button_state_);
+    reader.read_array(shift_register_);
+    reader.read(strobe_);
+}
 
 void Controller::set_button_state(int player, Button button, bool pressed) {
     if (player < 0 || player > 1)

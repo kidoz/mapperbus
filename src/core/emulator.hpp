@@ -1,7 +1,10 @@
 #pragma once
 
+#include <cstdint>
 #include <memory>
+#include <span>
 #include <string>
+#include <vector>
 
 #include "core/apu/apu.hpp"
 #include "core/apu/audio_settings.hpp"
@@ -24,6 +27,18 @@ class Emulator {
     void unload_cartridge();
     void reset();
     void step_frame();
+
+    /// Serializes the full machine state into a self-describing blob
+    /// (magic + version + mapper id + region, then each subsystem).
+    [[nodiscard]] std::vector<Byte> save_state() const;
+    /// Restores state from a blob produced by save_state(). Returns false if
+    /// the blob is malformed, the version is unknown, or the mapper id does
+    /// not match the currently loaded cartridge (state is left untouched on a
+    /// header mismatch).
+    [[nodiscard]] bool load_state(std::span<const Byte> data);
+
+    [[nodiscard]] Result<void> save_state_to_file(const std::string& path) const;
+    [[nodiscard]] Result<void> load_state_from_file(const std::string& path);
 
     [[nodiscard]] const FrameBuffer& frame_buffer() const {
         return ppu_.frame_buffer();

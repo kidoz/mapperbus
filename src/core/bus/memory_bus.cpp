@@ -5,12 +5,25 @@
 #include "core/fds/fds.hpp"
 #include "core/input/controller.hpp"
 #include "core/ppu/ppu.hpp"
+#include "core/state/state.hpp"
 
 namespace mapperbus::core {
 
 MemoryBus::MemoryBus() {
     ram_.fill(0);
     update_mappings();
+}
+
+void MemoryBus::save_state(StateWriter& writer) const {
+    writer.write_array(ram_);
+    writer.write(open_bus_);
+    writer.write(dma_cycles_);
+}
+
+void MemoryBus::load_state(StateReader& reader) {
+    reader.read_array(ram_);
+    reader.read(open_bus_);
+    reader.read(dma_cycles_);
 }
 
 Byte MemoryBus::read(Address addr) {

@@ -6,11 +6,20 @@
 #include "core/cartridge/rom_crc32.hpp"
 #include "core/cartridge/rom_database.hpp"
 #include "core/mappers/mapper_registry.hpp"
+#include "core/state/state.hpp"
 
 namespace mapperbus::core {
 
 Cartridge::Cartridge(INesHeader header, std::unique_ptr<Mapper> mapper)
     : header_(header), mapper_(std::move(mapper)) {}
+
+void Cartridge::save_state(StateWriter& writer) const {
+    mapper_->save_state(writer);
+}
+
+void Cartridge::load_state(StateReader& reader) {
+    mapper_->load_state(reader);
+}
 
 Result<Cartridge> Cartridge::from_file(const std::string& path) {
     std::ifstream file(path, std::ios::binary);

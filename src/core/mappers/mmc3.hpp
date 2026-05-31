@@ -32,6 +32,8 @@ class Mmc3 : public Mapper {
     }
 
     void clock_irq_counter() override;
+    void save_state(StateWriter& writer) const override;
+    void load_state(StateReader& reader) override;
 
   private:
     void update_prg_banks();

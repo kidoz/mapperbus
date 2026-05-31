@@ -7,6 +7,9 @@
 
 namespace mapperbus::core {
 
+class StateWriter;
+class StateReader;
+
 enum class Button : std::uint8_t {
     A = 0x01,
     B = 0x02,
@@ -23,6 +26,9 @@ class Controller {
     void set_button_state(int player, Button button, bool pressed);
     Byte read(int player);
     void write(Byte value);
+
+    void save_state(StateWriter& writer) const;
+    void load_state(StateReader& reader);
 
   private:
     std::array<Byte, 2> button_state_{};

@@ -4,10 +4,31 @@
 
 #include "core/bus/memory_bus.hpp"
 #include "core/logger.hpp"
+#include "core/state/state.hpp"
 
 namespace mapperbus::core {
 
 Cpu::Cpu(MemoryBus& bus) : bus_(bus) {}
+
+void Cpu::save_state(StateWriter& writer) const {
+    writer.write(a_);
+    writer.write(x_);
+    writer.write(y_);
+    writer.write(sp_);
+    writer.write(pc_);
+    writer.write(status_);
+    writer.write(total_cycles_);
+}
+
+void Cpu::load_state(StateReader& reader) {
+    reader.read(a_);
+    reader.read(x_);
+    reader.read(y_);
+    reader.read(sp_);
+    reader.read(pc_);
+    reader.read(status_);
+    reader.read(total_cycles_);
+}
 
 void Cpu::reset() {
     a_ = 0;

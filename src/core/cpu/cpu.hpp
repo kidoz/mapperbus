@@ -7,6 +7,8 @@
 namespace mapperbus::core {
 
 class MemoryBus;
+class StateWriter;
+class StateReader;
 
 class Cpu {
   public:
@@ -14,6 +16,9 @@ class Cpu {
 
     void reset();
     uint32_t step();
+
+    void save_state(StateWriter& writer) const;
+    void load_state(StateReader& reader);
     [[nodiscard]] uint64_t cycles() const {
         return total_cycles_;
     }

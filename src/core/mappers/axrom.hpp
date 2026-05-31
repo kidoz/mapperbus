@@ -22,6 +22,8 @@ class Axrom : public Mapper {
     void write_chr(Address addr, Byte value) override;
     MirrorMode mirror_mode() const override;
     void reset() override;
+    void save_state(StateWriter& writer) const override;
+    void load_state(StateReader& reader) override;
 
   private:
     std::vector<Byte> prg_rom_;
