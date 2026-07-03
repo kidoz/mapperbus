@@ -153,14 +153,15 @@ void TriangleChannel::clock_linear_counter() {
 }
 
 uint8_t TriangleChannel::output() const {
-    if (!enabled)
-        return 0;
-    if (length_counter == 0)
-        return 0;
-    if (linear_counter == 0)
-        return 0;
-    if (timer_period < 2)
+    // Real hardware silences the triangle by halting the sequencer (see
+    // clock_timer); the DAC keeps outputting the last sequence value rather
+    // than dropping to 0. Gating to 0 here pops on every note boundary, which
+    // is audible as beat-synchronized crackling in triangle-heavy music.
+    if (timer_period < 2 && length_counter > 0 && linear_counter > 0) {
+        // Ultrasonic and running: the sequencer steps above Nyquist; output
+        // the mid-scale average instead of an aliased tone.
         return 7;
+    }
     return kTriangleTable[sequence_pos];
 }
 

@@ -108,7 +108,10 @@ struct PulseChannel {
 struct TriangleChannel {
     uint16_t timer_period = 0;
     uint16_t timer = 0;
-    uint8_t sequence_pos = 0;
+    // Start at the zero-output step (kTriangleTable[15] == 0): the DAC holds
+    // the current sequence value even while the channel is gated, so a fresh
+    // APU must begin on a silent step to avoid a power-on DC offset.
+    uint8_t sequence_pos = 15;
     uint8_t length_counter = 0;
     uint8_t linear_counter = 0;
     uint8_t linear_counter_reload = 0;
