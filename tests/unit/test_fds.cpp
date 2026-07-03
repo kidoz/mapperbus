@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <catch2/catch_test_macros.hpp>
 #include <cstddef>
 #include <cstdint>
@@ -146,4 +147,78 @@ TEST_CASE("FDS state serializes drive + disk position", "[fds][state]") {
     fds.step(149);
     restored.step(149);
     REQUIRE(restored.read(0x4031) == fds.read(0x4031));
+}
+
+// --- FDS audio ---
+
+namespace {
+
+// Load a square wavetable (32 low, 32 high) and start the wave unit.
+void start_fds_square(Fds& fds, uint16_t frequency, Byte gain_reg) {
+    fds.write(0x4089, 0x80); // open wavetable for writes
+    for (Address i = 0; i < 64; ++i) {
+        fds.write(0x4040 + i, (i < 32) ? 0x00 : 0x3F);
+    }
+    fds.write(0x4089, 0x00);                                  // close, full master volume
+    fds.write(0x4080, gain_reg);                              // volume gain / envelope
+    fds.write(0x4082, static_cast<Byte>(frequency & 0xFF));   // freq low
+    fds.write(0x4083, static_cast<Byte>(frequency >> 8));     // freq high, enable
+}
+
+float fds_peak(Fds& fds, int cycles) {
+    float peak = 0.0f;
+    for (int i = 0; i < cycles; ++i) {
+        fds.clock_audio();
+        peak = std::max(peak, fds.audio_output());
+    }
+    return peak;
+}
+
+} // namespace
+
+TEST_CASE("FDS wave frequency matches hardware formula", "[fds][audio]") {
+    // f = CPU * F / (65536 * 64): F = $400 -> 436.96 Hz.
+    Fds fds;
+    fds.reset();
+    start_fds_square(fds, 0x0400, 0xA0); // envelope disabled, gain 32
+    // Count rising transitions across one emulated second.
+    int rising = 0;
+    bool high = false;
+    for (int i = 0; i < 1789773; ++i) {
+        fds.clock_audio();
+        const float s = fds.audio_output();
+        if (!high && s > 0.05f) {
+            high = true;
+            ++rising;
+        } else if (high && s < 0.02f) {
+            high = false;
+        }
+    }
+    REQUIRE(rising > 430);
+    REQUIRE(rising < 444);
+}
+
+TEST_CASE("FDS volume envelope ramps the gain down", "[fds][audio]") {
+    Fds fds;
+    fds.reset();
+    // Envelope enabled, decrease, speed 4: one step per
+    // 8 * (4+1) * (0xE8+1) = 9320 cycles; 32 steps ~ 300k cycles.
+    start_fds_square(fds, 0x0400, 0x04);
+    const float early = fds_peak(fds, 20000);
+    REQUIRE(early > 0.0f);
+    fds_peak(fds, 400000); // let the ramp finish
+    const float late = fds_peak(fds, 20000);
+    REQUIRE(late == 0.0f);
+}
+
+TEST_CASE("FDS envelope halt freezes the ramp", "[fds][audio]") {
+    Fds fds;
+    fds.reset();
+    start_fds_square(fds, 0x0400, 0x04);
+    fds.write(0x4083, 0x44); // wave enabled (bit7 clear), envelopes halted (bit6)
+    const float early = fds_peak(fds, 20000);
+    fds_peak(fds, 400000);
+    const float late = fds_peak(fds, 20000);
+    REQUIRE(early > 0.0f);
+    REQUIRE(late > 0.9f * early); // gain unchanged while halted
 }

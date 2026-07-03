@@ -62,6 +62,7 @@ class Fds {
 
   private:
     void reset_audio();
+    void clock_envelopes();
     void reset_drive();
     [[nodiscard]] Byte read_drive_register(Address reg);
     void write_drive_register(Address reg, Byte value);
@@ -119,6 +120,13 @@ class Fds {
     bool sound_enabled_ = false;
     bool envelope_disabled_ = false;
 
+    // Envelopes ($4080/$4084 bit 7 clear = auto ramp toward 0 or 32)
+    uint8_t vol_env_speed_ = 0; // 6-bit speed E; period = 8*(E+1)*(master+1)
+    bool vol_env_increase_ = false;
+    uint32_t vol_env_timer_ = 0;      // CPU-cycle tick counter
+    bool env_halt_ = false;           // $4083 bit 6 freezes both envelopes
+    uint8_t master_env_speed_ = 0xE8; // $408A, 0xE8 at power-on
+
     // Modulation unit
     std::array<int8_t, 32> mod_table_{}; // Modulation table
     uint16_t mod_frequency_ = 0;         // 12-bit modulation frequency
@@ -127,6 +135,10 @@ class Fds {
     int8_t mod_counter_ = 0;
     bool mod_enabled_ = false;
     uint8_t mod_depth_ = 0; // 6-bit depth
+    bool mod_env_disabled_ = false;
+    uint8_t mod_env_speed_ = 0;
+    bool mod_env_increase_ = false;
+    uint32_t mod_env_timer_ = 0;
 };
 
 } // namespace mapperbus::core

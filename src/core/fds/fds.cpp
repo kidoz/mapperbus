@@ -67,6 +67,15 @@ void Fds::save_state(StateWriter& writer) const {
     writer.write(mod_counter_);
     writer.write(mod_enabled_);
     writer.write(mod_depth_);
+    writer.write(vol_env_speed_);
+    writer.write(vol_env_increase_);
+    writer.write(vol_env_timer_);
+    writer.write(env_halt_);
+    writer.write(master_env_speed_);
+    writer.write(mod_env_disabled_);
+    writer.write(mod_env_speed_);
+    writer.write(mod_env_increase_);
+    writer.write(mod_env_timer_);
 }
 
 void Fds::load_state(StateReader& reader) {
@@ -117,6 +126,15 @@ void Fds::load_state(StateReader& reader) {
     reader.read(mod_counter_);
     reader.read(mod_enabled_);
     reader.read(mod_depth_);
+    reader.read(vol_env_speed_);
+    reader.read(vol_env_increase_);
+    reader.read(vol_env_timer_);
+    reader.read(env_halt_);
+    reader.read(master_env_speed_);
+    reader.read(mod_env_disabled_);
+    reader.read(mod_env_speed_);
+    reader.read(mod_env_increase_);
+    reader.read(mod_env_timer_);
 }
 
 void Fds::reset_audio() {
@@ -130,6 +148,11 @@ void Fds::reset_audio() {
     master_volume_ = 0;
     sound_enabled_ = false;
     envelope_disabled_ = false;
+    vol_env_speed_ = 0;
+    vol_env_increase_ = false;
+    vol_env_timer_ = 0;
+    env_halt_ = false;
+    master_env_speed_ = 0xE8; // NESdev: $408A power-on default
     mod_table_.fill(0);
     mod_frequency_ = 0;
     mod_accumulator_ = 0;
@@ -137,6 +160,10 @@ void Fds::reset_audio() {
     mod_counter_ = 0;
     mod_enabled_ = false;
     mod_depth_ = 0;
+    mod_env_disabled_ = false;
+    mod_env_speed_ = 0;
+    mod_env_increase_ = false;
+    mod_env_timer_ = 0;
 }
 
 void Fds::reset_drive() {
@@ -399,6 +426,9 @@ void Fds::write(Address addr, Byte value) {
     switch (addr) {
     case 0x80: // $4080: Volume envelope
         envelope_disabled_ = (value & 0x80) != 0;
+        vol_env_increase_ = (value & 0x40) != 0;
+        vol_env_speed_ = value & 0x3F;
+        vol_env_timer_ = 0; // Any write restarts the envelope's tick timer.
         if (envelope_disabled_) {
             volume_envelope_ = value & 0x3F;
         }
@@ -410,14 +440,21 @@ void Fds::write(Address addr, Byte value) {
 
     case 0x83: // $4083: Wave frequency high + flags
         wave_frequency_ = (wave_frequency_ & 0x00FF) | (static_cast<uint16_t>(value & 0x0F) << 8);
+        env_halt_ = (value & 0x40) != 0;
         sound_enabled_ = (value & 0x80) == 0;
         if (!sound_enabled_) {
+            // Halting the wave unit resets its phase to sample 0.
             wave_accumulator_ = 0;
+            wave_position_ = 0;
         }
         break;
 
     case 0x84: // $4084: Modulation envelope
-        if (value & 0x80) {
+        mod_env_disabled_ = (value & 0x80) != 0;
+        mod_env_increase_ = (value & 0x40) != 0;
+        mod_env_speed_ = value & 0x3F;
+        mod_env_timer_ = 0; // Any write restarts the envelope's tick timer.
+        if (mod_env_disabled_) {
             mod_depth_ = value & 0x3F;
         }
         break;
@@ -442,9 +479,9 @@ void Fds::write(Address addr, Byte value) {
 
     case 0x88: // $4088: Modulation table write
         if (!mod_enabled_) {
-            // Write to both halves of the mod table
-            mod_table_[mod_position_ & 0x1F] = static_cast<int8_t>(value & 0x07);
-            mod_table_[(mod_position_ + 1) & 0x1F] = static_cast<int8_t>(value & 0x07);
+            // One 3-bit entry per write; the 6-bit playback position covers
+            // each entry twice, so the position advances by 2.
+            mod_table_[(mod_position_ >> 1) & 0x1F] = static_cast<int8_t>(value & 0x07);
             mod_position_ = (mod_position_ + 2) & 0x3F;
         }
         break;
@@ -454,43 +491,103 @@ void Fds::write(Address addr, Byte value) {
         wave_write_enabled_ = (value & 0x80) != 0;
         break;
 
+    case 0x8A: // $408A: Master envelope speed (does not reset envelope timers)
+        master_env_speed_ = value;
+        break;
+
     default:
         break;
     }
 }
 
-void Fds::clock_audio() {
-    if (!sound_enabled_ || wave_frequency_ == 0)
+void Fds::clock_envelopes() {
+    // $4083 bit 6 freezes both envelope timers. Each envelope also stops
+    // while its own register's bit 7 selects direct-gain mode. Envelopes are
+    // not gated by the wave unit or the wave-write mode.
+    if (env_halt_)
         return;
 
-    // Advance modulation
-    if (mod_enabled_ && mod_frequency_ > 0) {
-        mod_accumulator_ += mod_frequency_;
-        if (mod_accumulator_ >= 0x10000) {
-            mod_accumulator_ &= 0xFFFF;
-            // Read mod table and adjust counter
-            int8_t mod_value = mod_table_[mod_position_ >> 1];
-            mod_position_ = (mod_position_ + 1) & 0x3F;
-            if (mod_value == 4) {
-                mod_counter_ = 0;
-            } else {
-                mod_counter_ += mod_value;
-                mod_counter_ =
-                    static_cast<int8_t>(std::clamp(static_cast<int>(mod_counter_), -64, 63));
+    const uint32_t master = static_cast<uint32_t>(master_env_speed_) + 1;
+
+    if (!envelope_disabled_) {
+        const uint32_t period = 8 * (static_cast<uint32_t>(vol_env_speed_) + 1) * master;
+        if (++vol_env_timer_ >= period) {
+            vol_env_timer_ = 0;
+            if (vol_env_increase_) {
+                if (volume_envelope_ < 32)
+                    ++volume_envelope_;
+            } else if (volume_envelope_ > 0) {
+                --volume_envelope_;
             }
         }
     }
 
-    // Apply modulation to frequency
-    int freq = wave_frequency_;
-    if (mod_depth_ > 0 && mod_enabled_) {
-        int mod_offset = mod_counter_ * mod_depth_;
-        freq += mod_offset / 64;
-        if (freq < 0)
-            freq = 0;
-        if (freq > 0xFFF)
-            freq = 0xFFF;
+    if (!mod_env_disabled_) {
+        const uint32_t period = 8 * (static_cast<uint32_t>(mod_env_speed_) + 1) * master;
+        if (++mod_env_timer_ >= period) {
+            mod_env_timer_ = 0;
+            if (mod_env_increase_) {
+                if (mod_depth_ < 32)
+                    ++mod_depth_;
+            } else if (mod_depth_ > 0) {
+                --mod_depth_;
+            }
+        }
     }
+}
+
+void Fds::clock_audio() {
+    clock_envelopes();
+
+    // The mod unit runs independently of the wave unit; only $4087 bit 7
+    // halts it.
+    if (mod_enabled_ && mod_frequency_ > 0) {
+        mod_accumulator_ += mod_frequency_;
+        if (mod_accumulator_ >= 0x10000) {
+            mod_accumulator_ &= 0xFFFF;
+            // 3-bit table entries decode to counter deltas; entry 4 resets.
+            static constexpr int8_t kModDelta[8] = {0, 1, 2, 4, 0, -4, -2, -1};
+            uint8_t entry = static_cast<uint8_t>(mod_table_[mod_position_ >> 1]) & 0x07;
+            if (entry == 4) {
+                mod_counter_ = 0;
+            } else {
+                // 7-bit two's-complement counter: wraps -64 <-> +63.
+                int wrapped = mod_counter_ + kModDelta[entry];
+                if (wrapped > 63)
+                    wrapped -= 128;
+                else if (wrapped < -64)
+                    wrapped += 128;
+                mod_counter_ = static_cast<int8_t>(wrapped);
+            }
+            mod_position_ = (mod_position_ + 1) & 0x3F;
+        }
+    }
+
+    if (!sound_enabled_ || wave_write_enabled_ || wave_frequency_ == 0)
+        return;
+
+    // Hardware pitch modulation (NESdev FDS audio): the offset is relative
+    // to the wave frequency, with exact truncation/rounding steps. The
+    // counter biases pitch even while the mod unit is halted ($4085 detune).
+    int temp = mod_counter_ * (mod_depth_ & 0x3F);
+    int remainder = temp & 0xF;
+    temp >>= 4;
+    if (remainder > 0 && (temp & 0x80) == 0) {
+        temp += (mod_counter_ < 0) ? -1 : 2;
+    }
+    while (temp >= 192)
+        temp -= 256;
+    while (temp < -64)
+        temp += 256;
+    temp = wave_frequency_ * temp;
+    remainder = temp & 0x3F;
+    temp >>= 6;
+    if (remainder >= 32)
+        ++temp;
+
+    int freq = wave_frequency_ + temp;
+    if (freq <= 0)
+        return;
 
     // Advance wave accumulator
     wave_accumulator_ += static_cast<uint32_t>(freq);
@@ -501,18 +598,19 @@ void Fds::clock_audio() {
 }
 
 float Fds::audio_output() const {
-    if (!sound_enabled_ || wave_write_enabled_)
-        return 0.0f;
-
+    // The DAC holds the current sample while the wave unit is halted or the
+    // table is open for writes; gating to 0 here would pop on every table
+    // swap (same failure mode as the triangle DAC).
     uint8_t sample = wavetable_[wave_position_] & 0x3F; // 6-bit sample (0-63)
-    uint8_t vol = volume_envelope_ & 0x3F;
+    // Gains 33-63 are clamped to 32 by the DAC.
+    uint8_t vol = std::min<uint8_t>(volume_envelope_ & 0x3F, 32);
 
-    // Master volume attenuation
-    static constexpr float kVolumeScale[] = {1.0f, 2.0f / 3.0f, 1.0f / 3.0f, 1.0f / 4.0f};
+    // Master volume attenuation: 2 / (2 + m)
+    static constexpr float kVolumeScale[] = {1.0f, 2.0f / 3.0f, 0.5f, 0.4f};
     float volume_mul = kVolumeScale[master_volume_ & 0x03];
 
     // Output: sample * volume * master_volume, normalized to ~0.0 - 0.15
-    float output = static_cast<float>(sample * vol) / (63.0f * 63.0f);
+    float output = (static_cast<float>(sample) / 63.0f) * (static_cast<float>(vol) / 32.0f);
     return output * volume_mul * 0.15f;
 }
 
