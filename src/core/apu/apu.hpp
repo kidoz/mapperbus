@@ -206,6 +206,30 @@ struct BiquadFilter {
     static BiquadFilter butterworth_highpass(float cutoff_hz, float sample_rate);
 };
 
+// One complete output filter chain. Each output stream (mono/left, right)
+// needs its own instance: IIR state shared across interleaved streams
+// corrupts both (wrong effective cutoffs, cross-channel bleed).
+struct FilterChain {
+    // First-order chain (HardwareAccurate mode): LP -> HP1 -> HP2
+    AudioFilter lp;
+    AudioFilter hp1;
+    AudioFilter hp2;
+
+    // Second-order Butterworth chain (Enhanced mode)
+    BiquadFilter biquad_lp;
+    BiquadFilter biquad_hp1;
+    BiquadFilter biquad_hp2;
+
+    void reset() {
+        lp.reset();
+        hp1.reset();
+        hp2.reset();
+        biquad_lp.reset();
+        biquad_hp1.reset();
+        biquad_hp2.reset();
+    }
+};
+
 // Pre-computed mixer lookup tables (NESdev wiki formulas)
 struct MixerTables {
     std::array<float, 31> pulse{}; // pulse1 + pulse2 (0-30)
@@ -257,7 +281,10 @@ template <typename T> class RingBuffer {
         return true;
     }
 
-    size_t try_push(std::span<const T> values) {
+    /// Push up to values.size() items; `granularity` rounds a partial
+    /// accept down to whole frames so an overflow can never split an
+    /// interleaved stereo pair (which would permanently swap L/R).
+    size_t try_push(std::span<const T> values, size_t granularity = 1) {
         if (values.empty())
             return 0;
 
@@ -272,7 +299,9 @@ template <typename T> class RingBuffer {
         if (used >= capacity)
             return 0;
 
-        const size_t count = std::min(values.size(), capacity - used);
+        size_t count = std::min(values.size(), capacity - used);
+        if (granularity > 1)
+            count -= count % granularity;
         for (size_t i = 0; i < count; ++i) {
             buffer_[(w + i) & mask_] = values[i];
         }
@@ -371,7 +400,7 @@ class Apu {
     void clock_dmc();
     float mix() const;
     StereoSample mix_stereo() const;
-    float filter(float sample);
+    float filter(float sample, size_t chain);
     void emit_sample();
     float tpdf_dither();
 
@@ -393,15 +422,8 @@ class Apu {
     bool frame_irq_inhibit_ = false;
     bool frame_irq_pending_ = false;
 
-    // First-order filter chain: LP (14 kHz) -> HP1 -> HP2
-    AudioFilter lp_filter_;
-    AudioFilter hp_filter1_;
-    AudioFilter hp_filter2_;
-
-    // Second-order biquad filter chain (Enhanced mode)
-    BiquadFilter biquad_lp_;
-    BiquadFilter biquad_hp1_;
-    BiquadFilter biquad_hp2_;
+    // Output filter chains: [0] = mono/left, [1] = right.
+    std::array<FilterChain, 2> filters_;
 
     // Mixer lookup tables
     MixerTables mixer_;
@@ -414,14 +436,18 @@ class Apu {
     std::array<float, 4> sample_history_{};
     float current_mix_ = 0.0f;
 
-    // BlipBuffer resampling state
+    // BlipBuffer resampling state. PseudoStereo runs a second buffer fed
+    // with per-cycle right-channel deltas; the mono buffer carries left.
     BlipBuffer blip_buffer_;
+    BlipBuffer blip_buffer_r_;
     float prev_blip_mix_ = 0.0f;
+    float prev_blip_mix_r_ = 0.0f;
     uint32_t blip_cycle_offset_ = 0;
 
     // Output ring buffer
     RingBuffer<float> output_ring_{16384};
     std::vector<float> blip_read_buffer_;
+    std::vector<float> blip_read_buffer_r_;
     std::vector<float> frame_output_buffer_;
 
     // DMC CPU stall cycles (4 per memory read)

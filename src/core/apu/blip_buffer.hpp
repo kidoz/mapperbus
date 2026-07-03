@@ -55,8 +55,9 @@ class BlipBuffer {
     double fraction_ = 0.0; // Fractional clock accumulator
 
     // Running integrator: buffer stores differentiated BLEP;
-    // read_samples() integrates via this accumulator.
-    float integrator_ = 0.0f;
+    // read_samples() integrates via this accumulator. Double precision:
+    // float rounding leaks audible DC over long unfiltered sessions.
+    double integrator_ = 0.0;
 };
 
 } // namespace mapperbus::core

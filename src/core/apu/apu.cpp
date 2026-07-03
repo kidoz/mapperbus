@@ -43,12 +43,13 @@ void Apu::load_state(StateReader& reader) {
     reader.read(dmc_stall_cycles_);
     // Re-prime the output pipeline so stale filter/resampler history does not
     // leak across a load. Channel state above fully determines future audio.
-    lp_filter_.reset();
-    hp_filter1_.reset();
-    hp_filter2_.reset();
-    biquad_lp_.reset();
-    biquad_hp1_.reset();
-    biquad_hp2_.reset();
+    for (auto& chain : filters_)
+        chain.reset();
+    blip_buffer_.reset();
+    blip_buffer_r_.reset();
+    prev_blip_mix_ = 0.0f;
+    prev_blip_mix_r_ = 0.0f;
+    blip_cycle_offset_ = 0;
 }
 
 // --- Envelope ---
@@ -305,7 +306,8 @@ void MixerTables::compute() {
 Apu::Apu() : Apu(AudioSettings{}) {}
 
 Apu::Apu(const AudioSettings& settings)
-    : settings_(settings), blip_read_buffer_(kBlipFrameBufferSamples) {
+    : settings_(settings), blip_read_buffer_(kBlipFrameBufferSamples),
+      blip_read_buffer_r_(kBlipFrameBufferSamples) {
     pulse1_.sweep.is_pulse1 = true;
     pulse2_.sweep.is_pulse1 = false;
 
@@ -319,35 +321,39 @@ Apu::Apu(const AudioSettings& settings)
 
     // Configure BlipBuffer
     blip_buffer_.set_rates(cpu_clock_, static_cast<double>(sample_rate_));
+    blip_buffer_r_.set_rates(cpu_clock_, static_cast<double>(sample_rate_));
 }
 
 void Apu::init_filters() {
     auto fs = static_cast<float>(sample_rate_);
 
-    // First-order filters (HardwareAccurate mode)
-    lp_filter_.alpha = AudioFilter::lp_alpha(14000.0f, fs);
-    lp_filter_.is_highpass = false;
+    // Identity biquad (b0=1); a default-constructed BiquadFilter outputs 0.
+    BiquadFilter passthrough;
+    passthrough.b0 = 1.0f;
 
-    if (settings_.filter_profile == FilterProfile::NES) {
-        hp_filter1_.alpha = AudioFilter::hp_alpha(37.0f, fs);
-        hp_filter2_.alpha = AudioFilter::hp_alpha(667.0f, fs);
-    } else {
-        // Famicom profile
-        hp_filter1_.alpha = AudioFilter::hp_alpha(90.0f, fs);
-        hp_filter2_.alpha = AudioFilter::hp_alpha(440.0f, fs);
-    }
-    hp_filter1_.is_highpass = true;
-    hp_filter2_.is_highpass = true;
-
-    // Biquad filters (Enhanced mode)
-    biquad_lp_ = BiquadFilter::butterworth_lowpass(14000.0f, fs);
-
-    if (settings_.filter_profile == FilterProfile::NES) {
-        biquad_hp1_ = BiquadFilter::butterworth_highpass(37.0f, fs);
-        biquad_hp2_ = BiquadFilter::butterworth_highpass(667.0f, fs);
-    } else {
-        biquad_hp1_ = BiquadFilter::butterworth_highpass(90.0f, fs);
-        biquad_hp2_ = BiquadFilter::butterworth_highpass(440.0f, fs);
+    for (auto& chain : filters_) {
+        if (settings_.filter_profile == FilterProfile::NES) {
+            // NES front loader chain: HP 90 Hz -> HP 440 Hz -> LP 14 kHz.
+            chain.lp.alpha = AudioFilter::lp_alpha(14000.0f, fs);
+            chain.hp1.alpha = AudioFilter::hp_alpha(90.0f, fs);
+            chain.hp2.alpha = AudioFilter::hp_alpha(440.0f, fs);
+            chain.biquad_lp = BiquadFilter::butterworth_lowpass(14000.0f, fs);
+            chain.biquad_hp1 = BiquadFilter::butterworth_highpass(90.0f, fs);
+            chain.biquad_hp2 = BiquadFilter::butterworth_highpass(440.0f, fs);
+        } else {
+            // Famicom: a single ~37 Hz high-pass; the 14 kHz LP and second
+            // HP are NES-side circuitry (alpha = 1 makes either form an
+            // identity).
+            chain.lp.alpha = 1.0f;
+            chain.hp1.alpha = AudioFilter::hp_alpha(37.0f, fs);
+            chain.hp2.alpha = 1.0f;
+            chain.biquad_lp = passthrough;
+            chain.biquad_hp1 = BiquadFilter::butterworth_highpass(37.0f, fs);
+            chain.biquad_hp2 = passthrough;
+        }
+        chain.lp.is_highpass = false;
+        chain.hp1.is_highpass = true;
+        chain.hp2.is_highpass = true;
     }
 }
 
@@ -367,18 +373,16 @@ void Apu::reset() {
     cycle_accumulator_ = 0.0;
     current_mix_ = 0.0f;
     sample_history_.fill(0.0f);
-    lp_filter_.reset();
-    hp_filter1_.reset();
-    hp_filter2_.reset();
-    biquad_lp_.reset();
-    biquad_hp1_.reset();
-    biquad_hp2_.reset();
+    for (auto& chain : filters_)
+        chain.reset();
     drc_rate_ = 1.0;
     dmc_stall_cycles_ = 0;
     output_ring_.reset();
     prev_blip_mix_ = 0.0f;
+    prev_blip_mix_r_ = 0.0f;
     blip_cycle_offset_ = 0;
     blip_buffer_.reset();
+    blip_buffer_r_.reset();
     dither_state_ = 1;
     prev_dither_random_ = 0.0f;
 }
@@ -407,6 +411,7 @@ void Apu::set_region(Region region) {
     base_cycles_per_sample_ = cpu_clock_ / static_cast<double>(sample_rate_);
     cycles_per_sample_ = base_cycles_per_sample_ / drc_rate_;
     blip_buffer_.set_rates(cpu_clock_, static_cast<double>(sample_rate_));
+    blip_buffer_r_.set_rates(cpu_clock_, static_cast<double>(sample_rate_));
 }
 
 void Apu::set_sample_rate(int sample_rate) {
@@ -415,6 +420,7 @@ void Apu::set_sample_rate(int sample_rate) {
     cycles_per_sample_ = base_cycles_per_sample_ / drc_rate_;
     init_filters();
     blip_buffer_.set_rates(cpu_clock_, static_cast<double>(sample_rate_));
+    blip_buffer_r_.set_rates(cpu_clock_, static_cast<double>(sample_rate_));
 }
 
 void Apu::apply_settings(const AudioSettings& settings) {
@@ -423,20 +429,19 @@ void Apu::apply_settings(const AudioSettings& settings) {
     base_cycles_per_sample_ = cpu_clock_ / static_cast<double>(sample_rate_);
     cycles_per_sample_ = base_cycles_per_sample_;
     init_filters();
-    lp_filter_.reset();
-    hp_filter1_.reset();
-    hp_filter2_.reset();
-    biquad_lp_.reset();
-    biquad_hp1_.reset();
-    biquad_hp2_.reset();
+    for (auto& chain : filters_)
+        chain.reset();
     cycle_accumulator_ = 0.0;
     current_mix_ = 0.0f;
     sample_history_.fill(0.0f);
     output_ring_.reset();
     prev_blip_mix_ = 0.0f;
+    prev_blip_mix_r_ = 0.0f;
     blip_cycle_offset_ = 0;
     blip_buffer_.reset();
     blip_buffer_.set_rates(cpu_clock_, static_cast<double>(sample_rate_));
+    blip_buffer_r_.reset();
+    blip_buffer_r_.set_rates(cpu_clock_, static_cast<double>(sample_rate_));
     dither_state_ = 1;
     prev_dither_random_ = 0.0f;
     drc_rate_ = 1.0;
@@ -478,11 +483,13 @@ void Apu::update_rate_control(float buffer_fill_ratio) {
     if (settings_.resampling == ResamplingMode::BlipBuffer) {
         double adjusted_rate = static_cast<double>(sample_rate_) * drc_rate_;
         blip_buffer_.set_rates(cpu_clock_, adjusted_rate);
+        blip_buffer_r_.set_rates(cpu_clock_, adjusted_rate);
     }
 }
 
 void Apu::step(uint32_t cpu_cycles) {
     bool use_blip = settings_.resampling == ResamplingMode::BlipBuffer;
+    bool stereo_blip = use_blip && settings_.stereo_mode == StereoMode::PseudoStereo;
 
     for (uint32_t i = 0; i < cpu_cycles; ++i) {
         pulse1_.clock_timer();
@@ -521,10 +528,24 @@ void Apu::step(uint32_t cpu_cycles) {
         ++frame_counter_cycles_;
         clock_frame_counter();
 
-        // Compute current mix
-        current_mix_ = mix();
-
-        if (use_blip) {
+        if (stereo_blip) {
+            // Each side is its own band-limited stream fed with per-cycle
+            // deltas; deriving stereo after resampling would collapse to a
+            // per-frame constant (channel state only changes in here).
+            StereoSample st = mix_stereo();
+            float delta_l = st.left - prev_blip_mix_;
+            if (std::abs(delta_l) > 1e-8f) {
+                blip_buffer_.add_delta(blip_cycle_offset_, delta_l);
+                prev_blip_mix_ = st.left;
+            }
+            float delta_r = st.right - prev_blip_mix_r_;
+            if (std::abs(delta_r) > 1e-8f) {
+                blip_buffer_r_.add_delta(blip_cycle_offset_, delta_r);
+                prev_blip_mix_r_ = st.right;
+            }
+            ++blip_cycle_offset_;
+        } else if (use_blip) {
+            current_mix_ = mix();
             // BlipBuffer mode: record amplitude deltas at cycle-precise timestamps
             float delta = current_mix_ - prev_blip_mix_;
             if (std::abs(delta) > 1e-8f) {
@@ -533,6 +554,7 @@ void Apu::step(uint32_t cpu_cycles) {
             }
             ++blip_cycle_offset_;
         } else {
+            current_mix_ = mix();
             // Cubic Hermite mode
             cycle_accumulator_ += 1.0;
             if (cycle_accumulator_ >= cycles_per_sample_) {
@@ -549,7 +571,10 @@ void Apu::end_audio_frame() {
     if (blip_cycle_offset_ == 0)
         return;
 
+    bool stereo = settings_.stereo_mode == StereoMode::PseudoStereo;
     blip_buffer_.end_frame(blip_cycle_offset_);
+    if (stereo)
+        blip_buffer_r_.end_frame(blip_cycle_offset_);
     blip_cycle_offset_ = 0;
 
     // Read all available samples from BlipBuffer, filter, and push to ring
@@ -561,19 +586,12 @@ void Apu::end_audio_frame() {
     int to_read = std::min(avail, static_cast<int>(blip_read_buffer_.size()));
     int count = blip_buffer_.read_samples(blip_read_buffer_.data(), to_read);
 
-    bool stereo = settings_.stereo_mode == StereoMode::PseudoStereo;
     frame_output_buffer_.clear();
-    for (int i = 0; i < count; ++i) {
-        float sample = filter(blip_read_buffer_[static_cast<size_t>(i)]);
-        if (settings_.dithering_enabled) {
-            sample += tpdf_dither();
-        }
-        if (stereo) {
-            // BlipBuffer operates on the mixed signal. Derive stereo by
-            // computing per-channel panned mix from current channel outputs.
-            auto st = mix_stereo();
-            float left = filter(st.left);
-            float right = filter(st.right);
+    if (stereo) {
+        count = std::min(count, blip_buffer_r_.read_samples(blip_read_buffer_r_.data(), to_read));
+        for (int i = 0; i < count; ++i) {
+            float left = filter(blip_read_buffer_[static_cast<size_t>(i)], 0);
+            float right = filter(blip_read_buffer_r_[static_cast<size_t>(i)], 1);
             if (settings_.dithering_enabled) {
                 const float dither = tpdf_dither();
                 left += dither;
@@ -581,11 +599,18 @@ void Apu::end_audio_frame() {
             }
             frame_output_buffer_.push_back(left);
             frame_output_buffer_.push_back(right);
-        } else {
+        }
+        output_ring_.try_push(std::span<const float>(frame_output_buffer_), 2);
+    } else {
+        for (int i = 0; i < count; ++i) {
+            float sample = filter(blip_read_buffer_[static_cast<size_t>(i)], 0);
+            if (settings_.dithering_enabled) {
+                sample += tpdf_dither();
+            }
             frame_output_buffer_.push_back(sample);
         }
+        output_ring_.try_push(std::span<const float>(frame_output_buffer_));
     }
-    output_ring_.try_push(std::span<const float>(frame_output_buffer_));
 }
 
 void Apu::emit_sample() {
@@ -610,17 +635,19 @@ void Apu::emit_sample() {
 
     if (settings_.stereo_mode == StereoMode::PseudoStereo) {
         auto stereo = mix_stereo();
-        float left = filter(stereo.left);
-        float right = filter(stereo.right);
+        float left = filter(stereo.left, 0);
+        float right = filter(stereo.right, 1);
         if (settings_.dithering_enabled) {
             const float dither = tpdf_dither();
             left += dither;
             right += dither;
         }
-        output_ring_.try_push(left);
-        output_ring_.try_push(right);
+        // Push the pair atomically: splitting it on overflow would swap
+        // L/R for the rest of the session.
+        const std::array<float, 2> pair{left, right};
+        output_ring_.try_push(std::span<const float>(pair), 2);
     } else {
-        sample = filter(sample);
+        sample = filter(sample, 0);
         if (settings_.dithering_enabled) {
             sample += tpdf_dither();
         }
@@ -686,6 +713,11 @@ void Apu::clock_half_frame() {
     pulse2_.sweep.clock(pulse2_.timer_period);
 }
 
+// Famicom resistor divider k = 15/(15+47) ~= 0.242, expressed relative to
+// the internal mix (k / (1-k)) so ResistanceModeled only attenuates the
+// expansion side.
+constexpr float kExpansionDividerGain = 0.242f / 0.758f;
+
 float Apu::mix() const {
     // Lookup-table based non-linear mixing (NESdev wiki)
     uint8_t pulse_idx = static_cast<uint8_t>(std::min(30, pulse1_.output() + pulse2_.output()));
@@ -698,10 +730,11 @@ float Apu::mix() const {
     if (expansion_audio_) {
         float exp = expansion_audio_();
         if (settings_.expansion_mixing == ExpansionMixingMode::ResistanceModeled) {
-            // Famicom resistor divider: expansion port ~47kOhm, internal ~15kOhm
-            // Ratio k = 15/(15+47) ~= 0.242
-            constexpr float kExpansionRatio = 0.242f;
-            return internal * (1.0f - kExpansionRatio) + exp * kExpansionRatio;
+            // Famicom resistor divider (expansion ~47k, internal ~15k),
+            // renormalized so the internal mix stays at unity: per-mapper
+            // gains already encode "APU-relative level", so scaling both
+            // sides would apply the same physics twice.
+            return internal + exp * kExpansionDividerGain;
         }
         return internal + exp;
     }
@@ -721,7 +754,7 @@ StereoSample Apu::mix_stereo() const {
     if (expansion_audio_) {
         exp_val = expansion_audio_();
         if (settings_.expansion_mixing == ExpansionMixingMode::ResistanceModeled) {
-            exp_val *= 0.242f;
+            exp_val *= kExpansionDividerGain;
         }
     }
 
@@ -735,21 +768,22 @@ StereoSample Apu::mix_stereo() const {
     return {left, right};
 }
 
-float Apu::filter(float sample) {
+float Apu::filter(float sample, size_t chain_idx) {
     if (settings_.filter_mode == FilterMode::Unfiltered) {
         return sample;
     }
 
+    FilterChain& chain = filters_[chain_idx];
     if (settings_.filter_mode == FilterMode::Enhanced) {
         // Second-order Butterworth filter chain
-        sample = biquad_lp_.apply(sample);
-        sample = biquad_hp1_.apply(sample);
-        sample = biquad_hp2_.apply(sample);
+        sample = chain.biquad_lp.apply(sample);
+        sample = chain.biquad_hp1.apply(sample);
+        sample = chain.biquad_hp2.apply(sample);
     } else {
         // First-order IIR filter chain (NES hardware accurate)
-        sample = lp_filter_.apply(sample);
-        sample = hp_filter1_.apply(sample);
-        sample = hp_filter2_.apply(sample);
+        sample = chain.lp.apply(sample);
+        sample = chain.hp1.apply(sample);
+        sample = chain.hp2.apply(sample);
     }
     return sample;
 }

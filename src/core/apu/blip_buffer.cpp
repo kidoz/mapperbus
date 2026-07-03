@@ -21,7 +21,10 @@ void BlipBuffer::init_kernel() {
         double phase_offset = static_cast<double>(phase) / kPhaseCount;
         double sum = 0.0;
         for (int tap = 0; tap < kKernelSize; ++tap) {
-            double t = static_cast<double>(tap - kKernelSize / 2) + phase_offset;
+            // Output sample n at distance (n - pos) from a delta at
+            // fractional position pos: t = (tap - center) - phase, so a
+            // larger phase shifts the impulse later, not earlier.
+            double t = static_cast<double>(tap - kKernelSize / 2) - phase_offset;
 
             // Sinc function
             double sinc = 1.0;
@@ -64,9 +67,12 @@ void BlipBuffer::add_delta(uint32_t clock_offset, float delta) {
     double frac = sample_pos - output_index;
     int phase = static_cast<int>(frac * kPhaseCount) & (kPhaseCount - 1);
 
-    // Scatter the delta across nearby output samples using the sinc kernel
+    // Scatter the delta across nearby output samples using the sinc kernel.
+    // The write is centered half a kernel ahead of the nominal position: a
+    // constant latency that keeps pre-ringing taps of frame-start deltas
+    // from wrapping behind the read pointer into already-cleared slots.
     for (int tap = 0; tap < kKernelSize; ++tap) {
-        int buf_idx = (sample_offset_ + output_index + tap - kKernelSize / 2) & buffer_mask_;
+        int buf_idx = (sample_offset_ + output_index + tap) & buffer_mask_;
         buffer_[buf_idx] += delta * kernel_[phase][tap];
     }
 }
@@ -89,8 +95,8 @@ int BlipBuffer::read_samples(float* dest, int max_samples) {
         int idx = (sample_offset_ + i) & buffer_mask_;
         // Integrate: the buffer holds the differentiated BLEP signal;
         // accumulating produces the actual band-limited waveform.
-        integrator_ += buffer_[idx];
-        dest[i] = integrator_;
+        integrator_ += static_cast<double>(buffer_[idx]);
+        dest[i] = static_cast<float>(integrator_);
         buffer_[idx] = 0.0f; // Clear after reading
     }
     sample_offset_ = (sample_offset_ + count) & buffer_mask_;
@@ -103,7 +109,7 @@ void BlipBuffer::reset() {
     sample_offset_ = 0;
     sample_count_ = 0;
     fraction_ = 0.0;
-    integrator_ = 0.0f;
+    integrator_ = 0.0;
 }
 
 } // namespace mapperbus::core
