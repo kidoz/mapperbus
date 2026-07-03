@@ -167,8 +167,18 @@ TEST_CASE("VRC7 produces audio for a keyed-on preset instrument", "[vrc7][audio]
 
 TEST_CASE("VRC7 key-off and max attenuation are silent", "[vrc7][audio]") {
     Vrc7 m(header_for(85, 32, 0), banked_prg(64), {});
-    // Volume 15 = fully attenuated.
+    // Volume 15 = -45 dB: effectively inaudible but not a hard zero (the
+    // old implementation special-cased it to full silence).
     key_on_vrc7(m, 0, 1, 15);
+    REQUIRE(run_vrc7_peak(m, 2000) < 1.0e-4f);
+
+    // Key-off: after the release envelope runs out the channel is idle and
+    // the cached output is exactly zero.
+    m.write_prg(0x9010, 0x20);
+    m.write_prg(0x9030, (4 << 1) | 0x01); // key-on bit cleared
+    // Release at RR=7 runs ~64 dB/s: ~0.75 s to the 48 dB cutoff. The FM
+    // core ticks once per 36 CPU cycles, so give it ~1 s of CPU cycles.
+    run_vrc7_peak(m, 1800000);
     REQUIRE(run_vrc7_peak(m, 2000) == 0.0f);
 }
 
@@ -194,7 +204,9 @@ TEST_CASE("VRC7 custom instrument changes the timbre", "[vrc7][audio]") {
     const std::uint64_t flat_sig = run_vrc7_signature(flat, 4000);
 
     Vrc7 shaped(header_for(85, 32, 0), banked_prg(64), {});
-    const uint8_t patch[8] = {0x21, 0x21, 0x10, 0x07, 0x00, 0x00, 0x00, 0x00};
+    // AR nibbles must be nonzero: attack rate 0 never opens the envelope
+    // (true OPLL behavior), which would leave both patches silent.
+    const uint8_t patch[8] = {0x21, 0x21, 0x10, 0x07, 0xF0, 0xF0, 0x00, 0x00};
     for (uint8_t i = 0; i < 8; ++i) {
         shaped.write_prg(0x9010, i);
         shaped.write_prg(0x9030, patch[i]);
