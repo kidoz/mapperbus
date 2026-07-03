@@ -56,9 +56,10 @@ class Mmc5 : public Mapper {
     void save_state(StateWriter& writer) const override;
     void load_state(StateReader& reader) override;
 
-    // Scanline IRQ ($5203/$5204)
+    // Scanline IRQ ($5203/$5204) and PCM IRQ ($5010); both are level IRQs
+    // cleared by reading their respective status register.
     bool irq_pending() const override {
-        return irq_pending_;
+        return irq_pending_ || (pcm_irq_enabled_ && pcm_irq_flag_);
     }
     void acknowledge_irq() override {
         irq_pending_ = false;
@@ -97,6 +98,9 @@ class Mmc5 : public Mapper {
     Mmc5Pulse pulse1_;
     Mmc5Pulse pulse2_;
     uint8_t pcm_output_ = 0;
+    bool pcm_read_mode_ = false;   // $5010 bit 0: PCM fed by $8000-$BFFF reads
+    bool pcm_irq_enabled_ = false; // $5010 bit 7
+    bool pcm_irq_flag_ = false;    // set by a $00 PCM sample; cleared by $5010 read
     uint32_t audio_cycle_ = 0;
 
     static constexpr std::array<std::array<uint8_t, 8>, 4> kDuty = {{

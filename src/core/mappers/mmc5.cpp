@@ -43,8 +43,8 @@ void Mmc5Pulse::clock_length() {
 uint8_t Mmc5Pulse::output() const {
     if (!enabled || length_counter == 0)
         return 0;
-    if (timer_period < 8)
-        return 0;
+    // No sweep unit: unlike the APU pulses, ultrasonic periods (< 8) are
+    // NOT silenced on the MMC5.
     static constexpr std::array<std::array<uint8_t, 8>, 4> kDuty = {{
         {0, 1, 0, 0, 0, 0, 0, 0},
         {0, 1, 1, 0, 0, 0, 0, 0},
@@ -74,6 +74,9 @@ void Mmc5::reset() {
     pulse1_ = {};
     pulse2_ = {};
     pcm_output_ = 0;
+    pcm_read_mode_ = false;
+    pcm_irq_enabled_ = false;
+    pcm_irq_flag_ = false;
     audio_cycle_ = 0;
     irq_target_ = 0;
     irq_scanline_ = 0;
@@ -108,14 +111,27 @@ Byte Mmc5::read_prg(Address addr) {
 
     // $5117 is always ROM; $5114-$5116 use bit7 to select ROM vs PRG-RAM.
     const bool is_rom = (reg_index == 4) || (reg & 0x80) != 0;
+    Byte value;
     if (is_rom) {
         uint32_t bank8k = (reg & 0x7F) & ~static_cast<uint32_t>(size8k - 1);
         bank8k += sub;
         const uint32_t offset = bank8k * 0x2000 + in_bank;
-        return prg_rom_.empty() ? 0 : prg_rom_[offset % prg_rom_.size()];
+        value = prg_rom_.empty() ? 0 : prg_rom_[offset % prg_rom_.size()];
+    } else {
+        const uint32_t bank = (reg & 0x07) % num_prg_ram_8k_;
+        value = prg_ram_[bank * 0x2000 + in_bank];
     }
-    const uint32_t bank = (reg & 0x07) % num_prg_ram_8k_;
-    return prg_ram_[bank * 0x2000 + in_bank];
+
+    // PCM read mode ($5010 bit 0): CPU reads from $8000-$BFFF feed the PCM
+    // DAC. A $00 sample is ignored and raises the PCM IRQ flag instead.
+    if (pcm_read_mode_ && addr < 0xC000) {
+        if (value == 0) {
+            pcm_irq_flag_ = true;
+        } else {
+            pcm_output_ = value;
+        }
+    }
+    return value;
 }
 
 void Mmc5::write_prg(Address addr, Byte value) {
@@ -210,6 +226,15 @@ MirrorMode Mmc5::mirror_mode() const {
 }
 
 Byte Mmc5::read_expansion(Address addr) {
+    // $5010: PCM mode/IRQ status (bit7 = PCM IRQ, bit0 = mode); read
+    // acknowledges the PCM IRQ.
+    if (addr == 0x5010) {
+        Byte status = pcm_read_mode_ ? 0x01 : 0x00;
+        if (pcm_irq_flag_)
+            status |= 0x80;
+        pcm_irq_flag_ = false;
+        return status;
+    }
     // $5015: Audio status
     if (addr == 0x5015) {
         Byte status = 0;
@@ -273,8 +298,20 @@ void Mmc5::write_expansion(Address addr, Byte value) {
         break;
 
     // PCM
+    case 0x5010:
+        pcm_read_mode_ = (value & 0x01) != 0;
+        pcm_irq_enabled_ = (value & 0x80) != 0;
+        break;
     case 0x5011:
-        pcm_output_ = value;
+        if (!pcm_read_mode_) {
+            // A $00 write is ignored (the DAC keeps its value) and raises
+            // the PCM IRQ flag. In read mode $5011 writes are ignored.
+            if (value == 0) {
+                pcm_irq_flag_ = true;
+            } else {
+                pcm_output_ = value;
+            }
+        }
         break;
 
     // Channel enable
@@ -356,13 +393,12 @@ void Mmc5::clock_audio() {
     pulse1_.clock_timer();
     pulse2_.clock_timer();
 
-    // Frame counter equivalent (~240 Hz quarter, ~120 Hz half)
+    // MMC5 has no frame counter: it clocks BOTH envelope and length at a
+    // fixed ~240 Hz (unlike the APU, which halves the length rate).
     ++audio_cycle_;
     if (audio_cycle_ % 7457 == 0) {
         pulse1_.clock_envelope();
         pulse2_.clock_envelope();
-    }
-    if (audio_cycle_ % 14913 == 0) {
         pulse1_.clock_length();
         pulse2_.clock_length();
     }
