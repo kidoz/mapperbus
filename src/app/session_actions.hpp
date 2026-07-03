@@ -32,6 +32,9 @@ class SessionActions {
     void set_region(core::Region region);
     core::Result<void> apply_audio_settings(const core::AudioSettings& settings);
     core::Result<void> set_upscaler(std::unique_ptr<platform::Upscaler> upscaler);
+    core::Result<void> save_state(int slot = 0);
+    core::Result<void> load_state(int slot = 0);
+    [[nodiscard]] std::string state_path(int slot = 0) const;
 
     TickResult tick();
     TickResult step_frame();

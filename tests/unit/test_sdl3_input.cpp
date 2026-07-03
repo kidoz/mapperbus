@@ -84,5 +84,17 @@ TEST_CASE("SDL3 scaler hotkeys map to runtime commands", "[sdl3][input]") {
     REQUIRE_FALSE(ignored);
 }
 
+TEST_CASE("SDL3 save-state hotkeys map to session commands", "[sdl3][input]") {
+    auto save = Sdl3Input::session_command_for_scancode(SDL_SCANCODE_F5);
+    REQUIRE(save.kind == Sdl3SessionCommandKind::SaveState);
+
+    auto load = Sdl3Input::session_command_for_scancode(SDL_SCANCODE_F7);
+    REQUIRE(load.kind == Sdl3SessionCommandKind::LoadState);
+
+    // F9 belongs to the scaler hotkeys and must stay out of the session set.
+    REQUIRE_FALSE(Sdl3Input::session_command_for_scancode(SDL_SCANCODE_F9));
+    REQUIRE_FALSE(Sdl3Input::session_command_for_scancode(SDL_SCANCODE_A));
+}
+
 } // namespace
 } // namespace mapperbus::frontend

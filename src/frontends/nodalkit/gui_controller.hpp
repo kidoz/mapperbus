@@ -77,6 +77,8 @@ class MapperBusGuiController {
     void step_frame();
     void reset_session();
     void power_cycle_session();
+    void save_session_state();
+    void load_session_state();
     void close_current_rom();
     [[nodiscard]] std::shared_ptr<nk::Widget> build_settings_dialog_shell();
     [[nodiscard]] std::shared_ptr<nk::Widget> build_settings_page_content();

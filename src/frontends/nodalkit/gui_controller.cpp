@@ -134,6 +134,9 @@ std::vector<nk::Menu> build_window_menus() {
              nk::MenuItem::action("Step Frame", "emu.step"),
              nk::MenuItem::action("Reset", "emu.reset"),
              nk::MenuItem::action("Power Cycle", "emu.power"),
+             nk::MenuItem::make_separator(),
+             nk::MenuItem::action("Save State", "emu.save-state"),
+             nk::MenuItem::action("Load State", "emu.load-state"),
          }},
         {"Settings",
          {
@@ -175,6 +178,11 @@ std::vector<nk::NativeMenu> build_native_menus(std::string_view app_name) {
              nk::NativeMenuItem::action("Step Frame", "emu.step"),
              nk::NativeMenuItem::action("Reset", "emu.reset"),
              nk::NativeMenuItem::action("Power Cycle", "emu.power"),
+             nk::NativeMenuItem::make_separator(),
+             nk::NativeMenuItem::action(
+                 "Save State", "emu.save-state", command_shortcut(nk::KeyCode::S)),
+             nk::NativeMenuItem::action(
+                 "Load State", "emu.load-state", command_shortcut(nk::KeyCode::L)),
          }},
         {"Settings",
          {
@@ -1041,6 +1049,36 @@ void MapperBusGuiController::power_cycle_session() {
     focus_game_surface();
 }
 
+void MapperBusGuiController::save_session_state() {
+    if (!actions_->snapshot().has_cartridge) {
+        set_message("No ROM loaded to save state from.");
+        return;
+    }
+
+    const auto result = actions_->save_state();
+    set_message(result ? "Saved state to " + basename_for_display(actions_->state_path()) + "."
+                       : result.error());
+    refresh_ui();
+    focus_game_surface();
+}
+
+void MapperBusGuiController::load_session_state() {
+    if (!actions_->snapshot().has_cartridge) {
+        set_message("No ROM loaded to load state into.");
+        return;
+    }
+
+    const auto result = actions_->load_state();
+    if (result) {
+        refresh_preview();
+        set_message("Loaded state from " + basename_for_display(actions_->state_path()) + ".");
+    } else {
+        set_message(result.error());
+    }
+    refresh_ui();
+    focus_game_surface();
+}
+
 void MapperBusGuiController::close_current_rom() {
     actions_->close_rom();
     frame_accumulator_ = std::chrono::nanoseconds{0};
@@ -1815,6 +1853,14 @@ void MapperBusGuiController::handle_menu_action(std::string_view action) {
     }
     if (action == "emu.power") {
         power_cycle_session();
+        return;
+    }
+    if (action == "emu.save-state") {
+        save_session_state();
+        return;
+    }
+    if (action == "emu.load-state") {
+        load_session_state();
         return;
     }
     if (action == "settings.open") {

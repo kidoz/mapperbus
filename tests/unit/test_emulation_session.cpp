@@ -1,5 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
+#include <filesystem>
 #include <memory>
+#include <vector>
 
 #include "../support/test_rom.hpp"
 #include "app/emulation_session.hpp"
@@ -273,6 +275,59 @@ TEST_CASE("SessionActions exposes GUI-friendly transport and snapshot state", "[
     REQUIRE_FALSE(actions.snapshot().has_cartridge);
     REQUIRE_FALSE(actions.snapshot().running);
     REQUIRE(actions.snapshot().rom_path.empty());
+}
+
+TEST_CASE("EmulationSession saves and loads state through sibling slot files",
+          "[app][session][state]") {
+    core::register_builtin_mappers();
+
+    EmulationSession session(std::make_unique<platform::NullVideo>(),
+                             std::make_unique<TestAudioBackend>(),
+                             std::make_unique<platform::NullInput>());
+    SessionActions actions(session);
+
+    SECTION("state operations require a loaded ROM") {
+        REQUIRE_FALSE(actions.save_state());
+        REQUIRE_FALSE(actions.load_state());
+    }
+
+    SECTION("save/load round-trips emulator state") {
+        const std::string rom_path = test_rom_path();
+        REQUIRE(actions.open_rom(rom_path));
+
+        // Slot 0 maps to a sibling .state file, mirroring battery .sav naming.
+        const std::string state_path = actions.state_path();
+        REQUIRE(state_path ==
+                std::filesystem::path(rom_path).replace_extension(".state").string());
+
+        for (int i = 0; i < 3; ++i) {
+            (void)session.step_frame();
+        }
+        REQUIRE(actions.save_state());
+        REQUIRE(std::filesystem::exists(state_path));
+        const std::vector<core::Byte> saved_blob = session.emulator().save_state();
+
+        for (int i = 0; i < 5; ++i) {
+            (void)session.step_frame();
+        }
+        REQUIRE(actions.load_state());
+        REQUIRE(session.emulator().save_state() == saved_blob);
+
+        std::filesystem::remove(state_path);
+    }
+
+    SECTION("named slots resolve to numbered sibling files") {
+        const std::string rom_path = test_rom_path();
+        REQUIRE(actions.open_rom(rom_path));
+        REQUIRE(actions.state_path(2) ==
+                std::filesystem::path(rom_path).replace_extension(".state2").string());
+
+        REQUIRE(actions.save_state(2));
+        REQUIRE(std::filesystem::exists(actions.state_path(2)));
+        REQUIRE(actions.load_state(2));
+
+        std::filesystem::remove(actions.state_path(2));
+    }
 }
 
 TEST_CASE("SessionActions exposes audio queue watermarks", "[app][actions]") {

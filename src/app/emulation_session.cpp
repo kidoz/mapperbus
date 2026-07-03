@@ -1,6 +1,7 @@
 #include "app/emulation_session.hpp"
 
 #include <algorithm>
+#include <filesystem>
 
 namespace mapperbus::app {
 namespace {
@@ -197,6 +198,28 @@ core::Result<void> EmulationSession::apply_audio_settings(const core::AudioSetti
                                restore_result.error());
     }
     return std::unexpected(original_error);
+}
+
+std::string EmulationSession::state_path_for_slot(int slot) const {
+    std::string extension = ".state";
+    if (slot > 0) {
+        extension += std::to_string(slot);
+    }
+    return std::filesystem::path(current_rom_path_).replace_extension(extension).string();
+}
+
+core::Result<void> EmulationSession::save_state(int slot) {
+    if (!rom_loaded_) {
+        return std::unexpected(std::string("No ROM loaded to save state from"));
+    }
+    return emulator_.save_state_to_file(state_path_for_slot(slot));
+}
+
+core::Result<void> EmulationSession::load_state(int slot) {
+    if (!rom_loaded_) {
+        return std::unexpected(std::string("No ROM loaded to load state into"));
+    }
+    return emulator_.load_state_from_file(state_path_for_slot(slot));
 }
 
 core::Result<void> EmulationSession::set_upscaler(std::unique_ptr<platform::Upscaler> upscaler) {

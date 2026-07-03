@@ -48,6 +48,18 @@ core::Result<void> SessionActions::set_upscaler(std::unique_ptr<platform::Upscal
     return session_.set_upscaler(std::move(upscaler));
 }
 
+core::Result<void> SessionActions::save_state(int slot) {
+    return session_.save_state(slot);
+}
+
+core::Result<void> SessionActions::load_state(int slot) {
+    return session_.load_state(slot);
+}
+
+std::string SessionActions::state_path(int slot) const {
+    return session_.state_path_for_slot(slot);
+}
+
 TickResult SessionActions::tick() {
     return session_.tick();
 }

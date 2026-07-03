@@ -46,6 +46,13 @@ class EmulationSession {
     core::Result<void> apply_audio_settings(const core::AudioSettings& settings);
     core::Result<void> set_upscaler(std::unique_ptr<platform::Upscaler> upscaler);
 
+    /// Serializes the emulator to the slot's sibling state file (like battery
+    /// .sav files, states live next to the ROM). Slot 0 maps to `<rom>.state`,
+    /// higher slots to `<rom>.state<N>`.
+    core::Result<void> save_state(int slot = 0);
+    core::Result<void> load_state(int slot = 0);
+    [[nodiscard]] std::string state_path_for_slot(int slot = 0) const;
+
     [[nodiscard]] bool initialized() const {
         return initialized_;
     }

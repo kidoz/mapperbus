@@ -114,6 +114,7 @@ int main(int argc, char* argv[]) {
             "  --gamepad-map MAP     e.g. a=east,b=south,start=start,select=back");
         mapperbus::core::logger::info(
             "Runtime scaler hotkeys: 0/1 native, 2-6 scale factor, F9 cycle scaler mode");
+        mapperbus::core::logger::info("Save-state hotkeys: F5 save state, F7 load state");
         return EXIT_FAILURE;
     }
 
@@ -249,6 +250,24 @@ int main(int argc, char* argv[]) {
     int runtime_scale_factor = (upscale_factor >= 2 && upscale_factor <= 6) ? upscale_factor : 0;
 
     app.run([&](mapperbus::app::EmulationSession& session) {
+        if (const auto session_command = sdl_input->consume_session_command()) {
+            if (session_command.kind == mapperbus::frontend::Sdl3SessionCommandKind::SaveState) {
+                if (auto saved = session.save_state()) {
+                    mapperbus::core::logger::info("Saved state: {}",
+                                                  session.state_path_for_slot());
+                } else {
+                    mapperbus::core::logger::error("{}", saved.error());
+                }
+            } else {
+                if (auto loaded = session.load_state()) {
+                    mapperbus::core::logger::info("Loaded state: {}",
+                                                  session.state_path_for_slot());
+                } else {
+                    mapperbus::core::logger::error("{}", loaded.error());
+                }
+            }
+        }
+
         const auto command = sdl_input->consume_scaler_command();
         if (!command) {
             return;

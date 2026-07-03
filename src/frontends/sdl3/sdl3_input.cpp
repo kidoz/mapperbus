@@ -121,6 +121,23 @@ Sdl3ScalerCommand Sdl3Input::consume_scaler_command() {
     return command;
 }
 
+Sdl3SessionCommand Sdl3Input::session_command_for_scancode(SDL_Scancode scancode) {
+    switch (scancode) {
+    case SDL_SCANCODE_F5:
+        return {.kind = Sdl3SessionCommandKind::SaveState};
+    case SDL_SCANCODE_F7:
+        return {.kind = Sdl3SessionCommandKind::LoadState};
+    default:
+        return {};
+    }
+}
+
+Sdl3SessionCommand Sdl3Input::consume_session_command() {
+    const auto command = pending_session_command_;
+    pending_session_command_ = {};
+    return command;
+}
+
 void Sdl3Input::poll() {
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
@@ -175,6 +192,10 @@ void Sdl3Input::handle_event(const SDL_Event& event) {
     if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat) {
         if (auto command = scaler_command_for_scancode(event.key.scancode)) {
             pending_scaler_command_ = command;
+            return;
+        }
+        if (auto command = session_command_for_scancode(event.key.scancode)) {
+            pending_session_command_ = command;
             return;
         }
     }
