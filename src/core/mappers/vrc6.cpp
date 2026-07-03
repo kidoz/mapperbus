@@ -5,8 +5,17 @@ namespace mapperbus::core {
 // --- VRC6 Pulse ---
 
 void Vrc6Pulse::clock() {
+    if (!enabled) {
+        // Hardware holds the duty sequencer in reset while the channel is
+        // disabled, so the waveform restarts from phase 0 on re-enable.
+        step = 0;
+        timer = timer_period >> freq_shift;
+        return;
+    }
+    if (halted)
+        return; // $9003 bit 0 freezes the phase and holds the output
     if (timer == 0) {
-        timer = timer_period;
+        timer = timer_period >> freq_shift;
         step = (step + 1) & 0x0F;
     } else {
         --timer;
@@ -25,8 +34,18 @@ uint8_t Vrc6Pulse::output() const {
 // --- VRC6 Sawtooth ---
 
 void Vrc6Sawtooth::clock() {
+    if (!enabled) {
+        // Hardware holds the accumulator in reset while the channel is
+        // disabled, so the ramp restarts from phase 0 on re-enable.
+        step = 0;
+        accumulator = 0;
+        timer = timer_period >> freq_shift;
+        return;
+    }
+    if (halted)
+        return; // $9003 bit 0 freezes the phase and holds the output
     if (timer == 0) {
-        timer = timer_period;
+        timer = timer_period >> freq_shift;
         ++step;
         if (step >= 14) {
             step = 0;
@@ -146,6 +165,25 @@ void Vrc6::write_prg(Address addr, Byte value) {
             (pulse1_.timer_period & 0x00FF) | (static_cast<uint16_t>(value & 0x0F) << 8);
         pulse1_.enabled = (value & 0x80) != 0;
         break;
+
+    // Audio - Frequency control ($9003)
+    case 0x9003: {
+        const bool halt = (value & 0x01) != 0;
+        // Bit 2 (256x) takes precedence over bit 1 (16x); the 12-bit period
+        // registers are unaffected, only the timer reload is shifted.
+        uint8_t shift = 0;
+        if ((value & 0x04) != 0)
+            shift = 8;
+        else if ((value & 0x02) != 0)
+            shift = 4;
+        pulse1_.halted = halt;
+        pulse2_.halted = halt;
+        sawtooth_.halted = halt;
+        pulse1_.freq_shift = shift;
+        pulse2_.freq_shift = shift;
+        sawtooth_.freq_shift = shift;
+        break;
+    }
 
     // Audio - Pulse 2
     case 0xA000:

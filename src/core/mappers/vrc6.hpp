@@ -13,6 +13,8 @@ struct Vrc6Pulse {
     uint8_t volume = 0; // 4-bit volume
     bool mode = false;  // Duty cycle mode (true = constant volume)
     bool enabled = false;
+    bool halted = false;    // $9003 bit 0: freeze oscillator phase
+    uint8_t freq_shift = 0; // $9003 bits 1-2: period >> 4 or >> 8
     uint16_t timer_period = 0;
     uint16_t timer = 0;
     uint8_t step = 0;
@@ -24,6 +26,8 @@ struct Vrc6Pulse {
 struct Vrc6Sawtooth {
     uint8_t accumulator_rate = 0; // 6-bit rate
     bool enabled = false;
+    bool halted = false;    // $9003 bit 0: freeze oscillator phase
+    uint8_t freq_shift = 0; // $9003 bits 1-2: period >> 4 or >> 8
     uint16_t timer_period = 0;
     uint16_t timer = 0;
     uint8_t accumulator = 0;
