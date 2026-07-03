@@ -86,7 +86,7 @@ struct Sweep {
     bool is_pulse1 = false;
 
     void clock(uint16_t& timer_period);
-    uint16_t target_period(uint16_t current) const;
+    int32_t target_period(uint16_t current) const;
     bool muting(uint16_t timer_period) const;
 };
 

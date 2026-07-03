@@ -8,7 +8,9 @@ namespace mapperbus::core {
 
 void Mmc5Pulse::clock_timer() {
     if (timer == 0) {
-        timer = timer_period;
+        // Same half-CPU-rate clocking as the APU pulses: 2t+1 CPU cycles
+        // per sequencer step (f = CPU / (16 * (t + 1))).
+        timer = static_cast<uint16_t>(timer_period * 2 + 1);
         sequence_pos = (sequence_pos + 1) & 0x07;
     } else {
         --timer;

@@ -78,8 +78,10 @@ uint8_t Envelope::volume() const {
 
 // --- Sweep ---
 
-uint16_t Sweep::target_period(uint16_t current) const {
-    uint16_t change = current >> shift;
+int32_t Sweep::target_period(uint16_t current) const {
+    // Signed: negated targets can go below zero and must never trip the
+    // >$7FF mute (games write $4001=$08 relying on exactly that).
+    int32_t change = current >> shift;
     if (negate) {
         if (is_pulse1) {
             return current - change - 1;
@@ -95,7 +97,7 @@ bool Sweep::muting(uint16_t timer_period) const {
 
 void Sweep::clock(uint16_t& timer_period) {
     if (divider == 0 && enabled && !muting(timer_period) && shift > 0) {
-        timer_period = target_period(timer_period);
+        timer_period = static_cast<uint16_t>(std::max<int32_t>(target_period(timer_period), 0));
     }
     if (divider == 0 || reload) {
         divider = period;
@@ -109,7 +111,10 @@ void Sweep::clock(uint16_t& timer_period) {
 
 void PulseChannel::clock_timer() {
     if (timer == 0) {
-        timer = timer_period;
+        // Pulse timers tick every other CPU cycle (APU cycle); counting
+        // 2t+1 CPU cycles here advances the sequencer every 2(t+1) cycles
+        // while keeping timer_period in hardware t units for the sweep.
+        timer = static_cast<uint16_t>(timer_period * 2 + 1);
         sequence_pos = (sequence_pos + 1) & 0x07;
     } else {
         --timer;
@@ -169,7 +174,9 @@ uint8_t TriangleChannel::output() const {
 
 void NoiseChannel::clock_timer() {
     if (timer == 0) {
-        timer = timer_period;
+        // The period table already encodes the full interval in CPU cycles,
+        // so reload with P-1 (a zero-based countdown spans P cycles).
+        timer = static_cast<uint16_t>(timer_period - 1);
         uint16_t feedback_bit = mode ? 6 : 1;
         uint16_t feedback = (shift_register & 0x01) ^ ((shift_register >> feedback_bit) & 0x01);
         shift_register >>= 1;
@@ -192,13 +199,15 @@ uint8_t NoiseChannel::output() const {
 // --- DMC Channel ---
 
 void DmcChannel::clock_timer() {
+    // The output-cycle restart shares a timer clock with the first bit
+    // shift, so 8 bits consume exactly 8 timer periods (not 9).
     if (bits_remaining == 0) {
-        if (!sample_buffer_empty) {
-            shift_register = sample_buffer;
-            sample_buffer_empty = true;
-            bits_remaining = 8;
+        if (sample_buffer_empty) {
+            return; // silence: hold the current output level
         }
-        return;
+        shift_register = sample_buffer;
+        sample_buffer_empty = true;
+        bits_remaining = 8;
     }
 
     if (shift_register & 0x01) {
@@ -483,7 +492,8 @@ void Apu::step(uint32_t cpu_cycles) {
 
         if (dmc_.enabled) {
             if (dmc_.timer == 0) {
-                dmc_.timer = dmc_.timer_period;
+                // Rate table encodes the full interval; see NoiseChannel.
+                dmc_.timer = static_cast<uint16_t>(dmc_.timer_period - 1);
                 clock_dmc();
             } else {
                 --dmc_.timer;
