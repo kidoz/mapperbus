@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <catch2/catch_test_macros.hpp>
 #include <vector>
 
@@ -7,6 +8,7 @@
 #include "core/mappers/color_dreams.hpp"
 #include "core/mappers/mmc1.hpp"
 #include "core/mappers/mmc3.hpp"
+#include "core/mappers/sunsoft5b.hpp"
 #include "core/mappers/uxrom.hpp"
 
 using namespace mapperbus::core;
@@ -373,4 +375,64 @@ TEST_CASE("MMC3 PRG RAM", "[mmc3]") {
     mapper.write_prg(0xA001, 0x00);
     REQUIRE_FALSE(mapper.maps_prg(0x7000));
     REQUIRE(mapper.maps_prg(0x8000));
+}
+
+// === Sunsoft 5B audio ===
+
+TEST_CASE("Sunsoft 5B noise generator produces output", "[sunsoft5b][audio]") {
+    auto header = make_header(8, 0, MirrorMode::Vertical);
+    Sunsoft5b m(header, std::vector<Byte>(128 * 1024, 0), {});
+
+    auto write_reg = [&](Byte reg, Byte value) {
+        m.write_prg(0xC000, reg);
+        m.write_prg(0xE000, value);
+    };
+    write_reg(0x06, 0x04); // noise period
+    write_reg(0x07, 0x37); // tones off, noise on channel A only
+    write_reg(0x08, 0x0F); // channel A fixed volume 15
+
+    float lo = 1e9f;
+    float hi = -1e9f;
+    int transitions = 0;
+    float prev = 0.0f;
+    for (int i = 0; i < 500000; ++i) {
+        m.clock_audio();
+        const float s = m.audio_output();
+        lo = std::min(lo, s);
+        hi = std::max(hi, s);
+        if (i > 0 && s != prev)
+            ++transitions;
+        prev = s;
+    }
+    REQUIRE(hi > lo);           // noise toggles the channel
+    REQUIRE(transitions > 100); // and does so irregularly/often
+}
+
+TEST_CASE("Sunsoft 5B envelope ramps channel volume", "[sunsoft5b][audio]") {
+    auto header = make_header(8, 0, MirrorMode::Vertical);
+    Sunsoft5b m(header, std::vector<Byte>(128 * 1024, 0), {});
+
+    auto write_reg = [&](Byte reg, Byte value) {
+        m.write_prg(0xC000, reg);
+        m.write_prg(0xE000, value);
+    };
+    write_reg(0x07, 0x3F); // tone and noise both disabled: channel held high
+    write_reg(0x08, 0x10); // channel A driven by envelope
+    write_reg(0x0B, 0x40); // envelope period low
+    write_reg(0x0C, 0x00);
+    write_reg(0x0D, 0x00); // shape: single decay 31 -> 0, then hold at 0
+
+    auto peak = [&](int cycles) {
+        float p = 0.0f;
+        for (int i = 0; i < cycles; ++i) {
+            m.clock_audio();
+            p = std::max(p, m.audio_output());
+        }
+        return p;
+    };
+    const float early = peak(10000);
+    peak(4000000); // let the decay complete
+    const float late = peak(10000);
+    REQUIRE(early > 0.0f);
+    REQUIRE(late < 0.1f * early);
 }

@@ -161,6 +161,9 @@ void Mmc5::save_state(StateWriter& w) const {
     w.write(pulse1_);
     w.write(pulse2_);
     w.write(pcm_output_);
+    w.write(pcm_read_mode_);
+    w.write(pcm_irq_enabled_);
+    w.write(pcm_irq_flag_);
     w.write(audio_cycle_);
     w.write(irq_target_);
     w.write(irq_scanline_);
@@ -179,6 +182,9 @@ void Mmc5::load_state(StateReader& r) {
     r.read(pulse1_);
     r.read(pulse2_);
     r.read(pcm_output_);
+    r.read(pcm_read_mode_);
+    r.read(pcm_irq_enabled_);
+    r.read(pcm_irq_flag_);
     r.read(audio_cycle_);
     r.read(irq_target_);
     r.read(irq_scanline_);
@@ -313,6 +319,16 @@ void Sunsoft5b::save_state(StateWriter& w) const {
     w.write_array(channels_);
     w.write(ay_register_);
     w.write(audio_divider_);
+    w.write(noise_period_);
+    w.write(noise_timer_);
+    w.write(noise_lfsr_);
+    w.write(env_period_);
+    w.write(env_timer_);
+    w.write(env_shape_);
+    w.write(env_step_);
+    w.write(env_level_);
+    w.write(env_attack_);
+    w.write(env_holding_);
 }
 void Sunsoft5b::load_state(StateReader& r) {
     r.read_array(prg_ram_);
@@ -329,6 +345,16 @@ void Sunsoft5b::load_state(StateReader& r) {
     r.read_array(channels_);
     r.read(ay_register_);
     r.read(audio_divider_);
+    r.read(noise_period_);
+    r.read(noise_timer_);
+    r.read(noise_lfsr_);
+    r.read(env_period_);
+    r.read(env_timer_);
+    r.read(env_shape_);
+    r.read(env_step_);
+    r.read(env_level_);
+    r.read(env_attack_);
+    r.read(env_holding_);
 }
 
 // --- Battery-backed PRG-RAM accessors ---
