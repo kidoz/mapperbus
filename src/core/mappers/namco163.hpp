@@ -70,7 +70,7 @@ class Namco163 : public Mapper {
         uint32_t phase = 0;      // 24-bit phase accumulator
         uint32_t frequency = 0;  // 18-bit frequency
         uint8_t wave_addr = 0;   // Wave address in sound RAM
-        uint8_t wave_length = 0; // Wave length (256 - L*4)
+        uint16_t wave_length = 0; // Wave length (256 - L*4); L=0 means 256
         uint8_t volume = 0;      // 4-bit volume
         uint8_t output = 0;      // Current output sample
     };

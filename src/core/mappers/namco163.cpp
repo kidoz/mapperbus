@@ -129,13 +129,24 @@ void Namco163::write_expansion(Address addr, Byte value) {
                 case 0:
                     c.frequency = (c.frequency & 0x3FF00) | value;
                     break;
+                // The 24-bit phase lives in sound RAM bytes 1/3/5; games
+                // write 0 there to restart a wave from phase 0.
+                case 1:
+                    c.phase = (c.phase & 0xFFFF00) | value;
+                    break;
                 case 2:
                     c.frequency = (c.frequency & 0x300FF) | (static_cast<uint32_t>(value) << 8);
+                    break;
+                case 3:
+                    c.phase = (c.phase & 0xFF00FF) | (static_cast<uint32_t>(value) << 8);
                     break;
                 case 4:
                     c.frequency =
                         (c.frequency & 0x0FFFF) | (static_cast<uint32_t>(value & 0x03) << 16);
-                    c.wave_length = static_cast<uint8_t>(256 - (value & 0xFC));
+                    c.wave_length = static_cast<uint16_t>(256 - (value & 0xFC));
+                    break;
+                case 5:
+                    c.phase = (c.phase & 0x00FFFF) | (static_cast<uint32_t>(value) << 16);
                     break;
                 case 6:
                     c.wave_addr = value;
@@ -192,6 +203,12 @@ void Namco163::clock_audio() {
             // 4-bit samples packed in sound RAM (2 per byte)
             Byte ram_byte = sound_ram_[(wave_pos / 2) & 0x7F];
             c.output = (wave_pos & 1) ? (ram_byte >> 4) : (ram_byte & 0x0F);
+            // Hardware stores the phase in sound RAM; keep bytes 1/3/5
+            // coherent so CPU reads of $4800 see the live value.
+            uint8_t base = static_cast<uint8_t>(0x40 + ch * 8);
+            sound_ram_[base + 1] = static_cast<Byte>(c.phase & 0xFF);
+            sound_ram_[base + 3] = static_cast<Byte>((c.phase >> 8) & 0xFF);
+            sound_ram_[base + 5] = static_cast<Byte>((c.phase >> 16) & 0xFF);
         }
     }
 
