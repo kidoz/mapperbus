@@ -4,6 +4,7 @@
 #include "core/mappers/cnrom.hpp"
 #include "core/mappers/color_dreams.hpp"
 #include "core/mappers/mmc1.hpp"
+#include "core/mappers/mmc2.hpp"
 #include "core/mappers/mmc3.hpp"
 #include "core/mappers/mmc5.hpp"
 #include "core/mappers/namco163.hpp"
@@ -55,6 +56,7 @@ void register_builtin_mappers() {
     registry.register_mapper(4, make_factory<Mmc3>());
     registry.register_mapper(7, make_factory<Axrom>());
     registry.register_mapper(5, make_factory<Mmc5>());
+    registry.register_mapper(9, make_factory<Mmc2>());
     registry.register_mapper(11, make_factory<ColorDreams>());
     registry.register_mapper(19, make_factory<Namco163>());
     registry.register_mapper(24, make_factory<Vrc6>());

@@ -29,6 +29,7 @@ A clean, extensible NES/Famicom emulator with FDS support, written in modern C++
 | 4  | MMC3         |                 |
 | 5  | MMC5         | Yes             |
 | 7  | AxROM        |                 |
+| 9  | MMC2         |                 |
 | 11 | Color Dreams |                 |
 | 19 | Namco 163    | Yes             |
 | 24 | VRC6a        | Yes             |

@@ -7,6 +7,7 @@
 #include "core/mappers/cnrom.hpp"
 #include "core/mappers/color_dreams.hpp"
 #include "core/mappers/mmc1.hpp"
+#include "core/mappers/mmc2.hpp"
 #include "core/mappers/mmc3.hpp"
 #include "core/mappers/sunsoft5b.hpp"
 #include "core/mappers/uxrom.hpp"
@@ -435,4 +436,97 @@ TEST_CASE("Sunsoft 5B envelope ramps channel volume", "[sunsoft5b][audio]") {
     const float late = peak(10000);
     REQUIRE(early > 0.0f);
     REQUIRE(late < 0.1f * early);
+}
+
+// === MMC2 (mapper 9, PxROM) ===
+
+TEST_CASE("MMC2 PRG bank switching at $8000", "[mmc2]") {
+    // PxROM: 8 KB switchable at $8000, fixed 24 KB at $A000-$FFFF.
+    std::vector<Byte> prg(128 * 1024, 0);
+    prg[3 * 0x2000] = 0x55; // bank 3 sentinel
+    Mmc2 mapper(make_header(8, 0, MirrorMode::Vertical), std::move(prg), {});
+
+    mapper.write_prg(0xA000, 0x03);
+    REQUIRE(mapper.read_prg(0x8000) == 0x55);
+}
+
+TEST_CASE("MMC2 fixed last banks at $A000-$FFFF", "[mmc2]") {
+    // 8 PRG banks = 128 KB → 16×8KB. Last three 8KB banks fill $A000-$FFFF.
+    std::vector<Byte> prg(128 * 1024, 0);
+    prg[(16 - 3) * 0x2000] = 0xAA; // $A000 region
+    prg[(16 - 2) * 0x2000] = 0xBB; // $C000 region
+    prg[(16 - 1) * 0x2000] = 0xCC; // $E000 region
+
+    Mmc2 mapper(make_header(8, 0, MirrorMode::Vertical), std::move(prg), {});
+
+    REQUIRE(mapper.read_prg(0xA000) == 0xAA);
+    REQUIRE(mapper.read_prg(0xC000) == 0xBB);
+    REQUIRE(mapper.read_prg(0xE000) == 0xCC);
+}
+
+TEST_CASE("MMC2 PRG-RAM at $6000", "[mmc2]") {
+    Mmc2 mapper(make_header(8, 0, MirrorMode::Vertical), std::vector<Byte>(128 * 1024, 0), {});
+
+    REQUIRE(mapper.maps_prg(0x6000));
+    mapper.write_prg(0x6000, 0xDE);
+    REQUIRE(mapper.read_prg(0x6000) == 0xDE);
+}
+
+TEST_CASE("MMC2 CHR latch toggles left half", "[mmc2]") {
+    // CHR layout: 4 KB pages. The latch selects between FD ($B000) and FE
+    // ($D000) registered pages for the left ($0000-$0FFF) half.
+    std::vector<Byte> chr(128 * 1024, 0);
+    chr[2 * 0x1000] = 0xFD; // page 2 = FD content
+    chr[5 * 0x1000] = 0xFE; // page 5 = FE content
+
+    Mmc2 mapper(
+        make_header(8, 16, MirrorMode::Vertical), std::vector<Byte>(128 * 1024, 0), std::move(chr));
+
+    mapper.write_prg(0xB000, 2); // left FD page = 2
+    mapper.write_prg(0xD000, 5); // left FE page = 5
+
+    // Power-on latch = FD: reading $0000 sees page 2.
+    REQUIRE(mapper.read_chr(0x0000) == 0xFD);
+
+    // Reading $0FE8 flips the left latch to FE.
+    mapper.read_chr(0x0FE8);
+    REQUIRE(mapper.read_chr(0x0000) == 0xFE);
+
+    // Reading $0FD8 flips back to FD.
+    mapper.read_chr(0x0FD8);
+    REQUIRE(mapper.read_chr(0x0000) == 0xFD);
+}
+
+TEST_CASE("MMC2 CHR latch toggles right half independently", "[mmc2]") {
+    std::vector<Byte> chr(128 * 1024, 0);
+    chr[3 * 0x1000] = 0x31; // right FD page = 3
+    chr[7 * 0x1000] = 0x72; // right FE page = 7
+
+    Mmc2 mapper(
+        make_header(8, 16, MirrorMode::Vertical), std::vector<Byte>(128 * 1024, 0), std::move(chr));
+
+    mapper.write_prg(0xC000, 3); // right FD page = 3
+    mapper.write_prg(0xE000, 7); // right FE page = 7
+
+    REQUIRE(mapper.read_chr(0x1000) == 0x31); // FD active
+
+    mapper.read_chr(0x1FE8); // flip right to FE
+    REQUIRE(mapper.read_chr(0x1000) == 0x72);
+
+    mapper.read_chr(0x1FD8); // flip back to FD
+    REQUIRE(mapper.read_chr(0x1000) == 0x31);
+}
+
+TEST_CASE("MMC2 battery RAM round-trip", "[mmc2]") {
+    Mmc2 mapper(make_header(8, 0, MirrorMode::Vertical), std::vector<Byte>(128 * 1024, 0), {});
+
+    mapper.write_prg(0x7FFF, 0x99);
+    auto ram = mapper.battery_ram();
+    REQUIRE(ram.size() == 0x2000);
+    REQUIRE(ram[0x1FFF] == 0x99);
+
+    std::vector<Byte> restored(0x2000, 0);
+    restored[0] = 0x42;
+    mapper.set_battery_ram(restored);
+    REQUIRE(mapper.read_prg(0x6000) == 0x42);
 }

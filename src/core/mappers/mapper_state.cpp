@@ -13,6 +13,7 @@
 #include "core/mappers/cnrom.hpp"
 #include "core/mappers/color_dreams.hpp"
 #include "core/mappers/mmc1.hpp"
+#include "core/mappers/mmc2.hpp"
 #include "core/mappers/mmc3.hpp"
 #include "core/mappers/mmc5.hpp"
 #include "core/mappers/namco163.hpp"
@@ -106,6 +107,26 @@ void Mmc1::load_state(StateReader& r) {
     r.read(prg_offset1_);
     r.read(chr_offset0_);
     r.read(chr_offset1_);
+    r.read(mirror_mode_);
+}
+
+// --- MMC2 (9) ---
+void Mmc2::save_state(StateWriter& w) const {
+    w.write_array(prg_ram_);
+    w.write_array(chr_ram_);
+    w.write(prg_bank_);
+    w.write_array(chr_banks_);
+    w.write_array(latch_);
+    w.write_array(chr_offsets_);
+    w.write(mirror_mode_);
+}
+void Mmc2::load_state(StateReader& r) {
+    r.read_array(prg_ram_);
+    r.read_array(chr_ram_);
+    r.read(prg_bank_);
+    r.read_array(chr_banks_);
+    r.read_array(latch_);
+    r.read_array(chr_offsets_);
     r.read(mirror_mode_);
 }
 
@@ -388,6 +409,13 @@ std::span<const Byte> Mmc3::battery_ram() const {
     return prg_ram_;
 }
 void Mmc3::set_battery_ram(std::span<const Byte> data) {
+    restore_prg_ram(prg_ram_, data);
+}
+
+std::span<const Byte> Mmc2::battery_ram() const {
+    return prg_ram_;
+}
+void Mmc2::set_battery_ram(std::span<const Byte> data) {
     restore_prg_ram(prg_ram_, data);
 }
 
