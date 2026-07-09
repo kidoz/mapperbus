@@ -112,9 +112,13 @@ int main(int argc, char* argv[]) {
             "  --gamepad-deadzone N  analog axis deadzone (default: 12000)");
         mapperbus::core::logger::info(
             "  --gamepad-map MAP     e.g. a=east,b=south,start=start,select=back");
+        mapperbus::core::logger::info("  --gamepad2 N          SDL gamepad index for player 2");
+        mapperbus::core::logger::info(
+            "  --gamepad2-map MAP    player 2 gamepad mapping (same format as --gamepad-map)");
         mapperbus::core::logger::info(
             "Runtime scaler hotkeys: 0/1 native, 2-6 scale factor, F9 cycle scaler mode");
-        mapperbus::core::logger::info("Save-state hotkeys: F5 save state, F7 load state");
+        mapperbus::core::logger::info("Save-state: F5 save, F7 load (Shift+Fx for slot 1)");
+        mapperbus::core::logger::info("Window: F11 toggle fullscreen, V toggle vsync");
         return EXIT_FAILURE;
     }
 
@@ -127,6 +131,9 @@ int main(int argc, char* argv[]) {
     auto mapperbus_config = mapperbus::app::load_mapperbus_configuration();
     mapperbus::core::AudioSettings audio_settings = mapperbus_config.audio;
     mapperbus::frontend::Sdl3InputConfig input_config = mapperbus_config.input.gamepad;
+    mapperbus::frontend::Sdl3InputConfig input_config2 = mapperbus_config.input.gamepad;
+    input_config2.gamepad_index = 1;
+    bool two_player = false;
 
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--scale") == 0 && i + 1 < argc) {
@@ -185,6 +192,16 @@ int main(int argc, char* argv[]) {
                 mapperbus::core::logger::error("Invalid gamepad map: {}", result.error());
                 return EXIT_FAILURE;
             }
+        } else if (std::strcmp(argv[i], "--gamepad2") == 0 && i + 1 < argc) {
+            input_config2.gamepad_index = std::max(0, std::atoi(argv[++i]));
+            two_player = true;
+        } else if (std::strcmp(argv[i], "--gamepad2-map") == 0 && i + 1 < argc) {
+            auto result = mapperbus::frontend::apply_gamepad_mapping(input_config2, argv[++i]);
+            if (!result) {
+                mapperbus::core::logger::error("Invalid gamepad2 map: {}", result.error());
+                return EXIT_FAILURE;
+            }
+            two_player = true;
         } else if (std::strcmp(argv[i], "--region") == 0 && i + 1 < argc) {
             region_override = argv[++i];
         } else {
@@ -218,8 +235,17 @@ int main(int argc, char* argv[]) {
     }
 
     auto audio = std::make_unique<mapperbus::frontend::Sdl3Audio>();
-    auto input = std::make_unique<mapperbus::frontend::Sdl3Input>(
-        input_config, mapperbus_config.input.keyboard_bindings);
+    std::unique_ptr<mapperbus::frontend::Sdl3Input> input;
+    if (two_player) {
+        mapperbus::frontend::Sdl3TwoPlayerInputConfig tp_config;
+        tp_config.player1 = input_config;
+        tp_config.player2 = input_config2;
+        input = std::make_unique<mapperbus::frontend::Sdl3Input>(
+            tp_config, mapperbus_config.input.keyboard_bindings);
+    } else {
+        input = std::make_unique<mapperbus::frontend::Sdl3Input>(
+            input_config, mapperbus_config.input.keyboard_bindings);
+    }
     auto* sdl_input = input.get();
 
     // --- Wire into App and run ---
@@ -250,18 +276,32 @@ int main(int argc, char* argv[]) {
     int runtime_scale_factor = (upscale_factor >= 2 && upscale_factor <= 6) ? upscale_factor : 0;
 
     app.run([&](mapperbus::app::EmulationSession& session) {
+        if (const auto window_command = sdl_input->consume_window_command()) {
+            if (window_command.kind ==
+                mapperbus::frontend::Sdl3WindowCommandKind::ToggleFullscreen) {
+                session.toggle_fullscreen();
+            } else if (window_command.kind ==
+                       mapperbus::frontend::Sdl3WindowCommandKind::ToggleVsync) {
+                static bool vsync_on = false;
+                vsync_on = !vsync_on;
+                session.set_vsync(vsync_on);
+            }
+        }
+
         if (const auto session_command = sdl_input->consume_session_command()) {
+            const int slot = session_command.slot;
             if (session_command.kind == mapperbus::frontend::Sdl3SessionCommandKind::SaveState) {
-                if (auto saved = session.save_state()) {
-                    mapperbus::core::logger::info("Saved state: {}",
-                                                  session.state_path_for_slot());
+                if (auto saved = session.save_state(slot)) {
+                    mapperbus::core::logger::info(
+                        "Saved state (slot {}): {}", slot, session.state_path_for_slot(slot));
                 } else {
                     mapperbus::core::logger::error("{}", saved.error());
                 }
-            } else {
-                if (auto loaded = session.load_state()) {
-                    mapperbus::core::logger::info("Loaded state: {}",
-                                                  session.state_path_for_slot());
+            } else if (session_command.kind ==
+                       mapperbus::frontend::Sdl3SessionCommandKind::LoadState) {
+                if (auto loaded = session.load_state(slot)) {
+                    mapperbus::core::logger::info(
+                        "Loaded state (slot {}): {}", slot, session.state_path_for_slot(slot));
                 } else {
                     mapperbus::core::logger::error("{}", loaded.error());
                 }

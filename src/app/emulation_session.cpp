@@ -271,6 +271,7 @@ void EmulationSession::sync_input() {
 
     for (auto button : kButtons) {
         emulator_.controller().set_button_state(0, button, input_->is_button_pressed(0, button));
+        emulator_.controller().set_button_state(1, button, input_->is_button_pressed(1, button));
     }
 }
 

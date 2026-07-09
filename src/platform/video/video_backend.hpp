@@ -16,6 +16,11 @@ class VideoBackend {
     virtual void shutdown() = 0;
 
     virtual void set_upscaler(std::unique_ptr<Upscaler> /*upscaler*/) {}
+
+    /// Toggle borderless fullscreen. Default no-op for backends without a window.
+    virtual void toggle_fullscreen() {}
+    /// Enable/disable vsync. May require a renderer reinitialization.
+    virtual void set_vsync(bool /*on*/) {}
 };
 
 } // namespace mapperbus::platform

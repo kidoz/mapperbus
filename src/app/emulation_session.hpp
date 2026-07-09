@@ -46,6 +46,18 @@ class EmulationSession {
     core::Result<void> apply_audio_settings(const core::AudioSettings& settings);
     core::Result<void> set_upscaler(std::unique_ptr<platform::Upscaler> upscaler);
 
+    /// Forwards fullscreen/vsync toggles to the video backend.
+    void toggle_fullscreen() {
+        if (video_) {
+            video_->toggle_fullscreen();
+        }
+    }
+    void set_vsync(bool on) {
+        if (video_) {
+            video_->set_vsync(on);
+        }
+    }
+
     /// Serializes the emulator to the slot's sibling state file (like battery
     /// .sav files, states live next to the ROM). Slot 0 maps to `<rom>.state`,
     /// higher slots to `<rom>.state<N>`.

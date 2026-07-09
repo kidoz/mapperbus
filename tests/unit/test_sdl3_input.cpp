@@ -85,15 +85,31 @@ TEST_CASE("SDL3 scaler hotkeys map to runtime commands", "[sdl3][input]") {
 }
 
 TEST_CASE("SDL3 save-state hotkeys map to session commands", "[sdl3][input]") {
-    auto save = Sdl3Input::session_command_for_scancode(SDL_SCANCODE_F5);
+    auto save = Sdl3Input::session_command_for_scancode(SDL_SCANCODE_F5, false, 0);
     REQUIRE(save.kind == Sdl3SessionCommandKind::SaveState);
+    REQUIRE(save.slot == 0);
 
-    auto load = Sdl3Input::session_command_for_scancode(SDL_SCANCODE_F7);
+    auto load = Sdl3Input::session_command_for_scancode(SDL_SCANCODE_F7, false, 0);
     REQUIRE(load.kind == Sdl3SessionCommandKind::LoadState);
 
+    // Shift+F5 targets slot 1.
+    auto save_slot1 = Sdl3Input::session_command_for_scancode(SDL_SCANCODE_F5, true, 0);
+    REQUIRE(save_slot1.kind == Sdl3SessionCommandKind::SaveState);
+    REQUIRE(save_slot1.slot == 1);
+
     // F9 belongs to the scaler hotkeys and must stay out of the session set.
-    REQUIRE_FALSE(Sdl3Input::session_command_for_scancode(SDL_SCANCODE_F9));
-    REQUIRE_FALSE(Sdl3Input::session_command_for_scancode(SDL_SCANCODE_A));
+    REQUIRE_FALSE(Sdl3Input::session_command_for_scancode(SDL_SCANCODE_F9, false, 0));
+    REQUIRE_FALSE(Sdl3Input::session_command_for_scancode(SDL_SCANCODE_A, false, 0));
+}
+
+TEST_CASE("SDL3 window hotkeys map to fullscreen/vsync", "[sdl3][input]") {
+    auto fullscreen = Sdl3Input::window_command_for_scancode(SDL_SCANCODE_F11);
+    REQUIRE(fullscreen.kind == Sdl3WindowCommandKind::ToggleFullscreen);
+
+    auto vsync = Sdl3Input::window_command_for_scancode(SDL_SCANCODE_V);
+    REQUIRE(vsync.kind == Sdl3WindowCommandKind::ToggleVsync);
+
+    REQUIRE_FALSE(Sdl3Input::window_command_for_scancode(SDL_SCANCODE_A));
 }
 
 } // namespace

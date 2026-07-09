@@ -120,6 +120,10 @@ SDL3 runtime scaler hotkeys:
 - `0` or `1`: native scale
 - `2`-`6`: switch to that scale factor immediately
 - `F9`: cycle scaler mode for the active factor (`CPU xBRZ`, `CPU FSR`, `GPU xBRZ`, `GPU FSR`)
+- `F5` / `F7`: save / load state (slot 0)
+- `Shift+F5` / `Shift+F7`: save / load state (slot 1)
+- `F11`: toggle fullscreen
+- `V`: toggle vsync
 
 ### Full Options
 
@@ -141,6 +145,8 @@ mapperbus-sdl3 [options] <rom-file>
   --gamepad N           SDL gamepad index (default: 0)
   --gamepad-deadzone N  Analog axis deadzone (default: 12000)
   --gamepad-map MAP     Comma-separated NES=SDL map
+  --gamepad2 N          SDL gamepad index for player 2 (enables two-player)
+  --gamepad2-map MAP    Player 2 gamepad mapping (same format as --gamepad-map)
 ```
 
 Example gamepad remap:
@@ -150,6 +156,14 @@ mapperbus-sdl3 --gamepad-map a=east,b=south,up=lefty-,down=lefty+,left=leftx-,ri
 ```
 
 Gamepad controls use SDL names such as `a`, `b`, `x`, `y`, `start`, `back`, `dpup`, `dpdown`, `dpleft`, `dpright`, `leftshoulder`, `rightshoulder`, and axis directions such as `leftx-`, `leftx+`, `lefty-`, and `lefty+`.
+
+### Two-Player Input
+
+Player 1 defaults to keyboard. When `--gamepad2` is provided, a second gamepad drives player 2:
+
+```bash
+mapperbus-sdl3 --gamepad2 1 <rom-file>
+```
 
 ### Configuration
 

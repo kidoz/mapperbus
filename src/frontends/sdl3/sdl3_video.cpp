@@ -25,6 +25,10 @@ bool Sdl3Video::initialize(int width, int height) {
         return false;
     }
 
+    // Apply the vsync hint before creating the renderer so the chosen
+    // backend picks it up at creation time.
+    SDL_SetHint(SDL_HINT_RENDER_VSYNC, vsync_ ? "1" : "0");
+
     // Try the experimental 'gpu' backend first for zero-copy sharing!
     renderer_ = SDL_CreateRenderer(window_, "gpu");
     if (!renderer_) {
@@ -150,6 +154,49 @@ void Sdl3Video::render(const core::FrameBuffer& frame) {
 
 void Sdl3Video::set_upscaler(std::unique_ptr<platform::Upscaler> upscaler) {
     upscaler_ = std::move(upscaler);
+}
+
+void Sdl3Video::toggle_fullscreen() {
+    if (!window_) {
+        return;
+    }
+    fullscreen_ = !fullscreen_;
+    SDL_SetWindowFullscreen(window_, fullscreen_);
+}
+
+void Sdl3Video::set_vsync(bool on) {
+    if (vsync_ == on) {
+        return;
+    }
+    vsync_ = on;
+    // VSync is applied at renderer creation time, so recreate the renderer.
+    if (renderer_) {
+        SDL_SetHint(SDL_HINT_RENDER_VSYNC, vsync_ ? "1" : "0");
+        // Toggling vsync without a full shutdown: SDL3 honors the hint at
+        // renderer creation. Recreate just the renderer + texture.
+        SDL_DestroyTexture(texture_);
+        texture_ = nullptr;
+        SDL_DestroyRenderer(renderer_);
+        renderer_ = SDL_CreateRenderer(window_, "gpu");
+        if (!renderer_) {
+            renderer_ = SDL_CreateRenderer(window_, nullptr);
+        }
+        int tex_w = src_width_;
+        int tex_h = src_height_;
+        if (upscaler_) {
+            tex_w = src_width_ * upscaler_->scale_factor();
+            tex_h = src_height_ * upscaler_->scale_factor();
+            SDL_SetRenderLogicalPresentation(
+                renderer_, tex_w, tex_h, SDL_LOGICAL_PRESENTATION_INTEGER_SCALE);
+        } else {
+            SDL_SetRenderLogicalPresentation(
+                renderer_, src_width_, src_height_, SDL_LOGICAL_PRESENTATION_INTEGER_SCALE);
+        }
+        if (!using_zero_copy_) {
+            texture_ = SDL_CreateTexture(
+                renderer_, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, tex_w, tex_h);
+        }
+    }
 }
 
 void Sdl3Video::shutdown() {
