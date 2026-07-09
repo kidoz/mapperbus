@@ -13,7 +13,8 @@ namespace mapperbus::core {
 namespace {
 // "MBST" — MapperBus STate. Bump kStateVersion on any layout change.
 constexpr std::array<Byte, 4> kStateMagic = {'M', 'B', 'S', 'T'};
-constexpr std::uint32_t kStateVersion = 2; // v2: audio-accuracy state (FDS envelopes, VRC7 operators, 5B noise/env, MMC5 PCM, VRC6 $9003)
+constexpr std::uint32_t kStateVersion = 2; // v2: audio-accuracy state (FDS envelopes, VRC7
+                                           // operators, 5B noise/env, MMC5 PCM, VRC6 $9003)
 
 [[nodiscard]] std::string battery_path_for(const std::string& rom_path) {
     return std::filesystem::path(rom_path).replace_extension(".sav").string();
@@ -153,31 +154,37 @@ void Emulator::clock_expansion_audio(uint32_t cycles) {
 void Emulator::step_frame() {
     ppu_.clear_frame_ready();
     while (!ppu_.frame_ready()) {
-        uint32_t cpu_cycles = cpu_.step();
-        ppu_.step(cpu_cycles);
-        apu_.step(cpu_cycles);
-        fds_.step(cpu_cycles);
-        clock_expansion_audio(cpu_cycles);
-
-        // OAM DMA stalls the CPU — advance PPU/APU/mapper by DMA cycles
-        uint32_t dma_cycles = bus_.take_dma_cycles();
-        if (dma_cycles > 0) {
-            ppu_.step(dma_cycles);
-            apu_.step(dma_cycles);
-            clock_expansion_audio(dma_cycles);
-        }
-
-        // DMC memory reads stall the CPU — advance PPU/APU by stall cycles
-        uint32_t dmc_stall = apu_.take_dmc_stall_cycles();
-        if (dmc_stall > 0) {
-            ppu_.step(dmc_stall);
-            apu_.step(dmc_stall);
-            clock_expansion_audio(dmc_stall);
-        }
+        step_instruction();
     }
 
     // Flush BlipBuffer at end of frame
     apu_.end_audio_frame();
+}
+
+bool Emulator::step_instruction() {
+    uint32_t cpu_cycles = cpu_.step();
+    ppu_.step(cpu_cycles);
+    apu_.step(cpu_cycles);
+    fds_.step(cpu_cycles);
+    clock_expansion_audio(cpu_cycles);
+
+    // OAM DMA stalls the CPU — advance PPU/APU/mapper by DMA cycles
+    uint32_t dma_cycles = bus_.take_dma_cycles();
+    if (dma_cycles > 0) {
+        ppu_.step(dma_cycles);
+        apu_.step(dma_cycles);
+        clock_expansion_audio(dma_cycles);
+    }
+
+    // DMC memory reads stall the CPU — advance PPU/APU by stall cycles
+    uint32_t dmc_stall = apu_.take_dmc_stall_cycles();
+    if (dmc_stall > 0) {
+        ppu_.step(dmc_stall);
+        apu_.step(dmc_stall);
+        clock_expansion_audio(dmc_stall);
+    }
+
+    return ppu_.frame_ready();
 }
 
 std::vector<Byte> Emulator::save_state() const {

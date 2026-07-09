@@ -28,6 +28,12 @@ class Emulator {
     void reset();
     void step_frame();
 
+    /// Runs a single CPU instruction and clocks the PPU/APU/mapper by the
+    /// cycles it consumed. Returns true if the PPU signalled end-of-frame
+    /// during this step. Exposed for per-instruction test harnesses that
+    /// need to poll memory or registers between instructions.
+    bool step_instruction();
+
     /// Mounts a Famicom Disk System `.fds` image into the disk drive.
     [[nodiscard]] Result<void> load_disk(const std::string& path);
 
@@ -65,6 +71,15 @@ class Emulator {
     }
     [[nodiscard]] const Ppu& ppu() const {
         return ppu_;
+    }
+    [[nodiscard]] const Cpu& cpu() const {
+        return cpu_;
+    }
+
+    /// Reads a byte from the CPU address space (RAM, PPU, APU, cartridge
+    /// PRG/PRG-RAM). Used by test harnesses to poll $6000-$7FFF result bytes.
+    [[nodiscard]] Byte read_cpu(Address addr) {
+        return bus_.read(addr);
     }
 
     [[nodiscard]] size_t drain_audio(float* dest, size_t max_count) {

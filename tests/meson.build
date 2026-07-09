@@ -102,6 +102,18 @@ test_configuration = executable('test-configuration',
 )
 test('configuration', test_configuration)
 
+test_cpu_accuracy = executable('test-cpu-accuracy',
+    'unit/test_cpu_accuracy.cpp',
+    dependencies : [mapperbus_app_dep, catch2_dep],
+)
+test('cpu-accuracy', test_cpu_accuracy, workdir : meson.project_source_root())
+
+test_mapper_timing = executable('test-mapper-timing',
+    'unit/test_mapper_timing.cpp',
+    dependencies : [mapperbus_core_dep, catch2_dep],
+)
+test('mapper-timing', test_mapper_timing)
+
 if get_option('enable_sdl3')
     test_sdl3_input = executable('test-sdl3-input',
         'unit/test_sdl3_input.cpp',

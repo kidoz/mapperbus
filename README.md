@@ -211,7 +211,7 @@ Default locations:
 just test
 ```
 
-Unit and integration suites cover bus logic, mappers, APU, audio pipeline, input mapping, configuration, region detection, emulation sessions, and render integration.
+Unit and integration suites cover bus logic, mappers, APU, audio pipeline, input mapping, configuration, region detection, emulation sessions, render integration, and synthesized CPU accuracy tests (opcode dispatch, flag behavior, unofficial opcodes).
 
 ## Project Structure
 
