@@ -297,8 +297,7 @@ TEST_CASE("EmulationSession saves and loads state through sibling slot files",
 
         // Slot 0 maps to a sibling .state file, mirroring battery .sav naming.
         const std::string state_path = actions.state_path();
-        REQUIRE(state_path ==
-                std::filesystem::path(rom_path).replace_extension(".state").string());
+        REQUIRE(state_path == std::filesystem::path(rom_path).replace_extension(".state").string());
 
         for (int i = 0; i < 3; ++i) {
             (void)session.step_frame();

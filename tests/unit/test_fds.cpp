@@ -159,10 +159,10 @@ void start_fds_square(Fds& fds, uint16_t frequency, Byte gain_reg) {
     for (Address i = 0; i < 64; ++i) {
         fds.write(0x4040 + i, (i < 32) ? 0x00 : 0x3F);
     }
-    fds.write(0x4089, 0x00);                                  // close, full master volume
-    fds.write(0x4080, gain_reg);                              // volume gain / envelope
-    fds.write(0x4082, static_cast<Byte>(frequency & 0xFF));   // freq low
-    fds.write(0x4083, static_cast<Byte>(frequency >> 8));     // freq high, enable
+    fds.write(0x4089, 0x00);                                // close, full master volume
+    fds.write(0x4080, gain_reg);                            // volume gain / envelope
+    fds.write(0x4082, static_cast<Byte>(frequency & 0xFF)); // freq low
+    fds.write(0x4083, static_cast<Byte>(frequency >> 8));   // freq high, enable
 }
 
 float fds_peak(Fds& fds, int cycles) {
