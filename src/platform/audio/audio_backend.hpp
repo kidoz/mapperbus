@@ -12,6 +12,12 @@ class AudioBackend {
     virtual void queue_samples(std::span<const float> samples) = 0;
     virtual void shutdown() = 0;
     virtual int queued_samples() const = 0;
+
+    /// Suspend playback so the device buffer does not run dry (and click on
+    /// resume) while the emulator is paused. Default no-op for backends
+    /// without a real device.
+    virtual void pause() {}
+    virtual void resume() {}
 };
 
 } // namespace mapperbus::platform

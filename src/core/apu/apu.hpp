@@ -403,6 +403,10 @@ class Apu {
     float filter(float sample, size_t chain);
     void emit_sample();
     float tpdf_dither();
+    /// Push a frame's worth of samples into the output ring. If the ring is
+    /// near-full, drop the oldest unread samples (a small time skip) so the
+    /// newest frame stays complete — truncating mid-frame would click.
+    void push_output_dropping_oldest(std::span<const float> samples, size_t granularity = 1);
 
     AudioSettings settings_;
 
@@ -449,6 +453,7 @@ class Apu {
     std::vector<float> blip_read_buffer_;
     std::vector<float> blip_read_buffer_r_;
     std::vector<float> frame_output_buffer_;
+    std::vector<float> discard_buffer_;
 
     // DMC CPU stall cycles (4 per memory read)
     uint32_t dmc_stall_cycles_ = 0;

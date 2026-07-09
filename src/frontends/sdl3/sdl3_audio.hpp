@@ -14,6 +14,8 @@ class Sdl3Audio : public platform::AudioBackend {
     void queue_samples(std::span<const float> samples) override;
     void shutdown() override;
     int queued_samples() const override;
+    void pause() override;
+    void resume() override;
 
   private:
     SDL_AudioStream* stream_ = nullptr;

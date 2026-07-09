@@ -1,7 +1,9 @@
 #include "frontends/sdl3/sdl3_audio.hpp"
 
 #include <algorithm>
+#include <cstddef>
 #include <string>
+#include <vector>
 
 namespace mapperbus::frontend {
 
@@ -31,6 +33,16 @@ bool Sdl3Audio::initialize(int sample_rate, int buffer_size, int channels) {
         return false;
     }
 
+    // Pre-fill one buffer of silence so the device starts fed rather than
+    // running empty until the first emulated frame arrives. An empty device
+    // underruns and then snaps to full amplitude on the first real frame,
+    // which is heard as a startup pop.
+    const int frame_count = std::max(256, buffer_size);
+    const std::size_t silence_samples = static_cast<std::size_t>(frame_count) * channels;
+    std::vector<float> silence(silence_samples, 0.0f);
+    SDL_PutAudioStreamData(
+        stream_, silence.data(), static_cast<int>(silence.size() * sizeof(float)));
+
     SDL_ResumeAudioStreamDevice(stream_);
     return true;
 }
@@ -55,6 +67,18 @@ int Sdl3Audio::queued_samples() const {
     int bytes = SDL_GetAudioStreamQueued(stream_);
     // Return sample frames (not individual channel samples)
     return bytes / static_cast<int>(sizeof(float) * channels_);
+}
+
+void Sdl3Audio::pause() {
+    if (stream_) {
+        SDL_PauseAudioStreamDevice(stream_);
+    }
+}
+
+void Sdl3Audio::resume() {
+    if (stream_) {
+        SDL_ResumeAudioStreamDevice(stream_);
+    }
 }
 
 } // namespace mapperbus::frontend

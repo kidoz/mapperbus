@@ -154,7 +154,18 @@ void EmulationSession::request_stop() {
 }
 
 void EmulationSession::set_paused(bool paused) {
+    if (paused == paused_) {
+        return;
+    }
     paused_ = paused;
+    // Suspend/resume the device so its buffer does not run dry during the
+    // pause (a dry device underruns into hard silence and then snaps to
+    // full amplitude on resume — an audible pop).
+    if (paused) {
+        audio_->pause();
+    } else {
+        audio_->resume();
+    }
 }
 
 void EmulationSession::set_region(core::Region region) {

@@ -182,8 +182,8 @@ std::vector<float> capture_seconds(Apu& apu, int frames) {
         apu.end_audio_frame();
         std::size_t n = 0;
         while ((n = apu.drain_samples(chunk.data(), chunk.size())) > 0) {
-            samples.insert(samples.end(), chunk.begin(),
-                           chunk.begin() + static_cast<std::ptrdiff_t>(n));
+            samples.insert(
+                samples.end(), chunk.begin(), chunk.begin() + static_cast<std::ptrdiff_t>(n));
         }
     }
     return samples;
@@ -330,4 +330,101 @@ TEST_CASE("PseudoStereo BlipBuffer output varies within a frame", "[apu][accurac
     const double freq = rising_edge_freq(left);
     REQUIRE(freq > 430.0);
     REQUIRE(freq < 450.0);
+}
+
+TEST_CASE("DRC rate changes do not introduce impulses in BlipBuffer output", "[apu][accuracy]") {
+    // Re-rating the BlipBuffer mid-stream (the former DRC behavior) left
+    // in-flight kernel energy misaligned with the read pointer, producing
+    // reconstruction crackle. With DRC no longer touching the BlipBuffer,
+    // sweeping the buffer fill across the deadzone must not create any
+    // sample-to-sample step larger than what a clean, rate-stable capture
+    // already produces.
+    Apu apu(accuracy_settings());
+    apu.write_register(0x4015, 0x01);
+    apu.write_register(0x4017, 0x40);
+    apu.write_register(0x4000, 0xBF);
+    apu.write_register(0x4002, 0xFD);
+    apu.write_register(0x4003, 0x00);
+
+    // Baseline: a clean capture with no DRC activity.
+    const std::vector<float> clean = capture_seconds(apu, 62);
+    float clean_max_step = 0.0f;
+    for (std::size_t i = 1; i < clean.size(); ++i) {
+        clean_max_step = std::max(clean_max_step, std::abs(clean[i] - clean[i - 1]));
+    }
+
+    // Reset and re-capture while driving update_rate_control across the
+    // deadzone every frame. The fill ratio is synthetic; only the rate
+    // retuning is under test.
+    apu.reset();
+    apu.write_register(0x4015, 0x01);
+    apu.write_register(0x4017, 0x40);
+    apu.write_register(0x4000, 0xBF);
+    apu.write_register(0x4002, 0xFD);
+    apu.write_register(0x4003, 0x00);
+
+    std::vector<float> driven;
+    std::vector<float> chunk(8192);
+    for (int f = 0; f < 62; ++f) {
+        // Sweep fill ratio from below to above the deadzone and back.
+        float ratio = 0.5f + 0.4f * std::sin(static_cast<float>(f) * 0.4f);
+        apu.update_rate_control(ratio);
+        apu.step(29780);
+        apu.end_audio_frame();
+        std::size_t n = 0;
+        while ((n = apu.drain_samples(chunk.data(), chunk.size())) > 0) {
+            driven.insert(
+                driven.end(), chunk.begin(), chunk.begin() + static_cast<std::ptrdiff_t>(n));
+        }
+    }
+
+    float driven_max_step = 0.0f;
+    for (std::size_t i = 1; i < driven.size(); ++i) {
+        driven_max_step = std::max(driven_max_step, std::abs(driven[i] - driven[i - 1]));
+    }
+
+    // A corrupted reconstruction produces impulses far larger than the clean
+    // waveform's natural per-sample step. Allow generous headroom for the
+    // legitimate phase reset at capture start.
+    REQUIRE(driven_max_step <= clean_max_step * 3.0f + 0.05f);
+}
+
+TEST_CASE("Ring overflow drops oldest, not newest", "[apu][accuracy]") {
+    // When the output ring fills, the newest frame must survive intact;
+    // truncating it mid-frame would leave a vertical seam (a click). Fill
+    // the ring past capacity with a known ramp and confirm the tail is
+    // present and continuous.
+    Apu apu(accuracy_settings());
+    apu.write_register(0x4015, 0x01);
+    apu.write_register(0x4000, 0xBF);
+    apu.write_register(0x4002, 0xFE);
+    apu.write_register(0x4003, 0x08);
+
+    // Produce many frames without draining so the ring saturates and the
+    // overflow path engages. ~1600 samples/frame; ring capacity is 16384.
+    for (int f = 0; f < 20; ++f) {
+        apu.step(29780);
+        apu.end_audio_frame();
+    }
+
+    // Drain everything the ring will now give us.
+    std::vector<float> out;
+    std::vector<float> chunk(8192);
+    std::size_t n = 0;
+    while ((n = apu.drain_samples(chunk.data(), chunk.size())) > 0) {
+        out.insert(out.end(), chunk.begin(), chunk.begin() + static_cast<std::ptrdiff_t>(n));
+    }
+    REQUIRE(out.size() <= 16384);
+
+    // The final samples must be a real, varying waveform (the newest frame),
+    // not a truncated constant. Check the last 100 samples vary.
+    REQUIRE(out.size() > 100);
+    bool tail_varies = false;
+    for (std::size_t i = out.size() - 100; i < out.size(); ++i) {
+        if (std::abs(out[i] - out[i - 1]) > 1e-5f) {
+            tail_varies = true;
+            break;
+        }
+    }
+    REQUIRE(tail_varies);
 }

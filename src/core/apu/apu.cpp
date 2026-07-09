@@ -479,12 +479,15 @@ void Apu::update_rate_control(float buffer_fill_ratio) {
     }
     cycles_per_sample_ = base_cycles_per_sample_ / drc_rate_;
 
-    // Adjust BlipBuffer rate to match DRC-corrected sample rate
-    if (settings_.resampling == ResamplingMode::BlipBuffer) {
-        double adjusted_rate = static_cast<double>(sample_rate_) * drc_rate_;
-        blip_buffer_.set_rates(cpu_clock_, adjusted_rate);
-        blip_buffer_r_.set_rates(cpu_clock_, adjusted_rate);
-    }
+    // Intentionally NOT re-rating the BlipBuffer here. The buffer holds
+    // differentiated BLEP energy from in-flight (not yet read) deltas whose
+    // output positions were computed under the current clocks_per_sample_.
+    // Overwriting that ratio mid-stream leaves accumulated kernel energy
+    // misaligned with the read pointer and is heard as reconstruction
+    // crackle in DMC/noise-heavy content. DRC continues to steer the
+    // cubic-Hermite path via cycles_per_sample_ above, which is stateless
+    // per sample and safe to re-rate. BlipBuffer keeps its nominal rate,
+    // set once at construction / set_sample_rate / set_region.
 }
 
 void Apu::step(uint32_t cpu_cycles) {
@@ -600,7 +603,7 @@ void Apu::end_audio_frame() {
             frame_output_buffer_.push_back(left);
             frame_output_buffer_.push_back(right);
         }
-        output_ring_.try_push(std::span<const float>(frame_output_buffer_), 2);
+        push_output_dropping_oldest(std::span<const float>(frame_output_buffer_), 2);
     } else {
         for (int i = 0; i < count; ++i) {
             float sample = filter(blip_read_buffer_[static_cast<size_t>(i)], 0);
@@ -609,8 +612,33 @@ void Apu::end_audio_frame() {
             }
             frame_output_buffer_.push_back(sample);
         }
-        output_ring_.try_push(std::span<const float>(frame_output_buffer_));
+        push_output_dropping_oldest(std::span<const float>(frame_output_buffer_));
     }
+}
+
+void Apu::push_output_dropping_oldest(std::span<const float> samples, size_t granularity) {
+    size_t pushed = output_ring_.try_push(samples, granularity);
+    if (pushed == samples.size()) {
+        return;
+    }
+
+    // Ring overflowed and dropped the newest tail of the frame. A mid-frame
+    // truncation leaves a vertical step at the seam (a click). Sacrifice the
+    // same count of oldest unread samples to make room, then place the tail.
+    // This drops a small slice of past audio (a sub-frame time skip) but
+    // keeps the newest frame complete and continuous.
+    size_t remaining = samples.size() - pushed;
+    if (granularity > 1) {
+        remaining -= remaining % granularity;
+    }
+    if (remaining == 0) {
+        return;
+    }
+    if (discard_buffer_.size() < remaining) {
+        discard_buffer_.resize(remaining);
+    }
+    output_ring_.read(discard_buffer_.data(), remaining);
+    output_ring_.try_push(samples.subspan(pushed), granularity);
 }
 
 void Apu::emit_sample() {
