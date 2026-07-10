@@ -54,6 +54,9 @@ void Ppu::load_state(StateReader& reader) {
     reader.read(write_latch_);
     reader.read_array(visible_sprites_);
     reader.read(visible_sprite_count_);
+    // Re-derive the backdrop cache from the restored palette (no need to
+    // serialize it separately — palette_[0] fully determines it).
+    backdrop_color_ = palette_[0];
 }
 
 namespace {
@@ -407,6 +410,10 @@ void Ppu::write_palette(Address addr, Byte value) {
         index = static_cast<Address>(index - 0x10);
     }
     palette_[index] = static_cast<Byte>(value & 0x3F);
+    // Keep the backdrop cache in sync (palette_[0] is the universal color).
+    if (index == 0) {
+        backdrop_color_ = palette_[0];
+    }
 }
 
 std::uint32_t Ppu::palette_color(Byte palette_value) const {
@@ -456,7 +463,7 @@ void Ppu::render_pixel() {
     bool clip_left_bg = (ppumask_render_ & 0x02) == 0;
     bool clip_left_sp = (ppumask_render_ & 0x04) == 0;
 
-    Byte universal_bg = read_palette(0x3F00);
+    Byte universal_bg = backdrop_color_;
     Byte bg_palette_value = universal_bg;
     bool bg_opaque = false;
 
@@ -471,18 +478,42 @@ void Ppu::render_pixel() {
         }
 
         Address pattern_base = (ppuctrl_ & 0x10) != 0 ? 0x1000 : 0x0000;
-        Byte tile_index = read_vram(loopy::tile_address(bg_v));
-        Byte attribute = read_vram(loopy::attribute_address(bg_v));
+
+        // Cache tile data per-tile: the fetch results are identical for all
+        // 8 pixels sharing the same bg_v (nametable position + fine_y).
+        // pattern_base from ppuctrl is part of the key because it selects the
+        // pattern table. This avoids 7/8 of the nametable/CHR reads that a
+        // pure per-pixel renderer performs.
+        Byte tile_index;
+        Byte attribute;
+        Byte plane0;
+        Byte plane1;
+
+        if (bg_tile_cache_.addr == bg_v && bg_tile_cache_.pattern_addr == pattern_base) {
+            tile_index = bg_tile_cache_.tile_index;
+            attribute = bg_tile_cache_.attribute;
+            plane0 = bg_tile_cache_.plane0;
+            plane1 = bg_tile_cache_.plane1;
+        } else {
+            tile_index = read_vram(loopy::tile_address(bg_v));
+            attribute = read_vram(loopy::attribute_address(bg_v));
+            int fine_y = static_cast<int>(loopy::fine_y(bg_v));
+            Address pattern_addr = static_cast<Address>(pattern_base + tile_index * 16 + fine_y);
+            plane0 = cartridge_ != nullptr ? cartridge_->read_chr(pattern_addr) : 0;
+            plane1 = cartridge_ != nullptr ? cartridge_->read_chr(pattern_addr + 8) : 0;
+
+            bg_tile_cache_.addr = bg_v;
+            bg_tile_cache_.pattern_addr = pattern_base;
+            bg_tile_cache_.tile_index = tile_index;
+            bg_tile_cache_.attribute = attribute;
+            bg_tile_cache_.plane0 = plane0;
+            bg_tile_cache_.plane1 = plane1;
+        }
 
         int coarse_x = static_cast<int>(loopy::coarse_x(bg_v));
         int coarse_y = static_cast<int>(loopy::coarse_y(bg_v));
         int shift = ((coarse_y & 0x02) != 0 ? 4 : 0) | ((coarse_x & 0x02) != 0 ? 2 : 0);
         Byte palette_index = static_cast<Byte>((attribute >> shift) & 0x03);
-
-        int fine_y = static_cast<int>(loopy::fine_y(bg_v));
-        Address pattern_addr = static_cast<Address>(pattern_base + tile_index * 16 + fine_y);
-        Byte plane0 = cartridge_ != nullptr ? cartridge_->read_chr(pattern_addr) : 0;
-        Byte plane1 = cartridge_ != nullptr ? cartridge_->read_chr(pattern_addr + 8) : 0;
 
         Byte bit = static_cast<Byte>(7 - pixel_in_tile);
         Byte color_index =

@@ -92,6 +92,9 @@ class Ppu {
     std::array<Byte, 256> oam_{};
     std::array<Byte, kVRamSize> vram_{};
     std::array<Byte, 32> palette_{};
+    // Cached backdrop color (palette_[0] with mirror folding). Avoids a
+    // per-pixel read_palette() call in render_pixel; updated in write_palette.
+    Byte backdrop_color_ = 0;
 
     Byte ppuctrl_ = 0;
     Byte ppumask_ = 0;
@@ -153,6 +156,20 @@ class Ppu {
     };
     std::array<SpriteEntry, 8> visible_sprites_{};
     int visible_sprite_count_ = 0;
+
+    // Per-tile background fetch cache. The tile_index, attribute, and both
+    // pattern planes are identical for all 8 pixels in a tile, so caching by
+    // the loopy tile address avoids 7/8 of the nametable/CHR reads that a
+    // pure per-pixel renderer would perform. Invalidated when rendering
+    // starts a new tile or when v changes mid-tile.
+    struct BgTileCache {
+        Address addr = 0xFFFF; // tile address (loopy tile_address + attribute key)
+        Address pattern_addr = 0xFFFF;
+        Byte tile_index = 0;
+        Byte attribute = 0;
+        Byte plane0 = 0;
+        Byte plane1 = 0;
+    } bg_tile_cache_;
 };
 
 } // namespace mapperbus::core
