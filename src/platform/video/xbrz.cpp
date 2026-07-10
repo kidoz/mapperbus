@@ -1,7 +1,6 @@
 #include "platform/video/xbrz.hpp"
 
 #include <algorithm>
-#include <cmath>
 
 namespace mapperbus::platform {
 
@@ -19,21 +18,26 @@ constexpr uint8_t blue(uint32_t c) {
     return static_cast<uint8_t>(c & 0xFF);
 }
 
-// --- Perceptual color distance (weighted RGB, Compuphase metric) ---
+// --- Perceptual color distance (weighted RGB, redmean approximation) ---
+// Returns the SQUARED distance as an integer. All call sites only compare
+// magnitudes (which corner is closest, whether a corner matches), so the
+// sqrt is unnecessary — squared distance preserves ordering and avoids
+// ~1M sqrt+double-multiply chains per frame.
 
-constexpr double color_distance(uint32_t a, uint32_t b) {
+constexpr int color_distance(uint32_t a, uint32_t b) {
     if (a == b)
-        return 0.0;
+        return 0;
     int dr = static_cast<int>(red(a)) - static_cast<int>(red(b));
     int dg = static_cast<int>(green(a)) - static_cast<int>(green(b));
     int db = static_cast<int>(blue(a)) - static_cast<int>(blue(b));
     int rmean = (static_cast<int>(red(a)) + static_cast<int>(red(b))) / 2;
 
-    // Weighted Euclidean distance in RGB space (redmean approximation)
-    double wr = (rmean >= 128) ? 3.0 : 2.0;
-    double wg = 4.0;
-    double wb = (rmean >= 128) ? 2.0 : 3.0;
-    return std::sqrt(wr * dr * dr + wg * dg * dg + wb * db * db);
+    // Weighted squared distance (redmean): the weights depend on whether
+    // the mean red channel is above or below 128.
+    int wr = (rmean >= 128) ? 3 : 2;
+    int wg = 4;
+    int wb = (rmean >= 128) ? 2 : 3;
+    return wr * dr * dr + wg * dg * dg + wb * db * db;
 }
 
 // --- Pixel blending ---
