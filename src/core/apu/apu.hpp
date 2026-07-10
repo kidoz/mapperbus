@@ -439,6 +439,10 @@ class Apu {
     int sample_rate_ = 48000;
     std::array<float, 4> sample_history_{};
     float current_mix_ = 0.0f;
+    // Dirty flag: set when any channel output may have changed (timer edge,
+    // frame-counter clock, register write, DMC level change). Most cycles
+    // leave it clear, letting the per-cycle loop skip a full mix() recompute.
+    bool mix_dirty_ = true;
 
     // BlipBuffer resampling state. PseudoStereo runs a second buffer fed
     // with per-cycle right-channel deltas; the mono buffer carries left.

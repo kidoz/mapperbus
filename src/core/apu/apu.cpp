@@ -385,6 +385,7 @@ void Apu::reset() {
     blip_buffer_r_.reset();
     dither_state_ = 1;
     prev_dither_random_ = 0.0f;
+    mix_dirty_ = true;
 }
 
 void Apu::set_region(Region region) {
@@ -445,6 +446,7 @@ void Apu::apply_settings(const AudioSettings& settings) {
     dither_state_ = 1;
     prev_dither_random_ = 0.0f;
     drc_rate_ = 1.0;
+    mix_dirty_ = true;
 }
 
 void Apu::set_memory_reader(MemoryReader reader) {
@@ -495,6 +497,12 @@ void Apu::step(uint32_t cpu_cycles) {
     bool stereo_blip = use_blip && settings_.stereo_mode == StereoMode::PseudoStereo;
 
     for (uint32_t i = 0; i < cpu_cycles; ++i) {
+        // Timer edges change channel output (sequence_pos / shift_register).
+        // Detect them cheaply: the timer was 0 before clock_timer if it is
+        // now at its reload value (the clock path reloads on edge).
+        if (pulse1_.timer == 0 || pulse2_.timer == 0 || triangle_.timer == 0 || noise_.timer == 0) {
+            mix_dirty_ = true;
+        }
         pulse1_.clock_timer();
         pulse2_.clock_timer();
         triangle_.clock_timer();
@@ -505,6 +513,7 @@ void Apu::step(uint32_t cpu_cycles) {
                 // Rate table encodes the full interval; see NoiseChannel.
                 dmc_.timer = static_cast<uint16_t>(dmc_.timer_period - 1);
                 clock_dmc();
+                mix_dirty_ = true; // DMC output_level changed
             } else {
                 --dmc_.timer;
             }
@@ -532,32 +541,42 @@ void Apu::step(uint32_t cpu_cycles) {
         clock_frame_counter();
 
         if (stereo_blip) {
-            // Each side is its own band-limited stream fed with per-cycle
-            // deltas; deriving stereo after resampling would collapse to a
-            // per-frame constant (channel state only changes in here).
-            StereoSample st = mix_stereo();
-            float delta_l = st.left - prev_blip_mix_;
-            if (std::abs(delta_l) > 1e-8f) {
-                blip_buffer_.add_delta(blip_cycle_offset_, delta_l);
-                prev_blip_mix_ = st.left;
-            }
-            float delta_r = st.right - prev_blip_mix_r_;
-            if (std::abs(delta_r) > 1e-8f) {
-                blip_buffer_r_.add_delta(blip_cycle_offset_, delta_r);
-                prev_blip_mix_r_ = st.right;
+            if (mix_dirty_) {
+                StereoSample st = mix_stereo();
+                mix_dirty_ = false;
+                // Each side is its own band-limited stream fed with per-cycle
+                // deltas; deriving stereo after resampling would collapse to a
+                // per-frame constant (channel state only changes in here).
+                float delta_l = st.left - prev_blip_mix_;
+                if (std::abs(delta_l) > 1e-8f) {
+                    blip_buffer_.add_delta(blip_cycle_offset_, delta_l);
+                    prev_blip_mix_ = st.left;
+                }
+                float delta_r = st.right - prev_blip_mix_r_;
+                if (std::abs(delta_r) > 1e-8f) {
+                    blip_buffer_r_.add_delta(blip_cycle_offset_, delta_r);
+                    prev_blip_mix_r_ = st.right;
+                }
             }
             ++blip_cycle_offset_;
         } else if (use_blip) {
-            current_mix_ = mix();
-            // BlipBuffer mode: record amplitude deltas at cycle-precise timestamps
-            float delta = current_mix_ - prev_blip_mix_;
-            if (std::abs(delta) > 1e-8f) {
-                blip_buffer_.add_delta(blip_cycle_offset_, delta);
-                prev_blip_mix_ = current_mix_;
+            if (mix_dirty_) {
+                current_mix_ = mix();
+                mix_dirty_ = false;
+                // BlipBuffer mode: record amplitude deltas at cycle-precise
+                // timestamps
+                float delta = current_mix_ - prev_blip_mix_;
+                if (std::abs(delta) > 1e-8f) {
+                    blip_buffer_.add_delta(blip_cycle_offset_, delta);
+                    prev_blip_mix_ = current_mix_;
+                }
             }
             ++blip_cycle_offset_;
         } else {
-            current_mix_ = mix();
+            if (mix_dirty_) {
+                current_mix_ = mix();
+                mix_dirty_ = false;
+            }
             // Cubic Hermite mode
             cycle_accumulator_ += 1.0;
             if (cycle_accumulator_ >= cycles_per_sample_) {
@@ -725,6 +744,7 @@ void Apu::clock_quarter_frame() {
     pulse2_.envelope.clock();
     triangle_.clock_linear_counter();
     noise_.envelope.clock();
+    mix_dirty_ = true; // envelope/linear-counter changes affect output
 }
 
 void Apu::clock_half_frame() {
@@ -739,6 +759,7 @@ void Apu::clock_half_frame() {
 
     pulse1_.sweep.clock(pulse1_.timer_period);
     pulse2_.sweep.clock(pulse2_.timer_period);
+    mix_dirty_ = true; // length/sweep changes affect output
 }
 
 // Famicom resistor divider k = 15/(15+47) ~= 0.242, expressed relative to
@@ -863,6 +884,9 @@ Byte Apu::read_register(Address addr) {
 }
 
 void Apu::write_register(Address addr, Byte value) {
+    // Any register write can change channel output (volume, duty, timer,
+    // length, etc.), so the cached mix must be recomputed on the next step.
+    mix_dirty_ = true;
     switch (addr) {
     case 0x4000:
         pulse1_.duty = (value >> 6) & 0x03;
