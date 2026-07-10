@@ -8,6 +8,8 @@ Mmc3::Mmc3(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte
       irq_zero_latch_repeats_(!(header.is_nes2 && header.submapper == 4)) {
     num_prg_banks_8k_ = static_cast<uint8_t>(prg_rom_.size() / 0x2000);
     num_chr_banks_1k_ = use_chr_ram_ ? 8 : static_cast<uint16_t>(chr_rom_.size() / 0x0400);
+    prg_rom_mask_ = prg_rom_.size() - 1;
+    chr_rom_mask_ = chr_rom_.empty() ? 0 : chr_rom_.size() - 1;
     reset();
 }
 
@@ -92,7 +94,7 @@ Byte Mmc3::read_prg(Address addr) {
 
     uint8_t bank_index = (addr - 0x8000) / 0x2000;
     uint32_t offset = prg_offsets_[bank_index] + ((addr - 0x8000) % 0x2000);
-    return prg_rom_[offset % prg_rom_.size()];
+    return prg_rom_[offset & prg_rom_mask_];
 }
 
 void Mmc3::write_prg(Address addr, Byte value) {
@@ -183,7 +185,7 @@ Byte Mmc3::read_chr(Address addr) {
     }
     uint8_t bank_index = (addr / 0x0400) & 0x07;
     uint32_t offset = chr_offsets_[bank_index] + (addr % 0x0400);
-    return chr_rom_[offset % chr_rom_.size()];
+    return chr_rom_[offset & chr_rom_mask_];
 }
 
 void Mmc3::write_chr(Address addr, Byte value) {

@@ -31,6 +31,9 @@ class Nrom : public Mapper {
     std::array<Byte, 0x2000> chr_ram_{};
     MirrorMode mirror_mode_;
     bool use_chr_ram_ = false;
+    // Power-of-two mask for PRG-ROM indexing (ROM sizes are always 2^n).
+    // Avoids a hardware division on every instruction fetch.
+    std::size_t prg_rom_mask_ = 0;
 };
 
 } // namespace mapperbus::core

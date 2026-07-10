@@ -75,6 +75,10 @@ class Mmc3 : public Mapper {
 
     uint8_t num_prg_banks_8k_ = 0;
     uint16_t num_chr_banks_1k_ = 0;
+    // Power-of-two masks for ROM indexing (avoids hardware division on the
+    // per-fetch hot path; bank offsets above are already validated in-bounds).
+    std::size_t prg_rom_mask_ = 0;
+    std::size_t chr_rom_mask_ = 0;
 };
 
 } // namespace mapperbus::core

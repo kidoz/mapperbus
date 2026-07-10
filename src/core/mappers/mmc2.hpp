@@ -60,6 +60,11 @@ class Mmc2 : public Mapper {
     std::array<uint32_t, 2> chr_offsets_{};
 
     MirrorMode mirror_mode_ = MirrorMode::Horizontal;
+
+    // Power-of-two mask for PRG/CHR-ROM indexing (avoids hardware division
+    // on the per-fetch hot path).
+    std::size_t prg_rom_mask_ = 0;
+    std::size_t chr_rom_mask_ = 0;
 };
 
 } // namespace mapperbus::core

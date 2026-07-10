@@ -5,6 +5,7 @@ namespace mapperbus::core {
 Nrom::Nrom(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte> chr_rom)
     : prg_rom_(std::move(prg_rom)), chr_rom_(std::move(chr_rom)), mirror_mode_(header.mirror_mode),
       use_chr_ram_(chr_rom_.empty()) {
+    prg_rom_mask_ = prg_rom_.size() - 1; // ROM sizes are always powers of two
     prg_ram_.fill(0);
     chr_ram_.fill(0);
 }
@@ -16,7 +17,7 @@ Byte Nrom::read_prg(Address addr) {
     if (addr < 0x8000)
         return 0;
     // NROM-128: 16 KB mirrored, NROM-256: 32 KB
-    std::size_t offset = (addr - 0x8000) % prg_rom_.size();
+    std::size_t offset = (addr - 0x8000) & prg_rom_mask_;
     return prg_rom_[offset];
 }
 

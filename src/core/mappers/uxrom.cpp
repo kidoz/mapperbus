@@ -7,6 +7,7 @@ Uxrom::Uxrom(const INesHeader& header,
              [[maybe_unused]] std::vector<Byte> chr_rom)
     : prg_rom_(std::move(prg_rom)), mirror_mode_(header.mirror_mode) {
     num_banks_ = static_cast<uint8_t>(prg_rom_.size() / 0x4000);
+    prg_rom_mask_ = prg_rom_.size() - 1;
 }
 
 Byte Uxrom::read_prg(Address addr) {
@@ -15,11 +16,11 @@ Byte Uxrom::read_prg(Address addr) {
     if (addr < 0xC000) {
         // Switchable 16 KB bank
         std::size_t offset = (bank_select_ * 0x4000) + (addr - 0x8000);
-        return prg_rom_[offset % prg_rom_.size()];
+        return prg_rom_[offset & prg_rom_mask_];
     }
     // Fixed last 16 KB bank
     std::size_t offset = ((num_banks_ - 1) * 0x4000) + (addr - 0xC000);
-    return prg_rom_[offset % prg_rom_.size()];
+    return prg_rom_[offset & prg_rom_mask_];
 }
 
 void Uxrom::write_prg(Address addr, Byte value) {
