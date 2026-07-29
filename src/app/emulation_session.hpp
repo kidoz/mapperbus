@@ -100,6 +100,12 @@ class EmulationSession {
     [[nodiscard]] float smooth_audio_fill_ratio(float fill_ratio);
     void reset_audio_fill_ratio_history();
     [[nodiscard]] int max_queued_samples() const;
+    /// After the audio backend opens, align the APU's sample rate with the
+    /// device's actual rate (which may differ from the configured rate when the
+    /// platform audio server silently resamples). Updates audio_settings_ and
+    /// re-applies settings to the emulator so the DRC watermark/cap and the APU
+    /// output rate match the real device.
+    void reconcile_audio_sample_rate();
     core::Result<void> reinitialize_audio_backend();
     core::Result<void> reinitialize_video_backend();
 

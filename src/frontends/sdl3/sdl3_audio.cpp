@@ -17,6 +17,7 @@ bool Sdl3Audio::initialize(int sample_rate, int buffer_size, int channels) {
     }
 
     channels_ = channels;
+    requested_rate_ = sample_rate;
 
     const int requested_frames = std::max(256, buffer_size);
     const std::string requested_frames_text = std::to_string(requested_frames);
@@ -31,6 +32,18 @@ bool Sdl3Audio::initialize(int sample_rate, int buffer_size, int channels) {
     stream_ = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, nullptr, nullptr);
     if (!stream_) {
         return false;
+    }
+
+    // Query the actual device format. When the audio server cannot honor the
+    // requested rate (e.g. requesting 96 kHz from a 48 kHz PipeWire sink), SDL3
+    // inserts an internal resampler whose variable buffer latency destabilizes
+    // the DRC feedback loop. The caller can reconfigure the APU to this rate to
+    // eliminate the hidden resampler from the path.
+    SDL_AudioSpec dst_spec{};
+    if (SDL_GetAudioStreamFormat(stream_, nullptr, &dst_spec)) {
+        actual_rate_ = dst_spec.freq;
+    } else {
+        actual_rate_ = sample_rate;
     }
 
     // Pre-fill one buffer of silence so the device starts fed rather than
@@ -59,6 +72,12 @@ void Sdl3Audio::shutdown() {
         SDL_DestroyAudioStream(stream_);
         stream_ = nullptr;
     }
+    requested_rate_ = 0;
+    actual_rate_ = 0;
+}
+
+int Sdl3Audio::actual_sample_rate() const {
+    return actual_rate_;
 }
 
 int Sdl3Audio::queued_samples() const {

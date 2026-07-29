@@ -43,6 +43,7 @@ core::Result<void> EmulationSession::initialize() {
             audio_settings_.sample_rate, audio_settings_.buffer_size_samples, channels)) {
         return std::unexpected(std::string("Failed to initialize audio backend"));
     }
+    reconcile_audio_sample_rate();
 
     initialized_ = true;
     return {};
@@ -325,8 +326,22 @@ core::Result<void> EmulationSession::reinitialize_audio_backend() {
             audio_settings_.sample_rate, audio_settings_.buffer_size_samples, channels)) {
         return std::unexpected(std::string("Failed to reinitialize audio backend"));
     }
+    reconcile_audio_sample_rate();
 
     return {};
+}
+
+void EmulationSession::reconcile_audio_sample_rate() {
+    const int device_rate = audio_->actual_sample_rate();
+    if (device_rate <= 0 || device_rate == audio_settings_.sample_rate) {
+        return;
+    }
+    // The device could not honor the requested rate and is silently resampling.
+    // Reconfigure the APU to the real device rate so SDL3's hidden internal
+    // resampler is taken out of the path — its variable buffer latency would
+    // otherwise destabilize the DRC feedback loop (heard as crackle).
+    audio_settings_.sample_rate = device_rate;
+    emulator_.apply_audio_settings(audio_settings_);
 }
 
 core::Result<void> EmulationSession::reinitialize_video_backend() {
