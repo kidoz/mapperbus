@@ -326,10 +326,10 @@ int main(int argc, char* argv[]) {
             runtime_scale_factor = std::clamp(command.factor, 2, 6);
         }
 
-        auto result =
+        auto scaler_result =
             session.set_upscaler(make_runtime_upscaler(runtime_scaler_mode, runtime_scale_factor));
-        if (!result) {
-            mapperbus::core::logger::error("Failed to change scaler: {}", result.error());
+        if (!scaler_result) {
+            mapperbus::core::logger::error("Failed to change scaler: {}", scaler_result.error());
             return;
         }
 
