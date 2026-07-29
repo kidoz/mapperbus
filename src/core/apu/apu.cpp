@@ -660,6 +660,29 @@ void Apu::push_output_dropping_oldest(std::span<const float> samples, size_t gra
     output_ring_.try_push(samples.subspan(pushed), granularity);
 }
 
+void Apu::push_sample_dropping_oldest(float sample) {
+    if (output_ring_.try_push(sample)) {
+        return;
+    }
+    // Ring is full: discard the oldest unread sample (a sub-sample time skip,
+    // far less audible than dropping the newest sample) and retry.
+    output_ring_.read(discard_buffer_.data(), 1);
+    output_ring_.try_push(sample);
+}
+
+void Apu::push_sample_dropping_oldest(float left, float right) {
+    const std::array<float, 2> pair{left, right};
+    if (output_ring_.try_push(std::span<const float>(pair), 2) == 2) {
+        return;
+    }
+    // Drop one full L/R frame from the front to preserve channel pairing.
+    if (discard_buffer_.size() < 2) {
+        discard_buffer_.resize(2);
+    }
+    output_ring_.read(discard_buffer_.data(), 2);
+    output_ring_.try_push(std::span<const float>(pair), 2);
+}
+
 void Apu::emit_sample() {
     // Shift history for cubic interpolation
     sample_history_[0] = sample_history_[1];
@@ -689,16 +712,15 @@ void Apu::emit_sample() {
             left += dither;
             right += dither;
         }
-        // Push the pair atomically: splitting it on overflow would swap
-        // L/R for the rest of the session.
-        const std::array<float, 2> pair{left, right};
-        output_ring_.try_push(std::span<const float>(pair), 2);
+        // Drop-oldest push so the newest sample is never dropped on overflow
+        // (a dropped newest sample is a vertical step = an audible click).
+        push_sample_dropping_oldest(left, right);
     } else {
         sample = filter(sample, 0);
         if (settings_.dithering_enabled) {
             sample += tpdf_dither();
         }
-        output_ring_.try_push(sample);
+        push_sample_dropping_oldest(sample);
     }
 }
 

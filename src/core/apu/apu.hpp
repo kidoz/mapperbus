@@ -407,6 +407,12 @@ class Apu {
     /// near-full, drop the oldest unread samples (a small time skip) so the
     /// newest frame stays complete — truncating mid-frame would click.
     void push_output_dropping_oldest(std::span<const float> samples, size_t granularity = 1);
+    /// Per-sample drop-oldest push for the cubic-Hermite path (emit_sample).
+    /// Mirrors push_output_dropping_oldest: on a full ring, discards the oldest
+    /// unread sample(s) and retries, so the newest sample is never dropped (a
+    /// dropped newest sample is a vertical step = an audible click).
+    void push_sample_dropping_oldest(float sample);
+    void push_sample_dropping_oldest(float left, float right);
 
     AudioSettings settings_;
 
