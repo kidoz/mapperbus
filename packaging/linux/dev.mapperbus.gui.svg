@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- MapperBus application icon. A stylized NES cartridge with a "bus" trace
+     motif. Uses the Adwaita accent blue so it harmonizes with GNOME theming.
+     Scalable; GNOME renders SVG icons natively at any hicolor size. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="mapperbus">
+  <title>mapperbus</title>
+  <defs>
+    <linearGradient id="cart" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3a5a8c"/>
+      <stop offset="1" stop-color="#2a4566"/>
+    </linearGradient>
+    <linearGradient id="label" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f6f7f9"/>
+      <stop offset="1" stop-color="#dde2e8"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Rounded tile background (icon shape, Adwaita accent blue) -->
+  <rect x="32" y="32" width="448" height="448" rx="96" ry="96" fill="#3584e4"/>
+
+  <!-- Cartridge body -->
+  <rect x="132" y="104" width="248" height="304" rx="20" ry="20" fill="url(#cart)"
+        stroke="#1e2f47" stroke-width="6"/>
+
+  <!-- Cartridge label recess -->
+  <rect x="168" y="140" width="176" height="156" rx="12" ry="12" fill="url(#label)"
+        stroke="#1e2f47" stroke-width="4"/>
+
+  <!-- "Bus" trace motif on the label: a parallel data bus -->
+  <g stroke="#3584e4" stroke-width="8" stroke-linecap="round" fill="none">
+    <path d="M188 180 H324"/>
+    <path d="M188 206 H324"/>
+    <path d="M188 232 H324"/>
+    <path d="M188 258 H264"/>
+  </g>
+  <!-- Bus tap node -->
+  <circle cx="264" cy="258" r="9" fill="#1e2f47"/>
+  <circle cx="324" cy="258" r="9" fill="#1e2f47"/>
+
+  <!-- Cartridge finger connector (pin edge) -->
+  <g fill="#d4b25a">
+    <rect x="176" y="408" width="160" height="14" rx="3"/>
+  </g>
+  <g fill="#8a6f30">
+    <rect x="184" y="408" width="6" height="22"/>
+    <rect x="200" y="408" width="6" height="22"/>
+    <rect x="216" y="408" width="6" height="22"/>
+    <rect x="232" y="408" width="6" height="22"/>
+    <rect x="248" y="408" width="6" height="22"/>
+    <rect x="264" y="408" width="6" height="22"/>
+    <rect x="280" y="408" width="6" height="22"/>
+    <rect x="296" y="408" width="6" height="22"/>
+    <rect x="312" y="408" width="6" height="22"/>
+  </g>
+</svg>

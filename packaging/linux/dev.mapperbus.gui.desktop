@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=mapperbus
+GenericName=NES/Famicom Emulator
+Comment=Play NES and Famicom games
+Exec=mapperbus-gui
+Icon=dev.mapperbus.gui
+Terminal=false
+Categories=Game;Emulator;
+StartupNotify=true
+# Matches the xdg_toplevel app_id so GNOME Shell groups the window under this entry.
+StartupWMClass=dev.mapperbus.gui
