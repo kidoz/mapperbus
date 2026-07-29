@@ -27,6 +27,7 @@
 #include "platform/video/upscaler.hpp"
 
 namespace nk {
+class Headerbar;
 class ScrollArea;
 } // namespace nk
 
@@ -61,7 +62,7 @@ class MapperBusGuiController {
         RebindDevice device = RebindDevice::Keyboard;
         core::Button button = core::Button::A;
         std::chrono::steady_clock::time_point started_at{};
-        std::vector<platform::GamepadControl> initially_pressed_gamepad_controls;
+        std::vector<platform::GamepadControl> initially_pressed_gamepad_controls{};
     };
 
     void build_ui();
@@ -117,6 +118,7 @@ class MapperBusGuiController {
 
     std::shared_ptr<Box> root_;
     std::shared_ptr<nk::MenuBar> menu_bar_;
+    std::shared_ptr<nk::Headerbar> headerbar_;
     std::shared_ptr<PreviewCanvas> preview_;
     std::shared_ptr<nk::StatusBar> status_bar_;
     std::shared_ptr<nk::Dialog> settings_dialog_;

@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <functional>
 #include <nk/controllers/event_controller.h>
+#include <nk/widgets/headerbar.h>
 #include <nk/widgets/label.h>
 #include <nk/widgets/scroll_area.h>
 #include <nk/widgets/switch_widget.h>
@@ -893,6 +894,13 @@ void MapperBusGuiController::build_ui() {
     root_->set_vertical_size_policy(nk::SizePolicy::Expanding);
     root_->set_vertical_stretch(1);
 
+    // Client-side headerbar: GNOME-native titlebar with window controls.
+    // Unified style makes the Wayland surface negotiate CSD and reserve the
+    // top inset the headerbar paints into.
+    headerbar_ = nk::Headerbar::create("mapperbus");
+    window_.set_titlebar_style(nk::TitlebarStyle::Unified);
+    root_->append(headerbar_);
+
     if (app_.supports_native_app_menu()) {
         app_.set_native_app_menu(build_native_menus(app_.app_name()));
     } else {
@@ -959,7 +967,12 @@ void MapperBusGuiController::refresh_ui() {
         status_message_,
     });
 
-    window_.set_title("mapperbus");
+    // Sync the native window title and the headerbar title with the loaded ROM.
+    const std::string window_title = loaded ? ("mapperbus — " + loaded_media) : "mapperbus";
+    window_.set_title(window_title);
+    if (headerbar_) {
+        headerbar_->set_title(window_title);
+    }
 }
 
 void MapperBusGuiController::set_message(std::string message) {
