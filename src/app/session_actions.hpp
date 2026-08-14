@@ -1,6 +1,8 @@
 #pragma once
 
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "app/emulation_session.hpp"
@@ -13,6 +15,7 @@ struct SessionSnapshot {
     bool paused = false;
     bool has_cartridge = false;
     std::string rom_path;
+    std::optional<std::uint16_t> mapper_number;
     core::Region region = core::Region::NTSC;
     core::AudioSettings audio_settings{};
 };

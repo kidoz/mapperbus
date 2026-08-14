@@ -261,6 +261,7 @@ TEST_CASE("SessionActions exposes GUI-friendly transport and snapshot state", "[
     REQUIRE(actions.snapshot().has_cartridge);
     REQUIRE(actions.snapshot().running);
     REQUIRE(actions.snapshot().rom_path == rom_path);
+    REQUIRE(actions.snapshot().mapper_number == 0);
 
     actions.pause();
     REQUIRE(actions.snapshot().paused);
@@ -275,6 +276,7 @@ TEST_CASE("SessionActions exposes GUI-friendly transport and snapshot state", "[
     REQUIRE_FALSE(actions.snapshot().has_cartridge);
     REQUIRE_FALSE(actions.snapshot().running);
     REQUIRE(actions.snapshot().rom_path.empty());
+    REQUIRE_FALSE(actions.snapshot().mapper_number.has_value());
 }
 
 TEST_CASE("EmulationSession saves and loads state through sibling slot files",

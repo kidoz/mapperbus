@@ -87,6 +87,7 @@ SessionSnapshot SessionActions::snapshot() const {
         .paused = session_.paused(),
         .has_cartridge = session_.has_cartridge(),
         .rom_path = session_.current_rom_path(),
+        .mapper_number = session_.emulator().mapper_number(),
         .region = session_.emulator().region(),
         .audio_settings = session_.audio_settings(),
     };

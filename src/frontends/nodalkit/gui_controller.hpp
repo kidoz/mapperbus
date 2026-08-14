@@ -8,11 +8,12 @@
 #include <nk/runtime/event_loop.h>
 #include <nk/widgets/button.h>
 #include <nk/widgets/combo_box.h>
+#include <nk/widgets/context_menu.h>
 #include <nk/widgets/dialog.h>
-#include <nk/widgets/menu_bar.h>
 #include <nk/widgets/segmented_control.h>
 #include <nk/widgets/status_bar.h>
 #include <nk/widgets/text_field.h>
+#include <nk/widgets/toast_overlay.h>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -71,6 +72,7 @@ class MapperBusGuiController {
     void refresh_preview();
     void refresh_ui();
     void set_message(std::string message);
+    void rebuild_header_menu();
     void focus_game_surface();
     void browse_for_rom();
     void attempt_open(std::string rom_path);
@@ -102,7 +104,6 @@ class MapperBusGuiController {
     void update_settings_save_status(std::string text);
 
     [[nodiscard]] std::string input_status_text() const;
-    [[nodiscard]] std::string gameplay_hint_text() const;
     [[nodiscard]] std::string video_features_text() const;
     [[nodiscard]] std::string input_test_status_text() const;
 
@@ -117,9 +118,12 @@ class MapperBusGuiController {
     core::FrameBuffer blank_frame_{};
 
     std::shared_ptr<Box> root_;
-    std::shared_ptr<nk::MenuBar> menu_bar_;
     std::shared_ptr<nk::Headerbar> headerbar_;
+    std::shared_ptr<nk::Button> header_menu_button_;
+    std::shared_ptr<nk::ContextMenu> header_menu_;
+    std::vector<std::string> header_menu_actions_;
     std::shared_ptr<PreviewCanvas> preview_;
+    std::shared_ptr<nk::ToastOverlay> toast_overlay_;
     std::shared_ptr<nk::StatusBar> status_bar_;
     std::shared_ptr<nk::Dialog> settings_dialog_;
     std::shared_ptr<nk::Dialog> rebind_dialog_;
@@ -129,7 +133,6 @@ class MapperBusGuiController {
     std::shared_ptr<nk::ScrollArea> settings_scroll_area_;
     std::shared_ptr<SecondaryText> input_test_label_;
     std::shared_ptr<SecondaryText> settings_save_label_;
-    std::string status_message_ = "Ready";
     std::string settings_save_status_ = "Saved automatically";
     SettingsPage settings_page_ = SettingsPage::Input;
     PreviewScaleOption preview_scale_option_ = PreviewScaleOption::PixelPerfect;

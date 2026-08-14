@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
@@ -102,6 +103,14 @@ class Emulator {
     }
     [[nodiscard]] bool has_cartridge() const {
         return cartridge_ != nullptr;
+    }
+
+    /// Mapper number reported by the loaded cartridge header.
+    [[nodiscard]] std::optional<std::uint16_t> mapper_number() const {
+        if (cartridge_ == nullptr) {
+            return std::nullopt;
+        }
+        return cartridge_->header().mapper_number;
     }
 
     [[nodiscard]] Region region() const {

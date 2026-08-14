@@ -123,36 +123,6 @@ constexpr std::array<int, 4> kGamepadDeadzoneValues = {
     22000,
 };
 
-std::vector<nk::Menu> build_window_menus() {
-    return {
-        {"File",
-         {
-             nk::MenuItem::action("Open ROM...", "file.open"),
-             nk::MenuItem::action("Close ROM", "file.close"),
-             nk::MenuItem::make_separator(),
-             nk::MenuItem::action("Quit", "file.quit"),
-         }},
-        {"Emulation",
-         {
-             nk::MenuItem::action("Pause or Resume", "emu.pause"),
-             nk::MenuItem::action("Step Frame", "emu.step"),
-             nk::MenuItem::action("Reset", "emu.reset"),
-             nk::MenuItem::action("Power Cycle", "emu.power"),
-             nk::MenuItem::make_separator(),
-             nk::MenuItem::action("Save State", "emu.save-state"),
-             nk::MenuItem::action("Load State", "emu.load-state"),
-         }},
-        {"Settings",
-         {
-             nk::MenuItem::action("Settings...", "settings.open"),
-         }},
-        {"Help",
-         {
-             nk::MenuItem::action("About mapperbus", "help.about"),
-         }},
-    };
-}
-
 nk::NativeMenuShortcut command_shortcut(nk::KeyCode key) {
     return nk::NativeMenuShortcut{
         .key = key,
@@ -529,6 +499,106 @@ std::string basename_for_display(std::string_view path) {
     return parsed.filename().string();
 }
 
+std::string title_for_display(std::string_view path) {
+    if (path.empty()) {
+        return "MapperBus";
+    }
+
+    const auto parsed = std::filesystem::path(path);
+    auto title = parsed.stem().string();
+    if (title.empty()) {
+        title = basename_for_display(path);
+    }
+
+    std::string cleaned;
+    cleaned.reserve(title.size());
+    bool pending_space = false;
+    for (const auto character : title) {
+        if (character == '-' || character == '_' || character == ' ') {
+            pending_space = !cleaned.empty();
+            continue;
+        }
+        if (pending_space) {
+            cleaned += ' ';
+            pending_space = false;
+        }
+        cleaned += character;
+    }
+    return cleaned.empty() ? "MapperBus" : cleaned;
+}
+
+std::string nominal_fps_label(core::Region region) {
+    switch (region) {
+    case core::Region::PAL:
+        return "50.01 FPS";
+    case core::Region::Dendy:
+        return "50.00 FPS";
+    case core::Region::Multi:
+    case core::Region::NTSC:
+    default:
+        return "60.10 FPS";
+    }
+}
+
+std::string mapper_detail(std::optional<std::uint16_t> mapper_number) {
+    if (!mapper_number.has_value()) {
+        return "No ROM";
+    }
+
+    std::string_view name;
+    switch (*mapper_number) {
+    case 0:
+        name = "NROM";
+        break;
+    case 1:
+        name = "MMC1";
+        break;
+    case 2:
+        name = "UxROM";
+        break;
+    case 3:
+        name = "CNROM";
+        break;
+    case 4:
+        name = "MMC3";
+        break;
+    case 5:
+        name = "MMC5";
+        break;
+    case 7:
+        name = "AxROM";
+        break;
+    case 9:
+        name = "MMC2";
+        break;
+    case 11:
+        name = "Color Dreams";
+        break;
+    case 19:
+        name = "Namco 163";
+        break;
+    case 24:
+    case 26:
+        name = "VRC6";
+        break;
+    case 69:
+        name = "Sunsoft 5B";
+        break;
+    case 85:
+        name = "VRC7";
+        break;
+    default:
+        break;
+    }
+
+    auto detail = "Mapper " + std::to_string(*mapper_number);
+    if (!name.empty()) {
+        detail += " · ";
+        detail += name;
+    }
+    return detail;
+}
+
 std::string region_name(core::Region region) {
     switch (region) {
     case core::Region::PAL:
@@ -898,17 +968,35 @@ void MapperBusGuiController::build_ui() {
     // Client-side headerbar: GNOME-native titlebar with window controls.
     // Unified style makes the Wayland surface negotiate CSD and reserve the
     // top inset the headerbar paints into.
-    headerbar_ = nk::Headerbar::create("mapperbus");
+    headerbar_ = nk::Headerbar::create("MapperBus");
+    headerbar_->set_centering_policy(nk::HeaderbarCenteringPolicy::Strict);
+    headerbar_->set_horizontal_size_policy(nk::SizePolicy::Expanding);
     window_.set_titlebar_style(nk::TitlebarStyle::Unified);
+
+    // GNOME-style headerbar: keep the primary Open action visible and collect
+    // secondary commands in one compact menu instead of duplicating them in an
+    // in-window menu bar.
+    auto open_button = nk::Button::create("Open…");
+    open_button->add_style_class("flat");
+    (void)open_button->on_clicked().connect([this] { browse_for_rom(); });
+    headerbar_->add_leading(open_button);
+
+    if (!app_.supports_native_app_menu()) {
+        header_menu_button_ = nk::Button::create("☰");
+        header_menu_button_->add_style_class("flat");
+        header_menu_button_->add_style_class("primary-menu-button");
+        header_menu_button_->ensure_accessible().set_name("Main menu");
+        header_menu_button_->ensure_accessible().set_description("Open the application menu");
+        headerbar_->add_trailing(FixedWidthSlot::create(40.0F, header_menu_button_));
+
+        header_menu_ = nk::ContextMenu::create();
+        header_menu_->ensure_accessible().set_name("Application menu");
+    }
+
     root_->append(headerbar_);
 
     if (app_.supports_native_app_menu()) {
         app_.set_native_app_menu(build_native_menus(app_.app_name()));
-    } else {
-        menu_bar_ = nk::MenuBar::create();
-        for (auto menu : build_window_menus()) {
-            menu_bar_->add_menu(std::move(menu));
-        }
     }
 
     preview_ = PreviewCanvas::create();
@@ -919,14 +1007,23 @@ void MapperBusGuiController::build_ui() {
     preview_->set_horizontal_stretch(1);
     preview_->set_vertical_stretch(1);
 
-    status_bar_ = nk::StatusBar::create();
-    status_bar_->set_segments({"Stopped", "NTSC", "No ROM", status_message_});
+    toast_overlay_ = nk::ToastOverlay::create();
+    toast_overlay_->set_child(preview_);
+    toast_overlay_->set_horizontal_size_policy(nk::SizePolicy::Expanding);
+    toast_overlay_->set_vertical_size_policy(nk::SizePolicy::Expanding);
+    toast_overlay_->set_horizontal_stretch(1);
+    toast_overlay_->set_vertical_stretch(1);
 
-    if (menu_bar_) {
-        root_->append(menu_bar_);
-    }
-    root_->append(preview_);
+    status_bar_ = nk::StatusBar::create();
+    status_bar_->set_horizontal_size_policy(nk::SizePolicy::Expanding);
+    status_bar_->set_segments({"Stopped"});
+    status_bar_->set_detail("No ROM");
+
+    root_->append(toast_overlay_);
     root_->append(status_bar_);
+    if (header_menu_) {
+        root_->append(header_menu_);
+    }
 
     window_.set_child(root_);
 }
@@ -938,9 +1035,29 @@ void MapperBusGuiController::wire_ui() {
     });
     (void)app_.on_native_app_menu_action().connect(
         [this](std::string_view action) { handle_menu_action(action); });
-    if (menu_bar_) {
-        (void)menu_bar_->on_action().connect(
-            [this](std::string_view action) { handle_menu_action(action); });
+    if (header_menu_button_ && header_menu_) {
+        (void)header_menu_button_->on_clicked().connect([this] {
+            if (header_menu_->is_open()) {
+                header_menu_->dismiss();
+                focus_game_surface();
+                return;
+            }
+            rebuild_header_menu();
+            const auto& button = header_menu_button_->allocation();
+            constexpr float menu_width = 160.0F;
+            header_menu_->show_at(
+                {std::max(8.0F, button.right() - menu_width), button.bottom() + 4.0F});
+            header_menu_->grab_focus();
+        });
+        (void)header_menu_->on_item_activated().connect([this](int index) {
+            if (index < 0 || index >= static_cast<int>(header_menu_actions_.size())) {
+                return;
+            }
+            const auto& action = header_menu_actions_[static_cast<std::size_t>(index)];
+            if (!action.empty()) {
+                handle_menu_action(action);
+            }
+        });
     }
 }
 
@@ -960,27 +1077,70 @@ void MapperBusGuiController::refresh_ui() {
     const bool loaded = snapshot.has_cartridge;
     const bool paused = loaded && snapshot.paused;
     const std::string state_text = loaded ? (paused ? "Paused" : "Running") : "Stopped";
-    const std::string loaded_media = basename_for_display(snapshot.rom_path);
-    status_bar_->set_segments({
-        state_text,
-        region_name(snapshot.region),
-        loaded ? loaded_media : "No ROM",
-        status_message_,
-    });
+    const std::string display_title = title_for_display(snapshot.rom_path);
+    if (loaded) {
+        status_bar_->set_segments(
+            {state_text, region_name(snapshot.region), nominal_fps_label(snapshot.region)});
+    } else {
+        status_bar_->set_segments({state_text});
+    }
+    status_bar_->set_detail(mapper_detail(snapshot.mapper_number));
 
-    // Sync the native window title and the headerbar title with the loaded ROM.
-    const std::string window_title = loaded ? ("mapperbus — " + loaded_media) : "mapperbus";
+    // Keep the native task-switcher title identifiable while the visible
+    // headerbar presents a clean media title without the file extension.
+    const std::string window_title = loaded ? (display_title + " — MapperBus") : "MapperBus";
     window_.set_title(window_title);
     if (headerbar_) {
-        headerbar_->set_title(window_title);
+        headerbar_->set_title(display_title);
+        headerbar_->set_subtitle(loaded ? "MapperBus" : "");
     }
 }
 
 void MapperBusGuiController::set_message(std::string message) {
-    status_message_ = std::move(message);
-    if (status_bar_) {
-        status_bar_->set_segment(3, status_message_);
+    if (toast_overlay_ && !message.empty()) {
+        const bool high_priority = message.starts_with("Failed") || message.starts_with("Unable");
+        toast_overlay_->add_toast({
+            .title = std::move(message),
+            .action_label = {},
+            .priority = high_priority ? nk::ToastPriority::High : nk::ToastPriority::Normal,
+            .timeout =
+                high_priority ? std::chrono::milliseconds(8000) : std::chrono::milliseconds(5000),
+        });
     }
+}
+
+void MapperBusGuiController::rebuild_header_menu() {
+    if (!header_menu_) {
+        return;
+    }
+
+    header_menu_->clear();
+    header_menu_actions_.clear();
+    const auto add_action = [this](std::string label, std::string action) {
+        header_menu_->add_item(std::move(label));
+        header_menu_actions_.push_back(std::move(action));
+    };
+    const auto add_separator = [this] {
+        header_menu_->add_separator();
+        header_menu_actions_.emplace_back();
+    };
+
+    const auto snapshot = actions_->snapshot();
+    if (snapshot.has_cartridge) {
+        add_action(snapshot.paused ? "Resume" : "Pause", "emu.pause");
+        add_action("Step Frame", "emu.step");
+        add_action("Reset", "emu.reset");
+        add_action("Power Cycle", "emu.power");
+        add_separator();
+        add_action("Save State", "emu.save-state");
+        add_action("Load State", "emu.load-state");
+        add_action("Close ROM", "file.close");
+        add_separator();
+    }
+    add_action("Settings…", "settings.open");
+    add_action("About MapperBus", "help.about");
+    add_separator();
+    add_action("Quit", "file.quit");
 }
 
 void MapperBusGuiController::focus_game_surface() {
@@ -1024,7 +1184,8 @@ void MapperBusGuiController::attempt_open(std::string rom_path) {
     frame_accumulator_ = std::chrono::nanoseconds{0};
     last_tick_time_ = std::chrono::steady_clock::now();
     refresh_preview();
-    set_message("Loaded " + basename_for_display(rom_path) + ". " + gameplay_hint_text());
+    set_message("Loaded " + title_for_display(rom_path) +
+                ". Controls: arrows, X = A, Z = B, Enter = Start.");
     refresh_ui();
     focus_game_surface();
 }
@@ -1887,7 +2048,7 @@ void MapperBusGuiController::handle_menu_action(std::string_view action) {
     }
     if (action == "help.about") {
         auto dialog = nk::Dialog::create(
-            "About mapperbus", "mapperbus\nNodalKit host for NES, Famicom, and FDS sessions");
+            "About MapperBus", "MapperBus\nNodalKit host for NES, Famicom, and FDS sessions");
         dialog->add_button("OK", nk::DialogResponse::Accept);
         (void)dialog->on_response().connect(
             [this](nk::DialogResponse /*response*/) { focus_game_surface(); });
@@ -1922,23 +2083,6 @@ std::string MapperBusGuiController::input_test_status_text() const {
         text += pressed[index];
     }
     return text;
-}
-
-std::string MapperBusGuiController::gameplay_hint_text() const {
-    const std::string gamepad =
-        input_backend_->gamepad_config().enabled ? " Gamepad input is enabled." : "";
-
-    if (input_backend_->uses_default_bindings() &&
-        input_backend_->uses_default_gamepad_bindings()) {
-        return "Arrows move, X = A, Z = B, Enter = Start, Right Shift = Select." + gamepad;
-    }
-
-    return "Custom map: Up " + key_label(input_backend_->binding(core::Button::Up)) + ", Down " +
-           key_label(input_backend_->binding(core::Button::Down)) + ", Left " +
-           key_label(input_backend_->binding(core::Button::Left)) + ", Right " +
-           key_label(input_backend_->binding(core::Button::Right)) + ", A " +
-           key_label(input_backend_->binding(core::Button::A)) + ", B " +
-           key_label(input_backend_->binding(core::Button::B)) + "." + gamepad;
 }
 
 std::string MapperBusGuiController::video_features_text() const {

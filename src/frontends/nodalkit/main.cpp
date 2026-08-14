@@ -8,14 +8,14 @@
 int main(int argc, char** argv) {
     mapperbus::core::register_builtin_mappers();
 
-    nk::Application app({.app_id = "dev.mapperbus.gui", .app_name = "mapperbus"});
+    nk::Application app({.app_id = "dev.mapperbus.gui", .app_name = "MapperBus"});
     // Let the theme resolution pipeline pick the platform family (GNOME /
     // Windows 11 / macOS 26), color scheme, and system accent. Density comes
     // from the saved configuration once the controller loads it.
     app.set_theme_selection(nk::ThemeSelection{});
 
     nk::Window window({
-        .title = "mapperbus",
+        .title = "MapperBus",
         .width = 1120,
         .height = 900,
     });
