@@ -1,13 +1,16 @@
 #include "frontends/nodalkit/gui_controller.hpp"
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <functional>
 #include <nk/controllers/event_controller.h>
+#include <nk/widgets/clamp.h>
 #include <nk/widgets/headerbar.h>
 #include <nk/widgets/label.h>
+#include <nk/widgets/preferences.h>
 #include <nk/widgets/scroll_area.h>
 #include <nk/widgets/switch_widget.h>
 #include <span>
@@ -442,26 +445,24 @@ std::string renderer_backend_label(nk::RendererBackend backend) {
     }
 }
 
-std::shared_ptr<nk::TextField> read_only_value(std::string text) {
-    auto field = nk::TextField::create(std::move(text));
-    field->set_editable(false);
-    return field;
-}
-
-std::shared_ptr<Box> labeled_row(std::string label, std::shared_ptr<nk::Widget> value) {
-    auto row = Box::horizontal(14.0F);
-    row->set_horizontal_size_policy(nk::SizePolicy::Expanding);
-    auto name = FieldLabel::create(std::move(label));
-    auto label_slot = FixedWidthSlot::create(112.0F, name);
-    value->set_horizontal_size_policy(nk::SizePolicy::Expanding);
-    value->set_horizontal_stretch(1);
-    row->append(label_slot);
-    row->append(std::move(value));
+/// Build a GNOME boxed-list preference row: title on the left, an arbitrary
+/// suffix control on the right. Replaces the flat labeled_row() for settings
+/// that live inside a PreferencesGroup.
+std::shared_ptr<nk::PreferencesRow> pref_row(std::string title,
+                                             std::shared_ptr<nk::Widget> suffix) {
+    auto row = nk::PreferencesRow::create(std::move(title));
+    if (suffix != nullptr) {
+        suffix->set_horizontal_size_policy(nk::SizePolicy::Preferred);
+        row->set_suffix(std::move(suffix));
+    }
     return row;
 }
 
-std::shared_ptr<Box> value_row(std::string label, std::string value) {
-    return labeled_row(std::move(label), ValueText::create(std::move(value)));
+/// Read-only preference row showing a static value text as the suffix.
+std::shared_ptr<nk::PreferencesRow> pref_value_row(std::string title, std::string value) {
+    auto text = ValueText::create(std::move(value));
+    text->set_dimmed(true);
+    return pref_row(std::move(title), text);
 }
 
 constexpr float kBindingActionColumnWidth = 76.0F;
@@ -1482,7 +1483,13 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_dialog_shell(
     content->append(settings_footer_slot_);
 
     refresh_settings_dialog_sections();
-    return RightBleedSlot::create(20.0F, FixedWidthSlot::create(640.0F, content));
+    // Clamp content to a GNOME-HIG responsive max width (default 720, tightening
+    // below 540) read from theme tokens, instead of a hardcoded 640px box. This
+    // matches libadwaita AdwClamp behavior and scales with the text setting.
+    auto clamp = nk::Clamp::create(nk::Orientation::Horizontal);
+    clamp->set_child(content);
+    clamp->set_margin({28.0F, 28.0F, 0.0F, 0.0F});
+    return clamp;
 }
 
 std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content() {
@@ -1491,14 +1498,13 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
     if (settings_page_ == SettingsPage::Input) {
         page->append(SecondaryText::create("Configure controller input for the game surface."));
 
-        page->append(SectionTitle::create("Controller"));
-        page->append(value_row("Keyboard", "Ready"));
+        auto controller_group = nk::PreferencesGroup::create("Controller");
+        controller_group->add(pref_value_row("Keyboard", "Ready"));
         if (!input_backend_->gamepad_support_available()) {
+            page->append(controller_group);
             page->append(SecondaryText::create("Gamepad support is unavailable in this build."));
         } else {
             const bool gamepad_enabled = input_backend_->gamepad_config().enabled;
-            auto enabled_row = Box::horizontal(10.0F);
-            enabled_row->set_horizontal_size_policy(nk::SizePolicy::Expanding);
             auto enabled_switch = nk::Switch::create();
             enabled_switch->set_active(gamepad_enabled);
             (void)enabled_switch->on_toggled().connect([this](bool active) {
@@ -1508,9 +1514,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
                 refresh_ui();
                 refresh_settings_dialog_sections();
             });
-            enabled_row->append(enabled_switch);
-            enabled_row->append(Spacer::create());
-            page->append(labeled_row("Gamepad input", enabled_row));
+            controller_group->add(pref_row("Gamepad input", enabled_switch));
 
             auto index_combo = nk::ComboBox::create();
             auto device_labels = input_backend_->gamepad_device_labels();
@@ -1527,7 +1531,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
                 refresh_ui();
                 refresh_settings_dialog_sections();
             });
-            page->append(labeled_row("Preferred device", index_combo));
+            controller_group->add(pref_row("Preferred device", index_combo));
 
             auto deadzone_control = nk::SegmentedControl::create();
             deadzone_control->set_segments(owned_labels(kGamepadDeadzoneLabels));
@@ -1544,8 +1548,9 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
                     ".");
                 refresh_ui();
             });
-            page->append(labeled_row("Deadzone", deadzone_control));
+            controller_group->add(pref_row("Deadzone", deadzone_control));
 
+            page->append(controller_group);
             page->append(SecondaryText::create(input_backend_->gamepad_status_text()));
         }
 
@@ -1580,6 +1585,8 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
         page->append(
             SecondaryText::create("Tune how the preview surface and interface are presented."));
 
+        auto display_group = nk::PreferencesGroup::create("Display");
+
         auto scale_combo = nk::ComboBox::create();
         scale_combo->set_items(owned_labels(kPreviewScaleLabels));
         scale_combo->set_selected_index(preview_scale_index(preview_scale_option_));
@@ -1589,7 +1596,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
             save_configuration_state();
             set_message(preview_scale_description(option));
         });
-        page->append(labeled_row("Scale", scale_combo));
+        display_group->add(pref_row("Scale", scale_combo));
 
         auto density_combo = nk::ComboBox::create();
         density_combo->set_items(owned_labels(kDensityLabels));
@@ -1601,16 +1608,18 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
             save_configuration_state();
             set_message("Interface density updated.");
         });
-        page->append(labeled_row("UI Density", density_combo));
+        display_group->add(pref_row("UI Density", density_combo));
 
-        page->append(labeled_row(
-            "Platform Theme",
-            read_only_value(platform_family_name(app_.system_preferences().platform_family))));
-        page->append(labeled_row("Renderer", read_only_value(video_features_text())));
+        display_group->add(pref_value_row(
+            "Platform Theme", platform_family_name(app_.system_preferences().platform_family)));
+        display_group->add(pref_value_row("Renderer", video_features_text()));
+        page->append(display_group);
     } else {
         input_test_label_.reset();
         page->append(
             SecondaryText::create("Manage audio output behavior for this frontend session."));
+
+        auto audio_group = nk::PreferencesGroup::create("Audio Output");
 
         auto sample_rate_combo = nk::ComboBox::create();
         sample_rate_combo->set_items(owned_labels(kAudioSampleRateLabels));
@@ -1620,7 +1629,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
             configuration_.audio.sample_rate = audio_sample_rate_for_index(index);
             apply_audio_settings_change("Audio sample rate updated.");
         });
-        page->append(labeled_row("Sample Rate", sample_rate_combo));
+        audio_group->add(pref_row("Sample Rate", sample_rate_combo));
 
         auto resampling_control = nk::SegmentedControl::create();
         resampling_control->set_segments(owned_labels(kAudioResamplingLabels));
@@ -1630,7 +1639,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
             configuration_.audio.resampling = audio_resampling_for_index(index);
             apply_audio_settings_change("Audio resampling updated.");
         });
-        page->append(labeled_row("Resampling", resampling_control));
+        audio_group->add(pref_row("Resampling", resampling_control));
 
         auto filter_mode_combo = nk::ComboBox::create();
         filter_mode_combo->set_items(owned_labels(kAudioFilterModeLabels));
@@ -1640,7 +1649,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
             configuration_.audio.filter_mode = audio_filter_mode_for_index(index);
             apply_audio_settings_change("Audio filter mode updated.");
         });
-        page->append(labeled_row("Filter", filter_mode_combo));
+        audio_group->add(pref_row("Filter", filter_mode_combo));
 
         auto filter_profile_control = nk::SegmentedControl::create();
         filter_profile_control->set_segments(owned_labels(kAudioFilterProfileLabels));
@@ -1650,7 +1659,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
             configuration_.audio.filter_profile = audio_filter_profile_for_index(index);
             apply_audio_settings_change("Audio filter profile updated.");
         });
-        page->append(labeled_row("Profile", filter_profile_control));
+        audio_group->add(pref_row("Profile", filter_profile_control));
 
         auto stereo_control = nk::SegmentedControl::create();
         stereo_control->set_segments(owned_labels(kAudioStereoLabels));
@@ -1659,10 +1668,8 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
             configuration_.audio.stereo_mode = audio_stereo_for_index(index);
             apply_audio_settings_change("Audio channel mode updated.");
         });
-        page->append(labeled_row("Channels", stereo_control));
+        audio_group->add(pref_row("Channels", stereo_control));
 
-        auto dither_row = Box::horizontal(10.0F);
-        dither_row->set_horizontal_size_policy(nk::SizePolicy::Expanding);
         auto dither_switch = nk::Switch::create();
         dither_switch->set_active(configuration_.audio.dithering_enabled);
         (void)dither_switch->on_toggled().connect([this](bool active) {
@@ -1670,9 +1677,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
             apply_audio_settings_change(active ? "Audio dithering enabled."
                                                : "Audio dithering disabled.");
         });
-        dither_row->append(dither_switch);
-        dither_row->append(Spacer::create());
-        page->append(labeled_row("Dithering", dither_row));
+        audio_group->add(pref_row("Dithering", dither_switch));
 
         auto mixing_control = nk::SegmentedControl::create();
         mixing_control->set_segments(owned_labels(kAudioExpansionMixingLabels));
@@ -1682,7 +1687,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
             configuration_.audio.expansion_mixing = audio_expansion_mixing_for_index(index);
             apply_audio_settings_change("Expansion audio mixing updated.");
         });
-        page->append(labeled_row("Expansion", mixing_control));
+        audio_group->add(pref_row("Expansion", mixing_control));
 
         auto output_combo = nk::ComboBox::create();
         output_combo->set_items(owned_labels(kAudioModeLabels));
@@ -1693,10 +1698,10 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
             set_message(index == 1 ? "Audio muted." : "Audio output restored.");
             refresh_ui();
         });
-        page->append(labeled_row("Playback", output_combo));
+        audio_group->add(pref_row("Playback", output_combo));
 
-        page->append(
-            labeled_row("Backend", read_only_value(std::string(audio_backend_->status_text()))));
+        audio_group->add(pref_value_row("Backend", std::string(audio_backend_->status_text())));
+        page->append(audio_group);
     }
 
     return page;
@@ -1715,7 +1720,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_footer_conten
         (void)restore_keyboard->on_clicked().connect([this] {
             input_backend_->reset_default_bindings();
             save_configuration_state();
-            set_message("Restored default keyboard bindings. " + gameplay_hint_text());
+            set_message("Restored default keyboard bindings.");
             refresh_ui();
             refresh_settings_dialog_sections();
         });
@@ -1726,7 +1731,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_footer_conten
         (void)restore_gamepad->on_clicked().connect([this] {
             input_backend_->reset_default_gamepad_bindings();
             save_configuration_state();
-            set_message("Restored default gamepad bindings. " + gameplay_hint_text());
+            set_message("Restored default gamepad bindings.");
             refresh_ui();
             refresh_settings_dialog_sections();
         });

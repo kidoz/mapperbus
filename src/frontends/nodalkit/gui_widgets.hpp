@@ -502,9 +502,10 @@ class ValueText : public nk::Widget {
             cached_size_ = measure_text(text_, font_descriptor());
         }
         const float text_y = a.y + std::max(0.0F, (a.height - cached_size_->height) * 0.5F);
-        const auto color =
+        const auto fallback =
             dimmed_ ? nk::Color{0.56F, 0.60F, 0.66F, 1.0F} : nk::Color{0.16F, 0.18F, 0.22F, 1.0F};
-        ctx.add_text({a.x, text_y}, text_, theme_color("text-color", color), font_descriptor());
+        const auto token = dimmed_ ? "text-secondary" : "text-primary";
+        ctx.add_text({a.x, text_y}, text_, theme_color(token, fallback), font_descriptor());
     }
 
   private:
@@ -625,7 +626,8 @@ class StripedRow : public nk::Widget {
   protected:
     void snapshot(nk::SnapshotContext& ctx) const override {
         if (striped_) {
-            ctx.add_color_rect(allocation(), nk::Color{0.96F, 0.97F, 0.98F, 1.0F});
+            ctx.add_color_rect(allocation(),
+                               theme_color("surface-hover", nk::Color{0.96F, 0.97F, 0.98F, 1.0F}));
         }
         Widget::snapshot(ctx);
     }
@@ -691,12 +693,17 @@ class SurfacePanel : public nk::Widget {
   protected:
     void snapshot(nk::SnapshotContext& ctx) const override {
         const auto a = allocation();
-        constexpr float corner_radius = 18.0F;
+        const float corner_radius = theme_number("radius-card", 18.0F);
 
+        ctx.add_rounded_rect({a.x, a.y + 1.0F, a.width, a.height},
+                             nk::Color{0.08F, 0.12F, 0.18F, 0.04F},
+                             corner_radius + 1.0F);
         ctx.add_rounded_rect(
-            {a.x, a.y + 1.0F, a.width, a.height}, nk::Color{0.08F, 0.12F, 0.18F, 0.04F}, 19.0F);
-        ctx.add_rounded_rect(a, nk::Color{0.985F, 0.989F, 0.996F, 1.0F}, corner_radius);
-        ctx.add_border(a, nk::Color{0.86F, 0.88F, 0.91F, 1.0F}, 1.0F, corner_radius);
+            a, theme_color("surface-card", nk::Color{0.985F, 0.989F, 0.996F, 1.0F}), corner_radius);
+        ctx.add_border(a,
+                       theme_color("border-subtle", nk::Color{0.86F, 0.88F, 0.91F, 1.0F}),
+                       1.0F,
+                       corner_radius);
 
         Widget::snapshot(ctx);
     }
@@ -733,12 +740,15 @@ class StatusPill : public nk::Widget {
   protected:
     void snapshot(nk::SnapshotContext& ctx) const override {
         const auto a = allocation();
-        const auto background = emphasized_ ? nk::Color{0.15F, 0.48F, 0.47F, 1.0F}
-                                            : nk::Color{0.94F, 0.96F, 0.98F, 1.0F};
-        const auto border = emphasized_ ? nk::Color{0.15F, 0.48F, 0.47F, 1.0F}
-                                        : nk::Color{0.84F, 0.87F, 0.91F, 1.0F};
+        const auto background =
+            emphasized_ ? theme_color("accent", nk::Color{0.15F, 0.48F, 0.47F, 1.0F})
+                        : theme_color("surface-hover", nk::Color{0.94F, 0.96F, 0.98F, 1.0F});
+        const auto border =
+            emphasized_ ? background
+                        : theme_color("border-subtle", nk::Color{0.84F, 0.87F, 0.91F, 1.0F});
         const auto text_color =
-            emphasized_ ? nk::Color{1.0F, 1.0F, 1.0F, 1.0F} : nk::Color{0.28F, 0.31F, 0.36F, 1.0F};
+            emphasized_ ? theme_color("accent-contrast", nk::Color{1.0F, 1.0F, 1.0F, 1.0F})
+                        : theme_color("text-secondary", nk::Color{0.28F, 0.31F, 0.36F, 1.0F});
 
         ctx.add_rounded_rect(a, background, a.height * 0.5F);
         ctx.add_border(a, border, 1.0F, a.height * 0.5F);
@@ -1048,12 +1058,18 @@ class HeroBanner : public nk::Widget {
   protected:
     void snapshot(nk::SnapshotContext& ctx) const override {
         const auto a = allocation();
-        const auto accent = nk::Color{0.15F, 0.48F, 0.47F, 1.0F};
+        const float corner_radius = theme_number("radius-card", 18.0F);
+        const auto accent = theme_color("accent", nk::Color{0.15F, 0.48F, 0.47F, 1.0F});
 
+        ctx.add_rounded_rect({a.x, a.y + 1.0F, a.width, a.height},
+                             nk::Color{0.08F, 0.12F, 0.18F, 0.04F},
+                             corner_radius + 1.0F);
         ctx.add_rounded_rect(
-            {a.x, a.y + 1.0F, a.width, a.height}, nk::Color{0.08F, 0.12F, 0.18F, 0.04F}, 19.0F);
-        ctx.add_rounded_rect(a, nk::Color{0.98F, 0.99F, 1.0F, 1.0F}, 18.0F);
-        ctx.add_border(a, nk::Color{0.85F, 0.88F, 0.92F, 1.0F}, 1.0F, 18.0F);
+            a, theme_color("surface-card", nk::Color{0.98F, 0.99F, 1.0F, 1.0F}), corner_radius);
+        ctx.add_border(a,
+                       theme_color("border-subtle", nk::Color{0.85F, 0.88F, 0.92F, 1.0F}),
+                       1.0F,
+                       corner_radius);
         ctx.add_rounded_rect({a.x + 22.0F, a.y + 18.0F, 54.0F, 4.0F},
                              nk::Color{accent.r, accent.g, accent.b, 0.18F},
                              2.0F);
@@ -1065,11 +1081,13 @@ class HeroBanner : public nk::Widget {
             cached_subtitle_size_ = measure_text(subtitle_, subtitle_font());
         }
 
-        ctx.add_text(
-            {a.x + 22.0F, a.y + 36.0F}, title_, nk::Color{0.12F, 0.14F, 0.17F, 1.0F}, title_font());
+        ctx.add_text({a.x + 22.0F, a.y + 36.0F},
+                     title_,
+                     theme_color("text-primary", nk::Color{0.12F, 0.14F, 0.17F, 1.0F}),
+                     title_font());
         ctx.add_text({a.x + 22.0F, a.y + 36.0F + cached_title_size_->height + 10.0F},
                      subtitle_,
-                     nk::Color{0.36F, 0.40F, 0.45F, 1.0F},
+                     theme_color("text-secondary", nk::Color{0.36F, 0.40F, 0.45F, 1.0F}),
                      subtitle_font());
 
         if (!pills_.empty()) {
