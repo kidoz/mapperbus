@@ -150,8 +150,7 @@ std::vector<nk::NativeMenu> build_native_menus(std::string_view app_name) {
          }},
         {"File",
          {
-             nk::NativeMenuItem::action(
-                 "Open ROM...", "file.open", command_shortcut(nk::KeyCode::O)),
+             nk::NativeMenuItem::action("Open ROM…", "file.open", command_shortcut(nk::KeyCode::O)),
              nk::NativeMenuItem::action("Close ROM", "file.close"),
          }},
         {"Emulation",
@@ -1193,8 +1192,7 @@ void MapperBusGuiController::attempt_open(std::string rom_path) {
     frame_accumulator_ = std::chrono::nanoseconds{0};
     last_tick_time_ = std::chrono::steady_clock::now();
     refresh_preview();
-    set_message("Loaded " + title_for_display(rom_path) +
-                ". Controls: arrows, X = A, Z = B, Enter = Start.");
+    set_message("Loaded " + title_for_display(rom_path) + ".");
     refresh_ui();
     focus_game_surface();
 }
@@ -1492,11 +1490,11 @@ void MapperBusGuiController::apply_keyboard_rebind(core::Button button, nk::KeyC
 
     if (conflict_button) {
         close_rebind_dialog();
-        auto dialog = nk::Dialog::create("Replace binding?",
-                                         key_label(key) + " is already bound to " +
-                                             button_name(*conflict_button) +
-                                             ". Replace it and move the previous binding to " +
-                                             button_name(*conflict_button) + "?");
+        auto dialog = nk::Dialog::create(
+            "Replace binding?",
+            key_label(key) + " is already used by the " + button_name(*conflict_button) +
+                " button. Replace swaps them: " + button_name(*conflict_button) + " moves to " +
+                key_label(previous) + ".");
         dialog->add_button("Cancel", nk::DialogResponse::Cancel);
         dialog->add_button("Replace", nk::DialogResponse::Accept);
         (void)dialog->on_response().connect([this, dialog, commit](nk::DialogResponse response) {
@@ -1545,11 +1543,12 @@ void MapperBusGuiController::apply_gamepad_rebind(core::Button button,
 
     if (conflict_button) {
         close_rebind_dialog();
-        auto dialog = nk::Dialog::create("Replace binding?",
-                                         gamepad_control_label(control) + " is already bound to " +
-                                             button_name(*conflict_button) +
-                                             ". Replace it and move the previous binding to " +
-                                             button_name(*conflict_button) + "?");
+        auto dialog =
+            nk::Dialog::create("Replace binding?",
+                               gamepad_control_label(control) + " is already used by the " +
+                                   button_name(*conflict_button) +
+                                   " button. Replace swaps them: " + button_name(*conflict_button) +
+                                   " moves to " + gamepad_control_label(previous) + ".");
         dialog->add_button("Cancel", nk::DialogResponse::Cancel);
         dialog->add_button("Replace", nk::DialogResponse::Accept);
         (void)dialog->on_response().connect([this, dialog, commit](nk::DialogResponse response) {
@@ -1649,7 +1648,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_dialog_shell(
 
     settings_footer_slot_ = ContentSlot::create();
     settings_footer_slot_->set_horizontal_size_policy(nk::SizePolicy::Expanding);
-    settings_footer_slot_->set_margin({12.0F, 32.0F, 0.0F, 0.0F});
+    settings_footer_slot_->set_margin({8.0F, 4.0F, 0.0F, 4.0F});
     content->append(settings_footer_slot_);
 
     refresh_settings_dialog_sections();
@@ -1658,7 +1657,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_dialog_shell(
     // matches libadwaita AdwClamp behavior and scales with the text setting.
     auto clamp = nk::Clamp::create(nk::Orientation::Horizontal);
     clamp->set_child(content);
-    clamp->set_margin({28.0F, 28.0F, 0.0F, 0.0F});
+    clamp->set_margin({20.0F, 20.0F, 0.0F, 20.0F});
     return clamp;
 }
 
@@ -1956,7 +1955,7 @@ void MapperBusGuiController::refresh_settings_dialog_sections() {
         page->set_vertical_size_policy(nk::SizePolicy::Preferred);
         page->set_vertical_stretch(0);
 
-        auto padded = PaddingSlot::create({12.0F, 32.0F, 32.0F, 0.0F}, std::move(page));
+        auto padded = PaddingSlot::create({16.0F, 0.0F, 0.0F, 0.0F}, std::move(page));
         padded->set_horizontal_size_policy(nk::SizePolicy::Expanding);
         padded->set_vertical_size_policy(nk::SizePolicy::Preferred);
         padded->set_vertical_stretch(0);
@@ -2060,8 +2059,8 @@ void MapperBusGuiController::handle_menu_action(std::string_view action) {
         return;
     }
     if (action == "help.about") {
-        auto dialog = nk::Dialog::create(
-            "About MapperBus", "MapperBus\nNodalKit host for NES, Famicom, and FDS sessions");
+        auto dialog = nk::Dialog::create("About MapperBus",
+                                         "A NES, Famicom, and FDS emulator built on NodalKit.");
         dialog->add_button("OK", nk::DialogResponse::Accept);
         (void)dialog->on_response().connect(
             [this](nk::DialogResponse /*response*/) { focus_game_surface(); });

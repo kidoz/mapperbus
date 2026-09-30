@@ -404,7 +404,7 @@ class SecondaryText : public nk::Widget {
         const float text_y = a.y + std::max(0.0F, (a.height - cached_size_->height) * 0.5F);
         ctx.add_text({a.x, text_y},
                      text_,
-                     theme_color("text-color", nk::Color{0.40F, 0.44F, 0.49F, 1.0F}),
+                     theme_color("text-secondary", nk::Color{0.40F, 0.44F, 0.49F, 1.0F}),
                      font_descriptor());
     }
 
@@ -514,8 +514,8 @@ class ValueText : public nk::Widget {
     static nk::FontDescriptor font_descriptor() {
         return {
             .family = {},
-            .size = 17.0F,
-            .weight = nk::FontWeight::Medium,
+            .size = 13.5F,
+            .weight = nk::FontWeight::Regular,
         };
     }
 
