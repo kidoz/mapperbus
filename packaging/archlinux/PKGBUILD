@@ -6,8 +6,8 @@ pkgdesc='NES emulator with SDL3, CLI, and NodalKit GUI frontends'
 arch=('x86_64')
 url='https://github.com/kidoz/mapperbus'
 license=('MIT')
-depends=('sdl3' 'wayland' 'wayland-protocols' 'libxkbcommon' 'freetype2' 'fontconfig' 'harfbuzz' 'glib2')
-makedepends=('meson' 'ninja')
+depends=('gcc-libs' 'sdl3' 'wayland' 'libxkbcommon' 'freetype2' 'fontconfig' 'harfbuzz' 'glib2' 'vulkan-icd-loader')
+makedepends=('git' 'meson' 'ninja' 'pkgconf' 'wayland-protocols' 'glslang' 'vulkan-headers')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
 sha256sums=('SKIP')
 
@@ -17,21 +17,14 @@ build() {
         -Denable_sdl3=true \
         -Denable_cli=true \
         -Denable_nodalkit_gui=true \
+        -Dvulkan_shaders=enabled \
         -Denable_tests=false
     meson compile -C build
 }
 
 package() {
     cd "$pkgname-$pkgver"
-    install -Dm755 build/src/app/mapperbus-sdl3 "$pkgdir/usr/bin/mapperbus-sdl3"
-    install -Dm755 build/src/frontends/cli/mapperbus-cli "$pkgdir/usr/bin/mapperbus-cli"
-    install -Dm755 build/src/frontends/nodalkit/mapperbus-gui "$pkgdir/usr/bin/mapperbus-gui"
-    install -Dm755 build/subprojects/nodalkit/libNodalKit.so "$pkgdir/usr/lib/libNodalKit.so"
-
-    install -Dm644 packaging/linux/dev.mapperbus.gui.desktop \
-        "$pkgdir/usr/share/applications/dev.mapperbus.gui.desktop"
-    install -Dm644 packaging/linux/dev.mapperbus.gui.svg \
-        "$pkgdir/usr/share/icons/hicolor/scalable/apps/dev.mapperbus.gui.svg"
+    meson install -C build --destdir "$pkgdir" --no-rebuild --tags runtime
 
     install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }

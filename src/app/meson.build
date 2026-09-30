@@ -13,5 +13,6 @@ if get_option('enable_sdl3')
     executable('mapperbus-sdl3',
         files('main.cpp'),
         dependencies : [mapperbus_sdl3_dep, mapperbus_app_dep],
+        install : true,
     )
 endif

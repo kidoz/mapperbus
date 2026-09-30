@@ -19,8 +19,16 @@ if sdl3_audio_dep.found()
 endif
 
 mapperbus_gui_target_name = 'mapperbus-gui'
+mapperbus_gui_install_rpath = ''
 if host_machine.system() == 'darwin'
     mapperbus_gui_target_name = 'mapperbus'
+elif host_machine.system() == 'linux' and nodalkit_dep.type_name() == 'internal'
+    fs = import('fs')
+    # The bundled toolkit must also resolve with custom prefixes and on distros
+    # whose loader does not search /usr/local/lib by default.
+    toolkit_libdir = fs.relative_to(get_option('prefix') / get_option('libdir'),
+                                   get_option('prefix') / get_option('bindir'))
+    mapperbus_gui_install_rpath = '$ORIGIN' / toolkit_libdir
 endif
 
 mapperbus_gui_exe = executable(mapperbus_gui_target_name,
@@ -28,6 +36,7 @@ mapperbus_gui_exe = executable(mapperbus_gui_target_name,
     dependencies : mapperbus_gui_deps,
     cpp_args : mapperbus_gui_cpp_args,
     install : true,
+    install_rpath : mapperbus_gui_install_rpath,
 )
 
 # GNOME / FreeDesktop integration assets. The .desktop entry and hicolor icon
@@ -39,10 +48,12 @@ if host_machine.system() == 'linux'
 
     install_data(linux_assets[0],
         install_dir : get_option('datadir') / 'applications',
+        install_tag : 'runtime',
         rename : 'dev.mapperbus.gui.desktop')
 
     install_data(linux_assets[1],
         install_dir : get_option('datadir') / 'icons' / 'hicolor' / 'scalable' / 'apps',
+        install_tag : 'runtime',
         rename : 'dev.mapperbus.gui.svg')
 endif
 
