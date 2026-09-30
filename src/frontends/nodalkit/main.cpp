@@ -2,10 +2,19 @@
 #include <nk/platform/window.h>
 #include <nk/style/theme_selection.h>
 
+#if defined(MAPPERBUS_HAVE_SDL3_AUDIO) || defined(MAPPERBUS_HAVE_SDL3_GAMEPAD)
+#include <SDL3/SDL.h>
+#endif
+
 #include "core/mappers/mapper_registry.hpp"
 #include "frontends/nodalkit/gui_controller.hpp"
 
 int main(int argc, char** argv) {
+#if defined(MAPPERBUS_HAVE_SDL3_AUDIO) || defined(MAPPERBUS_HAVE_SDL3_GAMEPAD)
+    // NodalKit owns the event loop. SDL quit events produced by its POSIX
+    // signal handlers would otherwise go unconsumed in this frontend.
+    SDL_SetHint(SDL_HINT_NO_SIGNAL_HANDLERS, "1");
+#endif
     mapperbus::core::register_builtin_mappers();
 
     nk::Application app({.app_id = "dev.mapperbus.gui", .app_name = "MapperBus"});
