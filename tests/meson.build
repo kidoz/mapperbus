@@ -129,4 +129,10 @@ if get_option('enable_sdl3')
         dependencies : [mapperbus_sdl3_dep, catch2_dep],
     )
     test('sdl3-input', test_sdl3_input)
+
+    test_sdl3_gpu = executable('test-sdl3-gpu',
+        'integration/test_sdl3_gpu.cpp',
+        dependencies : [mapperbus_sdl3_dep, catch2_dep],
+    )
+    test('sdl3-gpu', test_sdl3_gpu)
 endif
