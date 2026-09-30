@@ -135,6 +135,7 @@ class MapperBusGuiController {
     std::shared_ptr<SecondaryText> settings_save_label_;
     std::string settings_save_status_ = "Saved automatically";
     SettingsPage settings_page_ = SettingsPage::Input;
+    SettingsPage settings_built_page_ = SettingsPage::Input;
     PreviewScaleOption preview_scale_option_ = PreviewScaleOption::PixelPerfect;
     std::optional<PendingInputRebind> pending_rebind_;
     std::unique_ptr<platform::Upscaler> preview_upscaler_;

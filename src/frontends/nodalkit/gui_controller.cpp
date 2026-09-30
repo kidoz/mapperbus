@@ -1942,10 +1942,14 @@ void MapperBusGuiController::refresh_settings_dialog_sections() {
     }
     if (settings_page_slot_) {
         constexpr float kSettingsPageMaxHeight = 440.0F;
+        // Keep the reading position within a page, but start a freshly
+        // switched page at the top instead of inheriting the old offset.
+        const bool same_page_as_before = settings_built_page_ == settings_page_;
+        settings_built_page_ = settings_page_;
         const float previous_h_offset =
-            settings_scroll_area_ ? settings_scroll_area_->h_offset() : 0.0F;
+            same_page_as_before && settings_scroll_area_ ? settings_scroll_area_->h_offset() : 0.0F;
         const float previous_v_offset =
-            settings_scroll_area_ ? settings_scroll_area_->v_offset() : 0.0F;
+            same_page_as_before && settings_scroll_area_ ? settings_scroll_area_->v_offset() : 0.0F;
         auto page = build_settings_page_content();
         page->set_horizontal_size_policy(nk::SizePolicy::Expanding);
         page->set_horizontal_stretch(1);
