@@ -9,7 +9,7 @@
 namespace mapperbus::frontend {
 
 /// GPU-accelerated xBRZ upscaler using SDL3 GPU compute shaders.
-/// Uses Metal on macOS. Falls back to CPU xBRZ if GPU init fails.
+/// Uses Metal on macOS and Vulkan SPIR-V where built. Falls back to nearest-neighbor scaling.
 class GpuUpscaler : public platform::Upscaler {
   public:
     explicit GpuUpscaler(int scale);
@@ -36,7 +36,7 @@ class GpuUpscaler : public platform::Upscaler {
                std::span<std::uint32_t> target) override;
 
     bool is_gpu_available() const {
-        return device_ != nullptr;
+        return initialized_;
     }
 
   private:
@@ -54,6 +54,10 @@ class GpuUpscaler : public platform::Upscaler {
     SDL_GPUTransferBuffer* upload_buf_ = nullptr;
     SDL_GPUTransferBuffer* download_buf_ = nullptr;
     bool initialized_ = false;
+    bool gpu_failed_ = false;
+#ifdef HAVE_SDL_SHADERCROSS
+    bool shadercross_initialized_ = false;
+#endif
     bool external_device_ = false;
 };
 

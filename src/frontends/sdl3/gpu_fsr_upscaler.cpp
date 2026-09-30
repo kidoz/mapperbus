@@ -6,6 +6,11 @@
 #include "frontends/sdl3/gpu_common.hpp"
 #include "frontends/sdl3/shaders/fsr1_shader.hpp"
 
+#ifdef HAVE_VULKAN_SHADERS
+#include "fsr1_easu_spirv.hpp"
+#include "fsr1_rcas_spirv.hpp"
+#endif
+
 namespace mapperbus::frontend {
 
 GpuFsr1Upscaler::GpuFsr1Upscaler(int scale) : scale_(scale) {
@@ -31,88 +36,44 @@ bool GpuFsr1Upscaler::init_gpu(int src_width, int src_height) {
     src_h_ = src_height;
 
 #ifdef HAVE_SDL_SHADERCROSS
-    if (!SDL_ShaderCross_Init()) {
-        return false;
-    }
+    shadercross_initialized_ = SDL_ShaderCross_Init();
 #endif
 
     if (!device_) {
-#ifdef HAVE_SDL_SHADERCROSS
-        SDL_GPUShaderFormat format = SDL_ShaderCross_GetHLSLShaderFormats();
-#else
-        SDL_GPUShaderFormat format = SDL_GPU_SHADERFORMAT_MSL;
-#endif
+        const auto format = gpu_shader_formats();
         device_ = SDL_CreateGPUDevice(format, false, nullptr);
         if (!device_) {
 #ifdef HAVE_SDL_SHADERCROSS
-            SDL_ShaderCross_Quit();
+            if (shadercross_initialized_) {
+                SDL_ShaderCross_Quit();
+                shadercross_initialized_ = false;
+            }
 #endif
             return false;
         }
         external_device_ = false;
     }
 
-#ifdef HAVE_SDL_SHADERCROSS
-    if (SDL_GetGPUShaderFormats(device_) & SDL_GPU_SHADERFORMAT_MSL) {
-#else
-    if (true) {
+    std::span<const uint32_t> easu_spirv;
+    std::span<const uint32_t> rcas_spirv;
+#ifdef HAVE_VULKAN_SHADERS
+    easu_spirv = k_fsr1_easu_spirv;
+    rcas_spirv = k_fsr1_rcas_spirv;
 #endif
-        // Pipeline 1: EASU Compute MSL
-        SDL_GPUComputePipelineCreateInfo easu_info{};
-        easu_info.code = reinterpret_cast<const uint8_t*>(shaders::kFsr1EasuComputeMsl);
-        easu_info.code_size = std::strlen(shaders::kFsr1EasuComputeMsl);
-        easu_info.entrypoint = "fsr1_easu";
-        easu_info.format = SDL_GPU_SHADERFORMAT_MSL;
-        easu_info.num_readonly_storage_textures = 1;
-        easu_info.num_readwrite_storage_textures = 1;
-        easu_info.num_uniform_buffers = 1;
-        easu_info.threadcount_x = 16;
-        easu_info.threadcount_y = 16;
-        easu_info.threadcount_z = 1;
-
-        easu_pipeline_ = SDL_CreateGPUComputePipeline(device_, &easu_info);
-        if (!easu_pipeline_) {
-            cleanup_gpu();
-            return false;
-        }
-
-        // Pipeline 2: RCAS Compute MSL
-        SDL_GPUComputePipelineCreateInfo rcas_info{};
-        rcas_info.code = reinterpret_cast<const uint8_t*>(shaders::kFsr1RcasComputeMsl);
-        rcas_info.code_size = std::strlen(shaders::kFsr1RcasComputeMsl);
-        rcas_info.entrypoint = "fsr1_rcas";
-        rcas_info.format = SDL_GPU_SHADERFORMAT_MSL;
-        rcas_info.num_readonly_storage_textures = 1;
-        rcas_info.num_readwrite_storage_textures = 1;
-        rcas_info.num_uniform_buffers = 1;
-        rcas_info.threadcount_x = 16;
-        rcas_info.threadcount_y = 16;
-        rcas_info.threadcount_z = 1;
-
-        rcas_pipeline_ = SDL_CreateGPUComputePipeline(device_, &rcas_info);
-        if (!rcas_pipeline_) {
-            cleanup_gpu();
-            return false;
-        }
-#ifdef HAVE_SDL_SHADERCROSS
-    } else {
-        // Pipeline 1: EASU Compute HLSL
-        easu_pipeline_ = compile_hlsl_compute(device_, shaders::kFsr1EasuComputeHlsl, "fsr1_easu");
-        if (!easu_pipeline_) {
-            cleanup_gpu();
-            return false;
-        }
-
-        // Pipeline 2: RCAS Compute HLSL
-        rcas_pipeline_ = compile_hlsl_compute(device_, shaders::kFsr1RcasComputeHlsl, "fsr1_rcas");
-        if (!rcas_pipeline_) {
-            cleanup_gpu();
-            return false;
-        }
+    easu_pipeline_ = create_compute_pipeline(device_,
+                                             shaders::kFsr1EasuComputeMsl,
+                                             "fsr1_easu",
+                                             shaders::kFsr1EasuComputeHlsl,
+                                             easu_spirv);
+    rcas_pipeline_ = create_compute_pipeline(device_,
+                                             shaders::kFsr1RcasComputeMsl,
+                                             "fsr1_rcas",
+                                             shaders::kFsr1RcasComputeHlsl,
+                                             rcas_spirv);
+    if (!easu_pipeline_ || !rcas_pipeline_) {
+        cleanup_gpu();
+        return false;
     }
-#else
-    }
-#endif
 
     // Source Texture
     SDL_GPUTextureCreateInfo src_tex_info{};
@@ -182,6 +143,12 @@ bool GpuFsr1Upscaler::init_gpu(int src_width, int src_height) {
         }
     }
 
+    for (int i = 0; i < 2; ++i) {
+        if (!upload_bufs_[i] || (!external_device_ && !download_bufs_[i])) {
+            cleanup_gpu();
+            return false;
+        }
+    }
     initialized_ = true;
     return true;
 }
@@ -209,10 +176,13 @@ void GpuFsr1Upscaler::cleanup_gpu() {
         if (!external_device_) {
             SDL_DestroyGPUDevice(device_);
         }
-#ifdef HAVE_SDL_SHADERCROSS
-        SDL_ShaderCross_Quit();
-#endif
     }
+#ifdef HAVE_SDL_SHADERCROSS
+    if (shadercross_initialized_) {
+        SDL_ShaderCross_Quit();
+        shadercross_initialized_ = false;
+    }
+#endif
     device_ = nullptr;
     easu_pipeline_ = nullptr;
     rcas_pipeline_ = nullptr;
@@ -232,7 +202,8 @@ void GpuFsr1Upscaler::scale(std::span<const std::uint32_t> source,
                             int src_height,
                             std::span<std::uint32_t> target) {
     if (!initialized_) {
-        if (!init_gpu(src_width, src_height)) {
+        if (gpu_failed_ || !init_gpu(src_width, src_height)) {
+            gpu_failed_ = true;
             if (target.empty()) {
                 return;
             }
@@ -267,7 +238,7 @@ void GpuFsr1Upscaler::scale(std::span<const std::uint32_t> source,
 
     // --- Upload CPU pixels to GPU src_texture (reuse persistent buffer) ---
     if (upload_bufs_[current_idx]) {
-        void* mapped = SDL_MapGPUTransferBuffer(device_, upload_bufs_[current_idx], false);
+        void* mapped = SDL_MapGPUTransferBuffer(device_, upload_bufs_[current_idx], true);
         if (mapped) {
             auto* dst_pixels = static_cast<uint32_t*>(mapped);
             argb_to_rgba(source, {dst_pixels, source.size()});

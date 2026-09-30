@@ -5,6 +5,7 @@
 #include <SDL3_shadercross/SDL_shadercross.h>
 #endif
 #include <cstdint>
+#include <cstring>
 #include <span>
 
 namespace mapperbus::frontend {
@@ -57,6 +58,52 @@ inline SDL_GPUComputePipeline* compile_hlsl_compute(SDL_GPUDevice* device,
     return pipeline;
 }
 #endif
+
+inline SDL_GPUShaderFormat gpu_shader_formats() {
+    SDL_GPUShaderFormat formats = SDL_GPU_SHADERFORMAT_MSL;
+#ifdef HAVE_VULKAN_SHADERS
+    formats |= SDL_GPU_SHADERFORMAT_SPIRV;
+#endif
+#ifdef HAVE_SDL_SHADERCROSS
+    formats |= SDL_ShaderCross_GetHLSLShaderFormats();
+#endif
+    return formats;
+}
+
+inline SDL_GPUComputePipeline* create_compute_pipeline(SDL_GPUDevice* device,
+                                                       const char* msl,
+                                                       const char* entrypoint,
+                                                       const char* hlsl,
+                                                       std::span<const uint32_t> spirv = {}) {
+    const auto formats = SDL_GetGPUShaderFormats(device);
+    SDL_GPUComputePipelineCreateInfo info{};
+    if (!spirv.empty() && (formats & SDL_GPU_SHADERFORMAT_SPIRV)) {
+        info.code = reinterpret_cast<const Uint8*>(spirv.data());
+        info.code_size = spirv.size_bytes();
+        info.entrypoint = "main";
+        info.format = SDL_GPU_SHADERFORMAT_SPIRV;
+    } else if (formats & SDL_GPU_SHADERFORMAT_MSL) {
+        info.code = reinterpret_cast<const Uint8*>(msl);
+        info.code_size = std::strlen(msl);
+        info.entrypoint = entrypoint;
+        info.format = SDL_GPU_SHADERFORMAT_MSL;
+    } else {
+#ifdef HAVE_SDL_SHADERCROSS
+        return compile_hlsl_compute(device, hlsl, entrypoint);
+#else
+        (void)hlsl;
+        SDL_SetError("No compatible GPU upscaler shader; install glslangValidator and rebuild");
+        return nullptr;
+#endif
+    }
+    info.num_readonly_storage_textures = 1;
+    info.num_readwrite_storage_textures = 1;
+    info.num_uniform_buffers = 1;
+    info.threadcount_x = 16;
+    info.threadcount_y = 16;
+    info.threadcount_z = 1;
+    return SDL_CreateGPUComputePipeline(device, &info);
+}
 
 // ARGB (0xAARRGGBB) -> R8G8B8A8_UNORM (byte 0=R, 1=G, 2=B, 3=A)
 inline void argb_to_rgba(std::span<const uint32_t> src, std::span<uint32_t> dst) {

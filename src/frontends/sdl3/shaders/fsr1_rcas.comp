@@ -1,0 +1,63 @@
+#version 450
+
+// Same filter as the embedded Metal/HLSL shader; SDL GPU compute binding layout.
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+layout(std140, set = 2, binding = 0) uniform Params {
+    int scale_factor;
+    int src_width;
+    int src_height;
+    int padding;
+};
+
+layout(rgba8, set = 0, binding = 0) uniform readonly image2D easu_tex;
+layout(rgba8, set = 1, binding = 0) uniform writeonly image2D dst;
+
+// Convert from linear back to sRGB for display
+vec4 to_srgb(vec4 c) {
+    return vec4(pow(max(c.rgb, vec3(0.0)), vec3(1.0 / 2.2, 1.0 / 2.2, 1.0 / 2.2)), c.a);
+}
+
+// Clamp-read from EASU texture
+vec4 sample_easu(int x, int y, int w, int h) {
+    x = clamp(x, 0, w - 1);
+    y = clamp(y, 0, h - 1);
+    return imageLoad(easu_tex, ivec2(x, y));
+}
+
+void main() {
+    uvec3 gid = gl_GlobalInvocationID;
+    int scale = scale_factor;
+    int dw = src_width * scale;
+    int dh = src_height * scale;
+
+    if (int(gid.x) >= dw || int(gid.y) >= dh) return;
+
+    int x = int(gid.x);
+    int y = int(gid.y);
+
+    vec4 c = sample_easu(x, y, dw, dh);
+    vec4 n = sample_easu(x, y - 1, dw, dh);
+    vec4 s = sample_easu(x, y + 1, dw, dh);
+    vec4 w = sample_easu(x - 1, y, dw, dh);
+    vec4 e = sample_easu(x + 1, y, dw, dh);
+
+    vec3 min_rgb = min(c.rgb, min(n.rgb, min(s.rgb, min(w.rgb, e.rgb))));
+    vec3 max_rgb = max(c.rgb, max(n.rgb, max(s.rgb, max(w.rgb, e.rgb))));
+
+    vec3 limit = min(min_rgb, 1.0 - max_rgb);
+    vec3 lobe = limit / (max_rgb + 1e-5);
+
+    const float sharpness = 0.2;
+    vec3 weight = sharpness * lobe;
+
+    weight = min(weight, vec3(0.25, 0.25, 0.25));
+
+    vec3 denom = 1.0 / (1.0 + 4.0 * weight);
+
+    vec4 out_val;
+    out_val.rgb = (c.rgb + weight * (n.rgb + s.rgb + w.rgb + e.rgb)) * denom;
+    out_val.a = c.a;
+
+    imageStore(dst, ivec2(gid.xy), clamp(to_srgb(out_val), 0.0, 1.0));
+}

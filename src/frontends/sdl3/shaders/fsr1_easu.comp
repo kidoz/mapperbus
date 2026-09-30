@@ -1,0 +1,75 @@
+#version 450
+
+// Same filter as the embedded Metal/HLSL shader; SDL GPU compute binding layout.
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+layout(std140, set = 2, binding = 0) uniform Params {
+    int scale_factor;
+    int src_width;
+    int src_height;
+    int padding;
+};
+
+layout(rgba8, set = 0, binding = 0) uniform readonly image2D src;
+layout(rgba8, set = 1, binding = 0) uniform writeonly image2D dst;
+
+// Convert to linear space for accurate scaling/blending
+vec4 to_linear(vec4 c) {
+    return vec4(pow(max(c.rgb, vec3(0.0)), vec3(2.2, 2.2, 2.2)), c.a);
+}
+
+// Clamp-read from source texture
+vec4 sample_src(int x, int y, int w, int h) {
+    x = clamp(x, 0, w - 1);
+    y = clamp(y, 0, h - 1);
+    return to_linear(imageLoad(src, ivec2(x, y)));
+}
+
+// Lanczos-2 weight function approximation
+float lanczos2_weight(float x) {
+    x = abs(x);
+    if (x >= 2.0) return 0.0;
+    if (x < 1e-5) return 1.0;
+    float pi_x = 3.14159265359 * x;
+    return (sin(pi_x) / pi_x) * (sin(pi_x * 0.5) / (pi_x * 0.5));
+}
+
+void main() {
+    uvec3 gid = gl_GlobalInvocationID;
+    int scale = scale_factor;
+    int sw = src_width;
+    int sh = src_height;
+    int dw = sw * scale;
+    int dh = sh * scale;
+
+    if (int(gid.x) >= dw || int(gid.y) >= dh) return;
+
+    float inv_scale = 1.0 / float(scale);
+    float src_x = (float(gid.x) + 0.5) * inv_scale - 0.5;
+    float src_y = (float(gid.y) + 0.5) * inv_scale - 0.5;
+
+    int ix = int(floor(src_x));
+    int iy = int(floor(src_y));
+
+    vec4 result = vec4(0.0, 0.0, 0.0, 0.0);
+    float total_weight = 0.0;
+
+    for (int y = -1; y <= 2; ++y) {
+        for (int x = -1; x <= 2; ++x) {
+            float dx = float(x) - (src_x - float(ix));
+            float dy = float(y) - (src_y - float(iy));
+
+            float weight = lanczos2_weight(dx) * lanczos2_weight(dy);
+
+            result += sample_src(ix + x, iy + y, sw, sh) * weight;
+            total_weight += weight;
+        }
+    }
+
+    if (total_weight > 0.0) {
+        result /= total_weight;
+    }
+
+    result.a = clamp(result.a, 0.0, 1.0);
+    imageStore(dst, ivec2(gid.xy), max(result, vec4(0.0)));
+}

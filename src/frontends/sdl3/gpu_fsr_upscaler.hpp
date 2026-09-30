@@ -36,7 +36,7 @@ class GpuFsr1Upscaler : public platform::Upscaler {
                std::span<std::uint32_t> target) override;
 
     bool is_gpu_available() const {
-        return device_ != nullptr;
+        return initialized_;
     }
 
   private:
@@ -59,6 +59,10 @@ class GpuFsr1Upscaler : public platform::Upscaler {
     SDL_GPUFence* fences_[2] = {nullptr, nullptr};
     uint64_t frame_index_ = 0;
     bool initialized_ = false;
+    bool gpu_failed_ = false;
+#ifdef HAVE_SDL_SHADERCROSS
+    bool shadercross_initialized_ = false;
+#endif
     bool external_device_ = false;
 };
 

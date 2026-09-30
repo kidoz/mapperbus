@@ -6,6 +6,10 @@
 #include "frontends/sdl3/gpu_common.hpp"
 #include "frontends/sdl3/shaders/xbrz_shader.hpp"
 
+#ifdef HAVE_VULKAN_SHADERS
+#include "xbrz_spirv.hpp"
+#endif
+
 namespace mapperbus::frontend {
 
 GpuUpscaler::GpuUpscaler(int scale) : scale_(scale) {
@@ -31,62 +35,34 @@ bool GpuUpscaler::init_gpu(int src_width, int src_height) {
     src_h_ = src_height;
 
 #ifdef HAVE_SDL_SHADERCROSS
-    if (!SDL_ShaderCross_Init()) {
-        return false;
-    }
+    shadercross_initialized_ = SDL_ShaderCross_Init();
 #endif
 
     if (!device_) {
-#ifdef HAVE_SDL_SHADERCROSS
-        SDL_GPUShaderFormat format = SDL_ShaderCross_GetHLSLShaderFormats();
-#else
-        SDL_GPUShaderFormat format = SDL_GPU_SHADERFORMAT_MSL;
-#endif
+        const auto format = gpu_shader_formats();
         device_ = SDL_CreateGPUDevice(format, false, nullptr);
         if (!device_) {
 #ifdef HAVE_SDL_SHADERCROSS
-            SDL_ShaderCross_Quit();
+            if (shadercross_initialized_) {
+                SDL_ShaderCross_Quit();
+                shadercross_initialized_ = false;
+            }
 #endif
             return false;
         }
         external_device_ = false;
     }
 
-#ifdef HAVE_SDL_SHADERCROSS
-    if (SDL_GetGPUShaderFormats(device_) & SDL_GPU_SHADERFORMAT_MSL) {
-#else
-    if (true) {
+    std::span<const uint32_t> spirv;
+#ifdef HAVE_VULKAN_SHADERS
+    spirv = k_xbrz_spirv;
 #endif
-        // Create compute pipeline from embedded MSL source
-        SDL_GPUComputePipelineCreateInfo pipeline_info{};
-        pipeline_info.code = reinterpret_cast<const uint8_t*>(shaders::kXbrzComputeMsl);
-        pipeline_info.code_size = std::strlen(shaders::kXbrzComputeMsl);
-        pipeline_info.entrypoint = "xbrz_upscale";
-        pipeline_info.format = SDL_GPU_SHADERFORMAT_MSL;
-        pipeline_info.num_readonly_storage_textures = 1;
-        pipeline_info.num_readwrite_storage_textures = 1;
-        pipeline_info.num_uniform_buffers = 1;
-        pipeline_info.threadcount_x = 16;
-        pipeline_info.threadcount_y = 16;
-        pipeline_info.threadcount_z = 1;
-
-        pipeline_ = SDL_CreateGPUComputePipeline(device_, &pipeline_info);
-        if (!pipeline_) {
-            cleanup_gpu();
-            return false;
-        }
-#ifdef HAVE_SDL_SHADERCROSS
-    } else {
-        // Create compute pipeline from embedded HLSL source
-        pipeline_ = compile_hlsl_compute(device_, shaders::kXbrzComputeHlsl, "xbrz_upscale");
-        if (!pipeline_) {
-            cleanup_gpu();
-            return false;
-        }
+    pipeline_ = create_compute_pipeline(
+        device_, shaders::kXbrzComputeMsl, "xbrz_upscale", shaders::kXbrzComputeHlsl, spirv);
+    if (!pipeline_) {
+        cleanup_gpu();
+        return false;
     }
-#else
-    }
-#endif
 
     // Create source texture (256x240)
     // Use R8G8B8A8_UNORM (universal GPU storage format).
@@ -137,6 +113,10 @@ bool GpuUpscaler::init_gpu(int src_width, int src_height) {
         download_buf_ = SDL_CreateGPUTransferBuffer(device_, &download_info);
     }
 
+    if (!upload_buf_ || (!external_device_ && !download_buf_)) {
+        cleanup_gpu();
+        return false;
+    }
     initialized_ = true;
     return true;
 }
@@ -156,10 +136,13 @@ void GpuUpscaler::cleanup_gpu() {
         if (!external_device_) {
             SDL_DestroyGPUDevice(device_);
         }
-#ifdef HAVE_SDL_SHADERCROSS
-        SDL_ShaderCross_Quit();
-#endif
     }
+#ifdef HAVE_SDL_SHADERCROSS
+    if (shadercross_initialized_) {
+        SDL_ShaderCross_Quit();
+        shadercross_initialized_ = false;
+    }
+#endif
     device_ = nullptr;
     pipeline_ = nullptr;
     src_texture_ = nullptr;
@@ -175,7 +158,8 @@ void GpuUpscaler::scale(std::span<const std::uint32_t> source,
                         std::span<std::uint32_t> target) {
     // Lazy initialization
     if (!initialized_) {
-        if (!init_gpu(src_width, src_height)) {
+        if (gpu_failed_ || !init_gpu(src_width, src_height)) {
+            gpu_failed_ = true;
             if (target.empty()) {
                 return;
             }
@@ -201,7 +185,7 @@ void GpuUpscaler::scale(std::span<const std::uint32_t> source,
 
     // Upload source pixels to GPU (reuse persistent buffer)
     if (upload_buf_) {
-        void* mapped = SDL_MapGPUTransferBuffer(device_, upload_buf_, false);
+        void* mapped = SDL_MapGPUTransferBuffer(device_, upload_buf_, true);
         if (mapped) {
             auto* dst_pixels = static_cast<uint32_t*>(mapped);
             argb_to_rgba(source, {dst_pixels, source.size()});
