@@ -1016,8 +1016,7 @@ void MapperBusGuiController::build_ui() {
 
     status_bar_ = nk::StatusBar::create();
     status_bar_->set_horizontal_size_policy(nk::SizePolicy::Expanding);
-    status_bar_->set_segments({"Stopped"});
-    status_bar_->set_detail("No ROM");
+    status_bar_->set_segments({"Stopped", "No ROM"});
 
     root_->append(toast_overlay_);
     root_->append(status_bar_);
@@ -1078,13 +1077,14 @@ void MapperBusGuiController::refresh_ui() {
     const bool paused = loaded && snapshot.paused;
     const std::string state_text = loaded ? (paused ? "Paused" : "Running") : "Stopped";
     const std::string display_title = title_for_display(snapshot.rom_path);
+    std::vector<std::string> segments;
     if (loaded) {
-        status_bar_->set_segments(
-            {state_text, region_name(snapshot.region), nominal_fps_label(snapshot.region)});
+        segments = {state_text, region_name(snapshot.region), nominal_fps_label(snapshot.region)};
     } else {
-        status_bar_->set_segments({state_text});
+        segments = {state_text};
     }
-    status_bar_->set_detail(mapper_detail(snapshot.mapper_number));
+    segments.push_back(mapper_detail(snapshot.mapper_number));
+    status_bar_->set_segments(std::move(segments));
 
     // Keep the native task-switcher title identifiable while the visible
     // headerbar presents a clean media title without the file extension.
