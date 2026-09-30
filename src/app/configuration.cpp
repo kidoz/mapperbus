@@ -341,7 +341,10 @@ void apply_setting(MapperBusConfiguration& configuration,
     return home_directory() / "Library" / "Application Support" / "MapperBus";
 #else
     if (const char* xdg = std::getenv("XDG_CONFIG_HOME"); xdg != nullptr && xdg[0] != '\0') {
-        return std::filesystem::path(xdg) / "mapperbus";
+        const std::filesystem::path base(xdg);
+        if (base.is_absolute()) {
+            return base / "mapperbus";
+        }
     }
     return home_directory() / ".config" / "mapperbus";
 #endif

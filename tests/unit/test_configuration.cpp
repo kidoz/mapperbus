@@ -1,12 +1,45 @@
 #include <catch2/catch_test_macros.hpp>
 #include <chrono>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <optional>
+#include <string>
 
 #include "app/configuration.hpp"
 
 namespace mapperbus::app {
 namespace {
+
+#if defined(__linux__)
+TEST_CASE("Linux configuration ignores invalid XDG paths", "[app][configuration]") {
+    struct RestoreXdgConfigHome {
+        std::optional<std::string> original;
+        RestoreXdgConfigHome() {
+            if (const auto* value = std::getenv("XDG_CONFIG_HOME")) {
+                original = value;
+            }
+        }
+        ~RestoreXdgConfigHome() {
+            if (original) {
+                (void)setenv("XDG_CONFIG_HOME", original->c_str(), 1);
+            } else {
+                (void)unsetenv("XDG_CONFIG_HOME");
+            }
+        }
+    } restore;
+
+    REQUIRE(unsetenv("XDG_CONFIG_HOME") == 0);
+    const auto fallback = mapperbus_configuration_path();
+    REQUIRE(setenv("XDG_CONFIG_HOME", "", 1) == 0);
+    REQUIRE(mapperbus_configuration_path() == fallback);
+    REQUIRE(setenv("XDG_CONFIG_HOME", "relative/config", 1) == 0);
+    REQUIRE(mapperbus_configuration_path() == fallback);
+    const auto absolute = std::filesystem::temp_directory_path() / "mapperbus-xdg-test";
+    REQUIRE(setenv("XDG_CONFIG_HOME", absolute.c_str(), 1) == 0);
+    REQUIRE(mapperbus_configuration_path() == absolute / "mapperbus" / "mapperbus.conf");
+}
+#endif
 
 [[nodiscard]] std::filesystem::path temporary_config_path() {
     const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
