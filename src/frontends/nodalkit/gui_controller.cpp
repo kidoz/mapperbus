@@ -1668,12 +1668,11 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
     if (settings_page_ == SettingsPage::Input) {
         page->append(SecondaryText::create("Configure controller input for the game surface."));
 
-        auto controller_group = nk::PreferencesGroup::create("Controller");
-        controller_group->add(pref_value_row("Keyboard", "Ready"));
         if (!input_backend_->gamepad_support_available()) {
-            page->append(controller_group);
             page->append(SecondaryText::create("Gamepad support is unavailable in this build."));
         } else {
+            auto controller_group = nk::PreferencesGroup::create("Controller");
+            const bool gamepad_plugged_in = input_backend_->gamepad_device_count() > 0;
             const bool gamepad_enabled = input_backend_->gamepad_config().enabled;
             auto enabled_switch = nk::Switch::create();
             enabled_switch->set_active(gamepad_enabled);
@@ -1693,7 +1692,8 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
                 std::clamp(input_backend_->gamepad_config().gamepad_index,
                            0,
                            std::max(0, static_cast<int>(device_labels.size()) - 1)));
-            index_combo->set_sensitive(input_backend_->gamepad_config().enabled);
+            // Nothing to choose until a device is actually connected.
+            index_combo->set_sensitive(gamepad_enabled && gamepad_plugged_in);
             (void)index_combo->on_selection_changed().connect([this](int index) {
                 input_backend_->set_gamepad_index(index);
                 save_configuration_state();
@@ -1707,7 +1707,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
             deadzone_control->set_segments(owned_labels(kGamepadDeadzoneLabels));
             deadzone_control->set_selected_index(
                 gamepad_deadzone_index(input_backend_->gamepad_config().axis_deadzone));
-            deadzone_control->set_sensitive(input_backend_->gamepad_config().enabled);
+            deadzone_control->set_sensitive(gamepad_enabled && gamepad_plugged_in);
             (void)deadzone_control->on_selection_changed().connect([this](int index) {
                 input_backend_->set_gamepad_deadzone(gamepad_deadzone_for_index(index));
                 save_configuration_state();
