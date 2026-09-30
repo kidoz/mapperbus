@@ -168,35 +168,13 @@ void Sdl3Video::set_vsync(bool on) {
     if (vsync_ == on) {
         return;
     }
-    vsync_ = on;
-    // VSync is applied at renderer creation time, so recreate the renderer.
-    if (renderer_) {
-        SDL_SetHint(SDL_HINT_RENDER_VSYNC, vsync_ ? "1" : "0");
-        // Toggling vsync without a full shutdown: SDL3 honors the hint at
-        // renderer creation. Recreate just the renderer + texture.
-        SDL_DestroyTexture(texture_);
-        texture_ = nullptr;
-        SDL_DestroyRenderer(renderer_);
-        renderer_ = SDL_CreateRenderer(window_, "gpu");
-        if (!renderer_) {
-            renderer_ = SDL_CreateRenderer(window_, nullptr);
-        }
-        int tex_w = src_width_;
-        int tex_h = src_height_;
-        if (upscaler_) {
-            tex_w = src_width_ * upscaler_->scale_factor();
-            tex_h = src_height_ * upscaler_->scale_factor();
-            SDL_SetRenderLogicalPresentation(
-                renderer_, tex_w, tex_h, SDL_LOGICAL_PRESENTATION_INTEGER_SCALE);
-        } else {
-            SDL_SetRenderLogicalPresentation(
-                renderer_, src_width_, src_height_, SDL_LOGICAL_PRESENTATION_INTEGER_SCALE);
-        }
-        if (!using_zero_copy_) {
-            texture_ = SDL_CreateTexture(
-                renderer_, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, tex_w, tex_h);
-        }
+    // The upscaler borrows the renderer's GPU device. Keep that device and its
+    // texture wrappers alive when changing presentation timing.
+    if (renderer_ && !SDL_SetRenderVSync(renderer_, on ? 1 : 0)) {
+        SDL_Log("Failed to change vsync: %s", SDL_GetError());
+        return;
     }
+    vsync_ = on;
 }
 
 void Sdl3Video::shutdown() {
