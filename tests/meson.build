@@ -1,5 +1,14 @@
 catch2_dep = dependency('catch2-with-main', fallback : ['catch2', 'catch2_with_main_dep'])
 
+# Catch2 expands __COUNTER__ in user translation units. Clang 22 diagnoses
+# this longstanding extension under -Wpedantic even in C++23 mode.
+if cpp.get_id() == 'clang'
+    catch2_dep = declare_dependency(
+        dependencies : catch2_dep,
+        compile_args : cpp.get_supported_arguments('-Wno-c2y-extensions'),
+    )
+endif
+
 test_bus = executable('test-bus',
     'unit/test_bus.cpp',
     dependencies : [mapperbus_core_dep, catch2_dep],
