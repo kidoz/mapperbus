@@ -27,6 +27,14 @@
 namespace mapperbus::frontend {
 namespace {
 
+// NodalKit 0.2.0 lacks the dismissal signal proposed in NK-03. Connect it
+// when available without requiring a locally patched toolkit checkout.
+template <typename Menu> void connect_menu_dismissed(Menu& menu, std::function<void()> callback) {
+    if constexpr (requires { menu.on_dismissed(); }) {
+        (void)menu.on_dismissed().connect(std::move(callback));
+    }
+}
+
 struct KeyBindingOption {
     nk::KeyCode key = nk::KeyCode::Unknown;
     const char* label = "";
@@ -1048,6 +1056,7 @@ void MapperBusGuiController::wire_ui() {
                 {std::max(8.0F, button.right() - menu_width), button.bottom() + 4.0F});
             header_menu_->grab_focus();
         });
+        connect_menu_dismissed(*header_menu_, [this] { focus_game_surface(); });
         (void)header_menu_->on_item_activated().connect([this](int index) {
             if (index < 0 || index >= static_cast<int>(header_menu_actions_.size())) {
                 return;
