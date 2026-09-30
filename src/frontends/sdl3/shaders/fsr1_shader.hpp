@@ -146,15 +146,15 @@ kernel void fsr1_rcas(
 )MSL";
 
 inline constexpr const char* kFsr1EasuComputeHlsl = R"HLSL(
-cbuffer Params : register(b0) {
+cbuffer Params : register(b0, space2) {
     int scale_factor;
     int src_width;
     int src_height;
     int padding;
 };
 
-Texture2D<float4> src : register(t0);
-RWTexture2D<float4> dst : register(u0);
+Texture2D<float4> src : register(t0, space0);
+RWTexture2D<float4> dst : register(u0, space1);
 
 // Convert to linear space for accurate scaling/blending
 float4 to_linear(float4 c) {
@@ -219,15 +219,15 @@ void fsr1_easu(uint3 gid : SV_DispatchThreadID) {
 )HLSL";
 
 inline constexpr const char* kFsr1RcasComputeHlsl = R"HLSL(
-cbuffer Params : register(b0) {
+cbuffer Params : register(b0, space2) {
     int scale_factor;
     int src_width;
     int src_height;
     int padding;
 };
 
-Texture2D<float4> easu_tex : register(t0);
-RWTexture2D<float4> dst : register(u0);
+Texture2D<float4> easu_tex : register(t0, space0);
+RWTexture2D<float4> dst : register(u0, space1);
 
 // Convert from linear back to sRGB for display
 float4 to_srgb(float4 c) {

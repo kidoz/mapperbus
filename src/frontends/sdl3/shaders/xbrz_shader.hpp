@@ -182,15 +182,15 @@ kernel void xbrz_upscale(
 )MSL";
 
 inline constexpr const char* kXbrzComputeHlsl = R"HLSL(
-cbuffer Params : register(b0) {
+cbuffer Params : register(b0, space2) {
     int scale_factor;
     int src_width;
     int src_height;
     int padding;
 };
 
-Texture2D<float4> src : register(t0);
-RWTexture2D<float4> dst : register(u0);
+Texture2D<float4> src : register(t0, space0);
+RWTexture2D<float4> dst : register(u0, space1);
 
 // Perceptual color distance (weighted RGB, Compuphase redmean metric)
 float color_dist(float4 a, float4 b) {
