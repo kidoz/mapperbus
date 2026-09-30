@@ -40,9 +40,9 @@ A clean, extensible NES/Famicom emulator with FDS support, written in modern C++
 ### Video Upscaling
 
 - **xBRZ** -- CPU-based edge-smoothing upscaler (2x--6x)
-- **xBRZ GPU** -- Metal compute shader accelerated xBRZ
+- **xBRZ GPU** -- Metal (macOS) and Vulkan (Linux) compute shader accelerated xBRZ
 - **FSR 1** -- CPU-based AMD FidelityFX Super Resolution
-- **FSR 1 GPU** -- Metal compute shader EASU + RCAS pipeline with zero-copy presentation
+- **FSR 1 GPU** -- Metal and Vulkan compute shader EASU + RCAS pipeline with zero-copy presentation
 
 ### Audio Pipeline
 
@@ -69,9 +69,10 @@ Auto-detection via NES 2.0 header, CRC32 database, and filename heuristics. Manu
 ### Requirements
 
 - C++23 compiler (Clang 17+ or GCC 13+)
-- [Meson](https://mesonbuild.com/) build system
+- [Meson](https://mesonbuild.com/) and Ninja (Meson 1.11+ for the optional NodalKit GUI)
 - [just](https://github.com/casey/just) command runner (optional)
 - SDL3 (fetched automatically via Meson wraps)
+- `glslangValidator` for Vulkan GPU upscaling (optional; shaders are compiled and embedded at build time)
 
 ### Quick Start
 
@@ -87,6 +88,49 @@ meson setup buildDir
 meson compile -C buildDir
 ```
 
+### Linux
+
+The SDL3 frontend supports Wayland and X11. The optional NodalKit GUI currently
+requires a Wayland session. The CLI runs without a display or audio device.
+
+On Arch Linux, install the build and desktop dependencies:
+
+```bash
+sudo pacman -S --needed base-devel git meson ninja pkgconf sdl3 \
+    wayland wayland-protocols libxkbcommon freetype2 fontconfig harfbuzz glib2 \
+    glslang vulkan-headers vulkan-icd-loader
+```
+
+Vulkan rendering also needs the Vulkan driver for your GPU. To build all frontends
+with Vulkan upscaling enabled:
+
+```bash
+meson setup buildDir -Denable_nodalkit_gui=true -Dvulkan_shaders=enabled
+meson compile -C buildDir
+meson test -C buildDir --print-errorlogs
+./buildDir/src/frontends/nodalkit/mapperbus-gui
+```
+
+Add `--reconfigure` to the setup command when using an existing build directory.
+Install the executables, GUI toolkit runtime, desktop launcher, and icon with:
+
+```bash
+sudo meson install -C buildDir --tags runtime
+```
+
+Without `glslangValidator`, the default build still provides CPU upscaling;
+requesting an unavailable GPU upscaler uses nearest-neighbor scaling. Set
+`-Dvulkan_shaders=disabled` to explicitly omit Vulkan shaders. Shadercross, when
+installed as a system library, provides an alternative HLSL compilation path.
+
+For a build with only the CLI and tests:
+
+```bash
+meson setup buildDir-headless -Denable_sdl3=false -Denable_nodalkit_gui=false
+meson compile -C buildDir-headless
+meson test -C buildDir-headless --print-errorlogs
+```
+
 ### Build Options
 
 | Option               | Default | Description              |
@@ -95,6 +139,7 @@ meson compile -C buildDir
 | `enable_nodalkit_gui`| `false` | Build NodalKit GUI frontend |
 | `enable_cli`         | `true`  | Build CLI frontend       |
 | `enable_tests`       | `true`  | Build test suite         |
+| `vulkan_shaders`     | `auto`  | Embed Vulkan GPU upscaler shaders (`auto`, `enabled`, `disabled`) |
 
 ## Usage
 
@@ -219,6 +264,8 @@ Default locations:
 - Linux: `$XDG_CONFIG_HOME/mapperbus/mapperbus.conf` or `~/.config/mapperbus/mapperbus.conf`
 - Windows: `%APPDATA%\MapperBus\mapperbus.conf`
 
+On Linux, empty or relative `XDG_CONFIG_HOME` values use the `~/.config` fallback.
+
 ## Testing
 
 ```bash
@@ -226,6 +273,14 @@ just test
 ```
 
 Unit and integration suites cover bus logic, mappers, APU, audio pipeline, input mapping, configuration, region detection, emulation sessions, render integration, and synthesized CPU accuracy tests (opcode dispatch, flag behavior, unofficial opcodes).
+
+The `sdl3-gpu` suite checks GPU readback, shader colors, and vsync device lifetime.
+It skips cases requiring an unavailable display or GPU backend. To require a
+compatible GPU device during validation:
+
+```bash
+MAPPERBUS_REQUIRE_GPU=1 meson test -C buildDir sdl3-gpu --print-errorlogs
+```
 
 ## Project Structure
 
