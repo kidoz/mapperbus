@@ -160,6 +160,35 @@ fullscreen gap on the frontend side; nothing further needed from the toolkit.
 
 ---
 
+## NK-09 · Shortcut registry wiring (implemented, patch attached) — closes the nk/actions gap
+
+`nk::Action`, `nk::ActionGroup`, and `ShortcutBinding` existed, but nothing
+resolved key presses against bindings — accelerators had to be hand-rolled per
+app (as MapperBus's F11 key check did).
+
+**Implemented in `nodalkit_shortcut_registry_ec075a5.patch`** (base `ec075a5`,
+7 files, +221): new `nk::ShortcutRegistry`
+(`include/nk/actions/shortcut_registry.h`, `src/actions/shortcut_registry.cpp`)
+— `add_action(name, fn)`, `add_shortcut(ShortcutBinding)` (later bindings for
+the same shortcut win), `remove_shortcuts_for_action`, `try_activate(Shortcut)`
+(a matched-but-disabled action consumes without activating), `action(name)`,
+and `shortcuts()` for menu accelerator rendering. `Window::shortcuts()` exposes
+a lazy per-window registry; `Window::dispatch_key_event` consults it as a
+fallback when the focused chain declines a press — never on auto-repeat and
+never while a modal overlay is visible (text fields consume their keys first,
+so typing cannot trigger letter bindings). Four new Catch2 cases in
+`tests/shortcut_registry_test.cpp`.
+
+**Consumer pattern (MapperBus, committed):** F11 registers
+`win.toggle-fullscreen` behind
+`if constexpr (requires { window_.shortcuts(); })`, keeping the key-controller
+fallback for older revisions — verified live both directions.
+
+**Open follow-ups:** menu accelerator columns rendered from
+`shortcuts()` (ContextMenu/MenuBar label work); app-level (cross-window)
+registries; allowing modifier-carrying accelerators to fire while a text field
+is focused.
+
 ## NK-08 · New finding (post-fix regression pass, 2026-10-02) — preference pages get content-dependent widths (P3)
 
 `Clamp` sizes its child to `min(max_width, natural_width)`, and
