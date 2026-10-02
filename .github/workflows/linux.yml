@@ -1,0 +1,76 @@
+name: Linux
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: GCC desktop and Vulkan
+            cc: gcc
+            cxx: g++
+            sdl: 'true'
+            gui: 'true'
+            shaders: enabled
+          - name: Clang SDL with CPU fallback
+            cc: clang
+            cxx: clang++
+            sdl: 'true'
+            gui: 'false'
+            shaders: disabled
+          - name: Clang headless
+            cc: clang
+            cxx: clang++
+            sdl: 'false'
+            gui: 'false'
+            shaders: disabled
+    name: ${{ matrix.name }}
+    env:
+      CC: ${{ matrix.cc }}
+      CXX: ${{ matrix.cxx }}
+      SDL_VIDEODRIVER: offscreen
+      SDL_AUDIODRIVER: dummy
+    steps:
+      - name: Install build dependencies
+        run: >-
+          pacman -Syu --noconfirm --needed git clang meson ninja pkgconf sdl3
+          wayland wayland-protocols libxkbcommon freetype2 fontconfig harfbuzz glib2
+          glslang vulkan-headers vulkan-icd-loader vulkan-swrast mesa
+          desktop-file-utils
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: >-
+          meson setup build -Denable_sdl3=${{ matrix.sdl }}
+          -Denable_nodalkit_gui=${{ matrix.gui }}
+          -Dvulkan_shaders=${{ matrix.shaders }}
+          -Db_lto=false
+      - name: Build
+        run: meson compile -C build
+      - name: Test
+        run: meson test -C build --suite mapperbus --print-errorlogs
+      - name: Require Vulkan compute coverage
+        if: matrix.shaders == 'enabled'
+        env:
+          MAPPERBUS_REQUIRE_GPU: '1'
+        run: meson test -C build sdl3-gpu --print-errorlogs
+      - name: Check Linux installation
+        run: |
+          meson install -C build --destdir "$RUNNER_TEMP/mapperbus-install" --no-rebuild --tags runtime
+          test -x "$RUNNER_TEMP/mapperbus-install/usr/local/bin/mapperbus-cli"
+          if [ "${{ matrix.sdl }}" = true ]; then
+            test -x "$RUNNER_TEMP/mapperbus-install/usr/local/bin/mapperbus-sdl3"
+          fi
+          if [ "${{ matrix.gui }}" = true ]; then
+            test -x "$RUNNER_TEMP/mapperbus-install/usr/local/bin/mapperbus-gui"
+            desktop-file-validate "$RUNNER_TEMP/mapperbus-install/usr/local/share/applications/dev.mapperbus.gui.desktop"
+            test -f "$RUNNER_TEMP/mapperbus-install/usr/local/share/icons/hicolor/scalable/apps/dev.mapperbus.gui.svg"
+          fi
