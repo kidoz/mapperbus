@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <functional>
+#include <nk/actions/shortcut_registry.h>
 #include <nk/controllers/event_controller.h>
 #include <nk/widgets/clamp.h>
 #include <nk/widgets/headerbar.h>
@@ -1034,13 +1035,22 @@ void MapperBusGuiController::build_ui() {
         root_->append(header_menu_);
     }
 
-    auto root_keys = std::make_shared<nk::KeyboardController>();
-    (void)root_keys->on_key_pressed().connect([this](int key_code, int /*modifiers*/) {
-        if (static_cast<nk::KeyCode>(key_code) == nk::KeyCode::F11) {
-            toggle_fullscreen();
-        }
-    });
-    root_->add_controller(std::move(root_keys));
+    // F11 as a declared shortcut when the toolkit provides the registry;
+    // the key-controller fallback keeps older NodalKit revisions working.
+    if constexpr (requires { window_.shortcuts(); }) {
+        window_.shortcuts().add_action("win.toggle-fullscreen", [this] { toggle_fullscreen(); });
+        window_.shortcuts().add_shortcut(
+            {nk::Shortcut{static_cast<int>(nk::KeyCode::F11), nk::Modifiers::None},
+             "win.toggle-fullscreen"});
+    } else {
+        auto root_keys = std::make_shared<nk::KeyboardController>();
+        (void)root_keys->on_key_pressed().connect([this](int key_code, int /*modifiers*/) {
+            if (static_cast<nk::KeyCode>(key_code) == nk::KeyCode::F11) {
+                toggle_fullscreen();
+            }
+        });
+        root_->add_controller(std::move(root_keys));
+    }
 
     window_.set_child(root_);
 }
