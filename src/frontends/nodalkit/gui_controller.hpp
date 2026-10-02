@@ -74,6 +74,8 @@ class MapperBusGuiController {
     void set_message(std::string message);
     void rebuild_header_menu();
     void focus_game_surface();
+    void toggle_fullscreen();
+    void update_fullscreen_chrome();
     void browse_for_rom();
     void attempt_open(std::string rom_path);
     void toggle_pause();

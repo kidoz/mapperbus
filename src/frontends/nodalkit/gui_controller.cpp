@@ -1023,13 +1023,24 @@ void MapperBusGuiController::build_ui() {
 
     status_bar_ = nk::StatusBar::create();
     status_bar_->set_horizontal_size_policy(nk::SizePolicy::Expanding);
-    status_bar_->set_segments({"Stopped", "No ROM"});
+    status_bar_->set_segments({"Stopped"});
+    if constexpr (requires { status_bar_->set_trailing(std::string{}); }) {
+        status_bar_->set_trailing("No ROM");
+    }
 
     root_->append(toast_overlay_);
     root_->append(status_bar_);
     if (header_menu_) {
         root_->append(header_menu_);
     }
+
+    auto root_keys = std::make_shared<nk::KeyboardController>();
+    (void)root_keys->on_key_pressed().connect([this](int key_code, int /*modifiers*/) {
+        if (static_cast<nk::KeyCode>(key_code) == nk::KeyCode::F11) {
+            toggle_fullscreen();
+        }
+    });
+    root_->add_controller(std::move(root_keys));
 
     window_.set_child(root_);
 }
@@ -1039,6 +1050,7 @@ void MapperBusGuiController::wire_ui() {
         save_configuration_state();
         app_.quit(0);
     });
+    (void)window_.on_window_state_changed().connect([this] { update_fullscreen_chrome(); });
     (void)app_.on_native_app_menu_action().connect(
         [this](std::string_view action) { handle_menu_action(action); });
     if (header_menu_button_ && header_menu_) {
@@ -1091,8 +1103,18 @@ void MapperBusGuiController::refresh_ui() {
     } else {
         segments = {state_text};
     }
-    segments.push_back(mapper_detail(snapshot.mapper_number));
     status_bar_->set_segments(std::move(segments));
+    // Handoff composition: session state leads, mapper identification trails
+    // right-aligned in the secondary text color. The capability probe keeps
+    // the frontend buildable against NodalKit revisions without the slot.
+    if constexpr (requires { status_bar_->set_trailing(std::string{}); }) {
+        status_bar_->set_trailing(mapper_detail(snapshot.mapper_number));
+    } else {
+        status_bar_->set_segments({state_text,
+                                   region_name(snapshot.region),
+                                   nominal_fps_label(snapshot.region),
+                                   mapper_detail(snapshot.mapper_number)});
+    }
 
     // Keep the native task-switcher title identifiable while the visible
     // headerbar presents a clean media title without the file extension.
@@ -1145,6 +1167,8 @@ void MapperBusGuiController::rebuild_header_menu() {
         add_action("Close ROM", "file.close");
         add_separator();
     }
+    add_action(window_.is_fullscreen() ? "Leave Fullscreen" : "Fullscreen",
+               "win.toggle-fullscreen");
     add_action("Settings…", "settings.open");
     add_action("About MapperBus", "help.about");
     add_separator();
@@ -1155,6 +1179,25 @@ void MapperBusGuiController::focus_game_surface() {
     if (preview_) {
         preview_->grab_focus();
     }
+}
+
+void MapperBusGuiController::toggle_fullscreen() {
+    window_.set_fullscreen(!window_.is_fullscreen());
+    // Chrome and the OSD notice follow the window-state signal, so this path
+    // and compositor-initiated changes (window menu, Super-based shortcuts)
+    // behave identically.
+}
+
+void MapperBusGuiController::update_fullscreen_chrome() {
+    const bool fullscreen = window_.is_fullscreen();
+    if (headerbar_) {
+        headerbar_->set_visible(!fullscreen);
+    }
+    if (status_bar_) {
+        status_bar_->set_visible(!fullscreen);
+    }
+    set_message(fullscreen ? "Fullscreen — press F11 to leave." : "Left fullscreen.");
+    focus_game_surface();
 }
 
 void MapperBusGuiController::browse_for_rom() {
@@ -2052,6 +2095,10 @@ void MapperBusGuiController::handle_menu_action(std::string_view action) {
     }
     if (action == "emu.load-state") {
         load_session_state();
+        return;
+    }
+    if (action == "win.toggle-fullscreen") {
+        toggle_fullscreen();
         return;
     }
     if (action == "settings.open") {
