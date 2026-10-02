@@ -160,6 +160,22 @@ fullscreen gap on the frontend side; nothing further needed from the toolkit.
 
 ---
 
+## NK-08 · New finding (post-fix regression pass, 2026-10-02) — preference pages get content-dependent widths (P3)
+
+`Clamp` sizes its child to `min(max_width, natural_width)`, and
+`PreferencesGroup` rows keep the group's natural width. Pages without wide
+content (MapperBus Audio: short combos only) therefore render ~389 px wide
+while others (Input, with the bindings table) render ~499 px — the dialog
+content width jumps when switching tabs, and with the NK-04 suffix cap, titles
+like "Sample Rate" ellipsize on the narrow page.
+
+Proposal: give `PreferencesGroup` (or the rows) `Expanding` horizontal sizing
+inside a clamp, or let the clamp child's minimum track the clamp width, so all
+pages of one dialog share one width. Consumer-side workaround: none clean.
+Verified live on MapperBus Audio/Input tabs; cosmetic.
+
+---
+
 ## Verification (as applied)
 
 - `meson compile -C buildDir mapperbus-gui` — 0 errors (nodalkit builds as part
