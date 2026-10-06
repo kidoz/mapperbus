@@ -1036,6 +1036,11 @@ void MapperBusGuiController::build_ui() {
     preview_->set_vertical_size_policy(nk::SizePolicy::Expanding);
     preview_->set_horizontal_stretch(1);
     preview_->set_vertical_stretch(1);
+    preview_->set_display_scale(window_.scale_factor());
+    (void)window_.on_scale_factor_changed().connect([this](float scale) {
+        preview_->set_display_scale(scale);
+    });
+    preview_->set_integer_scaling(preview_scale_option_ == PreviewScaleOption::PixelPerfect);
 
     welcome_view_ = build_welcome_view();
     main_slot_ = ContentSlot::create();
@@ -1467,6 +1472,8 @@ void MapperBusGuiController::set_preview_scale_option(PreviewScaleOption option)
     }
 
     preview_scale_option_ = option;
+    // R03: whole physical-pixel scaling applies to the unfiltered picture.
+    preview_->set_integer_scaling(option == PreviewScaleOption::PixelPerfect);
     switch (preview_scale_option_) {
     case PreviewScaleOption::Xbrz2x:
         preview_upscaler_ = std::make_unique<platform::XbrzUpscaler>(2);
