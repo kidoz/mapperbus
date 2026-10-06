@@ -10,9 +10,16 @@ keyboard), `2a6a204` (context menu mapping), `e2b17db` (row suffix cap), and
 `30df350` (trailing status-bar detail slot, resolving NK-05 with a cleaner
 `set_trailing`/`trailing()` API). NK-06 was fixed by `fc40a37` + `b4ad00d`;
 NK-07's fullscreen API ships in `window.h`. The vendored copy in
-`subprojects/nodalkit` now tracks `main` at `30df350`; MapperBus builds and
-tests green against it and has re-adopted the handoff status-bar composition
-via a `set_trailing` capability probe. This document remains as the record.
+`subprojects/nodalkit` tracks `main` at `ec075a5`; MapperBus builds and tests
+green against it (64 OK / 0 fail), uses the handoff status-bar composition
+through a `set_trailing` capability probe, F11 through the fullscreen API, and
+session hotkeys through the shortcut registry.
+
+**Still local (not yet upstream):** NK-09 (shortcut registry + `Window::
+shortcuts()` dispatch), NK-10 (`wl_seat` version 9), and the scroll/dialog
+layout regression tests — shipped as
+`nodalkit_changes_ec075a5.patch` (base `ec075a5`, 9 files, +287). Apply and
+commit on the nodalkit side when ready. NK-11 was retracted (see below).
 
 Items NK-01…NK-04 are **implemented and verified** — the exact diff is in
 `nodalkit_ui_fixes_cd8bad6.patch` (next to this file) and reproduced at the
