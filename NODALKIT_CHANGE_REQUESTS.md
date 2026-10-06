@@ -189,6 +189,27 @@ fallback for older revisions — verified live both directions.
 registries; allowing modifier-carrying accelerators to fire while a text field
 is focused.
 
+## NK-10 · RESOLVED in local tree — `wl_seat` bound below the version needed for wheel clicks
+
+`wayland_backend.cpp` capped `wl_seat` at version 5, so `wl_pointer` negotiated
+below 8 and the compositor never sent `axis_value120` — wheel clicks were
+invisible to the toolkit regardless of the NK-01 handler. The local tree now
+binds the seat at `std::min(version, 9u)` (included in
+`nodalkit_changes_ec075a5.patch`). Verified live: value120 events arrive
+(`dy=1` per click) and wheel scrolling works end to end.
+
+## NK-11 · Open upstream — layout requests from modal overlays do not propagate (P1)
+
+`ScrollArea::queue_layout()` called from inside a presented modal dialog never
+re-lays-out the window: `ScrollArea::allocate` ran once when the dialog opened,
+so wheel scrolling updated `v_offset` (confirmed via logs) but the screen never
+changed. Explicit relayouts from the dialog root (tab switches) do work.
+
+Consumer workaround (MapperBus, committed): connect the scroll area's
+`on_scroll_changed` to `settings_dialog_->queue_layout()` +
+`queue_redraw()`. The proper fix belongs in NodalKit: overlay roots should
+observe descendant layout requests.
+
 ## NK-08 · New finding (post-fix regression pass, 2026-10-02) — preference pages get content-dependent widths (P3)
 
 `Clamp` sizes its child to `min(max_width, natural_width)`, and
