@@ -40,6 +40,9 @@ class MapperBusGuiController {
 
     void open_initial_rom(std::string_view rom_path);
 
+    /// TEMPORARY UI-review hook (not for commit).
+    void debug_action(std::string_view action);
+
     enum class PreviewScaleOption {
         PixelPerfect,
         Smooth,
@@ -145,6 +148,7 @@ class MapperBusGuiController {
     std::chrono::steady_clock::time_point last_tick_time_ = std::chrono::steady_clock::now();
     std::chrono::nanoseconds frame_accumulator_{0};
     nk::CallbackHandle tick_handle_{};
+    bool announced_fullscreen_ = false;
 };
 
 } // namespace mapperbus::frontend
