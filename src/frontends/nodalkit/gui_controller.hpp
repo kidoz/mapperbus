@@ -43,6 +43,7 @@ class MapperBusGuiController {
     /// TEMPORARY UI-review hook (not for commit).
     void debug_action(std::string_view action);
 
+
     enum class PreviewScaleOption {
         PixelPerfect,
         Smooth,
