@@ -529,6 +529,34 @@ std::string title_for_display(std::string_view path) {
     return cleaned.empty() ? "MapperBus" : cleaned;
 }
 
+std::string recent_media_type(const std::filesystem::path& path) {
+    std::string ext = path.extension().string();
+    for (auto& c : ext) {
+        c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    }
+    if (ext == ".NES") {
+        return "NES";
+    }
+    if (ext == ".FDS") {
+        return "Famicom Disk System";
+    }
+    return ext.empty() ? "ROM" : ext.substr(1);
+}
+
+std::string recent_opened_date(std::int64_t unix_seconds) {
+    const std::chrono::sys_seconds point{std::chrono::seconds{unix_seconds}};
+    const auto days = std::chrono::floor<std::chrono::days>(point);
+    const std::chrono::year_month_day ymd{days};
+    char buffer[16] = {};
+    std::snprintf(buffer,
+                  sizeof(buffer),
+                  "%04d-%02d-%02d",
+                  static_cast<int>(ymd.year()),
+                  static_cast<unsigned>(ymd.month()),
+                  static_cast<unsigned>(ymd.day()));
+    return buffer;
+}
+
 std::string nominal_fps_label(core::Region region) {
     switch (region) {
     case core::Region::PAL:
@@ -1009,8 +1037,16 @@ void MapperBusGuiController::build_ui() {
     preview_->set_horizontal_stretch(1);
     preview_->set_vertical_stretch(1);
 
+    welcome_view_ = build_welcome_view();
+    main_slot_ = ContentSlot::create();
+    main_slot_->set_horizontal_size_policy(nk::SizePolicy::Expanding);
+    main_slot_->set_vertical_size_policy(nk::SizePolicy::Expanding);
+    main_slot_->set_horizontal_stretch(1);
+    main_slot_->set_vertical_stretch(1);
+    main_slot_->set_child(welcome_view_);
+
     toast_overlay_ = nk::ToastOverlay::create();
-    toast_overlay_->set_child(preview_);
+    toast_overlay_->set_child(main_slot_);
     toast_overlay_->set_horizontal_size_policy(nk::SizePolicy::Expanding);
     toast_overlay_->set_vertical_size_policy(nk::SizePolicy::Expanding);
     toast_overlay_->set_horizontal_stretch(1);
@@ -1111,12 +1147,99 @@ void MapperBusGuiController::refresh_preview() {
         frame.pixels.data(), mapperbus::core::kScreenWidth, mapperbus::core::kScreenHeight);
 }
 
+std::shared_ptr<nk::Widget> MapperBusGuiController::build_welcome_view() {
+    auto welcome = Box::vertical(0.0F);
+    welcome->set_horizontal_size_policy(nk::SizePolicy::Expanding);
+    welcome->set_vertical_size_policy(nk::SizePolicy::Expanding);
+    welcome->set_horizontal_stretch(1);
+    welcome->set_vertical_stretch(1);
+
+    auto column = Box::vertical(14.0F);
+    column->append(TitleText::create("Open a game"));
+    column->append(SecondaryText::create("Choose a .nes or .fds ROM file to start playing."));
+
+    auto open_button = nk::Button::create("Open ROM…");
+    open_button->add_style_class("suggested");
+    (void)open_button->on_clicked().connect([this] { browse_for_rom(); });
+    welcome_open_button_ = open_button;
+    column->append(open_button);
+
+    column->append(SectionTitle::create("Recent"));
+    if (configuration_.recent_roms.empty()) {
+        column->append(
+            SecondaryText::create("Your recently opened games will appear here."));
+    } else {
+        auto recents = nk::PreferencesGroup::create();
+        recents->set_horizontal_size_policy(nk::SizePolicy::Expanding);
+        for (const auto& entry : configuration_.recent_roms) {
+            auto row = nk::PreferencesRow::create(title_for_display(entry.path.string()));
+            row->set_subtitle(recent_media_type(entry.path) + " · opened " +
+                              recent_opened_date(entry.last_opened_unix));
+            row->set_activatable(true);
+            (void)row->on_activated().connect(
+                [this, path = entry.path] { attempt_open(path.string()); });
+            recents->add(std::move(row));
+        }
+        column->append(recents);
+
+        auto clear_button = nk::Button::create("Clear Recent History");
+        clear_button->add_style_class("flat");
+        (void)clear_button->on_clicked().connect([this] {
+            clear_recent_roms(configuration_);
+            save_configuration_state();
+            set_message("Cleared recent history.");
+            refresh_welcome_view();
+        });
+        column->append(clear_button);
+    }
+
+    auto center_row = Box::horizontal(0.0F);
+    center_row->set_horizontal_size_policy(nk::SizePolicy::Expanding);
+    auto left = Spacer::create();
+    auto right = Spacer::create();
+    center_row->append(left);
+    center_row->append(column);
+    center_row->append(right);
+
+    auto top = Spacer::create();
+    auto bottom = Spacer::create();
+    top->set_vertical_size_policy(nk::SizePolicy::Expanding);
+    top->set_vertical_stretch(1);
+    bottom->set_vertical_size_policy(nk::SizePolicy::Expanding);
+    bottom->set_vertical_stretch(1);
+    welcome->append(top);
+    welcome->append(center_row);
+    welcome->append(bottom);
+    return welcome;
+}
+
+void MapperBusGuiController::refresh_welcome_view() {
+    welcome_view_ = build_welcome_view();
+    if (welcome_active_ && main_slot_) {
+        main_slot_->set_child(welcome_view_);
+    }
+}
+
 void MapperBusGuiController::refresh_ui() {
     const app::SessionSnapshot snapshot = actions_->snapshot();
     const bool loaded = snapshot.has_cartridge;
     const bool paused = loaded && snapshot.paused;
     const std::string state_text = loaded ? (paused ? "Paused" : "Running") : "Stopped";
     const std::string display_title = title_for_display(snapshot.rom_path);
+    if (loaded == welcome_active_) {
+        welcome_active_ = !loaded;
+        if (welcome_active_) {
+            refresh_welcome_view();
+            main_slot_->set_child(welcome_view_);
+        } else {
+            main_slot_->set_child(preview_);
+        }
+        if (welcome_active_ && welcome_open_button_) {
+            welcome_open_button_->grab_focus();
+        } else {
+            focus_game_surface();
+        }
+    }
     std::vector<std::string> segments;
     if (loaded) {
         segments = {state_text, region_name(snapshot.region), nominal_fps_label(snapshot.region)};
@@ -1223,26 +1346,6 @@ void MapperBusGuiController::update_fullscreen_chrome() {
     focus_game_surface();
 }
 
-/// TEMPORARY UI-review hook (not for commit).
-void MapperBusGuiController::debug_action(std::string_view action) {
-    if (action == "tab-audio") {
-        settings_page_ = SettingsPage::Audio;
-        refresh_settings_dialog_sections();
-        return;
-    }
-    if (action == "tab-video") {
-        settings_page_ = SettingsPage::Video;
-        refresh_settings_dialog_sections();
-        return;
-    }
-    if (action == "tab-input") {
-        settings_page_ = SettingsPage::Input;
-        refresh_settings_dialog_sections();
-        return;
-    }
-    handle_menu_action(action);
-}
-
 void MapperBusGuiController::browse_for_rom() {
     app_.open_file_dialog_async(
         "Open ROM", {"*.nes", "*.fds"}, [this](nk::OpenFileDialogResult dialog_result) {
@@ -1274,6 +1377,8 @@ void MapperBusGuiController::attempt_open(std::string rom_path) {
         return;
     }
 
+    touch_recent_rom(configuration_, rom_path);
+    save_configuration_state();
     actions_->step_frame();
     frame_accumulator_ = std::chrono::nanoseconds{0};
     last_tick_time_ = std::chrono::steady_clock::now();

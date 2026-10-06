@@ -40,9 +40,6 @@ class MapperBusGuiController {
 
     void open_initial_rom(std::string_view rom_path);
 
-    /// TEMPORARY UI-review hook (not for commit).
-    void debug_action(std::string_view action);
-
 
     enum class PreviewScaleOption {
         PixelPerfect,
@@ -72,6 +69,8 @@ class MapperBusGuiController {
 
     void build_ui();
     void wire_ui();
+    [[nodiscard]] std::shared_ptr<nk::Widget> build_welcome_view();
+    void refresh_welcome_view();
     void clear_preview();
     void refresh_preview();
     void refresh_ui();
@@ -124,6 +123,10 @@ class MapperBusGuiController {
     core::FrameBuffer blank_frame_{};
 
     std::shared_ptr<Box> root_;
+    std::shared_ptr<ContentSlot> main_slot_;
+    std::shared_ptr<nk::Widget> welcome_view_;
+    std::shared_ptr<nk::Button> welcome_open_button_;
+    bool welcome_active_ = true;
     std::shared_ptr<nk::Headerbar> headerbar_;
     std::shared_ptr<nk::Button> header_menu_button_;
     std::shared_ptr<nk::ContextMenu> header_menu_;

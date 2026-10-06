@@ -1,7 +1,9 @@
 #pragma once
 
 #include <array>
+#include <cstdint>
 #include <filesystem>
+#include <vector>
 
 #include "core/apu/audio_settings.hpp"
 #include "core/types.hpp"
@@ -24,12 +26,27 @@ struct MapperBusFrontendConfiguration {
     bool audio_muted = false;
 };
 
+struct RecentRomEntry {
+    std::filesystem::path path;
+    std::int64_t last_opened_unix = 0;
+};
+
 struct MapperBusConfiguration {
     int version = kMapperBusConfigurationVersion;
     core::AudioSettings audio;
     MapperBusInputConfiguration input;
     MapperBusFrontendConfiguration frontend;
+    /// Recently opened ROMs, newest first, at most five entries.
+    std::vector<RecentRomEntry> recent_roms;
 };
+
+/// Record a successful open: dedupe by normalized path, move to front, stamp
+/// the time, and trim to the newest five entries.
+void touch_recent_rom(MapperBusConfiguration& configuration,
+                      const std::filesystem::path& path);
+
+/// Forget all recently opened ROMs. Never touches game or save files.
+void clear_recent_roms(MapperBusConfiguration& configuration);
 
 [[nodiscard]] std::string controller_button_name(core::Button button);
 [[nodiscard]] std::filesystem::path mapperbus_configuration_path();

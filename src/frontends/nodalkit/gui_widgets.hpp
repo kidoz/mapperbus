@@ -372,6 +372,45 @@ class SectionTitle : public nk::Widget {
     mutable std::optional<nk::Size> cached_size_;
 };
 
+class TitleText : public nk::Widget {
+  public:
+    static std::shared_ptr<TitleText> create(std::string text) {
+        return std::shared_ptr<TitleText>(new TitleText(std::move(text)));
+    }
+
+    [[nodiscard]] nk::SizeRequest measure(const nk::Constraints& /*constraints*/) const override {
+        if (!cached_size_) {
+            cached_size_ = measure_text(text_, font_descriptor());
+        }
+        return {cached_size_->width, cached_size_->height, cached_size_->width,
+                cached_size_->height};
+    }
+
+  protected:
+    void snapshot(nk::SnapshotContext& ctx) const override {
+        const auto a = allocation();
+        if (!cached_size_) {
+            cached_size_ = measure_text(text_, font_descriptor());
+        }
+        const float text_y = a.y + std::max(0.0F, (a.height - cached_size_->height) * 0.5F);
+        ctx.add_text({a.x, text_y}, text_, theme_color("text-color"), font_descriptor());
+    }
+
+  private:
+    explicit TitleText(std::string text) : text_(std::move(text)) {}
+
+    static nk::FontDescriptor font_descriptor() {
+        return {
+            .family = {},
+            .size = 25.0F,
+            .weight = nk::FontWeight::Bold,
+        };
+    }
+
+    std::string text_;
+    mutable std::optional<nk::Size> cached_size_;
+};
+
 class SecondaryText : public nk::Widget {
   public:
     static std::shared_ptr<SecondaryText> create(std::string text) {

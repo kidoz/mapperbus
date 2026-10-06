@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <charconv>
 #include <cstdlib>
+#include <cstring>
+#include <ctime>
 #include <fstream>
 #include <optional>
 #include <string>
@@ -230,6 +232,31 @@ void apply_setting(MapperBusConfiguration& configuration,
     }
     if (full_key == "frontend.audio_muted" || full_key == "audio.muted") {
         configuration.frontend.audio_muted = parse_bool_setting(value, false, full_key);
+        return;
+    }
+    if (full_key.starts_with("recent.rom_")) {
+        const std::string suffix(full_key.substr(std::strlen("recent.rom_")));
+        const auto slot = parse_int_value(suffix);
+        if (slot.has_value() && *slot >= 0 && *slot < 5) {
+            auto& entries = configuration.recent_roms;
+            if (entries.size() <= static_cast<std::size_t>(*slot)) {
+                entries.resize(static_cast<std::size_t>(*slot) + 1);
+            }
+            entries[static_cast<std::size_t>(*slot)].path = std::filesystem::path(value);
+        }
+        return;
+    }
+    if (full_key.starts_with("recent.opened_")) {
+        const std::string suffix(full_key.substr(std::strlen("recent.opened_")));
+        const auto slot = parse_int_value(suffix);
+        const auto stamp = parse_int_value(value);
+        if (slot.has_value() && stamp.has_value() && *slot >= 0 && *slot < 5) {
+            auto& entries = configuration.recent_roms;
+            if (entries.size() <= static_cast<std::size_t>(*slot)) {
+                entries.resize(static_cast<std::size_t>(*slot) + 1);
+            }
+            entries[static_cast<std::size_t>(*slot)].last_opened_unix = *stamp;
+        }
         return;
     }
     if (full_key == "audio.sample_rate") {
@@ -484,6 +511,16 @@ core::Result<void> save_mapperbus_configuration_to_file(const MapperBusConfigura
     file << "drc_deadzone=" << configuration.audio.drc_deadzone << '\n';
     file << "drc_rate_adjustment=" << configuration.audio.drc_rate_adjustment << "\n\n";
 
+    if (!configuration.recent_roms.empty()) {
+        file << "[recent]\n";
+        for (std::size_t index = 0; index < configuration.recent_roms.size(); ++index) {
+            const auto& entry = configuration.recent_roms[index];
+            file << "rom_" << index << "=" << entry.path.string() << '\n';
+            file << "opened_" << index << "=" << entry.last_opened_unix << '\n';
+        }
+        file << '\n';
+    }
+
     file << "[input.keyboard]\n";
     for (const auto button : platform::controller_buttons()) {
         file << controller_button_name(button) << '='
@@ -519,6 +556,31 @@ core::Result<void> save_mapperbus_configuration_to_file(const MapperBusConfigura
     }
 
     return {};
+}
+
+void touch_recent_rom(MapperBusConfiguration& configuration,
+                      const std::filesystem::path& path) {
+    constexpr std::size_t kMaxRecentRoms = 5;
+    auto normalized = std::filesystem::weakly_canonical(path);
+    if (normalized.empty()) {
+        normalized = path.lexically_normal();
+    }
+
+    std::erase_if(configuration.recent_roms, [&normalized](const RecentRomEntry& entry) {
+        return std::filesystem::weakly_canonical(entry.path) == normalized ||
+               entry.path.lexically_normal() == normalized;
+    });
+    RecentRomEntry entry;
+    entry.path = path;
+    entry.last_opened_unix = static_cast<std::int64_t>(std::time(nullptr));
+    configuration.recent_roms.insert(configuration.recent_roms.begin(), std::move(entry));
+    if (configuration.recent_roms.size() > kMaxRecentRoms) {
+        configuration.recent_roms.resize(kMaxRecentRoms);
+    }
+}
+
+void clear_recent_roms(MapperBusConfiguration& configuration) {
+    configuration.recent_roms.clear();
 }
 
 } // namespace mapperbus::app
