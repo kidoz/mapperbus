@@ -915,6 +915,26 @@ class PreviewCanvas : public nk::Widget {
         }
     }
 
+    /// Display content scale (DPR) used to derive whole physical-pixel
+    /// scaling factors for the integer path.
+    void set_display_scale(float scale) {
+        const float next = scale > 0.0F ? scale : 1.0F;
+        if (display_scale_ != next) {
+            display_scale_ = next;
+            queue_redraw();
+        }
+    }
+
+    /// Whole-pixel scaling: pick the largest integer framebuffer scale that
+    /// fits the canvas in physical pixels, letterbox the remainder, and align
+    /// the picture origin to the physical pixel grid (Revision 02, R03).
+    void set_integer_scaling(bool enabled) {
+        if (integer_scaling_ != enabled) {
+            integer_scaling_ = enabled;
+            queue_redraw();
+        }
+    }
+
     [[nodiscard]] nk::ScaleMode scale_mode() const {
         return scale_mode_;
     }
@@ -964,6 +984,36 @@ class PreviewCanvas : public nk::Widget {
             return;
         }
 
+        if (integer_scaling_) {
+            const float dpr = display_scale_;
+            const float physical_width = std::max(1.0F, matte.width * dpr);
+            const float physical_height = std::max(1.0F, matte.height * dpr);
+            const float whole_scale = std::floor(
+                std::min(physical_width / static_cast<float>(src_width_),
+                         physical_height / static_cast<float>(src_height_)));
+            if (whole_scale >= 1.0F) {
+                const float logical_width =
+                    static_cast<float>(src_width_) * whole_scale / dpr;
+                const float logical_height =
+                    static_cast<float>(src_height_) * whole_scale / dpr;
+                float origin_x = matte.x + std::max(0.0F, (matte.width - logical_width) * 0.5F);
+                float origin_y = matte.y + std::max(0.0F, (matte.height - logical_height) * 0.5F);
+                // Snap the picture origin to the physical pixel grid so
+                // letterbox asymmetry stays within one physical pixel.
+                origin_x = std::round(origin_x * dpr) / dpr;
+                origin_y = std::round(origin_y * dpr) / dpr;
+
+                ctx.add_image({origin_x, origin_y, logical_width, logical_height},
+                              pixels_.data(),
+                              src_width_,
+                              src_height_,
+                              nk::ScaleMode::NearestNeighbor);
+                return;
+            }
+            // Below one whole scale the window is too small: keep the
+            // aspect-fit fallback rather than distorting the picture.
+        }
+
         constexpr float presentation_aspect = 4.0F / 3.0F;
         float image_width = matte.width;
         float image_height = image_width / presentation_aspect;
@@ -991,6 +1041,8 @@ class PreviewCanvas : public nk::Widget {
     int src_width_ = 0;
     int src_height_ = 0;
     nk::ScaleMode scale_mode_ = nk::ScaleMode::NearestNeighbor;
+    float display_scale_ = 1.0F;
+    bool integer_scaling_ = false;
 };
 
 class HeroBanner : public nk::Widget {
