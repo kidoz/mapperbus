@@ -198,17 +198,19 @@ binds the seat at `std::min(version, 9u)` (included in
 `nodalkit_changes_ec075a5.patch`). Verified live: value120 events arrive
 (`dy=1` per click) and wheel scrolling works end to end.
 
-## NK-11 · Open upstream — layout requests from modal overlays do not propagate (P1)
+## NK-11 · RETRACTED — overlay scroll layout works correctly
 
-`ScrollArea::queue_layout()` called from inside a presented modal dialog never
-re-lays-out the window: `ScrollArea::allocate` ran once when the dialog opened,
-so wheel scrolling updated `v_offset` (confirmed via logs) but the screen never
-changed. Explicit relayouts from the dialog root (tab switches) do work.
+Earlier observations ("wheel scrolling updated `v_offset` but the screen never
+changed") were test-harness artifacts: the emulator window's origin moves every
+launch, and several wheel probes landed outside the scroll viewport. Two
+deterministic Catch2 cases added in `basic_app_test.cpp` ("Scrolling inside a
+presented dialog re-lays-out the overlay", default and Sheet presentation)
+prove `scroll_to` inside a modal dialog re-lays-out and repaints correctly on
+`ec075a5`. Live-verified on MapperBus with the workaround removed: the full
+bindings table scrolls into view with clean striped rows.
 
-Consumer workaround (MapperBus, committed): connect the scroll area's
-`on_scroll_changed` to `settings_dialog_->queue_layout()` +
-`queue_redraw()`. The proper fix belongs in NodalKit: overlay roots should
-observe descendant layout requests.
+The interim MapperBus workaround (`on_scroll_changed` → dialog relayout) was
+removed again.
 
 ## NK-08 · New finding (post-fix regression pass, 2026-10-02) — preference pages get content-dependent widths (P3)
 
