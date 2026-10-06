@@ -192,11 +192,6 @@ constexpr std::array<std::string_view, 4> kDensityLabels = {
     "Compact",
 };
 
-constexpr std::array<std::string_view, 2> kAudioModeLabels = {
-    "Automatic",
-    "Muted",
-};
-
 constexpr std::array<std::string_view, 3> kAudioSampleRateLabels = {
     "44.1 kHz",
     "48 kHz",
@@ -312,10 +307,6 @@ nk::ThemeDensity density_for_index(int index) {
     default:
         return nk::ThemeDensity::SystemDefault;
     }
-}
-
-int audio_mode_index(bool muted) {
-    return muted ? 1 : 0;
 }
 
 int audio_sample_rate_index(int sample_rate) {
@@ -443,8 +434,10 @@ std::shared_ptr<nk::PreferencesRow> pref_value_row(std::string title, std::strin
     return pref_row(std::move(title), text);
 }
 
-constexpr float kBindingActionColumnWidth = 76.0F;
-constexpr float kBindingValueColumnWidth = 150.0F;
+constexpr float kBindingActionColumnWidth = 72.0F;
+constexpr float kBindingValueColumnWidth = 132.0F;
+constexpr float kBindingButtonColumnWidth = 64.0F;
+constexpr float kBindingRowTrailingInset = 8.0F;
 
 std::shared_ptr<Box> input_binding_row(std::string label,
                                        std::string keyboard_value,
@@ -469,29 +462,30 @@ std::shared_ptr<Box> input_binding_row(std::string label,
 
     auto key_button = nk::Button::create("Key");
     (void)key_button->on_clicked().connect(std::move(keyboard_action));
-    row->append(FixedWidthSlot::create(64.0F, key_button));
+    row->append(FixedWidthSlot::create(kBindingButtonColumnWidth, key_button));
 
     auto pad_button = nk::Button::create("Pad");
     pad_button->set_sensitive(gamepad_available);
     (void)pad_button->on_clicked().connect(std::move(gamepad_action));
-    row->append(FixedWidthSlot::create(64.0F, pad_button));
+    row->append(FixedWidthSlot::create(kBindingButtonColumnWidth, pad_button));
 
+    row->append(FixedWidthSlot::create(kBindingRowTrailingInset));
     return row;
 }
 
-std::shared_ptr<Box> input_bindings_header(bool gamepad_online) {
+std::shared_ptr<Box> input_bindings_header() {
     auto row = Box::horizontal(10.0F);
     row->set_horizontal_size_policy(nk::SizePolicy::Expanding);
     row->append(FixedWidthSlot::create(kBindingActionColumnWidth, FieldLabel::create("Action")));
 
     row->append(FixedWidthSlot::create(kBindingValueColumnWidth, FieldLabel::create("Keyboard")));
 
-    row->append(FixedWidthSlot::create(
-        kBindingValueColumnWidth,
-        FieldLabel::create(gamepad_online ? "Gamepad" : "Gamepad (offline)")));
+    row->append(FixedWidthSlot::create(kBindingValueColumnWidth, FieldLabel::create("Gamepad")));
 
     row->append(Spacer::create());
-    row->append(FixedWidthSlot::create(138.0F, FieldLabel::create("Rebind")));
+    row->append(FixedWidthSlot::create(kBindingButtonColumnWidth * 2.0F + 10.0F,
+                                       FieldLabel::create("Rebind")));
+    row->append(FixedWidthSlot::create(kBindingRowTrailingInset));
     return row;
 }
 
@@ -1206,8 +1200,31 @@ void MapperBusGuiController::update_fullscreen_chrome() {
     if (status_bar_) {
         status_bar_->set_visible(!fullscreen);
     }
-    set_message(fullscreen ? "Fullscreen — press F11 to leave." : "Left fullscreen.");
+    if (fullscreen != announced_fullscreen_) {
+        announced_fullscreen_ = fullscreen;
+        set_message(fullscreen ? "Fullscreen — press F11 to leave." : "Left fullscreen.");
+    }
     focus_game_surface();
+}
+
+/// TEMPORARY UI-review hook (not for commit).
+void MapperBusGuiController::debug_action(std::string_view action) {
+    if (action == "tab-audio") {
+        settings_page_ = SettingsPage::Audio;
+        refresh_settings_dialog_sections();
+        return;
+    }
+    if (action == "tab-video") {
+        settings_page_ = SettingsPage::Video;
+        refresh_settings_dialog_sections();
+        return;
+    }
+    if (action == "tab-input") {
+        settings_page_ = SettingsPage::Input;
+        refresh_settings_dialog_sections();
+        return;
+    }
+    handle_menu_action(action);
 }
 
 void MapperBusGuiController::browse_for_rom() {
@@ -1693,6 +1710,11 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_dialog_shell(
     tabs_row->append(Spacer::create());
     content->append(tabs_row);
 
+    // Column guide (zero-height fixed width): pages without wide content
+    // otherwise clamp to their natural width and the dialog resizes when
+    // switching tabs.
+    content->append(FixedWidthSlot::create(600.0F));
+
     settings_page_slot_ = ContentSlot::create();
     settings_page_slot_->set_horizontal_size_policy(nk::SizePolicy::Expanding);
     settings_page_slot_->set_vertical_size_policy(nk::SizePolicy::Expanding);
@@ -1724,6 +1746,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
             page->append(SecondaryText::create("Gamepad support is unavailable in this build."));
         } else {
             auto controller_group = nk::PreferencesGroup::create("Controller");
+            controller_group->set_horizontal_size_policy(nk::SizePolicy::Expanding);
             const bool gamepad_plugged_in = input_backend_->gamepad_device_count() > 0;
             const bool gamepad_enabled = input_backend_->gamepad_config().enabled;
             auto enabled_switch = nk::Switch::create();
@@ -1785,7 +1808,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
         auto bindings_table = Box::vertical(0.0F);
         bindings_table->set_horizontal_size_policy(nk::SizePolicy::Expanding);
         bindings_table->set_margin({0.0F, 0.0F, 18.0F, 0.0F});
-        auto bindings_header = StripedRow::wrap(input_bindings_header(gamepad_available), false);
+        auto bindings_header = StripedRow::wrap(input_bindings_header(), false);
         bindings_header->set_margin({0.0F, 0.0F, 6.0F, 0.0F});
         bindings_table->append(std::move(bindings_header));
         int binding_row_index = 0;
@@ -1808,6 +1831,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
             SecondaryText::create("Tune how the preview surface and interface are presented."));
 
         auto display_group = nk::PreferencesGroup::create("Display");
+        display_group->set_horizontal_size_policy(nk::SizePolicy::Expanding);
 
         auto scale_combo = nk::ComboBox::create();
         scale_combo->set_items(owned_labels(kPreviewScaleLabels));
@@ -1842,6 +1866,17 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
             SecondaryText::create("Manage audio output behavior for this frontend session."));
 
         auto audio_group = nk::PreferencesGroup::create("Audio Output");
+        audio_group->set_horizontal_size_policy(nk::SizePolicy::Expanding);
+
+        auto mute_switch = nk::Switch::create();
+        mute_switch->set_active(audio_backend_->is_muted());
+        (void)mute_switch->on_toggled().connect([this](bool active) {
+            audio_backend_->set_muted(active);
+            save_configuration_state();
+            set_message(active ? "Audio muted." : "Audio output restored.");
+            refresh_ui();
+        });
+        audio_group->add(pref_row("Mute audio", mute_switch));
 
         auto sample_rate_combo = nk::ComboBox::create();
         sample_rate_combo->set_items(owned_labels(kAudioSampleRateLabels));
@@ -1911,18 +1946,11 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
         });
         audio_group->add(pref_row("Expansion", mixing_control));
 
-        auto output_combo = nk::ComboBox::create();
-        output_combo->set_items(owned_labels(kAudioModeLabels));
-        output_combo->set_selected_index(audio_mode_index(audio_backend_->is_muted()));
-        (void)output_combo->on_selection_changed().connect([this](int index) {
-            audio_backend_->set_muted(index == 1);
-            save_configuration_state();
-            set_message(index == 1 ? "Audio muted." : "Audio output restored.");
-            refresh_ui();
-        });
-        audio_group->add(pref_row("Playback", output_combo));
-
-        audio_group->add(pref_value_row("Backend", std::string(audio_backend_->status_text())));
+        std::string backend_text = std::string(audio_backend_->status_text());
+        if (backend_text.starts_with("Audio: ")) {
+            backend_text = backend_text.substr(7);
+        }
+        audio_group->add(pref_value_row("Backend", std::move(backend_text)));
         page->append(audio_group);
     }
 
@@ -2020,6 +2048,16 @@ void MapperBusGuiController::refresh_settings_dialog_sections() {
         scroll->set_vertical_size_policy(nk::SizePolicy::Expanding);
         scroll->set_vertical_stretch(1);
         scroll->set_content(std::move(padded));
+        // Toolkit gap (NK-11): layout requests from inside a presented modal
+        // overlay do not propagate, so scrolled offsets never reach the
+        // screen. Re-layout the sheet from the scroll signal until the
+        // propagation is fixed in NodalKit.
+        (void)scroll->on_scroll_changed().connect([this](float, float) {
+            if (settings_dialog_) {
+                settings_dialog_->queue_layout();
+                settings_dialog_->queue_redraw();
+            }
+        });
         settings_scroll_area_ = scroll;
         settings_page_slot_->set_child(BoundedHeightSlot::create(kSettingsPageMaxHeight, scroll));
         settings_scroll_area_->scroll_to(previous_h_offset, previous_v_offset);
