@@ -2064,16 +2064,6 @@ void MapperBusGuiController::refresh_settings_dialog_sections() {
         scroll->set_vertical_size_policy(nk::SizePolicy::Expanding);
         scroll->set_vertical_stretch(1);
         scroll->set_content(std::move(padded));
-        // Toolkit gap (NK-11): layout requests from inside a presented modal
-        // overlay do not propagate, so scrolled offsets never reach the
-        // screen. Re-layout the sheet from the scroll signal until the
-        // propagation is fixed in NodalKit.
-        (void)scroll->on_scroll_changed().connect([this](float, float) {
-            if (settings_dialog_) {
-                settings_dialog_->queue_layout();
-                settings_dialog_->queue_redraw();
-            }
-        });
         settings_scroll_area_ = scroll;
         settings_page_slot_->set_child(BoundedHeightSlot::create(kSettingsPageMaxHeight, scroll));
         settings_scroll_area_->scroll_to(previous_h_offset, previous_v_offset);
