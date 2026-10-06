@@ -1032,10 +1032,26 @@ void MapperBusGuiController::build_ui() {
     // F11 as a declared shortcut when the toolkit provides the registry;
     // the key-controller fallback keeps older NodalKit revisions working.
     if constexpr (requires { window_.shortcuts(); }) {
-        window_.shortcuts().add_action("win.toggle-fullscreen", [this] { toggle_fullscreen(); });
-        window_.shortcuts().add_shortcut(
+        auto& shortcuts = window_.shortcuts();
+        shortcuts.add_action("win.toggle-fullscreen", [this] { toggle_fullscreen(); });
+        shortcuts.add_shortcut(
             {nk::Shortcut{static_cast<int>(nk::KeyCode::F11), nk::Modifiers::None},
              "win.toggle-fullscreen"});
+
+        // Session hotkeys. Keys avoid the default game bindings (arrows, X/Z,
+        // Enter, Shift); routing through handle_menu_action keeps one dispatch
+        // path for menu items and shortcuts alike.
+        const auto bind_session_key = [this, &shortcuts](nk::KeyCode key,
+                                                         std::string_view action) {
+            shortcuts.add_action(std::string(action), [this, a = std::string(action)] {
+                handle_menu_action(a);
+            });
+            shortcuts.add_shortcut({nk::Shortcut{static_cast<int>(key)}, std::string(action)});
+        };
+        bind_session_key(nk::KeyCode::P, "emu.pause");
+        bind_session_key(nk::KeyCode::R, "emu.reset");
+        bind_session_key(nk::KeyCode::F5, "emu.save-state");
+        bind_session_key(nk::KeyCode::F8, "emu.load-state");
     } else {
         auto root_keys = std::make_shared<nk::KeyboardController>();
         (void)root_keys->on_key_pressed().connect([this](int key_code, int /*modifiers*/) {
