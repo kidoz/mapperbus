@@ -9,6 +9,23 @@ drove it with real input, and verified every state with in-app widget-tree dumps
 and software-rendered captures (`WindowInspector::save_debug_bundle`).
 Screenshots: `~/.cache/mb-ui-review/captures/`.
 
+
+
+## 8. Revision 02 implementation log
+
+- **Welcome screen** (`8be2ead`): title, instruction, suggested Open ROM…
+  action, five-slot recent list (friendly name · media type · date),
+  first-launch placeholder, Clear Recent History; history persisted in
+  `[recent]`, deduped by normalized path, updated only on successful loads.
+- **R03 whole-pixel scaling** (`see git log`): PixelPerfect mode now picks the
+  largest whole physical-pixel scale that fits (DPR-aware via
+  `Window::scale_factor()` + `on_scale_factor_changed`), letterboxes the
+  remainder, and snaps the origin to the physical grid. Verified at DPR 1.5:
+  256×240 renders at exactly 5× (1280×1200 physical), all pixel runs are
+  multiples of 5, letterbox bars 200 px each side, zero misaligned boundaries.
+  Below 1× falls back to aspect-fit. F11 fullscreen composes with this
+  (2560×1440 → 6×, 512 px bars).
+
 ---
 
 ## 1. Overall assessment
