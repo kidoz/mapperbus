@@ -277,3 +277,24 @@ TEST_CASE("Unofficial NOP zpg (0x04) is a 2-byte, 3-cycle NOP", "[cpu][nop][unof
     REQUIRE(h.cpu.a() == 0x77);
 }
 
+TEST_CASE("KIL jams the CPU until reset", "[cpu][kil]") {
+    CpuHarness h;
+
+    h.load_program(0x0200, {0x02, 0xEA, 0xEA});
+    h.cpu.step();
+    const Word jam_pc = h.cpu.pc();
+    const std::uint64_t jam_cycles = h.cpu.cycles();
+
+    // A jammed CPU stays parked on the KIL and only burns cycles — it must
+    // not fall through to the NOPs after it.
+    for (int i = 0; i < 8; ++i) {
+        h.cpu.step();
+    }
+    REQUIRE(h.cpu.jammed());
+    REQUIRE(h.cpu.pc() == jam_pc);
+    REQUIRE(h.cpu.cycles() > jam_cycles);
+
+    // Reset un-jams the CPU.
+    h.cpu.reset();
+    REQUIRE_FALSE(h.cpu.jammed());
+}
