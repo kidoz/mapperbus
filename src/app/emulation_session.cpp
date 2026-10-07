@@ -16,6 +16,13 @@ EmulationSession::EmulationSession(std::unique_ptr<platform::VideoBackend> video
       audio_(std::move(audio)), input_(std::move(input)), audio_staging_(kAudioStagingSamples) {}
 
 EmulationSession::~EmulationSession() {
+    // Persist battery-backed PRG-RAM even when the session is torn down
+    // without an explicit close_rom() (window quit, app shutdown).
+    // flush_battery_ram() logs and swallows write errors, so this stays
+    // noexcept-safe for a destructor.
+    if (rom_loaded_) {
+        emulator_.flush_battery_ram();
+    }
     if (audio_) {
         audio_->shutdown();
     }
