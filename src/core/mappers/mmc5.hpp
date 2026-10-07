@@ -93,6 +93,10 @@ class Mmc5 : public Mapper {
     bool irq_enabled_ = false;
     bool irq_pending_ = false;
     bool in_frame_ = false;
+    // CPU cycles since the last rendered-scanline tick; clears in_frame_ when
+    // the ticks stop (vblank start / rendering off). Derived state, not
+    // serialized: it rebuilds from the PPU tick stream after a load.
+    uint16_t in_frame_watchdog_ = 0;
 
     // Audio
     Mmc5Pulse pulse1_;
