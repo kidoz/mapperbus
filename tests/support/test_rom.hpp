@@ -25,7 +25,8 @@ namespace mapperbus::tests {
     uint8_t prg_banks,
     uint8_t chr_banks,
     std::span<const uint8_t> prg_program,
-    mapperbus::core::MirrorMode mirror = mapperbus::core::MirrorMode::Vertical) {
+    mapperbus::core::MirrorMode mirror = mapperbus::core::MirrorMode::Vertical,
+    bool battery = false) {
     const std::filesystem::path path =
         std::filesystem::temp_directory_path() / ("mapperbus-" + std::string(name) + ".nes");
 
@@ -53,6 +54,7 @@ namespace mapperbus::tests {
     std::vector<uint8_t> chr(static_cast<std::size_t>(chr_banks) * kChrBankSize, 0);
 
     const uint8_t mirror_flag = (mirror == mapperbus::core::MirrorMode::Vertical) ? 0x01 : 0x00;
+    const uint8_t battery_flag = battery ? 0x02 : 0x00;
     std::array<uint8_t, 16> header = {
         'N',
         'E',
@@ -60,7 +62,7 @@ namespace mapperbus::tests {
         0x1A,
         prg_banks,
         chr_banks,
-        static_cast<uint8_t>((mapper & 0x0F) << 4 | mirror_flag),
+        static_cast<uint8_t>((mapper & 0x0F) << 4 | mirror_flag | battery_flag),
         static_cast<uint8_t>(mapper & 0xF0),
         0,
         0,

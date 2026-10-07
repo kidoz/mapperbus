@@ -205,3 +205,29 @@ TEST_CASE("Battery PRG-RAM persists across reload via .sav", "[battery][integrat
 
     std::filesystem::remove(sav);
 }
+
+TEST_CASE("Loading a new ROM flushes the previous cartridge's battery RAM", "[battery]") {
+    register_builtin_mappers();
+    const std::filesystem::path rom_a = write_counter_rom("battery-switch-a");
+    const std::filesystem::path rom_b = write_counter_rom("battery-switch-b");
+    const std::filesystem::path sav_a = std::filesystem::path(rom_a).replace_extension(".sav");
+    const std::filesystem::path sav_b = std::filesystem::path(rom_b).replace_extension(".sav");
+    std::filesystem::remove(sav_a);
+    std::filesystem::remove(sav_b);
+
+    Emulator emu;
+    REQUIRE(emu.load_cartridge(rom_a.string()).has_value());
+    emu.reset();
+    for (int i = 0; i < 5; ++i) {
+        emu.step_frame();
+    }
+
+    // Switching ROMs without an explicit unload must persist ROM A's PRG-RAM.
+    REQUIRE(emu.load_cartridge(rom_b.string()).has_value());
+    REQUIRE(std::filesystem::exists(sav_a));
+    REQUIRE(std::filesystem::file_size(sav_a) == 0x2000);
+
+    emu.unload_cartridge();
+    std::filesystem::remove(sav_a);
+    std::filesystem::remove(sav_b);
+}

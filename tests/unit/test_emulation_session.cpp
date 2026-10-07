@@ -1,5 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
+#include <cstdint>
 #include <filesystem>
+#include <fstream>
 #include <memory>
 #include <vector>
 
@@ -329,6 +331,49 @@ TEST_CASE("EmulationSession saves and loads state through sibling slot files",
 
         std::filesystem::remove(actions.state_path(2));
     }
+}
+
+TEST_CASE("EmulationSession flushes battery RAM to the .sav file on destruction",
+          "[app][session][battery]") {
+    core::register_builtin_mappers();
+
+    // INC $6000 in a tight loop: battery-backed PRG-RAM keeps a nonzero
+    // counter that must reach the .sav file when the session is destroyed
+    // without an explicit close_rom() (the window-quit path).
+    constexpr std::uint8_t kProgram[] = {
+        0xEE,
+        0x00,
+        0x60, // INC $6000
+        0x4C,
+        0x00,
+        0x80, // JMP $8000
+    };
+    const std::filesystem::path rom = tests::build_ines_rom(
+        "session-battery", 0, 1, 1, kProgram, core::MirrorMode::Vertical, /*battery=*/true);
+    const std::filesystem::path sav = std::filesystem::path(rom).replace_extension(".sav");
+    std::filesystem::remove(sav);
+
+    {
+        EmulationSession session(std::make_unique<platform::NullVideo>(),
+                                 std::make_unique<TestAudioBackend>(),
+                                 std::make_unique<platform::NullInput>());
+        REQUIRE(session.load_rom(rom.string()));
+        for (int i = 0; i < 3; ++i) {
+            REQUIRE(session.step_frame() == TickResult::FrameAdvanced);
+        }
+        // Nothing persists the RAM mid-session; only teardown may write it.
+        REQUIRE_FALSE(std::filesystem::exists(sav));
+    }
+
+    REQUIRE(std::filesystem::exists(sav));
+    REQUIRE(std::filesystem::file_size(sav) == 0x2000);
+
+    std::ifstream saved(sav, std::ios::binary);
+    char counter = 0;
+    saved.get(counter);
+    REQUIRE(counter != 0);
+
+    std::filesystem::remove(sav);
 }
 
 TEST_CASE("SessionActions exposes audio queue watermarks", "[app][actions]") {

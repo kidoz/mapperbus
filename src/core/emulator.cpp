@@ -57,6 +57,8 @@ Result<void> Emulator::load_cartridge(const std::string& path) {
     if (!result) {
         return std::unexpected(result.error());
     }
+    // Persist the outgoing cartridge's battery RAM before replacing it.
+    flush_battery_ram();
     cartridge_ = std::make_unique<Cartridge>(std::move(*result));
     bus_.connect_cartridge(cartridge_.get());
     ppu_.connect_cartridge(cartridge_.get());
@@ -109,14 +111,19 @@ Result<void> Emulator::load_disk(const std::string& path) {
     return {};
 }
 
-void Emulator::unload_cartridge() {
-    // Persist battery-backed RAM before tearing the cartridge down.
+void Emulator::flush_battery_ram() {
+    // Persist battery-backed RAM of the currently loaded cartridge, if any.
     if (cartridge_ && cartridge_->has_battery() && !rom_path_.empty()) {
         auto saved = save_battery_ram(battery_path_for(rom_path_));
         if (!saved) {
             logger::warn("Failed to write battery save: {}", saved.error());
         }
     }
+}
+
+void Emulator::unload_cartridge() {
+    // Persist battery-backed RAM before tearing the cartridge down.
+    flush_battery_ram();
     rom_path_.clear();
 
     cartridge_.reset();

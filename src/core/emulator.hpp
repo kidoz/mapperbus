@@ -26,6 +26,11 @@ class Emulator {
 
     [[nodiscard]] Result<void> load_cartridge(const std::string& path);
     void unload_cartridge();
+    /// Persists the loaded cartridge's battery-backed PRG-RAM to its sibling
+    /// .sav file. No-op when no battery-backed cartridge is loaded. Called
+    /// automatically by load_cartridge() and unload_cartridge(); frontends
+    /// should also call it before quitting without an explicit unload.
+    void flush_battery_ram();
     void reset();
     void step_frame();
 
