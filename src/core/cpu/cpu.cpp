@@ -37,6 +37,7 @@ void Cpu::reset() {
     sp_ = 0xFD;
     status_ = 0x24;
     total_cycles_ = 0;
+    jammed_ = false;
 
     // Read reset vector at $FFFC-$FFFD
     Byte lo = bus_.read(0xFFFC);
@@ -196,6 +197,12 @@ Cpu::AddressResult Cpu::indirect_indexed(Byte zero_page_addr) const {
 }
 
 uint32_t Cpu::step() {
+    if (jammed_) {
+        // KIL halts the CPU until reset: stay parked and only burn cycles.
+        total_cycles_ += 2;
+        return 2;
+    }
+
     if (bus_.poll_nmi()) {
         service_interrupt(0xFFFA, false);
         total_cycles_ += 7;
@@ -1564,7 +1571,7 @@ uint32_t Cpu::step() {
         break;
     }
 
-    // --- KIL/JAM: halt CPU (treat as abort) ---
+    // --- KIL/JAM: halt the CPU until reset ---
     case 0x02:
     case 0x12:
     case 0x22:
@@ -1577,7 +1584,9 @@ uint32_t Cpu::step() {
     case 0xB2:
     case 0xD2:
     case 0xF2:
-        logger::error("CPU JAM at {:04X}", pc_ - 1);
+        logger::error("CPU JAM (KIL) at {:04X} — halting until reset", pc_ - 1);
+        jammed_ = true;
+        --pc_; // Stay parked on the KIL opcode.
         cycles = 2;
         break;
 

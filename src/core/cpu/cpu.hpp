@@ -42,6 +42,10 @@ class Cpu {
     [[nodiscard]] Byte status() const {
         return status_;
     }
+    /// True after a KIL/JAM opcode until reset() — the CPU stays parked.
+    [[nodiscard]] bool jammed() const {
+        return jammed_;
+    }
 
   private:
     enum StatusFlag : Byte {
@@ -70,6 +74,8 @@ class Cpu {
     Byte status_ = 0x24;
 
     uint64_t total_cycles_ = 0;
+    // Set by KIL/JAM opcodes; the CPU stays halted until reset().
+    bool jammed_ = false;
 
     Byte read(Address addr) const;
     void write(Address addr, Byte value);
