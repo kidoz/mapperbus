@@ -530,3 +530,49 @@ TEST_CASE("MMC2 battery RAM round-trip", "[mmc2]") {
     mapper.set_battery_ram(restored);
     REQUIRE(mapper.read_prg(0x6000) == 0x42);
 }
+
+TEST_CASE("MMC2 CHR wraps modulo for a non-power-of-two CHR size", "[mmc2]") {
+    // Three 4 KB CHR pages (12 KB): the 5-bit page registers can name pages
+    // past the end, which must wrap modulo the ROM size (a power-of-two mask
+    // reads the wrong page for non-power-of-two sizes).
+    std::vector<Byte> chr(3 * 0x1000, 0);
+    chr[0 * 0x1000] = 0xA0;
+    chr[1 * 0x1000] = 0xA1;
+    chr[2 * 0x1000] = 0xA2;
+
+    Mmc2 mapper(
+        make_header(8, 0, MirrorMode::Vertical), std::vector<Byte>(128 * 1024, 0), std::move(chr));
+
+    mapper.write_prg(0xB000, 4); // left FD page 4 -> 4 % 3 = page 1
+    REQUIRE(mapper.read_chr(0x0000) == 0xA1);
+    mapper.write_prg(0xB000, 5); // page 5 -> 5 % 3 = page 2
+    REQUIRE(mapper.read_chr(0x0000) == 0xA2);
+    mapper.write_prg(0xB000, 6); // page 6 -> 6 % 3 = page 0
+    REQUIRE(mapper.read_chr(0x0000) == 0xA0);
+}
+
+TEST_CASE("MMC3 maps a non-power-of-two PRG/CHR without corruption", "[mmc3]") {
+    // Three 8 KB PRG banks and three 1 KB CHR banks.
+    std::vector<Byte> prg(3 * 0x2000, 0);
+    prg[0 * 0x2000] = 0xB0;
+    prg[1 * 0x2000] = 0xB1;
+    prg[2 * 0x2000] = 0xB2;
+    std::vector<Byte> chr(3 * 0x0400, 0);
+    chr[0 * 0x0400] = 0xC0;
+    chr[1 * 0x0400] = 0xC1;
+    chr[2 * 0x0400] = 0xC2;
+
+    Mmc3 mapper(make_header(2, 0, MirrorMode::Vertical), std::move(prg), std::move(chr));
+
+    // R6 = 5 wraps to bank 5 % 3 = 2; fixed windows are (-2) = 1, (-1) = 2.
+    mapper.write_prg(0x8000, 0x06);
+    mapper.write_prg(0x8001, 0x05);
+    REQUIRE(mapper.read_prg(0x8000) == 0xB2);
+    REQUIRE(mapper.read_prg(0xC000) == 0xB1);
+    REQUIRE(mapper.read_prg(0xE000) == 0xB2);
+
+    // R2 = 4 wraps to 1 KB bank 4 % 3 = 1 at $1000.
+    mapper.write_prg(0x8000, 0x02);
+    mapper.write_prg(0x8001, 0x04);
+    REQUIRE(mapper.read_chr(0x1000) == 0xC1);
+}
