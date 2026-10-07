@@ -124,6 +124,32 @@ TEST_CASE("MMC5 scanline IRQ stays silent when disabled", "[mmc5][irq]") {
     REQUIRE_FALSE(m.irq_pending());
 }
 
+TEST_CASE("MMC5 in-frame flag clears at vblank start", "[mmc5][irq]") {
+    Mmc5 m(header_for(5, 4, 1), banked_prg(8), banked_chr(8));
+    m.on_ppu_frame_start();
+    m.clock_irq_counter(); // a rendered scanline tick arms the flag
+    REQUIRE((m.read_expansion(0x5204) & 0x40) != 0);
+
+    // While rendered-scanline ticks keep arriving (~114 CPU cycles apart)
+    // the flag stays set.
+    for (int line = 0; line < 5; ++line) {
+        for (int i = 0; i < 113; ++i) {
+            m.clock_audio();
+        }
+        m.clock_irq_counter();
+    }
+    REQUIRE((m.read_expansion(0x5204) & 0x40) != 0);
+
+    // Vblank: no more ticks. The watchdog clears the flag ~144 CPU cycles
+    // after the last tick, i.e. within the first dots of vblank.
+    for (int i = 0; i < 143; ++i) {
+        m.clock_audio();
+    }
+    REQUIRE((m.read_expansion(0x5204) & 0x40) != 0);
+    m.clock_audio();
+    REQUIRE((m.read_expansion(0x5204) & 0x40) == 0);
+}
+
 namespace {
 
 // Drives a VRC7 channel: selects an instrument/volume, frequency and key-on.

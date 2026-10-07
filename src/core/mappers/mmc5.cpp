@@ -83,6 +83,7 @@ void Mmc5::reset() {
     irq_enabled_ = false;
     irq_pending_ = false;
     in_frame_ = false;
+    in_frame_watchdog_ = 0;
 }
 
 namespace {
@@ -92,6 +93,14 @@ namespace {
 constexpr uint8_t kPrgReg[4][4] = {{4, 4, 4, 4}, {2, 2, 4, 4}, {2, 2, 3, 4}, {1, 2, 3, 4}};
 constexpr uint8_t kPrgSize[4][4] = {{4, 4, 4, 4}, {2, 2, 2, 2}, {2, 2, 1, 1}, {1, 1, 1, 1}};
 constexpr uint8_t kPrgSub[4][4] = {{0, 1, 2, 3}, {0, 1, 0, 1}, {0, 1, 0, 0}, {0, 0, 0, 0}};
+
+// In-frame watchdog: the PPU ticks clock_irq_counter() once per rendered
+// scanline (~113.7 CPU cycles NTSC). When the ticks stop, the in-frame flag
+// clears this many CPU cycles after the last tick — landing within the first
+// ~100 PPU dots of vblank (the Cartridge interface has no vblank-start hook).
+// Real MMC5 hardware likewise detects vblank by the absence of PPU fetch
+// activity. Must exceed the longest in-frame tick gap (one scanline).
+constexpr uint16_t kInFrameWatchdogCycles = 144;
 } // namespace
 
 Byte Mmc5::read_prg(Address addr) {
@@ -162,6 +171,7 @@ void Mmc5::clock_irq_counter() {
     // Driven once per rendered scanline (PPU dot 260). The in-frame flag is
     // armed by on_ppu_frame_start at the top of each rendered frame.
     in_frame_ = true;
+    in_frame_watchdog_ = 0;
     ++irq_scanline_;
     if (irq_scanline_ == irq_target_ && irq_target_ != 0) {
         if (irq_enabled_) {
@@ -173,6 +183,7 @@ void Mmc5::clock_irq_counter() {
 void Mmc5::on_ppu_frame_start() {
     irq_scanline_ = 0;
     in_frame_ = true;
+    in_frame_watchdog_ = 0;
 }
 
 bool Mmc5::maps_prg(Address addr) const {
@@ -244,7 +255,9 @@ Byte Mmc5::read_expansion(Address addr) {
             status |= 0x02;
         return status;
     }
-    // $5204: Scanline IRQ status (bit7 in-frame, bit6 pending); read clears it.
+    // $5204: Scanline IRQ status (bit7 = pending, bit6 = in-frame); reading
+    // acknowledges the pending IRQ. The in-frame flag clears at vblank start
+    // via the watchdog in clock_audio().
     if (addr == 0x5204) {
         Byte status = 0;
         status |= in_frame_ ? 0x40 : 0x00;
@@ -392,6 +405,13 @@ void Mmc5::write_expansion(Address addr, Byte value) {
 void Mmc5::clock_audio() {
     pulse1_.clock_timer();
     pulse2_.clock_timer();
+
+    // In-frame watchdog: once the rendered-scanline ticks stop (vblank or
+    // rendering disabled), clear the in-frame flag shortly after the last
+    // tick. This also covers turning rendering off mid-frame.
+    if (in_frame_ && ++in_frame_watchdog_ >= kInFrameWatchdogCycles) {
+        in_frame_ = false;
+    }
 
     // MMC5 has no frame counter: it clocks BOTH envelope and length at a
     // fixed ~240 Hz (unlike the APU, which halves the length rate).
