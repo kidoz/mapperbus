@@ -89,7 +89,9 @@ class StateReader {
     /// Reads a length-prefixed byte run written by write_bytes.
     void read_bytes(std::vector<Byte>& out) {
         const auto size = read<std::uint64_t>();
-        if (!ok_ || pos_ + size > data_.size()) {
+        // Compare against the remaining size (not pos_ + size): the length is
+        // blob-controlled, so pos_ + size could wrap and pass the check.
+        if (!ok_ || size > data_.size() - pos_) {
             ok_ = false;
             out.clear();
             return;
