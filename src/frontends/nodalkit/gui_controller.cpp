@@ -1171,8 +1171,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_welcome_view() {
 
     column->append(SectionTitle::create("Recent"));
     if (configuration_.recent_roms.empty()) {
-        column->append(
-            SecondaryText::create("Your recently opened games will appear here."));
+        column->append(SecondaryText::create("Your recently opened games will appear here."));
     } else {
         auto recents = nk::PreferencesGroup::create();
         recents->set_horizontal_size_policy(nk::SizePolicy::Expanding);
@@ -1375,6 +1374,13 @@ void MapperBusGuiController::attempt_open(std::string rom_path) {
 
     auto result = actions_->open_rom(rom_path);
     if (!result) {
+        // A ROM that no longer opens (deleted, moved, unreadable) must not
+        // stay in the welcome list forever.
+        remove_recent_rom(configuration_, rom_path);
+        save_configuration_state();
+        if (welcome_active_) {
+            refresh_welcome_view();
+        }
         set_message("Failed to open ROM: " + result.error());
         refresh_ui();
         clear_preview();
