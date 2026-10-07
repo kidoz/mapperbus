@@ -57,6 +57,9 @@ void Ppu::load_state(StateReader& reader) {
     // Re-derive the backdrop cache from the restored palette (no need to
     // serialize it separately — palette_[0] fully determines it).
     backdrop_color_ = palette_[0];
+    // Drop the background fetch cache: it keys on loopy addresses whose
+    // nametable/CHR contents may differ from the pre-save machine.
+    bg_tile_cache_ = BgTileCache{};
 }
 
 namespace {
@@ -105,6 +108,10 @@ void Ppu::reset() {
     vram_.fill(0);
     palette_.fill(0);
     frame_buffer_.pixels.fill(0xFF000000);
+    visible_sprites_.fill({});
+    visible_sprite_count_ = 0;
+    backdrop_color_ = 0;
+    bg_tile_cache_ = BgTileCache{};
 }
 
 // === Loopy register operations (per Mesen2/FCEUX/NESDev wiki) ===
