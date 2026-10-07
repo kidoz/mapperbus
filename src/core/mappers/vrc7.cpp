@@ -249,7 +249,7 @@ void Vrc7::write_prg(Address addr, Byte value) {
     }
 }
 
-void Vrc7::clock_irq_counter() {
+void Vrc7::clock_irq_prescaler() {
     if (!irq_enabled_)
         return;
 
@@ -300,6 +300,12 @@ void Vrc7::silence_audio() {
 }
 
 void Vrc7::clock_audio() {
+    // VRC7 IRQ: the prescaler is clocked by M2 (once per CPU cycle), not by
+    // the PPU — unlike MMC3-class scanline counters it keeps running while
+    // rendering is off. VRC4-style timing: 341/3 ~ 114 cycles per counter
+    // tick, i.e. roughly one scanline per increment.
+    clock_irq_prescaler();
+
     // FM synthesis runs at CPU/36 (approximately 49716 Hz).
     ++audio_divider_;
     if (audio_divider_ < 36)

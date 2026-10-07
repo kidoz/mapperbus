@@ -30,7 +30,6 @@ class Vrc7 : public Mapper {
     void acknowledge_irq() override {
         irq_pending_ = false;
     }
-    void clock_irq_counter() override;
 
     bool has_expansion_audio() const override {
         return true;
@@ -103,6 +102,7 @@ class Vrc7 : public Mapper {
     [[nodiscard]] const uint8_t* patch_for(uint8_t instrument) const;
     void tick_fm_channel(FmChannel& ch, float am_att_db, float vib_mult) const;
     void silence_audio();
+    void clock_irq_prescaler();
 };
 
 } // namespace mapperbus::core
