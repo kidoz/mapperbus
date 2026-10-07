@@ -227,3 +227,30 @@ TEST_CASE("VRC7 PRG banking maps the selected ROM bank", "[vrc7]") {
     REQUIRE(m.read_prg(0xC000) == 30);
     REQUIRE(m.read_prg(0xE000) == 63); // fixed last bank
 }
+
+TEST_CASE("VRC7 IRQ clocks per CPU cycle without any PPU activity", "[vrc7][irq]") {
+    Vrc7 m(header_for(85, 32, 0), banked_prg(64), {});
+    m.write_prg(0xE010, 250);  // IRQ latch
+    m.write_prg(0xF000, 0x02); // enable: counter <- latch, prescaler <- 341
+
+    // The prescaler ticks the counter once per 341/3 ~ 114 CPU cycles. Six
+    // increments wrap 250 -> 0xFF -> reload + IRQ: ticks land on cycles
+    // 114, 228, 341, 455, 569, 682. No PPU calls are made at all, so this
+    // also proves the IRQ advances while rendering is off.
+    for (int i = 0; i < 681; ++i) {
+        m.clock_audio();
+        REQUIRE_FALSE(m.irq_pending());
+    }
+    m.clock_audio();
+    REQUIRE(m.irq_pending());
+
+    m.acknowledge_irq();
+    REQUIRE_FALSE(m.irq_pending());
+
+    // After the wrap the counter reloaded the latch and keeps counting.
+    for (int i = 0; i < 682; ++i) {
+        m.clock_audio();
+    }
+    REQUIRE(m.irq_pending());
+}
+
