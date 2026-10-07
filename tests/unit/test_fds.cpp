@@ -195,6 +195,48 @@ TEST_CASE("FDS write mode honors the write-protect tab", "[fds][transfer]") {
     REQUIRE(fds.read(0x4031) == 0x01);
 }
 
+TEST_CASE("FDS load_state clamps inconsistent disk geometry", "[fds][state]") {
+    Fds fds;
+    REQUIRE(fds.load_disk(make_fds_image(1, false)));
+    StateWriter writer;
+    fds.save_state(writer);
+
+    SECTION("side indices beyond the serialized data are rejected") {
+        std::vector<Byte> blob = writer.data();
+        // Layout: loaded_(1) num_sides_(4) current_side_(4) write_protected_(1),
+        // then the length-prefixed disk data.
+        blob[1] = 0x04; // num_sides_ = 4, but only one side of data follows
+        blob[5] = 0x03; // current_side_ = 3: out of range
+        Fds restored;
+        StateReader reader(blob);
+        restored.load_state(reader);
+        REQUIRE(reader.ok());
+        REQUIRE(restored.side_count() == 1);
+        REQUIRE(restored.current_side() == -1); // ejected rather than OOB
+    }
+
+    SECTION("disk position past the side size is clamped") {
+        std::vector<Byte> blob = writer.data();
+        // disk_position_ (u32) follows the 10-byte disk header fields, the
+        // 8-byte length prefix + 65500 disk bytes, and 13 drive/timer bytes.
+        const std::size_t pos_off = 10 + 8 + Fds::kSideSize + 13;
+        blob[pos_off + 0] = 0xFF;
+        blob[pos_off + 1] = 0xFF;
+        blob[pos_off + 2] = 0xFF;
+        blob[pos_off + 3] = 0xFF;
+        Fds restored;
+        StateReader reader(blob);
+        restored.load_state(reader);
+        REQUIRE(reader.ok());
+        // The transfer engine reports end-of-disk instead of indexing past
+        // the disk buffer.
+        restored.write(0x4023, 0x01);
+        restored.write(0x4025, 0x01 | 0x04 | 0x40);
+        restored.step(1000);
+        REQUIRE((restored.read(0x4030) & 0x40) != 0);
+    }
+}
+
 // --- FDS audio ---
 
 namespace {

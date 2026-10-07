@@ -135,6 +135,30 @@ void Fds::load_state(StateReader& reader) {
     reader.read(mod_env_speed_);
     reader.read(mod_env_increase_);
     reader.read(mod_env_timer_);
+
+    // Cross-field validation: the transfer engine indexes disk_data_ by
+    // current_side_ and disk_position_, so a corrupt blob must not be able
+    // to push those out of range. Clamp inconsistent geometry rather than
+    // rejecting the blob outright (the header check already gates version).
+    if (!reader.ok()) {
+        return;
+    }
+    if (!loaded_) {
+        num_sides_ = 0;
+        current_side_ = -1;
+        transfer_active_ = false;
+        disk_data_.clear();
+        return;
+    }
+    const int sides_in_data = static_cast<int>(disk_data_.size() / kSideSize);
+    num_sides_ = std::clamp(num_sides_, 0, sides_in_data);
+    if (current_side_ < -1 || current_side_ >= num_sides_) {
+        current_side_ = -1;
+    }
+    if (current_side_ < 0) {
+        transfer_active_ = false;
+    }
+    disk_position_ = std::min(disk_position_, static_cast<uint32_t>(kSideSize));
 }
 
 void Fds::reset_audio() {
