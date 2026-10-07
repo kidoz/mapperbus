@@ -55,6 +55,8 @@ class Mmc5 : public Mapper {
     void write_expansion(Address addr, Byte value) override;
     void save_state(StateWriter& writer) const override;
     void load_state(StateReader& reader) override;
+    std::span<const Byte> battery_ram() const override;
+    void set_battery_ram(std::span<const Byte> data) override;
 
     // Scanline IRQ ($5203/$5204) and PCM IRQ ($5010); both are level IRQs
     // cleared by reading their respective status register.

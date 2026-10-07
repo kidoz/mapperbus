@@ -382,9 +382,10 @@ void Sunsoft5b::load_state(StateReader& r) {
 
 // --- Battery-backed PRG-RAM accessors ---
 //
-// Every board below exposes an 8 KB ($2000-byte) PRG-RAM window at
-// $6000-$7FFF. set_battery_ram copies in at most the available bytes so a
-// short or oversized .sav file can never overrun the buffer.
+// Every board below exposes a PRG-RAM window at $6000-$7FFF (MMC5 banks its
+// 64 KB through the same window). set_battery_ram copies in at most the
+// available bytes so a short or oversized .sav file can never overrun the
+// buffer.
 namespace {
 template <std::size_t N>
 void restore_prg_ram(std::array<Byte, N>& ram, std::span<const Byte> data) {
@@ -411,6 +412,13 @@ std::span<const Byte> Mmc3::battery_ram() const {
     return prg_ram_;
 }
 void Mmc3::set_battery_ram(std::span<const Byte> data) {
+    restore_prg_ram(prg_ram_, data);
+}
+
+std::span<const Byte> Mmc5::battery_ram() const {
+    return prg_ram_;
+}
+void Mmc5::set_battery_ram(std::span<const Byte> data) {
     restore_prg_ram(prg_ram_, data);
 }
 
