@@ -100,6 +100,34 @@ TEST_CASE("MapperBus configuration round-trips universal settings", "[app][confi
     std::filesystem::remove_all(path.parent_path());
 }
 
+TEST_CASE("Recent ROM entries can be pruned individually", "[app][configuration]") {
+    MapperBusConfiguration configuration;
+    const auto existing = std::filesystem::temp_directory_path() / "mapperbus-recent-kept.nes";
+    const auto missing = std::filesystem::temp_directory_path() / "mapperbus-recent-deleted.nes";
+    {
+        std::ofstream file(existing);
+        file << "not a real rom";
+    }
+    std::filesystem::remove(missing);
+
+    touch_recent_rom(configuration, existing);
+    touch_recent_rom(configuration, missing);
+    REQUIRE(configuration.recent_roms.size() == 2);
+
+    // Pruning a missing file (e.g. after a failed open) removes only that
+    // entry and matches through path normalization.
+    remove_recent_rom(configuration, missing);
+    REQUIRE(configuration.recent_roms.size() == 1);
+    REQUIRE(configuration.recent_roms.front().path == existing);
+
+    // Removing a path that was never recorded is a no-op.
+    remove_recent_rom(configuration,
+                      std::filesystem::temp_directory_path() / "mapperbus-recent-unknown.nes");
+    REQUIRE(configuration.recent_roms.size() == 1);
+
+    std::filesystem::remove(existing);
+}
+
 TEST_CASE("MapperBus configuration accepts legacy flat settings", "[app][configuration]") {
     const auto path = temporary_config_path().parent_path() / "config.ini";
     std::filesystem::create_directories(path.parent_path());

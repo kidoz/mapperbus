@@ -558,8 +558,7 @@ core::Result<void> save_mapperbus_configuration_to_file(const MapperBusConfigura
     return {};
 }
 
-void touch_recent_rom(MapperBusConfiguration& configuration,
-                      const std::filesystem::path& path) {
+void touch_recent_rom(MapperBusConfiguration& configuration, const std::filesystem::path& path) {
     constexpr std::size_t kMaxRecentRoms = 5;
     auto normalized = std::filesystem::weakly_canonical(path);
     if (normalized.empty()) {
@@ -577,6 +576,18 @@ void touch_recent_rom(MapperBusConfiguration& configuration,
     if (configuration.recent_roms.size() > kMaxRecentRoms) {
         configuration.recent_roms.resize(kMaxRecentRoms);
     }
+}
+
+void remove_recent_rom(MapperBusConfiguration& configuration, const std::filesystem::path& path) {
+    auto normalized = std::filesystem::weakly_canonical(path);
+    if (normalized.empty()) {
+        normalized = path.lexically_normal();
+    }
+
+    std::erase_if(configuration.recent_roms, [&normalized](const RecentRomEntry& entry) {
+        return std::filesystem::weakly_canonical(entry.path) == normalized ||
+               entry.path.lexically_normal() == normalized;
+    });
 }
 
 void clear_recent_roms(MapperBusConfiguration& configuration) {
