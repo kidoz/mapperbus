@@ -2218,15 +2218,19 @@ void MapperBusGuiController::open_settings_dialog() {
     (void)settings_dialog_->on_response().connect([this, dialog](nk::DialogResponse /*response*/) {
         app_.event_loop().post(
             [this, dialog] {
+                // Reopening Settings before this deferred task runs replaces
+                // settings_dialog_; a stale task must not tear down the new
+                // dialog's widgets.
+                if (settings_dialog_ != dialog) {
+                    return;
+                }
                 settings_tabs_.reset();
                 settings_page_slot_.reset();
                 settings_footer_slot_.reset();
                 settings_scroll_area_.reset();
                 input_test_label_.reset();
                 settings_save_label_.reset();
-                if (settings_dialog_ == dialog) {
-                    settings_dialog_.reset();
-                }
+                settings_dialog_.reset();
                 refresh_ui();
                 focus_game_surface();
             },
