@@ -1,6 +1,7 @@
 #include <array>
 #include <catch2/catch_test_macros.hpp>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <vector>
 
@@ -60,6 +61,25 @@ TEST_CASE("StateReader flags truncated reads", "[state]") {
     REQUIRE(reader.ok());
     (void)reader.read<std::uint32_t>(); // past the end
     REQUIRE_FALSE(reader.ok());
+}
+
+TEST_CASE("StateReader rejects a byte run with a corrupt length prefix", "[state]") {
+    StateWriter writer;
+    const std::vector<Byte> run = {1, 2, 3};
+    writer.write_bytes(run);
+    std::vector<Byte> blob = writer.data();
+
+    // Overwrite the u64 length with UINT64_MAX so that pos_ + size wraps to a
+    // small value — an overflow-vulnerable bounds check would accept it and
+    // read far out of bounds.
+    const std::uint64_t huge = 0xFFFF'FFFF'FFFF'FFFFULL;
+    std::memcpy(blob.data(), &huge, sizeof(huge));
+
+    StateReader reader(blob);
+    std::vector<Byte> out;
+    reader.read_bytes(out);
+    REQUIRE_FALSE(reader.ok());
+    REQUIRE(out.empty());
 }
 
 TEST_CASE("Save-state is deterministic across a save/load cycle", "[state][integration]") {
