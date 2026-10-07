@@ -41,6 +41,14 @@ bool Sdl3Video::initialize(int width, int height) {
         return false;
     }
 
+    // A runtime re-init (e.g. a scaler change via set_upscaler) destroys and
+    // recreates the window while fullscreen_ keeps the user's state. Reapply
+    // it so the flag and the actual window mode stay in sync — otherwise the
+    // first toggle after the switch is a no-op.
+    if (fullscreen_) {
+        SDL_SetWindowFullscreen(window_, true);
+    }
+
     // Pass GPU Device natively to upscaler if supported
     using_zero_copy_ = false;
     if (upscaler_ && upscaler_->supports_gpu_texture()) {
