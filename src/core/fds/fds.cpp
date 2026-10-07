@@ -266,7 +266,7 @@ void Fds::step_timer(uint32_t cpu_cycles) {
 }
 
 void Fds::step_transfer(uint32_t cpu_cycles) {
-    if (!transfer_active_ || current_side_ < 0 || !read_mode_) {
+    if (!transfer_active_ || current_side_ < 0) {
         return;
     }
     transfer_delay_ -= static_cast<int32_t>(cpu_cycles);
@@ -278,7 +278,14 @@ void Fds::step_transfer(uint32_t cpu_cycles) {
         }
         const std::size_t offset =
             static_cast<std::size_t>(current_side_) * kSideSize + disk_position_;
-        read_data_ = disk_data_[offset];
+        if (read_mode_) {
+            read_data_ = disk_data_[offset];
+        } else if (!write_protected_) {
+            // Write mode: the byte staged via $4024 is committed to the disk
+            // surface as the head passes it. A protected disk keeps its data
+            // (the head still advances and flags/IRQs behave as usual).
+            disk_data_[offset] = write_data_;
+        }
         byte_transfer_flag_ = true;
         if (irq_on_transfer_) {
             irq_line_ = true;

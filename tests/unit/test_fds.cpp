@@ -149,6 +149,52 @@ TEST_CASE("FDS state serializes drive + disk position", "[fds][state]") {
     REQUIRE(restored.read(0x4031) == fds.read(0x4031));
 }
 
+TEST_CASE("FDS write mode stores staged bytes on the disk surface", "[fds][transfer]") {
+    Fds fds;
+    REQUIRE(fds.load_disk(make_fds_image(1, false)));
+    fds.set_write_protected(false);
+    fds.write(0x4023, 0x01);        // enable disk I/O
+    fds.write(0x4025, 0x01 | 0x40); // motor on + start (write mode: bit2 clear)
+
+    // The staged $4024 byte is committed when the head passes: first byte
+    // after the spin-up delay, then one per byte period.
+    fds.write(0x4024, 0xDE);
+    fds.step(200);
+    fds.write(0x4024, 0xAD);
+    fds.step(149);
+    fds.write(0x4024, 0xBE);
+    fds.step(149);
+
+    // Rewind to the start of the side and read the bytes back.
+    fds.insert_side(0);
+    fds.write(0x4025, 0x01 | 0x04 | 0x40); // motor on + read mode + start
+    fds.step(200);
+    REQUIRE(fds.read(0x4031) == 0xDE);
+    fds.step(149);
+    REQUIRE(fds.read(0x4031) == 0xAD);
+    fds.step(149);
+    REQUIRE(fds.read(0x4031) == 0xBE);
+}
+
+TEST_CASE("FDS write mode honors the write-protect tab", "[fds][transfer]") {
+    Fds fds;
+    REQUIRE(fds.load_disk(make_fds_image(1, false))); // loads write-protected
+    fds.write(0x4023, 0x01);
+    fds.write(0x4025, 0x01 | 0x40); // write mode attempt
+    fds.write(0x4024, 0xFF);
+    fds.step(200);
+    fds.write(0x4024, 0xFF);
+    fds.step(149);
+
+    // The disk surface is untouched: the original pattern reads back.
+    fds.insert_side(0);
+    fds.write(0x4025, 0x01 | 0x04 | 0x40);
+    fds.step(200);
+    REQUIRE(fds.read(0x4031) == 0x00);
+    fds.step(149);
+    REQUIRE(fds.read(0x4031) == 0x01);
+}
+
 // --- FDS audio ---
 
 namespace {
