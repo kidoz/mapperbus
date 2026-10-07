@@ -6,8 +6,6 @@ Mmc2::Mmc2(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte
     : prg_rom_(std::move(prg_rom)), chr_rom_(std::move(chr_rom)), use_chr_ram_(chr_rom_.empty()),
       mirror_mode_(header.mirror_mode) {
     num_prg_banks_8k_ = static_cast<uint8_t>(prg_rom_.size() / 0x2000);
-    prg_rom_mask_ = prg_rom_.size() - 1;
-    chr_rom_mask_ = chr_rom_.empty() ? 0 : chr_rom_.size() - 1;
     reset();
 }
 
@@ -27,16 +25,20 @@ Byte Mmc2::read_prg(Address addr) {
         return 0;
     }
 
+    if (prg_rom_.empty()) {
+        return 0;
+    }
     if (addr < 0xA000) {
-        // $8000-$9FFF: switchable 8 KB bank.
+        // $8000-$9FFF: switchable 8 KB bank. Modulo (not a power-of-two
+        // mask) so non-power-of-two ROM sizes wrap correctly.
         uint32_t offset =
             static_cast<uint32_t>(prg_bank_ % num_prg_banks_8k_) * 0x2000 + (addr - 0x8000);
-        return prg_rom_[offset & prg_rom_mask_];
+        return prg_rom_[offset % prg_rom_.size()];
     }
     // $A000-$FFFF: fixed to the last three 8 KB banks.
     uint8_t fixed_bank = static_cast<uint8_t>((addr - 0xA000) / 0x2000) + num_prg_banks_8k_ - 3;
     uint32_t offset = static_cast<uint32_t>(fixed_bank) * 0x2000 + ((addr - 0xA000) % 0x2000);
-    return prg_rom_[offset & prg_rom_mask_];
+    return prg_rom_[offset % prg_rom_.size()];
 }
 
 void Mmc2::write_prg(Address addr, Byte value) {
@@ -102,7 +104,9 @@ Byte Mmc2::read_chr(Address addr) {
 
     uint32_t half = (addr < 0x1000) ? 0 : 1;
     uint32_t offset = chr_offsets_[half] + (addr & 0x0FFF);
-    return chr_rom_[offset & chr_rom_mask_];
+    // Modulo (not a power-of-two mask): the 5-bit CHR page registers are not
+    // bounded to the ROM size, and non-power-of-two sizes must wrap correctly.
+    return chr_rom_[offset % chr_rom_.size()];
 }
 
 void Mmc2::write_chr(Address addr, Byte value) {
