@@ -261,3 +261,19 @@ TEST_CASE("CPU STA zero-page writes through the bus", "[cpu][sta]") {
     h.cpu.step();
     REQUIRE(h.bus.read(0x0042) == 0x5A);
 }
+
+TEST_CASE("Unofficial NOP zpg (0x04) is a 2-byte, 3-cycle NOP", "[cpu][nop][unofficial]") {
+    CpuHarness h;
+
+    // NOP $10 — must consume the operand byte like 0x44/0x64 do.
+    h.load_program(0x0200, {0x04, 0x10, 0xA9, 0x77});
+    const std::uint64_t before = h.cpu.cycles();
+    h.cpu.step();
+    REQUIRE(h.cpu.pc() == 0x0202);
+    REQUIRE(h.cpu.cycles() - before == 3);
+
+    // Execution continues at the instruction after the operand.
+    h.cpu.step();
+    REQUIRE(h.cpu.a() == 0x77);
+}
+
