@@ -229,3 +229,21 @@ TEST_CASE("PPU background fetch crosses into the next tile when fine_x overflows
     REQUIRE(frame.pixels[19] == 0xFFFFFEFF);
     REQUIRE(frame.pixels[20] == 0xFFFFFEFF);
 }
+
+TEST_CASE("Dendy PPU starts VBlank at scanline 291, not 241", "[ppu][region][dendy]") {
+    Ppu ppu;
+    ppu.set_region(Region::Dendy);
+    ppu.reset();
+
+    // 29000 CPU cycles = 87000 dots ≈ mid-scanline 255 — past the NTSC VBlank
+    // line (241) but still short of the Dendy one (291).
+    ppu.step(29000);
+    REQUIRE_FALSE(ppu.frame_ready());
+    REQUIRE((ppu.read_register(0x02) & 0x80) == 0);
+
+    // Dendy VBlank starts at scanline 291, dot 1 (99232 dots ≈ 33078 CPU
+    // cycles); the pre-render line (311) does not clear it before ~35337.
+    ppu.step(33100 - 29000);
+    REQUIRE(ppu.frame_ready());
+    REQUIRE((ppu.read_register(0x02) & 0x80) != 0);
+}
