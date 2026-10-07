@@ -150,6 +150,25 @@ TEST_CASE("MMC5 in-frame flag clears at vblank start", "[mmc5][irq]") {
     REQUIRE((m.read_expansion(0x5204) & 0x40) == 0);
 }
 
+TEST_CASE("MMC5 battery RAM round-trip", "[mmc5]") {
+    Mmc5 m(header_for(5, 4, 1), banked_prg(8), banked_chr(8));
+    m.write_expansion(0x5113, 0);
+    m.write_prg(0x6000, 0xAB);
+    m.write_expansion(0x5113, 1); // second 8 KB RAM bank
+    m.write_prg(0x6000, 0xCD);
+
+    const std::span<const Byte> ram = m.battery_ram();
+    REQUIRE(ram.size() == 0x10000); // full 64 KB MMC5 work RAM
+    const std::vector<Byte> saved(ram.begin(), ram.end());
+
+    Mmc5 restored(header_for(5, 4, 1), banked_prg(8), banked_chr(8));
+    restored.set_battery_ram(saved);
+    restored.write_expansion(0x5113, 0);
+    REQUIRE(restored.read_prg(0x6000) == 0xAB);
+    restored.write_expansion(0x5113, 1);
+    REQUIRE(restored.read_prg(0x6000) == 0xCD);
+}
+
 namespace {
 
 // Drives a VRC7 channel: selects an instrument/volume, frequency and key-on.
