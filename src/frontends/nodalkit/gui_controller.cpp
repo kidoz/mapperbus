@@ -1037,9 +1037,8 @@ void MapperBusGuiController::build_ui() {
     preview_->set_horizontal_stretch(1);
     preview_->set_vertical_stretch(1);
     preview_->set_display_scale(window_.scale_factor());
-    (void)window_.on_scale_factor_changed().connect([this](float scale) {
-        preview_->set_display_scale(scale);
-    });
+    (void)window_.on_scale_factor_changed().connect(
+        [this](float scale) { preview_->set_display_scale(scale); });
     preview_->set_integer_scaling(preview_scale_option_ == PreviewScaleOption::PixelPerfect);
 
     welcome_view_ = build_welcome_view();
@@ -1081,10 +1080,14 @@ void MapperBusGuiController::build_ui() {
 
         // Session hotkeys. Keys avoid the default game bindings (arrows, X/Z,
         // Enter, Shift); routing through handle_menu_action keeps one dispatch
-        // path for menu items and shortcuts alike.
-        const auto bind_session_key = [this, &shortcuts](nk::KeyCode key,
-                                                         std::string_view action) {
+        // path for menu items and shortcuts alike. They stay inert while a
+        // modal sheet is presented — most importantly the rebind sheet, which
+        // captures P/R as bindings and must not also toggle pause/reset.
+        const auto bind_session_key = [this, &shortcuts](nk::KeyCode key, std::string_view action) {
             shortcuts.add_action(std::string(action), [this, a = std::string(action)] {
+                if (modal_dialog_presented()) {
+                    return;
+                }
                 handle_menu_action(a);
             });
             shortcuts.add_shortcut({nk::Shortcut{static_cast<int>(key)}, std::string(action)});
@@ -2230,6 +2233,11 @@ void MapperBusGuiController::open_settings_dialog() {
             "mapperbus.settings-dialog-close");
     });
     settings_dialog_->present(window_);
+}
+
+bool MapperBusGuiController::modal_dialog_presented() const {
+    return (settings_dialog_ && settings_dialog_->is_presented()) ||
+           (rebind_dialog_ && rebind_dialog_->is_presented());
 }
 
 void MapperBusGuiController::handle_menu_action(std::string_view action) {

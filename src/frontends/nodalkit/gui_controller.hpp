@@ -40,7 +40,6 @@ class MapperBusGuiController {
 
     void open_initial_rom(std::string_view rom_path);
 
-
     enum class PreviewScaleOption {
         PixelPerfect,
         Smooth,
@@ -107,6 +106,11 @@ class MapperBusGuiController {
     void apply_audio_settings_change(std::string message);
     void update_input_test_status();
     void update_settings_save_status(std::string text);
+
+    /// True while a sheet/dialog (settings, rebind) is presented. Session
+    /// hotkeys must not dispatch then — e.g. the rebind sheet captures P/R as
+    /// bindings and they must not also toggle pause/reset.
+    [[nodiscard]] bool modal_dialog_presented() const;
 
     [[nodiscard]] std::string input_status_text() const;
     [[nodiscard]] std::string video_features_text() const;
