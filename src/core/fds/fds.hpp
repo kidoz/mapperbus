@@ -42,6 +42,13 @@ class Fds {
     void insert_side(int side);
     void eject();
 
+    /// Sets the write-protect tab state. Images load write-protected (the
+    /// safe default for a mounted disk); clear this to allow write-mode
+    /// transfers to modify the disk surface.
+    void set_write_protected(bool write_protected) {
+        write_protected_ = write_protected;
+    }
+
     [[nodiscard]] bool is_loaded() const {
         return loaded_;
     }
