@@ -113,16 +113,23 @@ void Sdl3Video::render(const core::FrameBuffer& frame) {
                     SDL_SetPointerProperty(
                         tex_props, SDL_PROP_TEXTURE_CREATE_GPU_TEXTURE_POINTER, gpu_tex);
                     texture_ = SDL_CreateTextureWithProperties(renderer_, tex_props);
-                    if (!texture_) {
-                        SDL_LogCritical(SDL_LOG_CATEGORY_VIDEO,
-                                        "Failed to create GPU Texture wrapper: %s",
-                                        SDL_GetError());
-                    } else {
-                        SDL_SetTextureBlendMode(texture_, SDL_BLENDMODE_NONE);
-                    }
                     SDL_DestroyProperties(tex_props);
+                    if (texture_) {
+                        SDL_SetTextureBlendMode(texture_, SDL_BLENDMODE_NONE);
+                    } else {
+                        // The wrap will not succeed on a retry; latch the
+                        // fallback so later frames take the streaming path
+                        // instead of logging (and showing black) forever.
+                        SDL_LogCritical(SDL_LOG_CATEGORY_VIDEO,
+                                        "Failed to create GPU texture wrapper, falling back to "
+                                        "streaming upload: %s",
+                                        SDL_GetError());
+                        using_zero_copy_ = false;
+                    }
                 } else {
                     using_zero_copy_ = false;
+                }
+                if (!using_zero_copy_) {
                     texture_ = SDL_CreateTexture(renderer_,
                                                  SDL_PIXELFORMAT_ARGB8888,
                                                  SDL_TEXTUREACCESS_STREAMING,
