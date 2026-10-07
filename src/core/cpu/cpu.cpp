@@ -493,6 +493,7 @@ uint32_t Cpu::step() {
         cycles = 6;
         break;
     }
+    case 0x04:
     case 0x44:
     case 0x64:
         fetch_byte();
