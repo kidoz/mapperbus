@@ -48,11 +48,24 @@ class TestAudioBackend : public platform::AudioBackend {
         return queued_sample_count;
     }
 
+    void pause() override {
+        pause_calls += 1;
+        device_paused = true;
+    }
+
+    void resume() override {
+        resume_calls += 1;
+        device_paused = false;
+    }
+
     bool initialized = false;
     bool initialize_result = true;
     bool shutdown_called = false;
+    bool device_paused = false;
     int fail_initialize_calls = 0;
     int initialize_calls = 0;
+    int pause_calls = 0;
+    int resume_calls = 0;
     int last_sample_rate = 0;
     int last_buffer_size = 0;
     int last_channels = 0;
@@ -158,6 +171,38 @@ TEST_CASE("EmulationSession reports audio backpressure and paused state", "[app]
     audio_ptr->queued_sample_count = 0;
     REQUIRE(session.tick() == TickResult::Paused);
     REQUIRE(session.step_frame() == TickResult::FrameAdvanced);
+}
+
+TEST_CASE("EmulationSession suspends and resumes the audio device with pause state",
+          "[app][session]") {
+    core::register_builtin_mappers();
+
+    auto audio = std::make_unique<TestAudioBackend>();
+    auto* audio_ptr = audio.get();
+    EmulationSession session(std::make_unique<platform::NullVideo>(),
+                             std::move(audio),
+                             std::make_unique<platform::NullInput>());
+
+    REQUIRE(session.load_rom(test_rom_path()));
+
+    session.set_paused(true);
+    REQUIRE(audio_ptr->pause_calls == 1);
+    REQUIRE(audio_ptr->device_paused);
+
+    // Reopening a ROM while paused must resume the suspended device through
+    // set_paused(), not just flip the flag, or the new ROM stays silent.
+    REQUIRE(session.open_rom(test_rom_path()));
+    REQUIRE_FALSE(session.paused());
+    REQUIRE(audio_ptr->resume_calls == 1);
+    REQUIRE_FALSE(audio_ptr->device_paused);
+
+    // power_cycle() has the same resume contract.
+    session.set_paused(true);
+    REQUIRE(audio_ptr->device_paused);
+    session.power_cycle();
+    REQUIRE_FALSE(session.paused());
+    REQUIRE(audio_ptr->resume_calls == 2);
+    REQUIRE_FALSE(audio_ptr->device_paused);
 }
 
 TEST_CASE("EmulationSession supports close, region change, and audio settings mutation",
