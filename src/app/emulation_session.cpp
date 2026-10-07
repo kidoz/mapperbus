@@ -74,7 +74,9 @@ core::Result<void> EmulationSession::open_rom(const std::string& rom_path) {
     }
 
     emulator_.reset();
-    paused_ = false;
+    // Go through set_paused() so a previously suspended audio device is
+    // resumed; assigning paused_ directly would leave the new ROM silent.
+    set_paused(false);
     running_ = true;
     rom_loaded_ = true;
     current_rom_path_ = rom_path;
@@ -154,7 +156,7 @@ void EmulationSession::power_cycle() {
         return;
     }
     emulator_.reset();
-    paused_ = false;
+    set_paused(false);
 }
 
 void EmulationSession::request_stop() {

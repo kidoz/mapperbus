@@ -62,6 +62,18 @@ int GuiAudioBackend::queued_samples() const {
     return active_->queued_samples();
 }
 
+void GuiAudioBackend::pause() {
+    if (active_) {
+        active_->pause();
+    }
+}
+
+void GuiAudioBackend::resume() {
+    if (active_) {
+        active_->resume();
+    }
+}
+
 std::string_view GuiAudioBackend::status_text() const {
 #if defined(MAPPERBUS_HAVE_SDL3_AUDIO)
     if (muted_) {
