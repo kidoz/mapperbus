@@ -206,7 +206,7 @@ void Ppu::step(uint32_t cpu_cycles) {
         }
 
         // VBlank start
-        if (scanline_ == 241 && cycle_ == 1) {
+        if (scanline_ == timing_->vblank_scanline && cycle_ == 1) {
             ppustatus_ |= 0x80;
             frame_ready_ = true;
             if ((ppuctrl_ & 0x80) != 0) {
