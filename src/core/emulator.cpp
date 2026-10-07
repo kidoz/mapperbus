@@ -13,7 +13,8 @@ namespace mapperbus::core {
 namespace {
 // "MBST" — MapperBus STate. Bump kStateVersion on any layout change.
 constexpr std::array<Byte, 4> kStateMagic = {'M', 'B', 'S', 'T'};
-constexpr std::uint32_t kStateVersion = 2; // v2: audio-accuracy state (FDS envelopes, VRC7
+constexpr std::uint32_t kStateVersion = 3; // v3: VRC7 audio_halted_
+                                           // v2: audio-accuracy state (FDS envelopes, VRC7
                                            // operators, 5B noise/env, MMC5 PCM, VRC6 $9003)
 
 [[nodiscard]] std::string battery_path_for(const std::string& rom_path) {

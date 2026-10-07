@@ -7,6 +7,7 @@
 #include "core/cartridge/ines_header.hpp"
 #include "core/mappers/mmc5.hpp"
 #include "core/mappers/vrc7.hpp"
+#include "core/state/state.hpp"
 
 using namespace mapperbus::core;
 
@@ -254,3 +255,29 @@ TEST_CASE("VRC7 IRQ clocks per CPU cycle without any PPU activity", "[vrc7][irq]
     REQUIRE(m.irq_pending());
 }
 
+TEST_CASE("VRC7 sound-halt flag survives a state round-trip", "[vrc7][state]") {
+    Vrc7 halted(header_for(85, 32, 0), banked_prg(64), {});
+    halted.write_prg(0xE000, 0x40); // $E000 bit 6: halt the sound chip
+
+    StateWriter writer;
+    halted.save_state(writer);
+    Vrc7 restored(header_for(85, 32, 0), banked_prg(64), {});
+    StateReader reader(writer.data());
+    restored.load_state(reader);
+    REQUIRE(reader.ok());
+
+    // Still halted: key-on is ignored, so the channel stays silent.
+    key_on_vrc7(restored, 0, /*instrument=*/1, /*volume=*/0);
+    REQUIRE(run_vrc7_peak(restored, 4000) == 0.0f);
+
+    // Control: an unhalted round-trip produces audio after key-on.
+    Vrc7 live(header_for(85, 32, 0), banked_prg(64), {});
+    StateWriter live_writer;
+    live.save_state(live_writer);
+    Vrc7 restored_live(header_for(85, 32, 0), banked_prg(64), {});
+    StateReader live_reader(live_writer.data());
+    restored_live.load_state(live_reader);
+    REQUIRE(live_reader.ok());
+    key_on_vrc7(restored_live, 0, /*instrument=*/1, /*volume=*/0);
+    REQUIRE(run_vrc7_peak(restored_live, 4000) > 0.0f);
+}

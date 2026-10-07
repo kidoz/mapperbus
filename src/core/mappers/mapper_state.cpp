@@ -269,6 +269,7 @@ void Vrc7::save_state(StateWriter& w) const {
     w.write_array(fm_channels_);
     w.write_array(custom_patch_);
     w.write(audio_divider_);
+    w.write(audio_halted_);
 }
 void Vrc7::load_state(StateReader& r) {
     r.read_array(prg_ram_);
@@ -286,6 +287,7 @@ void Vrc7::load_state(StateReader& r) {
     r.read_array(fm_channels_);
     r.read_array(custom_patch_);
     r.read(audio_divider_);
+    r.read(audio_halted_);
 }
 
 // --- Namco 163 (19) ---
