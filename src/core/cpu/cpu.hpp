@@ -17,6 +17,13 @@ class Cpu {
     void reset();
     uint32_t step();
 
+    /// Advances the master cycle counter without executing an instruction.
+    /// Used for cycles the CPU was stalled by external hardware (DMC sample
+    /// fetches), so OAM-DMA odd/even parity stays aligned.
+    void add_stall_cycles(uint32_t cycles) {
+        total_cycles_ += cycles;
+    }
+
     void save_state(StateWriter& writer) const;
     void load_state(StateReader& reader);
     [[nodiscard]] uint64_t cycles() const {
