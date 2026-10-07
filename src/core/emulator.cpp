@@ -168,17 +168,12 @@ bool Emulator::step_instruction() {
     fds_.step(cpu_cycles);
     clock_expansion_audio(cpu_cycles);
 
-    // OAM DMA stalls the CPU — advance PPU/APU/mapper by DMA cycles
-    uint32_t dma_cycles = bus_.take_dma_cycles();
-    if (dma_cycles > 0) {
-        ppu_.step(dma_cycles);
-        apu_.step(dma_cycles);
-        clock_expansion_audio(dma_cycles);
-    }
-
-    // DMC memory reads stall the CPU — advance PPU/APU by stall cycles
+    // DMC memory reads stall the CPU — advance the CPU cycle counter and the
+    // PPU/APU/mapper clocks by the stall so OAM-DMA odd/even parity and the
+    // rest of the machine stay in step.
     uint32_t dmc_stall = apu_.take_dmc_stall_cycles();
     if (dmc_stall > 0) {
+        cpu_.add_stall_cycles(dmc_stall);
         ppu_.step(dmc_stall);
         apu_.step(dmc_stall);
         clock_expansion_audio(dmc_stall);
