@@ -20,10 +20,22 @@ struct MapperBusInputConfiguration {
     MapperBusInputConfiguration();
 };
 
+/// Cartridge region used while playing. Automatic keeps the region the ROM
+/// header selects.
+enum class RegionPreference {
+    Automatic,
+    Ntsc,
+    Pal,
+    Dendy,
+};
+
 struct MapperBusFrontendConfiguration {
     int preview_scale_index = 0;
     int ui_density_index = 0;
     bool audio_muted = false;
+    /// Speaker loudness from 0 to 100. Mute is a separate switch.
+    int audio_volume_percent = 100;
+    RegionPreference region = RegionPreference::Automatic;
 };
 
 struct RecentRomEntry {

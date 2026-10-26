@@ -62,6 +62,8 @@ TEST_CASE("MapperBus configuration round-trips universal settings", "[app][confi
     configuration.frontend.preview_scale_index = 2;
     configuration.frontend.ui_density_index = 3;
     configuration.frontend.audio_muted = true;
+    configuration.frontend.audio_volume_percent = 40;
+    configuration.frontend.region = RegionPreference::Pal;
     configuration.input.keyboard_bindings[platform::button_index(core::Button::A)] = 44;
     configuration.input.gamepad.enabled = false;
     configuration.input.gamepad.gamepad_index = 2;
@@ -88,6 +90,8 @@ TEST_CASE("MapperBus configuration round-trips universal settings", "[app][confi
     REQUIRE(loaded.frontend.preview_scale_index == 2);
     REQUIRE(loaded.frontend.ui_density_index == 3);
     REQUIRE(loaded.frontend.audio_muted);
+    REQUIRE(loaded.frontend.audio_volume_percent == 40);
+    REQUIRE(loaded.frontend.region == RegionPreference::Pal);
     REQUIRE(loaded.input.keyboard_bindings[platform::button_index(core::Button::A)] == 44);
     REQUIRE_FALSE(loaded.input.gamepad.enabled);
     REQUIRE(loaded.input.gamepad.gamepad_index == 2);
@@ -166,6 +170,8 @@ TEST_CASE("MapperBus configuration accepts legacy flat settings", "[app][configu
     REQUIRE(loaded.frontend.preview_scale_index == 3);
     REQUIRE(loaded.frontend.ui_density_index == 2);
     REQUIRE(loaded.frontend.audio_muted);
+    REQUIRE(loaded.frontend.audio_volume_percent == 100);
+    REQUIRE(loaded.frontend.region == RegionPreference::Automatic);
     REQUIRE(loaded.input.keyboard_bindings[platform::button_index(core::Button::A)] == 44);
     REQUIRE_FALSE(loaded.input.gamepad.enabled);
     REQUIRE(loaded.input.gamepad.gamepad_index == 1);
@@ -174,6 +180,22 @@ TEST_CASE("MapperBus configuration accepts legacy flat settings", "[app][configu
     const auto& up = loaded.input.gamepad.bindings[platform::button_index(core::Button::Up)];
     REQUIRE(up.kind == platform::GamepadControlKind::AxisNegative);
     REQUIRE(up.axis == platform::GamepadAxis::LeftY);
+
+    std::filesystem::remove_all(path.parent_path());
+}
+
+TEST_CASE("Frontend volume and region preferences clamp invalid values", "[app][configuration]") {
+    const auto path = temporary_config_path();
+    {
+        std::ofstream file(path);
+        file << "[frontend]\n";
+        file << "audio_volume=400\n";
+        file << "region=nope\n";
+    }
+
+    const auto loaded = load_mapperbus_configuration_from_file(path);
+    REQUIRE(loaded.frontend.audio_volume_percent == 100);
+    REQUIRE(loaded.frontend.region == RegionPreference::Automatic);
 
     std::filesystem::remove_all(path.parent_path());
 }

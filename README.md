@@ -223,6 +223,8 @@ version=1
 preview_scale=0
 ui_density=0
 audio_muted=false
+audio_volume=100
+region=auto
 
 [audio]
 sample_rate=96000

@@ -201,6 +201,37 @@ namespace {
     return mode == core::ExpansionMixingMode::ResistanceModeled ? "resistance" : "simple";
 }
 
+[[nodiscard]] RegionPreference parse_region_preference(std::string_view value) {
+    const std::string token = platform::normalized_token(value);
+    if (token == "ntsc") {
+        return RegionPreference::Ntsc;
+    }
+    if (token == "pal") {
+        return RegionPreference::Pal;
+    }
+    if (token == "dendy") {
+        return RegionPreference::Dendy;
+    }
+    if (token != "auto" && token != "automatic" && !token.empty()) {
+        core::logger::warn("Invalid region preference '{}'; using automatic", value);
+    }
+    return RegionPreference::Automatic;
+}
+
+[[nodiscard]] const char* region_preference_token(RegionPreference preference) {
+    switch (preference) {
+    case RegionPreference::Ntsc:
+        return "ntsc";
+    case RegionPreference::Pal:
+        return "pal";
+    case RegionPreference::Dendy:
+        return "dendy";
+    case RegionPreference::Automatic:
+        break;
+    }
+    return "auto";
+}
+
 [[nodiscard]] std::string scoped_key(std::string_view section, std::string_view key) {
     if (section.empty()) {
         return std::string(key);
@@ -232,6 +263,15 @@ void apply_setting(MapperBusConfiguration& configuration,
     }
     if (full_key == "frontend.audio_muted" || full_key == "audio.muted") {
         configuration.frontend.audio_muted = parse_bool_setting(value, false, full_key);
+        return;
+    }
+    if (full_key == "frontend.audio_volume") {
+        configuration.frontend.audio_volume_percent =
+            std::clamp(parse_int(value, 100, full_key), 0, 100);
+        return;
+    }
+    if (full_key == "frontend.region") {
+        configuration.frontend.region = parse_region_preference(value);
         return;
     }
     if (full_key.starts_with("recent.rom_")) {
@@ -495,7 +535,9 @@ core::Result<void> save_mapperbus_configuration_to_file(const MapperBusConfigura
     file << "[frontend]\n";
     file << "preview_scale=" << configuration.frontend.preview_scale_index << '\n';
     file << "ui_density=" << configuration.frontend.ui_density_index << '\n';
-    file << "audio_muted=" << (configuration.frontend.audio_muted ? "true" : "false") << "\n\n";
+    file << "audio_muted=" << (configuration.frontend.audio_muted ? "true" : "false") << '\n';
+    file << "audio_volume=" << configuration.frontend.audio_volume_percent << '\n';
+    file << "region=" << region_preference_token(configuration.frontend.region) << "\n\n";
 
     file << "[audio]\n";
     file << "sample_rate=" << configuration.audio.sample_rate << '\n';
