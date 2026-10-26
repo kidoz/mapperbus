@@ -1,7 +1,6 @@
 [wrap-git]
 url = https://github.com/kidoz/nodalkit.git
-revision = main
-depth = 1
+revision = eb06f9c78a55858a05a3dc8098580589ecf39ed4
 
 [provide]
 nodalkit = nk_dep
