@@ -316,7 +316,7 @@ void apply_setting(MapperBusConfiguration& configuration,
     }
     if (full_key == "audio.filter_mode") {
         configuration.audio.filter_mode =
-            parse_filter_mode(value, core::FilterMode::Unfiltered, full_key);
+            parse_filter_mode(value, core::FilterMode::HardwareAccurate, full_key);
         return;
     }
     if (full_key == "audio.filter_profile") {

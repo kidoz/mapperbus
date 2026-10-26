@@ -14,7 +14,7 @@ struct AudioSettings {
     int sample_rate = 96000;
     int buffer_size_samples = 2048;
     ResamplingMode resampling = ResamplingMode::BlipBuffer;
-    FilterMode filter_mode = FilterMode::Unfiltered;
+    FilterMode filter_mode = FilterMode::HardwareAccurate;
     FilterProfile filter_profile = FilterProfile::NES;
     StereoMode stereo_mode = StereoMode::Mono;
     bool dithering_enabled = false;
