@@ -29,8 +29,7 @@ class Uxrom : public Mapper {
     std::array<Byte, 0x2000> chr_ram_{};
     MirrorMode mirror_mode_;
     uint8_t bank_select_ = 0;
-    uint8_t num_banks_ = 0; // Number of 16 KB banks
-    std::size_t prg_rom_mask_ = 0;
+    std::size_t num_banks_ = 0; // Number of 16 KB banks
 };
 
 } // namespace mapperbus::core

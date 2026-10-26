@@ -46,7 +46,7 @@ class Sunsoft5b : public Mapper {
     std::array<Byte, 0x2000> prg_ram_{};
     std::array<Byte, 0x2000> chr_ram_{};
     bool use_chr_ram_ = false;
-    uint8_t num_prg_8k_ = 0;
+    std::size_t num_prg_8k_ = 0;
 
     // Banking
     uint8_t command_ = 0;

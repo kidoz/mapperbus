@@ -66,15 +66,18 @@ Result<Cartridge> Cartridge::from_data(std::span<const Byte> rom_data) {
         offset += 512;
     }
 
-    std::size_t prg_size = header.prg_rom_banks * 16384u;
-    std::size_t chr_size = header.chr_rom_banks * 8192u;
+    const std::size_t prg_size = header.prg_rom_size;
+    const std::size_t chr_size = header.chr_rom_size;
 
-    if (offset + prg_size + chr_size > rom_data.size()) {
+    if (offset > rom_data.size() || prg_size > rom_data.size() - offset) {
         return std::unexpected("ROM data is smaller than declared in header");
     }
 
     std::vector<Byte> prg_rom(rom_data.begin() + offset, rom_data.begin() + offset + prg_size);
     offset += prg_size;
+    if (chr_size > rom_data.size() - offset) {
+        return std::unexpected("ROM data is smaller than declared in header");
+    }
 
     std::vector<Byte> chr_rom(rom_data.begin() + offset, rom_data.begin() + offset + chr_size);
 

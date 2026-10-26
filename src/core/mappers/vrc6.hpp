@@ -84,7 +84,7 @@ class Vrc6 : public Mapper {
     // PRG banking
     uint8_t prg_bank_16k_ = 0;
     uint8_t prg_bank_8k_ = 0;
-    uint8_t num_prg_banks_8k_ = 0;
+    std::size_t num_prg_banks_8k_ = 0;
 
     // CHR banking
     std::array<uint8_t, 8> chr_banks_{};

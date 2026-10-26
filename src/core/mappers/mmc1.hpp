@@ -55,7 +55,7 @@ class Mmc1 : public Mapper {
     uint32_t chr_offset1_ = 0; // $1000-$1FFF (4KB mode only)
 
     MirrorMode mirror_mode_ = MirrorMode::Horizontal;
-    uint8_t num_prg_banks_ = 0; // In 16 KB units
+    std::size_t num_prg_banks_ = 0; // In 16 KB units
 };
 
 } // namespace mapperbus::core

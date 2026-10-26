@@ -80,8 +80,8 @@ class Mmc5 : public Mapper {
     // register bytes; for $5114-$5117 bit7 selects ROM (1) vs PRG-RAM (0).
     uint8_t prg_mode_ = 3;
     std::array<uint8_t, 5> prg_banks_{};
-    uint8_t num_prg_8k_ = 0;
-    uint8_t num_prg_ram_8k_ = 8; // 64 KB / 8 KB
+    std::size_t num_prg_8k_ = 0;
+    std::size_t num_prg_ram_8k_ = 8; // 64 KB / 8 KB
 
     // CHR banking: $5101 mode (0:8K, 1:4K, 2:2K, 3:1K), 1 KB granular regs.
     uint8_t chr_mode_ = 3;

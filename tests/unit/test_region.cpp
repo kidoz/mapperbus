@@ -33,6 +33,39 @@ TEST_CASE("NES 2.0 mapper extension and submapper parsing", "[region][ines]") {
     REQUIRE(r->submapper == 2);
 }
 
+TEST_CASE("NES 2.0 extended and exponent ROM sizes", "[region][ines]") {
+    SECTION("linear high bits") {
+        auto rom = make_rom(0x08, 0x21, 0);
+        rom[4] = 3;
+        rom[5] = 2;
+        const auto parsed = parse_ines_header(rom);
+        REQUIRE(parsed.has_value());
+        REQUIRE(parsed->prg_rom_banks == 0x0103);
+        REQUIRE(parsed->chr_rom_banks == 0x0202);
+        REQUIRE(parsed->prg_rom_size == 0x0103 * 16384);
+        REQUIRE(parsed->chr_rom_size == 0x0202 * 8192);
+    }
+
+    SECTION("exponent multiplier") {
+        auto rom = make_rom(0x08, 0xFF, 0);
+        rom[4] = (4 << 2) | 1;
+        rom[5] = (3 << 2) | 2;
+        const auto parsed = parse_ines_header(rom);
+        REQUIRE(parsed.has_value());
+        REQUIRE(parsed->prg_rom_banks == 0);
+        REQUIRE(parsed->chr_rom_banks == 0);
+        REQUIRE(parsed->prg_rom_size == 48);
+        REQUIRE(parsed->chr_rom_size == 40);
+    }
+
+    SECTION("exponent overflow") {
+        auto rom = make_rom(0x08, 0x0F, 0);
+        rom[4] = 0xFF;
+        const auto parsed = parse_ines_header(rom);
+        REQUIRE_FALSE(parsed.has_value());
+    }
+}
+
 TEST_CASE("NES 2.0 region detection", "[region]") {
     SECTION("NTSC") {
         auto r = parse_ines_header(make_rom(0x08, 0, 0x00));

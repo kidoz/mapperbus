@@ -28,10 +28,10 @@ void Mmc3::reset() {
 }
 
 void Mmc3::update_prg_banks() {
-    uint8_t r6 = bank_registers_[6] % num_prg_banks_8k_;
-    uint8_t r7 = bank_registers_[7] % num_prg_banks_8k_;
-    uint8_t second_last = (num_prg_banks_8k_ - 2) % num_prg_banks_8k_;
-    uint8_t last = (num_prg_banks_8k_ - 1) % num_prg_banks_8k_;
+    const std::size_t r6 = bank_registers_[6] % num_prg_banks_8k_;
+    const std::size_t r7 = bank_registers_[7] % num_prg_banks_8k_;
+    const std::size_t second_last = (num_prg_banks_8k_ - 2) % num_prg_banks_8k_;
+    const std::size_t last = (num_prg_banks_8k_ - 1) % num_prg_banks_8k_;
 
     if (!prg_mode_) {
         // Mode 0: $8000=R6, $A000=R7, $C000=(-2), $E000=(-1)

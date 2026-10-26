@@ -15,6 +15,39 @@
 #include "core/mappers/vrc7.hpp"
 
 namespace mapperbus::core {
+namespace {
+
+[[nodiscard]] Result<void> validate_geometry(const INesHeader& header,
+                                             std::size_t prg_size,
+                                             std::size_t chr_size) {
+    if (prg_size < 16 * 1024) {
+        return std::unexpected("Mapper requires at least a 16 KiB PRG ROM");
+    }
+    if (header.mapper_number == 0 && prg_size != 16 * 1024 && prg_size != 32 * 1024) {
+        return std::unexpected("NROM requires a 16 KiB or 32 KiB PRG ROM");
+    }
+    if (header.mapper_number == 4 && prg_size > 512 * 1024) {
+        return std::unexpected("MMC3 PRG ROM exceeds 512 KiB");
+    }
+    if (header.mapper_number == 4 && chr_size > 256 * 1024) {
+        return std::unexpected("MMC3 CHR ROM exceeds 256 KiB");
+    }
+    if (header.mapper_number == 4 && chr_size > 0 && chr_size < 1024) {
+        return std::unexpected("MMC3 CHR ROM is smaller than one bank");
+    }
+    if (header.mapper_number == 3 && chr_size > 0 && chr_size < 8 * 1024) {
+        return std::unexpected("CNROM CHR ROM is smaller than one bank");
+    }
+    if (header.mapper_number == 7 && prg_size < 32 * 1024) {
+        return std::unexpected("AxROM requires at least a 32 KiB PRG ROM");
+    }
+    if (header.mapper_number == 9 && prg_size < 32 * 1024) {
+        return std::unexpected("MMC2 requires at least a 32 KiB PRG ROM");
+    }
+    return {};
+}
+
+} // namespace
 
 MapperRegistry& MapperRegistry::instance() {
     static MapperRegistry registry;
@@ -31,6 +64,9 @@ Result<std::unique_ptr<Mapper>> MapperRegistry::create(const INesHeader& header,
     auto it = factories_.find(header.mapper_number);
     if (it == factories_.end()) {
         return std::unexpected("Unsupported mapper: " + std::to_string(header.mapper_number));
+    }
+    if (auto valid = validate_geometry(header, prg_rom.size(), chr_rom.size()); !valid) {
+        return std::unexpected(valid.error());
     }
     return it->second(header, std::move(prg_rom), std::move(chr_rom));
 }

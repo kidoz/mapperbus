@@ -4,7 +4,7 @@ namespace mapperbus::core {
 
 Cnrom::Cnrom(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte> chr_rom)
     : prg_rom_(std::move(prg_rom)), chr_rom_(std::move(chr_rom)), mirror_mode_(header.mirror_mode) {
-    num_chr_banks_ = static_cast<uint8_t>(chr_rom_.empty() ? 1 : chr_rom_.size() / 0x2000);
+    num_chr_banks_ = chr_rom_.empty() ? 1 : chr_rom_.size() / 0x2000;
 }
 
 Byte Cnrom::read_prg(Address addr) {
@@ -15,8 +15,8 @@ Byte Cnrom::read_prg(Address addr) {
 }
 
 void Cnrom::write_prg(Address addr, Byte value) {
-    if (addr >= 0x8000) {
-        bank_select_ = value & (num_chr_banks_ - 1);
+    if (addr >= 0x8000 && num_chr_banks_ != 0) {
+        bank_select_ = static_cast<uint8_t>(value % num_chr_banks_);
     }
 }
 
