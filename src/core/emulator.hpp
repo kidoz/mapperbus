@@ -54,10 +54,14 @@ class Emulator {
     /// (magic + version + mapper id + region, then each subsystem).
     [[nodiscard]] std::vector<Byte> save_state() const;
     /// Restores state from a blob produced by save_state(). Returns false if
-    /// the blob is malformed, the version is unknown, or the mapper id does
-    /// not match the currently loaded cartridge (state is left untouched on a
-    /// header mismatch).
+    /// the blob is too large, malformed, an unknown version, contains an
+    /// out-of-range restored index, or the mapper id does not match the
+    /// loaded cartridge. A rejected blob leaves the running machine unchanged.
     [[nodiscard]] bool load_state(std::span<const Byte> data);
+
+    /// Largest accepted save-state blob. Above the biggest honest state (a
+    /// 16-side FDS image plus mapper RAM) and below an unbounded allocation.
+    static constexpr std::size_t kMaxStateBytes = 4 * 1024 * 1024;
 
     [[nodiscard]] Result<void> save_state_to_file(const std::string& path) const;
     [[nodiscard]] Result<void> load_state_from_file(const std::string& path);
@@ -131,6 +135,9 @@ class Emulator {
   private:
     void wire_apu();
     void clock_expansion_audio(uint32_t cycles);
+    /// Applies a blob that has already passed the size check. On failure the
+    /// machine may be partially updated; `load_state` rolls that back.
+    [[nodiscard]] bool restore_state(std::span<const Byte> data);
 
     std::string rom_path_;
     Region region_ = Region::NTSC;

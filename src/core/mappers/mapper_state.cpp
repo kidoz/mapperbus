@@ -196,6 +196,12 @@ void Mmc5::load_state(StateReader& r) {
     r.read_array(prg_ram_);
     r.read_array(chr_ram_);
     r.read(prg_mode_);
+    // $5100 writes keep only the low two bits. The mode indexes a 4-entry table
+    // in read_prg; a raw byte from a blob must not.
+    if (prg_mode_ > 3) {
+        prg_mode_ = 3;
+        r.fail();
+    }
     r.read_array(prg_banks_);
     r.read(chr_mode_);
     r.read_array(chr_banks_1k_);
@@ -321,6 +327,12 @@ void Namco163::load_state(StateReader& r) {
     r.read(sound_addr_);
     r.read(auto_increment_);
     r.read(num_channels_);
+    // Hardware writes store ((value >> 4) & 7) + 1, so the count is 1..8.
+    // Zero reaches `current_channel_ % num_channels_` in clock_audio.
+    if (num_channels_ < 1 || num_channels_ > channels_.size()) {
+        num_channels_ = 1;
+        r.fail();
+    }
     r.read(audio_timer_);
     r.read(current_channel_);
     r.read_array(channels_);

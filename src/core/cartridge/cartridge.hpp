@@ -11,6 +11,11 @@ namespace mapperbus::core {
 class StateWriter;
 class StateReader;
 
+/// iNES PRG is at most 255 x 16 KB and CHR at most 255 x 8 KB, plus a header
+/// and trainer. 16 MiB leaves room for that layout without accepting an
+/// unbounded file.
+inline constexpr std::size_t kMaxRomBytes = 16 * 1024 * 1024;
+
 class Cartridge {
   public:
     [[nodiscard]] static Result<Cartridge> from_file(const std::string& path);
