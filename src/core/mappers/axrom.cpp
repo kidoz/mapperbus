@@ -7,11 +7,11 @@ Axrom::Axrom(const INesHeader& header,
              [[maybe_unused]] std::vector<Byte> chr_rom)
     : prg_rom_(std::move(prg_rom)), mirror_mode_(MirrorMode::SingleLower),
       has_bus_conflicts_(header.is_nes2 && header.submapper == 2) {
-    num_banks_ = static_cast<uint8_t>(prg_rom_.size() / 0x8000);
+    num_banks_ = prg_rom_.size() / 0x8000;
 }
 
 Byte Axrom::read_prg(Address addr) {
-    if (addr < 0x8000)
+    if (addr < 0x8000 || prg_rom_.empty())
         return 0;
     std::size_t offset = (bank_select_ * 0x8000) + (addr - 0x8000);
     return prg_rom_[offset % prg_rom_.size()];
@@ -22,7 +22,9 @@ void Axrom::write_prg(Address addr, Byte value) {
         if (has_bus_conflicts_) {
             value &= read_prg(addr);
         }
-        bank_select_ = value & (num_banks_ - 1);
+        if (num_banks_ != 0) {
+            bank_select_ = static_cast<uint8_t>(value % num_banks_);
+        }
         // Bit 4 selects single-screen nametable
         mirror_mode_ = (value & 0x10) ? MirrorMode::SingleUpper : MirrorMode::SingleLower;
     }

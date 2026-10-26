@@ -73,8 +73,8 @@ class Mmc3 : public Mapper {
     bool prg_ram_enabled_ = true;
     bool prg_ram_write_protected_ = false;
 
-    uint8_t num_prg_banks_8k_ = 0;
-    uint16_t num_chr_banks_1k_ = 0;
+    std::size_t num_prg_banks_8k_ = 0;
+    std::size_t num_chr_banks_1k_ = 0;
 };
 
 } // namespace mapperbus::core

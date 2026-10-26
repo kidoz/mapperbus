@@ -28,7 +28,7 @@ class Cnrom : public Mapper {
     std::vector<Byte> chr_rom_;
     MirrorMode mirror_mode_;
     uint8_t bank_select_ = 0;
-    uint8_t num_chr_banks_ = 0; // Number of 8 KB CHR banks
+    std::size_t num_chr_banks_ = 0; // Number of 8 KB CHR banks
 };
 
 } // namespace mapperbus::core

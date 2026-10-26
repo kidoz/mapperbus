@@ -47,7 +47,7 @@ class Mmc2 : public Mapper {
 
     // PRG bank register ($A000): selects the 8 KB bank at $8000-$9FFF.
     uint8_t prg_bank_ = 0;
-    uint8_t num_prg_banks_8k_ = 0;
+    std::size_t num_prg_banks_8k_ = 0;
 
     // CHR bank registers: two pages per 4 KB half.
     //   chr_banks_[0/1] = FD page for left/right half

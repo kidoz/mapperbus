@@ -31,7 +31,7 @@ Byte Namco163::read_prg(Address addr) {
     if (addr < 0x8000)
         return 0;
     uint8_t bank_idx = (addr - 0x8000) / 0x2000;
-    uint8_t bank = prg_banks_[bank_idx] % num_prg_8k_;
+    const std::size_t bank = prg_banks_[bank_idx] % num_prg_8k_;
     uint32_t offset = static_cast<uint32_t>(bank) * 0x2000 + ((addr - 0x8000) % 0x2000);
     return prg_rom_[offset % prg_rom_.size()];
 }

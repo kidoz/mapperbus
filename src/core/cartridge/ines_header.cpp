@@ -2,8 +2,37 @@
 
 #include <algorithm>
 #include <cctype>
+#include <limits>
 
 namespace mapperbus::core {
+namespace {
+
+[[nodiscard]] Result<std::size_t> decode_rom_size(Byte low,
+                                                  Byte high_nibble,
+                                                  std::size_t unit,
+                                                  bool is_nes2) {
+    if (!is_nes2 || high_nibble != 0x0F) {
+        const std::size_t banks =
+            is_nes2 ? (static_cast<std::size_t>(high_nibble) << 8) | low : low;
+        if (banks > std::numeric_limits<std::size_t>::max() / unit) {
+            return std::unexpected("ROM size overflows host limits");
+        }
+        return banks * unit;
+    }
+
+    const unsigned exponent = low >> 2;
+    const std::size_t multiplier = static_cast<std::size_t>((low & 0x03) * 2 + 1);
+    if (exponent >= std::numeric_limits<std::size_t>::digits) {
+        return std::unexpected("ROM size overflows host limits");
+    }
+    const std::size_t base = std::size_t{1} << exponent;
+    if (base > std::numeric_limits<std::size_t>::max() / multiplier) {
+        return std::unexpected("ROM size overflows host limits");
+    }
+    return base * multiplier;
+}
+
+} // namespace
 
 Result<INesHeader> parse_ines_header(std::span<const Byte> rom_data) {
     if (rom_data.size() < 16) {
@@ -48,6 +77,23 @@ Result<INesHeader> parse_ines_header(std::span<const Byte> rom_data) {
         header.submapper = static_cast<uint8_t>(rom_data[8] >> 4);
     }
 
+    const auto prg_size = decode_rom_size(rom_data[4], rom_data[9] & 0x0F, 16384, header.is_nes2);
+    const auto chr_size = decode_rom_size(rom_data[5], rom_data[9] >> 4, 8192, header.is_nes2);
+    if (!prg_size || !chr_size) {
+        return std::unexpected(!prg_size ? prg_size.error() : chr_size.error());
+    }
+    header.prg_rom_size = *prg_size;
+    header.chr_rom_size = *chr_size;
+    if (header.is_nes2) {
+        header.prg_rom_banks =
+            (rom_data[9] & 0x0F) == 0x0F
+                ? 0
+                : static_cast<uint16_t>(((rom_data[9] & 0x0F) << 8) | rom_data[4]);
+        header.chr_rom_banks = (rom_data[9] >> 4) == 0x0F
+                                   ? 0
+                                   : static_cast<uint16_t>(((rom_data[9] >> 4) << 8) | rom_data[5]);
+    }
+
     // Region / CPU-PPU timing
     header.region = Region::NTSC; // default
     if (header.is_nes2) {
@@ -74,8 +120,8 @@ Result<INesHeader> parse_ines_header(std::span<const Byte> rom_data) {
         }
     }
 
-    if (header.prg_rom_banks == 0) {
-        return std::unexpected("PRG ROM bank count is zero");
+    if (header.prg_rom_size == 0) {
+        return std::unexpected("PRG ROM size is zero");
     }
 
     return header;

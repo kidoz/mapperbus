@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -10,8 +11,8 @@
 namespace mapperbus::core {
 
 struct INesHeader {
-    uint8_t prg_rom_banks; // 16 KB units
-    uint8_t chr_rom_banks; // 8 KB units
+    uint16_t prg_rom_banks; // 16 KB units; zero for exponent/multiplier encoding
+    uint16_t chr_rom_banks; // 8 KB units; zero for exponent/multiplier encoding
     uint16_t mapper_number;
     uint8_t submapper;
     MirrorMode mirror_mode;
@@ -19,6 +20,8 @@ struct INesHeader {
     bool has_battery;
     bool has_trainer;
     bool is_nes2;
+    std::size_t prg_rom_size = 0;
+    std::size_t chr_rom_size = 0;
 };
 
 Result<INesHeader> parse_ines_header(std::span<const Byte> rom_data);

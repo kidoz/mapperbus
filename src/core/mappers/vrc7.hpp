@@ -47,7 +47,7 @@ class Vrc7 : public Mapper {
     std::array<Byte, 0x2000> prg_ram_{};
     std::array<Byte, 0x2000> chr_ram_{};
     bool use_chr_ram_ = false;
-    uint8_t num_prg_8k_ = 0;
+    std::size_t num_prg_8k_ = 0;
 
     std::array<uint8_t, 3> prg_banks_{};
     std::array<uint8_t, 8> chr_banks_{};

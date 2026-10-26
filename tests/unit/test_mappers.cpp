@@ -2,10 +2,12 @@
 #include <catch2/catch_test_macros.hpp>
 #include <vector>
 
+#include "core/cartridge/cartridge.hpp"
 #include "core/cartridge/ines_header.hpp"
 #include "core/mappers/axrom.hpp"
 #include "core/mappers/cnrom.hpp"
 #include "core/mappers/color_dreams.hpp"
+#include "core/mappers/mapper_registry.hpp"
 #include "core/mappers/mmc1.hpp"
 #include "core/mappers/mmc2.hpp"
 #include "core/mappers/mmc3.hpp"
@@ -60,6 +62,25 @@ TEST_CASE("UxROM bank switching", "[uxrom]") {
     REQUIRE(mapper.read_prg(0x8000) == 0x11);
     mapper.write_prg(0x8000, 0x03);
     REQUIRE(mapper.read_prg(0x8000) == 0x33);
+}
+
+TEST_CASE("UxROM and AxROM select non-power-of-two banks", "[uxrom][axrom]") {
+    std::vector<Byte> ux_prg(3 * 0x4000, 0);
+    ux_prg[0] = 0x10;
+    ux_prg[0x4000] = 0x11;
+    ux_prg[0x8000] = 0x12;
+    Uxrom uxrom(make_header(3, 0, MirrorMode::Vertical), std::move(ux_prg), {});
+    uxrom.write_prg(0x8000, 1);
+    REQUIRE(uxrom.read_prg(0x8000) == 0x11);
+    REQUIRE(uxrom.read_prg(0xC000) == 0x12);
+
+    std::vector<Byte> ax_prg(3 * 0x8000, 0);
+    ax_prg[0] = 0x20;
+    ax_prg[0x8000] = 0x21;
+    ax_prg[0x10000] = 0x22;
+    Axrom axrom(make_header(6, 0, MirrorMode::Vertical), std::move(ax_prg), {});
+    axrom.write_prg(0x8000, 1);
+    REQUIRE(axrom.read_prg(0x8000) == 0x21);
 }
 
 TEST_CASE("UxROM CHR RAM", "[uxrom]") {
@@ -575,4 +596,20 @@ TEST_CASE("MMC3 maps a non-power-of-two PRG/CHR without corruption", "[mmc3]") {
     mapper.write_prg(0x8000, 0x02);
     mapper.write_prg(0x8001, 0x04);
     REQUIRE(mapper.read_chr(0x1000) == 0xC1);
+}
+
+TEST_CASE("Cartridge rejects MMC3 PRG beyond the board limit", "[mmc3][cartridge]") {
+    register_builtin_mappers();
+    std::vector<Byte> rom(16 + 128 * 16384 + 8192, 0);
+    rom[0] = 'N';
+    rom[1] = 'E';
+    rom[2] = 'S';
+    rom[3] = 0x1A;
+    rom[4] = 128;
+    rom[5] = 1;
+    rom[6] = 0x40;
+
+    const auto result = Cartridge::from_data(rom);
+    REQUIRE_FALSE(result.has_value());
+    REQUIRE(result.error().find("512") != std::string::npos);
 }

@@ -36,7 +36,7 @@ Byte Mmc2::read_prg(Address addr) {
         return prg_rom_[offset % prg_rom_.size()];
     }
     // $A000-$FFFF: fixed to the last three 8 KB banks.
-    uint8_t fixed_bank = static_cast<uint8_t>((addr - 0xA000) / 0x2000) + num_prg_banks_8k_ - 3;
+    const std::size_t fixed_bank = ((addr - 0xA000) / 0x2000) + num_prg_banks_8k_ - 3;
     uint32_t offset = static_cast<uint32_t>(fixed_bank) * 0x2000 + ((addr - 0xA000) % 0x2000);
     return prg_rom_[offset % prg_rom_.size()];
 }
