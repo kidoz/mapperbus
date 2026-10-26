@@ -9,6 +9,7 @@
 #include "../support/test_rom.hpp"
 #include "core/emulator.hpp"
 #include "core/mappers/mapper_registry.hpp"
+#include "core/mappers/mmc3.hpp"
 #include "core/mappers/mmc5.hpp"
 #include "core/mappers/namco163.hpp"
 #include "core/ppu/ppu.hpp"
@@ -354,4 +355,76 @@ TEST_CASE("PPU save-state rejects a sprite count above the hardware limit", "[st
     restored.load_state(reader);
     REQUIRE_FALSE(reader.ok());
     restored.step(30);
+}
+
+TEST_CASE("Mapper save-states reject unsafe restored indices", "[state][mappers]") {
+    INesHeader header{};
+    header.mirror_mode = MirrorMode::Vertical;
+    const std::vector<Byte> prg(16 * 1024, 0xEA);
+    const std::vector<Byte> chr(8 * 1024, 0);
+
+    SECTION("MMC3 bank select") {
+        Mmc3 mapper(header, prg, chr);
+        StateWriter writer;
+        mapper.save_state(writer);
+        auto blob = writer.take();
+        blob[0x2000 + 0x2000] = 0xFF;
+        StateReader reader(blob);
+        mapper.load_state(reader);
+        REQUIRE_FALSE(reader.ok());
+        mapper.write_prg(0x8001, 1);
+    }
+
+    SECTION("Namco 163 sound address") {
+        Namco163 mapper(header, prg, chr);
+        StateWriter writer;
+        mapper.save_state(writer);
+        auto blob = writer.take();
+        constexpr std::size_t sound_addr_offset = 0x2000 + 0x2000 + 4 + 8 + 1 + 2 + 1 + 1 + 128;
+        blob[sound_addr_offset] = 0xFF;
+        StateReader reader(blob);
+        mapper.load_state(reader);
+        REQUIRE_FALSE(reader.ok());
+        (void)mapper.read_expansion(0x4800);
+    }
+
+    SECTION("MMC5 pulse sequencer") {
+        Mmc5 mapper(header, prg, chr);
+        StateWriter writer;
+        mapper.save_state(writer);
+        auto blob = writer.take();
+        constexpr std::size_t pulse_offset = 0x10000 + 0x2000 + 1 + 5 + 1 + 16 + 1;
+        blob[pulse_offset + 1] = 0xFF;
+        blob[pulse_offset + 6] = 1;
+        blob[pulse_offset + 7] = 1;
+        StateReader reader(blob);
+        mapper.load_state(reader);
+        REQUIRE_FALSE(reader.ok());
+        (void)mapper.audio_output();
+    }
+}
+
+TEST_CASE("Invalid APU state is rejected and rolled back", "[state][apu]") {
+    register_builtin_mappers();
+    const std::filesystem::path rom = mapperbus::tests::write_visible_nrom_test_rom("apu-state");
+    Emulator emu;
+    REQUIRE(emu.load_cartridge(rom.string()).has_value());
+    emu.reset();
+    emu.step_frame();
+
+    const std::vector<Byte> before = emu.save_state();
+    StateWriter cpu_writer;
+    emu.cpu().save_state(cpu_writer);
+    StateWriter ppu_writer;
+    emu.ppu().save_state(ppu_writer);
+    constexpr std::size_t header_size = 4 + sizeof(std::uint32_t) + sizeof(std::uint16_t) + 1;
+    const std::size_t apu_offset =
+        header_size + cpu_writer.data().size() + ppu_writer.data().size();
+
+    std::vector<Byte> blob = before;
+    blob[apu_offset] = 0xFF;
+    REQUIRE_FALSE(emu.load_state(blob));
+    REQUIRE(emu.save_state() == before);
+    emu.step_frame();
+    std::filesystem::remove(rom);
 }

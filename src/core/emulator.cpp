@@ -46,7 +46,8 @@ constexpr std::uint32_t kStateVersion = 3; // v3: VRC7 audio_halted_
         return std::nullopt;
     }
     const auto region = reader.read<Region>();
-    if (!reader.ok()) {
+    if (!reader.ok() || region > Region::Multi) {
+        logger::warn("Save-state rejected: invalid region");
         return std::nullopt;
     }
     return region;

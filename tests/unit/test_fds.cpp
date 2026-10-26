@@ -2,6 +2,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <vector>
 
 #include "core/fds/fds.hpp"
@@ -253,6 +254,34 @@ TEST_CASE("FDS load_state clamps inconsistent disk geometry", "[fds][state]") {
         restored.write(0x4023, 0x01);
         restored.write(0x4025, 0x01 | 0x40); // motor on + start, write mode
         restored.step(5000);
+    }
+}
+
+TEST_CASE("FDS state rejects invalid wavetable and modulation positions", "[fds][state]") {
+    Fds baseline;
+    StateWriter writer;
+    baseline.save_state(writer);
+
+    SECTION("wavetable position") {
+        auto blob = writer.data();
+        blob[118] = 0xFF;
+        Fds restored;
+        StateReader reader(blob);
+        restored.load_state(reader);
+        REQUIRE_FALSE(reader.ok());
+        (void)restored.audio_output();
+    }
+
+    SECTION("negative transfer delay") {
+        auto blob = writer.data();
+        constexpr std::size_t transfer_delay_offset = 35;
+        const std::int32_t invalid = -1;
+        std::memcpy(blob.data() + transfer_delay_offset, &invalid, sizeof(invalid));
+        Fds restored;
+        StateReader reader(blob);
+        restored.load_state(reader);
+        REQUIRE_FALSE(reader.ok());
+        restored.step(1);
     }
 }
 

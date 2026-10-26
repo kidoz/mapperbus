@@ -7,6 +7,7 @@
 // constants (num_*_banks_, use_chr_ram_) are reconstructed at load time.
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 
 #include "core/mappers/axrom.hpp"
@@ -25,6 +26,29 @@
 #include "core/state/state.hpp"
 
 namespace mapperbus::core {
+namespace {
+
+[[nodiscard]] bool valid_mirror_mode(MirrorMode mode) {
+    return mode <= MirrorMode::SingleUpper;
+}
+
+void validate_mirror_mode(MirrorMode& mode, StateReader& reader) {
+    if (!valid_mirror_mode(mode)) {
+        mode = MirrorMode::Horizontal;
+        reader.fail();
+    }
+}
+
+[[nodiscard]] bool valid_mmc5_pulse(const Mmc5Pulse& pulse) {
+    return pulse.duty <= 0x03 && pulse.sequence_pos < 8 && pulse.timer_period <= 0x07FF &&
+           pulse.volume <= 0x0F && pulse.envelope_period <= 0x0F && pulse.envelope_decay <= 0x0F;
+}
+
+[[nodiscard]] bool valid_vrc6_frequency_shift(uint8_t shift) {
+    return shift == 0 || shift == 4 || shift == 8;
+}
+
+} // namespace
 
 // --- NROM (0) ---
 void Nrom::save_state(StateWriter& w) const {
@@ -63,6 +87,7 @@ void Axrom::save_state(StateWriter& w) const {
 void Axrom::load_state(StateReader& r) {
     r.read_array(chr_ram_);
     r.read(mirror_mode_);
+    validate_mirror_mode(mirror_mode_, r);
     r.read(bank_select_);
 }
 
@@ -108,6 +133,18 @@ void Mmc1::load_state(StateReader& r) {
     r.read(chr_offset0_);
     r.read(chr_offset1_);
     r.read(mirror_mode_);
+    validate_mirror_mode(mirror_mode_, r);
+    if (shift_register_ > 0x1F || write_count_ > 4 || control_ > 0x1F || chr_bank0_ > 0x1F ||
+        chr_bank1_ > 0x1F || prg_bank_ > 0x1F) {
+        shift_register_ = 0x10;
+        write_count_ = 0;
+        control_ = 0x0C;
+        chr_bank0_ = 0;
+        chr_bank1_ = 0;
+        prg_bank_ = 0;
+        r.fail();
+    }
+    update_banks();
 }
 
 // --- MMC2 (9) ---
@@ -128,6 +165,15 @@ void Mmc2::load_state(StateReader& r) {
     r.read_array(latch_);
     r.read_array(chr_offsets_);
     r.read(mirror_mode_);
+    validate_mirror_mode(mirror_mode_, r);
+    if (prg_bank_ > 0x0F || latch_[0] > 1 || latch_[1] > 1 ||
+        std::ranges::any_of(chr_banks_, [](uint8_t bank) { return bank > 0x1F; })) {
+        prg_bank_ = 0;
+        chr_banks_.fill(0);
+        latch_.fill(0);
+        r.fail();
+    }
+    update_chr_banks();
 }
 
 // --- MMC3 (4) ---
@@ -160,6 +206,7 @@ void Mmc3::load_state(StateReader& r) {
     r.read_array(prg_offsets_);
     r.read_array(chr_offsets_);
     r.read(mirror_mode_);
+    validate_mirror_mode(mirror_mode_, r);
     r.read(irq_counter_);
     r.read(irq_reload_);
     r.read(irq_reload_flag_);
@@ -168,6 +215,12 @@ void Mmc3::load_state(StateReader& r) {
     r.read(irq_zero_latch_repeats_);
     r.read(prg_ram_enabled_);
     r.read(prg_ram_write_protected_);
+    if (bank_select_ >= bank_registers_.size()) {
+        bank_select_ = 0;
+        r.fail();
+    }
+    update_prg_banks();
+    update_chr_banks();
 }
 
 // --- MMC5 (5) ---
@@ -206,6 +259,7 @@ void Mmc5::load_state(StateReader& r) {
     r.read(chr_mode_);
     r.read_array(chr_banks_1k_);
     r.read(mirror_mode_);
+    validate_mirror_mode(mirror_mode_, r);
     r.read(pulse1_);
     r.read(pulse2_);
     r.read(pcm_output_);
@@ -218,6 +272,18 @@ void Mmc5::load_state(StateReader& r) {
     r.read(irq_enabled_);
     r.read(irq_pending_);
     r.read(in_frame_);
+    if (chr_mode_ > 3) {
+        chr_mode_ = 3;
+        r.fail();
+    }
+    if (!valid_mmc5_pulse(pulse1_)) {
+        pulse1_ = {};
+        r.fail();
+    }
+    if (!valid_mmc5_pulse(pulse2_)) {
+        pulse2_ = {};
+        r.fail();
+    }
 }
 
 // --- VRC6 (24/26) ---
@@ -246,6 +312,7 @@ void Vrc6::load_state(StateReader& r) {
     r.read(prg_bank_8k_);
     r.read_array(chr_banks_);
     r.read(mirror_mode_);
+    validate_mirror_mode(mirror_mode_, r);
     r.read(irq_latch_);
     r.read(irq_counter_);
     r.read(irq_enabled_);
@@ -256,6 +323,27 @@ void Vrc6::load_state(StateReader& r) {
     r.read(pulse1_);
     r.read(pulse2_);
     r.read(sawtooth_);
+    if (irq_prescaler_ < 0) {
+        irq_prescaler_ = 0;
+        r.fail();
+    }
+    const auto valid_pulse = [](const Vrc6Pulse& pulse) {
+        return pulse.duty <= 0x07 && pulse.volume <= 0x0F && pulse.step <= 0x0F &&
+               pulse.timer_period <= 0x0FFF && valid_vrc6_frequency_shift(pulse.freq_shift);
+    };
+    if (!valid_pulse(pulse1_)) {
+        pulse1_ = {};
+        r.fail();
+    }
+    if (!valid_pulse(pulse2_)) {
+        pulse2_ = {};
+        r.fail();
+    }
+    if (sawtooth_.accumulator_rate > 0x3F || sawtooth_.step >= 14 ||
+        sawtooth_.timer_period > 0x0FFF || !valid_vrc6_frequency_shift(sawtooth_.freq_shift)) {
+        sawtooth_ = {};
+        r.fail();
+    }
 }
 
 // --- VRC7 (85) ---
@@ -283,6 +371,7 @@ void Vrc7::load_state(StateReader& r) {
     r.read_array(prg_banks_);
     r.read_array(chr_banks_);
     r.read(mirror_mode_);
+    validate_mirror_mode(mirror_mode_, r);
     r.read(irq_latch_);
     r.read(irq_counter_);
     r.read(irq_enabled_);
@@ -294,6 +383,24 @@ void Vrc7::load_state(StateReader& r) {
     r.read_array(custom_patch_);
     r.read(audio_divider_);
     r.read(audio_halted_);
+    if (irq_prescaler_ < 0 || audio_divider_ >= 36) {
+        irq_prescaler_ = 0;
+        audio_divider_ = 0;
+        r.fail();
+    }
+    for (const auto& channel : fm_channels_) {
+        const auto valid_operator = [](const FmOperator& op) {
+            return op.stage <= EnvStage::Release && std::isfinite(op.env_db) && op.env_db >= 0.0F;
+        };
+        if (channel.frequency > 0x01FF || channel.octave > 0x07 || channel.instrument > 0x0F ||
+            channel.volume > 0x0F || !valid_operator(channel.modulator) ||
+            !valid_operator(channel.carrier) || !std::isfinite(channel.mod_out1) ||
+            !std::isfinite(channel.mod_out2) || !std::isfinite(channel.output)) {
+            fm_channels_ = {};
+            r.fail();
+            break;
+        }
+    }
 }
 
 // --- Namco 163 (19) ---
@@ -320,6 +427,7 @@ void Namco163::load_state(StateReader& r) {
     r.read_array(prg_banks_);
     r.read_array(chr_banks_);
     r.read(mirror_mode_);
+    validate_mirror_mode(mirror_mode_, r);
     r.read(irq_counter_);
     r.read(irq_enabled_);
     r.read(irq_pending_);
@@ -336,6 +444,22 @@ void Namco163::load_state(StateReader& r) {
     r.read(audio_timer_);
     r.read(current_channel_);
     r.read_array(channels_);
+    if (sound_addr_ >= sound_ram_.size()) {
+        sound_addr_ = 0;
+        r.fail();
+    }
+    if (current_channel_ >= num_channels_) {
+        current_channel_ = 0;
+        r.fail();
+    }
+    for (const auto& channel : channels_) {
+        if (channel.phase > 0xFFFFFF || channel.frequency > 0x3FFFF || channel.wave_length > 256 ||
+            (channel.wave_length != 0 && channel.wave_length % 4 != 0) || channel.volume > 0x0F) {
+            channels_ = {};
+            r.fail();
+            break;
+        }
+    }
 }
 
 // --- Sunsoft 5B / FME-7 (69) ---
@@ -373,6 +497,7 @@ void Sunsoft5b::load_state(StateReader& r) {
     r.read_array(prg_banks_);
     r.read(prg_ram_enabled_);
     r.read(mirror_mode_);
+    validate_mirror_mode(mirror_mode_, r);
     r.read(irq_counter_);
     r.read(irq_enabled_);
     r.read(irq_counter_enabled_);
@@ -390,6 +515,24 @@ void Sunsoft5b::load_state(StateReader& r) {
     r.read(env_level_);
     r.read(env_attack_);
     r.read(env_holding_);
+    if (command_ > 0x0F || ay_register_ > 0x0F || audio_divider_ >= 16 || noise_period_ > 0x1F ||
+        env_shape_ > 0x0F || env_step_ > 31 || env_level_ > 31) {
+        command_ = 0;
+        ay_register_ = 0;
+        audio_divider_ = 0;
+        noise_period_ = 0;
+        env_shape_ = 0;
+        env_step_ = 0;
+        env_level_ = 0;
+        r.fail();
+    }
+    for (const auto& channel : channels_) {
+        if (channel.period > 0x0FFF || channel.volume > 0x0F) {
+            channels_ = {};
+            r.fail();
+            break;
+        }
+    }
 }
 
 // --- Battery-backed PRG-RAM accessors ---

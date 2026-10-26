@@ -136,6 +136,19 @@ void Fds::load_state(StateReader& reader) {
     reader.read(mod_env_increase_);
     reader.read(mod_env_timer_);
 
+    const bool valid_transfer_delay = transfer_delay_ >= 0;
+    const bool valid_audio = wave_position_ < wavetable_.size() && wave_frequency_ <= 0x0FFF &&
+                             volume_envelope_ <= 0x3F && master_volume_ <= 0x03 &&
+                             vol_env_speed_ <= 0x3F && mod_position_ < mod_table_.size() * 2 &&
+                             mod_frequency_ <= 0x0FFF && mod_counter_ >= -64 &&
+                             mod_counter_ <= 63 && mod_depth_ <= 0x3F && mod_env_speed_ <= 0x3F;
+    if (!valid_transfer_delay || !valid_audio) {
+        transfer_delay_ = 0;
+        transfer_active_ = false;
+        reset_audio();
+        reader.fail();
+    }
+
     // Always clamp. A later field can fail the reader after current_side_ and
     // disk_position_ were already taken from the blob; skipping this would
     // leave step_transfer an out-of-range index. Inconsistent but fully read

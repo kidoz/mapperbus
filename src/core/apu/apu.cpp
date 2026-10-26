@@ -15,6 +15,16 @@ constexpr float kDenormalThreshold = 1.0e-15f;
 [[nodiscard]] float snap_denormal(float value) {
     return std::abs(value) < kDenormalThreshold ? 0.0f : value;
 }
+
+[[nodiscard]] bool valid_envelope(const Envelope& envelope) {
+    return envelope.period <= 0x0F && envelope.decay_level <= 0x0F;
+}
+
+[[nodiscard]] bool valid_pulse(const PulseChannel& pulse) {
+    return pulse.duty < kDutyTable.size() && pulse.sequence_pos < kDutyTable[0].size() &&
+           pulse.timer_period <= 0x07FF && valid_envelope(pulse.envelope) &&
+           pulse.sweep.period <= 0x07 && pulse.sweep.shift <= 0x07;
+}
 } // namespace
 
 void Apu::save_state(StateWriter& writer) const {
@@ -41,6 +51,29 @@ void Apu::load_state(StateReader& reader) {
     reader.read(frame_irq_inhibit_);
     reader.read(frame_irq_pending_);
     reader.read(dmc_stall_cycles_);
+
+    if (!valid_pulse(pulse1_)) {
+        pulse1_ = {};
+        pulse1_.sweep.is_pulse1 = true;
+        reader.fail();
+    }
+    if (!valid_pulse(pulse2_)) {
+        pulse2_ = {};
+        reader.fail();
+    }
+    if (triangle_.sequence_pos >= kTriangleTable.size() || triangle_.timer_period > 0x07FF) {
+        triangle_ = {};
+        reader.fail();
+    }
+    if (!valid_envelope(noise_.envelope)) {
+        noise_ = {};
+        reader.fail();
+    }
+    if (dmc_.output_level > 127 || dmc_.bits_remaining > 8) {
+        dmc_ = {};
+        reader.fail();
+    }
+
     // Re-prime the output pipeline so stale filter/resampler history does not
     // leak across a load. Channel state above fully determines future audio.
     for (auto& chain : filters_)
