@@ -62,6 +62,25 @@ void Ppu::load_state(StateReader& reader) {
         visible_sprite_count_ = 0;
         reader.fail();
     }
+    bool valid_sprites = true;
+    for (int index = 0; index < visible_sprite_count_; ++index) {
+        valid_sprites = valid_sprites && visible_sprites_[index].index >= 0 &&
+                        visible_sprites_[index].index < 64;
+    }
+    if (!valid_sprites) {
+        visible_sprites_.fill({});
+        visible_sprite_count_ = 0;
+        reader.fail();
+    }
+    if (scanline_ >= static_cast<std::uint16_t>(timing_->scanlines_per_frame) || cycle_ >= 341 ||
+        reg_v_ > 0x7FFF || reg_t_ > 0x7FFF || fine_x_ > 0x07) {
+        scanline_ = 0;
+        cycle_ = 0;
+        reg_v_ = 0;
+        reg_t_ = 0;
+        fine_x_ = 0;
+        reader.fail();
+    }
     // Re-derive the backdrop cache from the restored palette (no need to
     // serialize it separately — palette_[0] fully determines it).
     backdrop_color_ = palette_[0];
@@ -499,18 +518,16 @@ void Ppu::render_pixel() {
         // pattern_base from ppuctrl is part of the key because it selects the
         // pattern table. This avoids 7/8 of the nametable/CHR reads that a
         // pure per-pixel renderer performs.
-        Byte tile_index;
         Byte attribute;
         Byte plane0;
         Byte plane1;
 
         if (bg_tile_cache_.addr == bg_v && bg_tile_cache_.pattern_addr == pattern_base) {
-            tile_index = bg_tile_cache_.tile_index;
             attribute = bg_tile_cache_.attribute;
             plane0 = bg_tile_cache_.plane0;
             plane1 = bg_tile_cache_.plane1;
         } else {
-            tile_index = read_vram(loopy::tile_address(bg_v));
+            const Byte tile_index = read_vram(loopy::tile_address(bg_v));
             attribute = read_vram(loopy::attribute_address(bg_v));
             int fine_y = static_cast<int>(loopy::fine_y(bg_v));
             Address pattern_addr = static_cast<Address>(pattern_base + tile_index * 16 + fine_y);

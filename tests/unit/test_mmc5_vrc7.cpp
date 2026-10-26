@@ -6,6 +6,7 @@
 
 #include "core/cartridge/ines_header.hpp"
 #include "core/mappers/mmc5.hpp"
+#include "core/mappers/vrc6.hpp"
 #include "core/mappers/vrc7.hpp"
 #include "core/state/state.hpp"
 
@@ -325,4 +326,34 @@ TEST_CASE("VRC7 sound-halt flag survives a state round-trip", "[vrc7][state]") {
     REQUIRE(live_reader.ok());
     key_on_vrc7(restored_live, 0, /*instrument=*/1, /*volume=*/0);
     REQUIRE(run_vrc7_peak(restored_live, 4000) > 0.0f);
+}
+
+TEST_CASE("VRC6 and VRC7 states reject unsafe audio fields", "[vrc6][vrc7][state]") {
+    SECTION("VRC6 frequency shift") {
+        Vrc6 mapper(header_for(24, 2, 1), banked_prg(4), banked_chr(8));
+        StateWriter writer;
+        mapper.save_state(writer);
+        auto blob = writer.take();
+        constexpr std::size_t pulse_offset = 0x2000 + 0x2000 + 2 + 8 + 1 + 2 + 4 + 4;
+        blob[pulse_offset + 5] = 0xFF;
+        StateReader reader(blob);
+        mapper.load_state(reader);
+        REQUIRE_FALSE(reader.ok());
+        mapper.clock_audio();
+    }
+
+    SECTION("VRC7 octave") {
+        Vrc7 mapper(header_for(85, 2, 1), banked_prg(4), banked_chr(8));
+        StateWriter writer;
+        mapper.save_state(writer);
+        auto blob = writer.take();
+        constexpr std::size_t channels_offset = 0x2000 + 0x2000 + 3 + 8 + 1 + 2 + 3 + 4 + 1;
+        blob[channels_offset + 2] = 0xFF;
+        StateReader reader(blob);
+        mapper.load_state(reader);
+        REQUIRE_FALSE(reader.ok());
+        for (int cycle = 0; cycle < 36; ++cycle) {
+            mapper.clock_audio();
+        }
+    }
 }
