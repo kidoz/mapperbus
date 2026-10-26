@@ -21,6 +21,13 @@ layout regression tests — shipped as
 `nodalkit_changes_ec075a5.patch` (base `ec075a5`, 9 files, +287). Apply and
 commit on the nodalkit side when ready. NK-11 was retracted (see below).
 
+**NK-12 (local, 2026-10-07).** Wayland file drag-and-drop was a stub:
+`wl_data_device` enter/motion/drop did nothing, so a ROM dropped on the window
+never arrived. `wayland_input.cpp` now accepts `text/uri-list`, reads the URI
+list, and dispatches a `DragDropEvent`. Mime types are stored per offer so a
+drag no longer clears the committed clipboard types. This is not in the
+`ec075a5` patch; land it with NK-09 and NK-10.
+
 Items NK-01…NK-04 are **implemented and verified** — the exact diff is in
 `nodalkit_ui_fixes_cd8bad6.patch` (next to this file) and reproduced at the
 bottom of this document. Items NK-05…NK-07 are open requests for triage.

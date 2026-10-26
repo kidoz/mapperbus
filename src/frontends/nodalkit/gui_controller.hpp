@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <filesystem>
 #include <memory>
 #include <nk/platform/application.h>
 #include <nk/platform/window.h>
@@ -84,9 +85,12 @@ class MapperBusGuiController {
     void step_frame();
     void reset_session();
     void power_cycle_session();
-    void save_session_state();
-    void load_session_state();
+    void save_session_state(int slot);
+    void load_session_state(int slot);
     void close_current_rom();
+    void apply_region_preference();
+    void confirm_clear_recents();
+    void open_dropped_files(const std::vector<std::filesystem::path>& files);
     [[nodiscard]] std::shared_ptr<nk::Widget> build_settings_dialog_shell();
     [[nodiscard]] std::shared_ptr<nk::Widget> build_settings_page_content();
     [[nodiscard]] std::shared_ptr<nk::Widget> build_settings_footer_content();
@@ -132,7 +136,11 @@ class MapperBusGuiController {
     std::shared_ptr<nk::Button> welcome_open_button_;
     bool welcome_active_ = true;
     std::shared_ptr<nk::Headerbar> headerbar_;
+    std::shared_ptr<SessionIconButton> pause_button_;
+    std::shared_ptr<SessionIconButton> fullscreen_button_;
     std::shared_ptr<nk::Button> header_menu_button_;
+    /// Region the loaded cartridge selected, before a manual override.
+    std::optional<core::Region> detected_region_;
     std::shared_ptr<nk::ContextMenu> header_menu_;
     std::vector<std::string> header_menu_actions_;
     std::shared_ptr<PreviewCanvas> preview_;

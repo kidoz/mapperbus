@@ -10,7 +10,7 @@ mapperbus_gui_sources = files(
 )
 
 mapperbus_gui_deps = [mapperbus_app_dep, nodalkit_dep]
-mapperbus_gui_cpp_args = []
+mapperbus_gui_cpp_args = ['-DMAPPERBUS_VERSION="' + meson.project_version() + '"']
 
 if sdl3_audio_dep.found()
     mapperbus_gui_sources += files('../sdl3/sdl3_audio.cpp')
