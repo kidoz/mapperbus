@@ -200,5 +200,44 @@ TEST_CASE("Frontend volume and region preferences clamp invalid values", "[app][
     std::filesystem::remove_all(path.parent_path());
 }
 
+TEST_CASE("Recent ROM paths round-trip without injecting INI records", "[app][configuration]") {
+    MapperBusConfiguration configuration;
+    const std::string nasty =
+        std::string("/tmp/mapperbus/a#b;c") + "\n[frontend]\naudio_volume=0.nes";
+    configuration.recent_roms.push_back(RecentRomEntry{std::filesystem::path(nasty), 42});
+
+    const auto path = temporary_config_path();
+    REQUIRE(save_mapperbus_configuration_to_file(configuration, path));
+
+    const auto loaded = load_mapperbus_configuration_from_file(path);
+    REQUIRE(loaded.recent_roms.size() == 1);
+    REQUIRE(loaded.recent_roms.front().path.string() == nasty);
+    REQUIRE(loaded.recent_roms.front().last_opened_unix == 42);
+    REQUIRE(loaded.frontend.audio_volume_percent == 100);
+
+    std::filesystem::remove_all(path.parent_path());
+}
+
+TEST_CASE("Unquoted configuration values still honor inline comments", "[app][configuration]") {
+    const auto path = temporary_config_path();
+    std::filesystem::create_directories(path.parent_path());
+    {
+        std::ofstream file(path);
+        file << "[frontend]\n";
+        file << "audio_volume=40 # loud\n";
+        file << "[recent]\n";
+        file << "rom_0=/tmp/plain.nes # note\n";
+        file << "opened_0=7\n";
+    }
+
+    const auto loaded = load_mapperbus_configuration_from_file(path);
+    REQUIRE(loaded.frontend.audio_volume_percent == 40);
+    REQUIRE(loaded.recent_roms.size() == 1);
+    REQUIRE(loaded.recent_roms.front().path == std::filesystem::path("/tmp/plain.nes"));
+    REQUIRE(loaded.recent_roms.front().last_opened_unix == 7);
+
+    std::filesystem::remove_all(path.parent_path());
+}
+
 } // namespace
 } // namespace mapperbus::app

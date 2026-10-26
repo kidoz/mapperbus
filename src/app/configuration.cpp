@@ -387,6 +387,80 @@ void apply_setting(MapperBusConfiguration& configuration,
     }
 }
 
+/// Recent ROM paths are user-controlled filenames. Quote them so a newline,
+/// '#', or ';' cannot split the INI record or start a comment.
+[[nodiscard]] std::string quote_config_value(std::string_view text) {
+    std::string out;
+    out.reserve(text.size() + 2);
+    out.push_back('"');
+    for (const char character : text) {
+        switch (character) {
+        case '\\':
+            out += "\\\\";
+            break;
+        case '"':
+            out += "\\\"";
+            break;
+        case '\n':
+            out += "\\n";
+            break;
+        case '\r':
+            out += "\\r";
+            break;
+        default:
+            out.push_back(character);
+            break;
+        }
+    }
+    out.push_back('"');
+    return out;
+}
+
+/// Parses a quoted value and optional trailing comment. Returns nullopt when
+/// the quotes or escapes are not closed.
+[[nodiscard]] std::optional<std::string> parse_quoted_config_value(std::string_view text) {
+    if (text.size() < 2 || text.front() != '"') {
+        return std::nullopt;
+    }
+
+    std::string out;
+    for (std::size_t index = 1; index < text.size(); ++index) {
+        const char character = text[index];
+        if (character == '\\') {
+            if (index + 1 >= text.size()) {
+                return std::nullopt;
+            }
+            const char escaped = text[++index];
+            switch (escaped) {
+            case '\\':
+                out.push_back('\\');
+                break;
+            case '"':
+                out.push_back('"');
+                break;
+            case 'n':
+                out.push_back('\n');
+                break;
+            case 'r':
+                out.push_back('\r');
+                break;
+            default:
+                return std::nullopt;
+            }
+            continue;
+        }
+        if (character == '"') {
+            const std::string rest = platform::trim_copy(text.substr(index + 1));
+            if (rest.empty() || rest.front() == '#' || rest.front() == ';') {
+                return out;
+            }
+            return std::nullopt;
+        }
+        out.push_back(character);
+    }
+    return std::nullopt;
+}
+
 [[nodiscard]] std::filesystem::path home_directory() {
     if (const char* home = std::getenv("HOME"); home != nullptr && home[0] != '\0') {
         return home;
@@ -482,11 +556,6 @@ MapperBusConfiguration load_mapperbus_configuration_from_file(const std::filesys
             continue;
         }
 
-        const std::size_t comment = trimmed.find_first_of("#;");
-        if (comment != std::string::npos) {
-            trimmed = platform::trim_copy(std::string_view(trimmed).substr(0, comment));
-        }
-
         if (trimmed.size() >= 2 && trimmed.front() == '[' && trimmed.back() == ']') {
             section = platform::trim_copy(std::string_view(trimmed).substr(1, trimmed.size() - 2));
             continue;
@@ -497,10 +566,29 @@ MapperBusConfiguration load_mapperbus_configuration_from_file(const std::filesys
             continue;
         }
 
-        apply_setting(configuration,
-                      section,
-                      platform::trim_copy(std::string_view(trimmed).substr(0, separator)),
-                      platform::trim_copy(std::string_view(trimmed).substr(separator + 1)));
+        const std::string key = platform::trim_copy(std::string_view(trimmed).substr(0, separator));
+        std::string raw_value =
+            platform::trim_copy(std::string_view(trimmed).substr(separator + 1));
+        std::string value;
+        if (!raw_value.empty() && raw_value.front() == '"') {
+            auto parsed = parse_quoted_config_value(raw_value);
+            if (!parsed) {
+                core::logger::warn("Skipping configuration value with broken quotes for key '{}'",
+                                   key);
+                continue;
+            }
+            value = std::move(*parsed);
+        } else {
+            // Unquoted values still treat '#' and ';' as comments, so older
+            // files keep their previous meaning.
+            const std::size_t comment = raw_value.find_first_of("#;");
+            if (comment != std::string::npos) {
+                raw_value = platform::trim_copy(std::string_view(raw_value).substr(0, comment));
+            }
+            value = std::move(raw_value);
+        }
+
+        apply_setting(configuration, section, key, value);
     }
 
     return configuration;
@@ -557,7 +645,7 @@ core::Result<void> save_mapperbus_configuration_to_file(const MapperBusConfigura
         file << "[recent]\n";
         for (std::size_t index = 0; index < configuration.recent_roms.size(); ++index) {
             const auto& entry = configuration.recent_roms[index];
-            file << "rom_" << index << "=" << entry.path.string() << '\n';
+            file << "rom_" << index << "=" << quote_config_value(entry.path.string()) << '\n';
             file << "opened_" << index << "=" << entry.last_opened_unix << '\n';
         }
         file << '\n';
