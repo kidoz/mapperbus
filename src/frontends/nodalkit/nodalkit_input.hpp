@@ -34,12 +34,27 @@ class NodalKitInput : public platform::InputBackend {
         poll_gamepad();
     }
 
+    /// Keys the window uses for pause, reset, save, load, and fullscreen.
+    /// They never count as a held game button, including after a rebind.
+    [[nodiscard]] static bool is_reserved_game_key(nk::KeyCode key) {
+        switch (key) {
+        case nk::KeyCode::P:
+        case nk::KeyCode::R:
+        case nk::KeyCode::F5:
+        case nk::KeyCode::F7:
+        case nk::KeyCode::F11:
+            return true;
+        default:
+            return false;
+        }
+    }
+
     bool is_button_pressed(int player, core::Button button) const override {
         if (player != 0) {
             return false;
         }
 
-        return window_.is_key_pressed(binding(button)) || is_gamepad_button_pressed(button);
+        return keyboard_button_pressed(binding(button)) || is_gamepad_button_pressed(button);
     }
 
     bool should_quit() const override {
@@ -285,6 +300,20 @@ class NodalKitInput : public platform::InputBackend {
     }
 
   private:
+    [[nodiscard]] bool keyboard_button_pressed(nk::KeyCode key) const {
+        if (is_reserved_game_key(key)) {
+            return false;
+        }
+        // Ctrl+O, Ctrl+Q, and Ctrl+, open, quit, and show settings. Those
+        // chords must not also hold a game button bound to the same key.
+        const bool ctrl = window_.is_key_pressed(nk::KeyCode::LeftCtrl) ||
+                          window_.is_key_pressed(nk::KeyCode::RightCtrl);
+        if (ctrl && (key == nk::KeyCode::O || key == nk::KeyCode::Q || key == nk::KeyCode::Comma)) {
+            return false;
+        }
+        return window_.is_key_pressed(key);
+    }
+
     [[nodiscard]] static constexpr std::array<core::Button, 8> buttons() {
         return {
             core::Button::Up,

@@ -2,17 +2,23 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <chrono>
+#include <cmath>
+#include <cstdio>
 #include <cstdlib>
+#include <ctime>
 #include <filesystem>
 #include <functional>
 #include <nk/actions/shortcut_registry.h>
 #include <nk/controllers/event_controller.h>
+#include <nk/platform/drag_drop.h>
 #include <nk/widgets/clamp.h>
 #include <nk/widgets/headerbar.h>
 #include <nk/widgets/label.h>
 #include <nk/widgets/preferences.h>
 #include <nk/widgets/scroll_area.h>
+#include <nk/widgets/slider.h>
 #include <nk/widgets/switch_widget.h>
 #include <span>
 #include <string>
@@ -24,6 +30,10 @@
 #include "platform/video/fsr1.hpp"
 #include "platform/video/null_video.hpp"
 #include "platform/video/xbrz.hpp"
+
+#ifndef MAPPERBUS_VERSION
+#define MAPPERBUS_VERSION "dev"
+#endif
 
 namespace mapperbus::frontend {
 namespace {
@@ -82,16 +92,16 @@ constexpr std::array<GamepadControlOption, 22> kGamepadControlOptions = {{
     {platform::gamepad_button_control(platform::GamepadButton::DpadDown), "D-pad Down"},
     {platform::gamepad_button_control(platform::GamepadButton::DpadLeft), "D-pad Left"},
     {platform::gamepad_button_control(platform::GamepadButton::DpadRight), "D-pad Right"},
-    {platform::gamepad_button_control(platform::GamepadButton::East), "East Face"},
-    {platform::gamepad_button_control(platform::GamepadButton::South), "South Face"},
-    {platform::gamepad_button_control(platform::GamepadButton::West), "West Face"},
-    {platform::gamepad_button_control(platform::GamepadButton::North), "North Face"},
+    {platform::gamepad_button_control(platform::GamepadButton::East), "East · B"},
+    {platform::gamepad_button_control(platform::GamepadButton::South), "South · A"},
+    {platform::gamepad_button_control(platform::GamepadButton::West), "West · X"},
+    {platform::gamepad_button_control(platform::GamepadButton::North), "North · Y"},
     {platform::gamepad_button_control(platform::GamepadButton::Start), "Start"},
-    {platform::gamepad_button_control(platform::GamepadButton::Back), "Back / Select"},
-    {platform::gamepad_button_control(platform::GamepadButton::LeftShoulder), "Left Shoulder"},
-    {platform::gamepad_button_control(platform::GamepadButton::RightShoulder), "Right Shoulder"},
-    {platform::gamepad_button_control(platform::GamepadButton::LeftStick), "Left Stick"},
-    {platform::gamepad_button_control(platform::GamepadButton::RightStick), "Right Stick"},
+    {platform::gamepad_button_control(platform::GamepadButton::Back), "Back"},
+    {platform::gamepad_button_control(platform::GamepadButton::LeftShoulder), "L"},
+    {platform::gamepad_button_control(platform::GamepadButton::RightShoulder), "R"},
+    {platform::gamepad_button_control(platform::GamepadButton::LeftStick), "L3"},
+    {platform::gamepad_button_control(platform::GamepadButton::RightStick), "R3"},
     {platform::gamepad_axis_control(platform::GamepadAxis::LeftX,
                                     platform::GamepadControlKind::AxisNegative),
      "Left Stick Left"},
@@ -133,9 +143,23 @@ constexpr std::array<int, 4> kGamepadDeadzoneValues = {
 };
 
 nk::NativeMenuShortcut command_shortcut(nk::KeyCode key) {
+    // macOS menus use Command. Other desktops spell the same chords with Ctrl.
+#if defined(__APPLE__)
+    const auto modifier = nk::NativeMenuModifier::Super;
+#else
+    const auto modifier = nk::NativeMenuModifier::Ctrl;
+#endif
     return nk::NativeMenuShortcut{
         .key = key,
-        .modifiers = nk::NativeMenuModifier::Super,
+        .modifiers = modifier,
+    };
+}
+
+nk::NativeMenuShortcut plain_shortcut(
+    nk::KeyCode key, nk::NativeMenuModifier modifiers = nk::NativeMenuModifier::None) {
+    return nk::NativeMenuShortcut{
+        .key = key,
+        .modifiers = modifiers,
     };
 }
 
@@ -156,20 +180,30 @@ std::vector<nk::NativeMenu> build_native_menus(std::string_view app_name) {
          }},
         {"Emulation",
          {
-             nk::NativeMenuItem::action("Pause or Resume", "emu.pause"),
-             nk::NativeMenuItem::action("Step Frame", "emu.step"),
-             nk::NativeMenuItem::action("Reset", "emu.reset"),
-             nk::NativeMenuItem::action("Power Cycle", "emu.power"),
+             nk::NativeMenuItem::action(
+                 "Pause or Resume", "emu.pause", plain_shortcut(nk::KeyCode::P)),
+             nk::NativeMenuItem::action("Reset", "emu.reset", plain_shortcut(nk::KeyCode::R)),
              nk::NativeMenuItem::make_separator(),
              nk::NativeMenuItem::action(
-                 "Save State", "emu.save-state", command_shortcut(nk::KeyCode::S)),
+                 "Save State", "emu.save-state", plain_shortcut(nk::KeyCode::F5)),
              nk::NativeMenuItem::action(
-                 "Load State", "emu.load-state", command_shortcut(nk::KeyCode::L)),
+                 "Load State", "emu.load-state", plain_shortcut(nk::KeyCode::F7)),
+             nk::NativeMenuItem::action(
+                 "Save Slot 2",
+                 "emu.save-state-1",
+                 plain_shortcut(nk::KeyCode::F5, nk::NativeMenuModifier::Shift)),
+             nk::NativeMenuItem::action(
+                 "Load Slot 2",
+                 "emu.load-state-1",
+                 plain_shortcut(nk::KeyCode::F7, nk::NativeMenuModifier::Shift)),
+             nk::NativeMenuItem::make_separator(),
+             nk::NativeMenuItem::action("Step Frame", "emu.step"),
+             nk::NativeMenuItem::action("Power Cycle", "emu.power"),
          }},
         {"Settings",
          {
              nk::NativeMenuItem::action(
-                 "Settings...", "settings.open", command_shortcut(nk::KeyCode::Comma)),
+                 "Settings…", "settings.open", command_shortcut(nk::KeyCode::Comma)),
          }},
         {"Help",
          {
@@ -418,8 +452,9 @@ std::string renderer_backend_label(nk::RendererBackend backend) {
 /// suffix control on the right. Replaces the flat labeled_row() for settings
 /// that live inside a PreferencesGroup.
 std::shared_ptr<nk::PreferencesRow> pref_row(std::string title,
-                                             std::shared_ptr<nk::Widget> suffix) {
-    auto row = nk::PreferencesRow::create(std::move(title));
+                                             std::shared_ptr<nk::Widget> suffix,
+                                             std::string subtitle = {}) {
+    auto row = nk::PreferencesRow::create(std::move(title), std::move(subtitle));
     if (suffix != nullptr) {
         suffix->set_horizontal_size_policy(nk::SizePolicy::Preferred);
         row->set_suffix(std::move(suffix));
@@ -544,30 +579,111 @@ std::string recent_media_type(const std::filesystem::path& path) {
 }
 
 std::string recent_opened_date(std::int64_t unix_seconds) {
-    const std::chrono::sys_seconds point{std::chrono::seconds{unix_seconds}};
-    const auto days = std::chrono::floor<std::chrono::days>(point);
-    const std::chrono::year_month_day ymd{days};
-    char buffer[16] = {};
+    const auto opened = static_cast<std::time_t>(unix_seconds);
+    std::tm opened_local{};
+    if (localtime_r(&opened, &opened_local) == nullptr) {
+        return "earlier";
+    }
+
+    const auto now = std::time(nullptr);
+    std::tm today{};
+    if (localtime_r(&now, &today) == nullptr) {
+        return "earlier";
+    }
+    if (opened_local.tm_year == today.tm_year && opened_local.tm_yday == today.tm_yday) {
+        return "today";
+    }
+
+    std::tm yesterday = today;
+    yesterday.tm_mday -= 1;
+    if (std::mktime(&yesterday) != static_cast<std::time_t>(-1) &&
+        opened_local.tm_year == yesterday.tm_year && opened_local.tm_yday == yesterday.tm_yday) {
+        return "yesterday";
+    }
+
+    static constexpr std::array<const char*, 12> kMonths = {
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec",
+    };
+    const int month = std::clamp(opened_local.tm_mon, 0, 11);
+    char buffer[24] = {};
     std::snprintf(buffer,
                   sizeof(buffer),
-                  "%04d-%02d-%02d",
-                  static_cast<int>(ymd.year()),
-                  static_cast<unsigned>(ymd.month()),
-                  static_cast<unsigned>(ymd.day()));
+                  "%d %s %04d",
+                  opened_local.tm_mday,
+                  kMonths[static_cast<std::size_t>(month)],
+                  opened_local.tm_year + 1900);
     return buffer;
 }
 
 std::string nominal_fps_label(core::Region region) {
+    // The number is the region's fixed frame rate, not a measured pace.
     switch (region) {
     case core::Region::PAL:
-        return "50.01 FPS";
+        return "Target 50.01 FPS";
     case core::Region::Dendy:
-        return "50.00 FPS";
+        return "Target 50.00 FPS";
     case core::Region::Multi:
     case core::Region::NTSC:
     default:
-        return "60.10 FPS";
+        return "Target 60.10 FPS";
     }
+}
+
+std::string reserved_key_message(nk::KeyCode key) {
+    switch (key) {
+    case nk::KeyCode::P:
+        return "P pauses the game. Choose another key.";
+    case nk::KeyCode::R:
+        return "R resets the game. Choose another key.";
+    case nk::KeyCode::F5:
+        return "F5 saves a state. Choose another key.";
+    case nk::KeyCode::F7:
+        return "F7 loads a state. Choose another key.";
+    case nk::KeyCode::F11:
+        return "F11 toggles fullscreen. Choose another key.";
+    default:
+        return "That key is reserved. Choose another key.";
+    }
+}
+
+bool is_rom_path(const std::filesystem::path& path) {
+    auto extension = path.extension().string();
+    for (auto& character : extension) {
+        character = static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
+    }
+    return extension == ".nes" || extension == ".fds";
+}
+
+std::string menu_label(std::string_view name, std::string_view shortcut) {
+    if (shortcut.empty()) {
+        return std::string(name);
+    }
+    return std::string(name) + " (" + std::string(shortcut) + ")";
+}
+
+core::Region region_for_preference(app::RegionPreference preference, core::Region detected) {
+    switch (preference) {
+    case app::RegionPreference::Ntsc:
+        return core::Region::NTSC;
+    case app::RegionPreference::Pal:
+        return core::Region::PAL;
+    case app::RegionPreference::Dendy:
+        return core::Region::Dendy;
+    case app::RegionPreference::Automatic:
+        break;
+    }
+    return detected;
 }
 
 std::string mapper_detail(std::optional<std::uint16_t> mapper_number) {
@@ -639,22 +755,6 @@ std::string region_name(core::Region region) {
         return "Multi";
     default:
         return "NTSC";
-    }
-}
-
-std::string tick_result_name(app::TickResult result) {
-    switch (result) {
-    case app::TickResult::FrameAdvanced:
-        return "Running";
-    case app::TickResult::AudioBackpressure:
-        return "Audio backpressure";
-    case app::TickResult::Paused:
-        return "Paused";
-    case app::TickResult::NoCartridge:
-        return "No cartridge";
-    case app::TickResult::Stopped:
-    default:
-        return "Stopped";
     }
 }
 
@@ -899,14 +999,22 @@ MapperBusGuiController::MapperBusGuiController(nk::Application& app, nk::Window&
     auto audio = std::make_unique<GuiAudioBackend>();
     audio_backend_ = audio.get();
     audio_backend_->set_muted(configuration_.frontend.audio_muted);
+    audio_backend_->set_volume(static_cast<float>(configuration_.frontend.audio_volume_percent) /
+                               100.0F);
 
     auto input = std::make_unique<NodalKitInput>(window_, configuration_.input.gamepad);
     input_backend_ = input.get();
+    const app::MapperBusInputConfiguration default_input;
+    bool replaced_reserved_binding = false;
     for (const auto button : kBindingOrder) {
-        input_backend_->set_binding(
-            button,
-            static_cast<nk::KeyCode>(
-                configuration_.input.keyboard_bindings[platform::button_index(button)]));
+        const auto index = platform::button_index(button);
+        auto key = static_cast<nk::KeyCode>(configuration_.input.keyboard_bindings[index]);
+        if (NodalKitInput::is_reserved_game_key(key)) {
+            key = static_cast<nk::KeyCode>(default_input.keyboard_bindings[index]);
+            configuration_.input.keyboard_bindings[index] = static_cast<int>(key);
+            replaced_reserved_binding = true;
+        }
+        input_backend_->set_binding(button, key);
     }
 
     session_ = std::make_unique<app::EmulationSession>(std::make_unique<platform::NullVideo>(),
@@ -914,6 +1022,9 @@ MapperBusGuiController::MapperBusGuiController(nk::Application& app, nk::Window&
                                                        std::move(input),
                                                        configuration_.audio);
     actions_ = std::make_unique<app::SessionActions>(*session_);
+    if (replaced_reserved_binding) {
+        save_configuration_state();
+    }
 
     build_ui();
     wire_ui();
@@ -1011,6 +1122,19 @@ void MapperBusGuiController::build_ui() {
     (void)open_button->on_clicked().connect([this] { browse_for_rom(); });
     headerbar_->add_leading(open_button);
 
+    pause_button_ = SessionIconButton::create(SessionIcon::Pause, "Pause");
+    pause_button_->set_visible(false);
+    (void)pause_button_->on_clicked().connect([this] { toggle_pause(); });
+
+    fullscreen_button_ = SessionIconButton::create(SessionIcon::Fullscreen, "Fullscreen");
+    fullscreen_button_->set_visible(false);
+    (void)fullscreen_button_->on_clicked().connect([this] { toggle_fullscreen(); });
+
+    auto session_actions = Box::horizontal(4.0F);
+    session_actions->append(pause_button_);
+    session_actions->append(fullscreen_button_);
+    headerbar_->add_trailing(session_actions);
+
     if (!app_.supports_native_app_menu()) {
         header_menu_button_ = nk::Button::create("☰");
         header_menu_button_->add_style_class("flat");
@@ -1058,9 +1182,9 @@ void MapperBusGuiController::build_ui() {
 
     status_bar_ = nk::StatusBar::create();
     status_bar_->set_horizontal_size_policy(nk::SizePolicy::Expanding);
-    status_bar_->set_segments({"Stopped"});
+    status_bar_->set_segments({"Ready"});
     if constexpr (requires { status_bar_->set_trailing(std::string{}); }) {
-        status_bar_->set_trailing("No ROM");
+        status_bar_->set_trailing("");
     }
 
     root_->append(toast_overlay_);
@@ -1078,29 +1202,62 @@ void MapperBusGuiController::build_ui() {
             {nk::Shortcut{static_cast<int>(nk::KeyCode::F11), nk::Modifiers::None},
              "win.toggle-fullscreen"});
 
-        // Session hotkeys. Keys avoid the default game bindings (arrows, X/Z,
-        // Enter, Shift); routing through handle_menu_action keeps one dispatch
-        // path for menu items and shortcuts alike. They stay inert while a
-        // modal sheet is presented — most importantly the rebind sheet, which
-        // captures P/R as bindings and must not also toggle pause/reset.
-        const auto bind_session_key = [this, &shortcuts](nk::KeyCode key, std::string_view action) {
-            shortcuts.add_action(std::string(action), [this, a = std::string(action)] {
-                if (modal_dialog_presented()) {
-                    return;
-                }
-                handle_menu_action(a);
-            });
-            shortcuts.add_shortcut({nk::Shortcut{static_cast<int>(key)}, std::string(action)});
-        };
-        bind_session_key(nk::KeyCode::P, "emu.pause");
-        bind_session_key(nk::KeyCode::R, "emu.reset");
-        bind_session_key(nk::KeyCode::F5, "emu.save-state");
-        bind_session_key(nk::KeyCode::F8, "emu.load-state");
+        // Session hotkeys match the SDL frontend: F5/F7 for slot 1, Shift+F5
+        // and Shift+F7 for slot 2. P, R, and F11 stay with the game commands.
+        // They stay inert while a modal sheet is presented — most importantly
+        // the rebind sheet, which captures keys and must not also pause or reset.
+        const auto bind_session_key =
+            [this, &shortcuts](nk::KeyCode key, nk::Modifiers modifiers, std::string_view action) {
+                shortcuts.add_action(std::string(action), [this, a = std::string(action)] {
+                    if (modal_dialog_presented()) {
+                        return;
+                    }
+                    handle_menu_action(a);
+                });
+                shortcuts.add_shortcut(
+                    {nk::Shortcut{static_cast<int>(key), modifiers}, std::string(action)});
+            };
+        bind_session_key(nk::KeyCode::P, nk::Modifiers::None, "emu.pause");
+        bind_session_key(nk::KeyCode::R, nk::Modifiers::None, "emu.reset");
+        bind_session_key(nk::KeyCode::F5, nk::Modifiers::None, "emu.save-state");
+        bind_session_key(nk::KeyCode::F7, nk::Modifiers::None, "emu.load-state");
+        bind_session_key(nk::KeyCode::F5, nk::Modifiers::Shift, "emu.save-state-1");
+        bind_session_key(nk::KeyCode::F7, nk::Modifiers::Shift, "emu.load-state-1");
+        // macOS menu equivalents already bind Ctrl/Command chords. Register
+        // them here for desktops whose native menu does not consume the key.
+#if !defined(__APPLE__)
+        bind_session_key(nk::KeyCode::O, nk::Modifiers::Ctrl, "file.open");
+        bind_session_key(nk::KeyCode::Q, nk::Modifiers::Ctrl, "file.quit");
+        bind_session_key(nk::KeyCode::Comma, nk::Modifiers::Ctrl, "settings.open");
+#endif
     } else {
         auto root_keys = std::make_shared<nk::KeyboardController>();
-        (void)root_keys->on_key_pressed().connect([this](int key_code, int /*modifiers*/) {
-            if (static_cast<nk::KeyCode>(key_code) == nk::KeyCode::F11) {
+        (void)root_keys->on_key_pressed().connect([this](int key_code, int modifiers) {
+            if (modal_dialog_presented()) {
+                return;
+            }
+            const auto key = static_cast<nk::KeyCode>(key_code);
+            const auto mods = static_cast<nk::Modifiers>(modifiers);
+            if (key == nk::KeyCode::F11 && mods == nk::Modifiers::None) {
                 toggle_fullscreen();
+            } else if (key == nk::KeyCode::P && mods == nk::Modifiers::None) {
+                handle_menu_action("emu.pause");
+            } else if (key == nk::KeyCode::R && mods == nk::Modifiers::None) {
+                handle_menu_action("emu.reset");
+            } else if (key == nk::KeyCode::F5 && mods == nk::Modifiers::None) {
+                handle_menu_action("emu.save-state");
+            } else if (key == nk::KeyCode::F7 && mods == nk::Modifiers::None) {
+                handle_menu_action("emu.load-state");
+            } else if (key == nk::KeyCode::F5 && mods == nk::Modifiers::Shift) {
+                handle_menu_action("emu.save-state-1");
+            } else if (key == nk::KeyCode::F7 && mods == nk::Modifiers::Shift) {
+                handle_menu_action("emu.load-state-1");
+            } else if (key == nk::KeyCode::O && mods == nk::Modifiers::Ctrl) {
+                handle_menu_action("file.open");
+            } else if (key == nk::KeyCode::Q && mods == nk::Modifiers::Ctrl) {
+                handle_menu_action("file.quit");
+            } else if (key == nk::KeyCode::Comma && mods == nk::Modifiers::Ctrl) {
+                handle_menu_action("settings.open");
             }
         });
         root_->add_controller(std::move(root_keys));
@@ -1114,6 +1271,13 @@ void MapperBusGuiController::wire_ui() {
         save_configuration_state();
         app_.quit(0);
     });
+    (void)root_->on_drop().connect([this](nk::DragDropEvent& event) {
+        if (event.payload == nullptr || !event.payload->has_files()) {
+            return;
+        }
+        event.accept(nk::DragOperation::Copy);
+        open_dropped_files(event.payload->files);
+    });
     (void)window_.on_window_state_changed().connect([this] { update_fullscreen_chrome(); });
     (void)app_.on_native_app_menu_action().connect(
         [this](std::string_view action) { handle_menu_action(action); });
@@ -1126,7 +1290,8 @@ void MapperBusGuiController::wire_ui() {
             }
             rebuild_header_menu();
             const auto& button = header_menu_button_->allocation();
-            constexpr float menu_width = 160.0F;
+            // Labels include shortcut hints, so the menu is wider than the button.
+            constexpr float menu_width = 280.0F;
             header_menu_->show_at(
                 {std::max(8.0F, button.right() - menu_width), button.bottom() + 4.0F});
             header_menu_->grab_focus();
@@ -1164,7 +1329,8 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_welcome_view() {
 
     auto column = Box::vertical(14.0F);
     column->append(TitleText::create("Open a game"));
-    column->append(SecondaryText::create("Choose a .nes or .fds ROM file to start playing."));
+    column->append(
+        SecondaryText::create("Choose a .nes or .fds file, or drop one on this window."));
 
     auto open_button = nk::Button::create("Open ROM…");
     open_button->add_style_class("suggested");
@@ -1180,8 +1346,9 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_welcome_view() {
         recents->set_horizontal_size_policy(nk::SizePolicy::Expanding);
         for (const auto& entry : configuration_.recent_roms) {
             auto row = nk::PreferencesRow::create(title_for_display(entry.path.string()));
-            row->set_subtitle(recent_media_type(entry.path) + " · opened " +
+            row->set_subtitle(recent_media_type(entry.path) + " · last opened " +
                               recent_opened_date(entry.last_opened_unix));
+            row->set_suffix(SecondaryText::create("\u203A"));
             row->set_activatable(true);
             (void)row->on_activated().connect(
                 [this, path = entry.path] { attempt_open(path.string()); });
@@ -1189,14 +1356,9 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_welcome_view() {
         }
         column->append(recents);
 
-        auto clear_button = nk::Button::create("Clear Recent History");
+        auto clear_button = nk::Button::create("Clear Recents");
         clear_button->add_style_class("flat");
-        (void)clear_button->on_clicked().connect([this] {
-            clear_recent_roms(configuration_);
-            save_configuration_state();
-            set_message("Cleared recent history.");
-            refresh_welcome_view();
-        });
+        (void)clear_button->on_clicked().connect([this] { confirm_clear_recents(); });
         column->append(clear_button);
     }
 
@@ -1231,7 +1393,7 @@ void MapperBusGuiController::refresh_ui() {
     const app::SessionSnapshot snapshot = actions_->snapshot();
     const bool loaded = snapshot.has_cartridge;
     const bool paused = loaded && snapshot.paused;
-    const std::string state_text = loaded ? (paused ? "Paused" : "Running") : "Stopped";
+    const std::string state_text = loaded ? (paused ? "Paused" : "Running") : "Ready";
     const std::string display_title = title_for_display(snapshot.rom_path);
     if (loaded == welcome_active_) {
         welcome_active_ = !loaded;
@@ -1258,12 +1420,21 @@ void MapperBusGuiController::refresh_ui() {
     // right-aligned in the secondary text color. The capability probe keeps
     // the frontend buildable against NodalKit revisions without the slot.
     if constexpr (requires { status_bar_->set_trailing(std::string{}); }) {
-        status_bar_->set_trailing(mapper_detail(snapshot.mapper_number));
-    } else {
+        status_bar_->set_trailing(loaded ? mapper_detail(snapshot.mapper_number) : "");
+    } else if (loaded) {
         status_bar_->set_segments({state_text,
                                    region_name(snapshot.region),
                                    nominal_fps_label(snapshot.region),
                                    mapper_detail(snapshot.mapper_number)});
+    }
+    if (pause_button_) {
+        const bool show_session_actions = loaded;
+        pause_button_->set_visible(show_session_actions);
+        fullscreen_button_->set_visible(show_session_actions);
+        pause_button_->set_icon(paused ? SessionIcon::Play : SessionIcon::Pause);
+        pause_button_->set_accessible_name(paused ? "Resume" : "Pause");
+        fullscreen_button_->set_accessible_name(window_.is_fullscreen() ? "Leave fullscreen"
+                                                                        : "Fullscreen");
     }
 
     // Keep the native task-switcher title identifiable while the visible
@@ -1307,22 +1478,25 @@ void MapperBusGuiController::rebuild_header_menu() {
 
     const auto snapshot = actions_->snapshot();
     if (snapshot.has_cartridge) {
-        add_action(snapshot.paused ? "Resume" : "Pause", "emu.pause");
+        add_action(menu_label(snapshot.paused ? "Resume" : "Pause", "P"), "emu.pause");
+        add_action(menu_label("Reset", "R"), "emu.reset");
+        add_separator();
+        add_action(menu_label("Save State", "F5"), "emu.save-state");
+        add_action(menu_label("Load State", "F7"), "emu.load-state");
+        add_action(menu_label("Save Slot 2", "Shift+F5"), "emu.save-state-1");
+        add_action(menu_label("Load Slot 2", "Shift+F7"), "emu.load-state-1");
+        add_separator();
         add_action("Step Frame", "emu.step");
-        add_action("Reset", "emu.reset");
         add_action("Power Cycle", "emu.power");
         add_separator();
-        add_action("Save State", "emu.save-state");
-        add_action("Load State", "emu.load-state");
         add_action("Close ROM", "file.close");
-        add_separator();
     }
-    add_action(window_.is_fullscreen() ? "Leave Fullscreen" : "Fullscreen",
+    add_action(menu_label(window_.is_fullscreen() ? "Leave Fullscreen" : "Fullscreen", "F11"),
                "win.toggle-fullscreen");
-    add_action("Settings…", "settings.open");
+    add_action(menu_label("Settings…", "Ctrl+,"), "settings.open");
     add_action("About MapperBus", "help.about");
     add_separator();
-    add_action("Quit", "file.quit");
+    add_action(menu_label("Quit", "Ctrl+Q"), "file.quit");
 }
 
 void MapperBusGuiController::focus_game_surface() {
@@ -1393,6 +1567,8 @@ void MapperBusGuiController::attempt_open(std::string rom_path) {
 
     touch_recent_rom(configuration_, rom_path);
     save_configuration_state();
+    detected_region_ = actions_->snapshot().region;
+    apply_region_preference();
     actions_->step_frame();
     frame_accumulator_ = std::chrono::nanoseconds{0};
     last_tick_time_ = std::chrono::steady_clock::now();
@@ -1415,7 +1591,8 @@ void MapperBusGuiController::step_frame() {
 
     const auto result = actions_->step_frame();
     refresh_preview();
-    set_message("Stepped one frame: " + tick_result_name(result) + ".");
+    set_message(result == app::TickResult::FrameAdvanced ? "Stepped one frame."
+                                                         : "Could not step a frame.");
     refresh_ui();
     focus_game_surface();
 }
@@ -1436,29 +1613,29 @@ void MapperBusGuiController::power_cycle_session() {
     focus_game_surface();
 }
 
-void MapperBusGuiController::save_session_state() {
+void MapperBusGuiController::save_session_state(int slot) {
     if (!actions_->snapshot().has_cartridge) {
         set_message("No ROM loaded to save state from.");
         return;
     }
 
-    const auto result = actions_->save_state();
-    set_message(result ? "Saved state to " + basename_for_display(actions_->state_path()) + "."
+    const auto result = actions_->save_state(slot);
+    set_message(result ? "Saved state to " + basename_for_display(actions_->state_path(slot)) + "."
                        : result.error());
     refresh_ui();
     focus_game_surface();
 }
 
-void MapperBusGuiController::load_session_state() {
+void MapperBusGuiController::load_session_state(int slot) {
     if (!actions_->snapshot().has_cartridge) {
         set_message("No ROM loaded to load state into.");
         return;
     }
 
-    const auto result = actions_->load_state();
+    const auto result = actions_->load_state(slot);
     if (result) {
         refresh_preview();
-        set_message("Loaded state from " + basename_for_display(actions_->state_path()) + ".");
+        set_message("Loaded state from " + basename_for_display(actions_->state_path(slot)) + ".");
     } else {
         set_message(result.error());
     }
@@ -1466,8 +1643,46 @@ void MapperBusGuiController::load_session_state() {
     focus_game_surface();
 }
 
+void MapperBusGuiController::apply_region_preference() {
+    if (!actions_->snapshot().has_cartridge || !detected_region_) {
+        return;
+    }
+    actions_->set_region(region_for_preference(configuration_.frontend.region, *detected_region_));
+}
+
+void MapperBusGuiController::confirm_clear_recents() {
+    auto dialog = nk::Dialog::create(
+        "Clear recents?",
+        "This removes the list of recently opened games. It does not delete any ROM files.");
+    dialog->add_button("Cancel", nk::DialogResponse::Cancel);
+    dialog->add_button("Clear", nk::DialogResponse::Accept);
+    (void)dialog->on_response().connect([this, dialog](nk::DialogResponse response) {
+        if (response == nk::DialogResponse::Accept) {
+            clear_recent_roms(configuration_);
+            save_configuration_state();
+            set_message("Cleared recent games.");
+            refresh_welcome_view();
+        }
+        focus_game_surface();
+    });
+    dialog->present(window_);
+}
+
+void MapperBusGuiController::open_dropped_files(const std::vector<std::filesystem::path>& files) {
+    for (const auto& file : files) {
+        if (!is_rom_path(file)) {
+            continue;
+        }
+        attempt_open(file.string());
+        return;
+    }
+    set_message("Drop a .nes or .fds file.");
+    focus_game_surface();
+}
+
 void MapperBusGuiController::close_current_rom() {
     actions_->close_rom();
+    detected_region_.reset();
     frame_accumulator_ = std::chrono::nanoseconds{0};
     clear_preview();
     set_message("Closed current ROM.");
@@ -1603,6 +1818,17 @@ void MapperBusGuiController::open_rebind_dialog(RebindDevice device, core::Butto
                     return;
                 }
                 if (key == nk::KeyCode::Unknown) {
+                    return;
+                }
+                if (NodalKitInput::is_reserved_game_key(key)) {
+                    pending_rebind_.reset();
+                    if (rebind_dialog_) {
+                        auto dialog = rebind_dialog_;
+                        rebind_dialog_.reset();
+                        dialog->close(nk::DialogResponse::Cancel);
+                    }
+                    set_message(reserved_key_message(key));
+                    focus_game_surface();
                     return;
                 }
                 apply_keyboard_rebind(pending_rebind_->button, key);
@@ -1877,7 +2103,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
     auto page = Box::vertical(16.0F);
     page->set_horizontal_size_policy(nk::SizePolicy::Expanding);
     if (settings_page_ == SettingsPage::Input) {
-        page->append(SecondaryText::create("Configure controller input for the game surface."));
+        page->append(SecondaryText::create("Choose the keys and the gamepad buttons."));
 
         if (!input_backend_->gamepad_support_available()) {
             page->append(SecondaryText::create("Gamepad support is unavailable in this build."));
@@ -1964,8 +2190,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
         page->append(bindings_table);
     } else if (settings_page_ == SettingsPage::Video) {
         input_test_label_.reset();
-        page->append(
-            SecondaryText::create("Tune how the preview surface and interface are presented."));
+        page->append(SecondaryText::create("Choose how the picture and the window look."));
 
         auto display_group = nk::PreferencesGroup::create("Display");
         display_group->set_horizontal_size_policy(nk::SizePolicy::Expanding);
@@ -1991,7 +2216,48 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
             save_configuration_state();
             set_message("Interface density updated.");
         });
-        display_group->add(pref_row("UI Density", density_combo));
+        display_group->add(pref_row("Density", density_combo));
+
+        auto region_combo = nk::ComboBox::create();
+        region_combo->set_items({"Automatic", "NTSC", "PAL", "Dendy"});
+        const auto region_index = [this] {
+            switch (configuration_.frontend.region) {
+            case app::RegionPreference::Ntsc:
+                return 1;
+            case app::RegionPreference::Pal:
+                return 2;
+            case app::RegionPreference::Dendy:
+                return 3;
+            case app::RegionPreference::Automatic:
+                break;
+            }
+            return 0;
+        }();
+        region_combo->set_selected_index(region_index);
+        (void)region_combo->on_selection_changed().connect([this](int index) {
+            switch (index) {
+            case 1:
+                configuration_.frontend.region = app::RegionPreference::Ntsc;
+                break;
+            case 2:
+                configuration_.frontend.region = app::RegionPreference::Pal;
+                break;
+            case 3:
+                configuration_.frontend.region = app::RegionPreference::Dendy;
+                break;
+            case 0:
+            default:
+                configuration_.frontend.region = app::RegionPreference::Automatic;
+                break;
+            }
+            apply_region_preference();
+            save_configuration_state();
+            set_message(configuration_.frontend.region == app::RegionPreference::Automatic
+                            ? "Region follows the cartridge."
+                            : "Region set to " + region_name(actions_->snapshot().region) + ".");
+            refresh_ui();
+        });
+        display_group->add(pref_row("Region", region_combo, "Automatic follows the cartridge."));
 
         display_group->add(pref_value_row(
             "Platform Theme", platform_family_name(app_.system_preferences().platform_family)));
@@ -1999,8 +2265,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
         page->append(display_group);
     } else {
         input_test_label_.reset();
-        page->append(
-            SecondaryText::create("Manage audio output behavior for this frontend session."));
+        page->append(SecondaryText::create("Set the volume and the sound."));
 
         auto audio_group = nk::PreferencesGroup::create("Audio Output");
         audio_group->set_horizontal_size_policy(nk::SizePolicy::Expanding);
@@ -2013,7 +2278,23 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
             set_message(active ? "Audio muted." : "Audio output restored.");
             refresh_ui();
         });
-        audio_group->add(pref_row("Mute audio", mute_switch));
+        audio_group->add(pref_row("Mute", mute_switch));
+
+        auto volume_slider = nk::Slider::create();
+        volume_slider->set_range(0.0, 100.0);
+        volume_slider->set_step(5.0);
+        volume_slider->set_value(static_cast<double>(configuration_.frontend.audio_volume_percent));
+        volume_slider->set_horizontal_size_policy(nk::SizePolicy::Expanding);
+        (void)volume_slider->on_value_changed().connect([this](double value) {
+            const int percent = std::clamp(static_cast<int>(std::lround(value)), 0, 100);
+            if (percent == configuration_.frontend.audio_volume_percent) {
+                return;
+            }
+            configuration_.frontend.audio_volume_percent = percent;
+            audio_backend_->set_volume(static_cast<float>(percent) / 100.0F);
+            save_configuration_state();
+        });
+        audio_group->add(pref_row("Volume", FixedWidthSlot::create(180.0F, volume_slider)));
 
         auto sample_rate_combo = nk::ComboBox::create();
         sample_rate_combo->set_items(owned_labels(kAudioSampleRateLabels));
@@ -2023,7 +2304,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
             configuration_.audio.sample_rate = audio_sample_rate_for_index(index);
             apply_audio_settings_change("Audio sample rate updated.");
         });
-        audio_group->add(pref_row("Sample Rate", sample_rate_combo));
+        audio_group->add(pref_row("Sample rate", sample_rate_combo));
 
         auto resampling_control = nk::SegmentedControl::create();
         resampling_control->set_segments(owned_labels(kAudioResamplingLabels));
@@ -2053,7 +2334,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
             configuration_.audio.filter_profile = audio_filter_profile_for_index(index);
             apply_audio_settings_change("Audio filter profile updated.");
         });
-        audio_group->add(pref_row("Profile", filter_profile_control));
+        audio_group->add(pref_row("Console", filter_profile_control));
 
         auto stereo_control = nk::SegmentedControl::create();
         stereo_control->set_segments(owned_labels(kAudioStereoLabels));
@@ -2081,7 +2362,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
             configuration_.audio.expansion_mixing = audio_expansion_mixing_for_index(index);
             apply_audio_settings_change("Expansion audio mixing updated.");
         });
-        audio_group->add(pref_row("Expansion", mixing_control));
+        audio_group->add(pref_row("Extra audio", mixing_control));
 
         std::string backend_text = std::string(audio_backend_->status_text());
         if (backend_text.starts_with("Audio: ")) {
@@ -2254,6 +2535,7 @@ void MapperBusGuiController::handle_menu_action(std::string_view action) {
         return;
     }
     if (action == "file.quit") {
+        save_configuration_state();
         app_.quit(0);
         return;
     }
@@ -2274,11 +2556,19 @@ void MapperBusGuiController::handle_menu_action(std::string_view action) {
         return;
     }
     if (action == "emu.save-state") {
-        save_session_state();
+        save_session_state(0);
         return;
     }
     if (action == "emu.load-state") {
-        load_session_state();
+        load_session_state(0);
+        return;
+    }
+    if (action == "emu.save-state-1") {
+        save_session_state(1);
+        return;
+    }
+    if (action == "emu.load-state-1") {
+        load_session_state(1);
         return;
     }
     if (action == "win.toggle-fullscreen") {
@@ -2290,8 +2580,10 @@ void MapperBusGuiController::handle_menu_action(std::string_view action) {
         return;
     }
     if (action == "help.about") {
-        auto dialog = nk::Dialog::create("About MapperBus",
-                                         "A NES, Famicom, and FDS emulator built on NodalKit.");
+        auto dialog =
+            nk::Dialog::create("About MapperBus",
+                               "Version " MAPPERBUS_VERSION
+                               " · © 2026 Aleksandr Pavlov. A NES, Famicom, and FDS emulator.");
         dialog->add_button("OK", nk::DialogResponse::Accept);
         (void)dialog->on_response().connect(
             [this](nk::DialogResponse /*response*/) { focus_game_surface(); });
@@ -2315,10 +2607,10 @@ std::string MapperBusGuiController::input_test_status_text() const {
     }
 
     if (pressed.empty()) {
-        return "Pressed: none";
+        return "Hold a button to test it.";
     }
 
-    std::string text = "Pressed: ";
+    std::string text = "Holding: ";
     for (std::size_t index = 0; index < pressed.size(); ++index) {
         if (index > 0) {
             text += " + ";

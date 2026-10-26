@@ -1,7 +1,9 @@
 #pragma once
 
 #include <algorithm>
+#include <cmath>
 #include <memory>
+#include <nk/foundation/signal.h>
 #include <nk/layout/box_layout.h>
 #include <nk/platform/events.h>
 #include <nk/platform/key_codes.h>
@@ -382,8 +384,8 @@ class TitleText : public nk::Widget {
         if (!cached_size_) {
             cached_size_ = measure_text(text_, font_descriptor());
         }
-        return {cached_size_->width, cached_size_->height, cached_size_->width,
-                cached_size_->height};
+        return {
+            cached_size_->width, cached_size_->height, cached_size_->width, cached_size_->height};
     }
 
   protected:
@@ -968,7 +970,7 @@ class PreviewCanvas : public nk::Widget {
                 .weight = nk::FontWeight::Regular,
             };
             const auto title_size = measure_text("Open a ROM", title_font);
-            const auto body_size = measure_text("Use File > Open to load a game.", body_font);
+            const auto body_size = measure_text("Choose Open ROM\u2026 to load a game.", body_font);
             const float block_height = title_size.height + 10.0F + body_size.height;
             const float title_x = matte.x + std::max(0.0F, (matte.width - title_size.width) * 0.5F);
             const float title_y = matte.y + std::max(0.0F, (matte.height - block_height) * 0.5F);
@@ -978,7 +980,7 @@ class PreviewCanvas : public nk::Widget {
             ctx.add_text(
                 {title_x, title_y}, "Open a ROM", nk::Color{0.78F, 0.81F, 0.86F, 1.0F}, title_font);
             ctx.add_text({body_x, body_y},
-                         "Use File > Open to load a game.",
+                         "Choose Open ROM\u2026 to load a game.",
                          nk::Color{0.56F, 0.60F, 0.66F, 1.0F},
                          body_font);
             return;
@@ -988,14 +990,12 @@ class PreviewCanvas : public nk::Widget {
             const float dpr = display_scale_;
             const float physical_width = std::max(1.0F, matte.width * dpr);
             const float physical_height = std::max(1.0F, matte.height * dpr);
-            const float whole_scale = std::floor(
-                std::min(physical_width / static_cast<float>(src_width_),
-                         physical_height / static_cast<float>(src_height_)));
+            const float whole_scale =
+                std::floor(std::min(physical_width / static_cast<float>(src_width_),
+                                    physical_height / static_cast<float>(src_height_)));
             if (whole_scale >= 1.0F) {
-                const float logical_width =
-                    static_cast<float>(src_width_) * whole_scale / dpr;
-                const float logical_height =
-                    static_cast<float>(src_height_) * whole_scale / dpr;
+                const float logical_width = static_cast<float>(src_width_) * whole_scale / dpr;
+                const float logical_height = static_cast<float>(src_height_) * whole_scale / dpr;
                 float origin_x = matte.x + std::max(0.0F, (matte.width - logical_width) * 0.5F);
                 float origin_y = matte.y + std::max(0.0F, (matte.height - logical_height) * 0.5F);
                 // Snap the picture origin to the physical pixel grid so
@@ -1240,6 +1240,253 @@ class HeroBanner : public nk::Widget {
     std::vector<std::shared_ptr<nk::Widget>> pills_;
     mutable std::optional<nk::Size> cached_title_size_;
     mutable std::optional<nk::Size> cached_subtitle_size_;
+};
+
+/// Header pictograms from the Revision 02 desktop handoff: a 24-unit stroke
+/// icon drawn at 18px inside a flat control. Pause is two bars, resume is a
+/// triangle, and fullscreen is four corner brackets.
+enum class SessionIcon {
+    Pause,
+    Play,
+    Fullscreen,
+};
+
+class SessionIconButton : public nk::Widget {
+  public:
+    static std::shared_ptr<SessionIconButton> create(SessionIcon icon,
+                                                     std::string accessible_name) {
+        auto button = std::shared_ptr<SessionIconButton>(
+            new SessionIconButton(icon, std::move(accessible_name)));
+        return button;
+    }
+
+    void set_icon(SessionIcon icon) {
+        if (icon_ == icon) {
+            return;
+        }
+        icon_ = icon;
+        queue_redraw();
+    }
+
+    void set_accessible_name(std::string name) {
+        auto& accessible = ensure_accessible();
+        if (accessible.name() == name) {
+            return;
+        }
+        accessible.set_name(name);
+        accessible.set_description(name);
+        queue_redraw();
+    }
+
+    nk::Signal<>& on_clicked() {
+        return clicked_;
+    }
+
+    [[nodiscard]] nk::SizeRequest measure(const nk::Constraints& /*constraints*/) const override {
+        // GNOME control height from the desktop handoff. The glyph stays 18px.
+        return {36.0F, 36.0F, 36.0F, 36.0F};
+    }
+
+    [[nodiscard]] nk::CursorShape cursor_shape() const override {
+        return nk::CursorShape::PointingHand;
+    }
+
+    [[nodiscard]] std::vector<nk::Rect> damage_regions() const override {
+        auto regions = nk::Widget::damage_regions();
+        if (has_flag(state_flags(), nk::StateFlags::Hovered)) {
+            regions.push_back(tooltip_bounds());
+        }
+        return regions;
+    }
+
+    bool handle_mouse_event(const nk::MouseEvent& event) override {
+        if (event.button != 1) {
+            return false;
+        }
+        switch (event.type) {
+        case nk::MouseEvent::Type::Press:
+            armed_ = allocation().contains({event.x, event.y});
+            return armed_;
+        case nk::MouseEvent::Type::Release: {
+            const bool activate = armed_ && allocation().contains({event.x, event.y});
+            armed_ = false;
+            if (activate) {
+                clicked_.emit();
+            }
+            return activate;
+        }
+        case nk::MouseEvent::Type::Move:
+        case nk::MouseEvent::Type::Enter:
+        case nk::MouseEvent::Type::Leave:
+        case nk::MouseEvent::Type::Scroll:
+        case nk::MouseEvent::Type::DragStart:
+        case nk::MouseEvent::Type::DragUpdate:
+        case nk::MouseEvent::Type::DragEnd:
+            return false;
+        }
+        return false;
+    }
+
+    bool handle_key_event(const nk::KeyEvent& event) override {
+        if (event.type == nk::KeyEvent::Type::Press &&
+            (event.key == nk::KeyCode::Space || event.key == nk::KeyCode::Return)) {
+            clicked_.emit();
+            return true;
+        }
+        return false;
+    }
+
+  protected:
+    void snapshot(nk::SnapshotContext& ctx) const override {
+        const auto rect = allocation();
+        const float hit = std::min(rect.width, rect.height);
+        const nk::Rect body{
+            rect.x + ((rect.width - hit) * 0.5F),
+            rect.y + ((rect.height - hit) * 0.5F),
+            hit,
+            hit,
+        };
+        const bool active = has_flag(state_flags(), nk::StateFlags::Hovered) ||
+                            has_flag(state_flags(), nk::StateFlags::Pressed);
+        if (active) {
+            const float pad = 2.0F;
+            const nk::Rect plate{
+                body.x + pad,
+                body.y + pad,
+                std::max(0.0F, body.width - pad * 2.0F),
+                std::max(0.0F, body.height - pad * 2.0F),
+            };
+            ctx.add_rounded_rect(plate,
+                                 theme_color("surface-hover", nk::Color{0.94F, 0.95F, 0.97F, 1.0F}),
+                                 plate.height * 0.5F);
+        }
+        if (has_flag(state_flags(), nk::StateFlags::FocusVisible)) {
+            ctx.add_border(body,
+                           theme_color("focus-ring-color", nk::Color{0.21F, 0.52F, 0.89F, 1.0F}),
+                           2.0F,
+                           body.height * 0.5F);
+        }
+
+        constexpr float kIcon = 18.0F;
+        const nk::Rect icon{
+            body.x + ((body.width - kIcon) * 0.5F),
+            body.y + ((body.height - kIcon) * 0.5F),
+            kIcon,
+            kIcon,
+        };
+        const auto color = theme_color(
+            "headerbar-fg", theme_color("text-primary", nk::Color{0.15F, 0.16F, 0.18F, 1.0F}));
+        draw_icon(ctx, icon, color);
+
+        if (has_flag(state_flags(), nk::StateFlags::Hovered) && !armed_) {
+            const auto tooltip = tooltip_bounds();
+            ctx.push_overlay_container(tooltip);
+            ctx.add_rounded_rect(
+                tooltip,
+                theme_color("tooltip-background", nk::Color{0.15F, 0.15F, 0.17F, 0.95F}),
+                6.0F);
+            const nk::FontDescriptor font{
+                .family = {},
+                .size = 12.0F,
+                .weight = nk::FontWeight::Regular,
+            };
+            const auto name = std::string(accessible() != nullptr ? accessible()->name() : "");
+            const auto measured = measure_text(name, font);
+            ctx.add_text({tooltip.x + ((tooltip.width - measured.width) * 0.5F),
+                          tooltip.y + ((tooltip.height - measured.height) * 0.5F)},
+                         name,
+                         theme_color("tooltip-text", nk::Color{1.0F, 1.0F, 1.0F, 1.0F}),
+                         font);
+            ctx.pop_container();
+        }
+    }
+
+  private:
+    SessionIconButton(SessionIcon icon, std::string accessible_name) : icon_(icon) {
+        set_focusable(true);
+        add_style_class("flat");
+        auto& accessible = ensure_accessible();
+        accessible.set_role(nk::AccessibleRole::Button);
+        accessible.set_name(accessible_name);
+        accessible.set_description(accessible_name);
+        accessible.add_action(nk::AccessibleAction::Activate, [this] {
+            clicked_.emit();
+            return true;
+        });
+    }
+
+    void draw_icon(nk::SnapshotContext& ctx, nk::Rect box, nk::Color color) const {
+        // The handoff strokes are 24-unit paths. Vulkan drops Line and Path
+        // nodes, so each stroke is a rounded rectangle the GPU actually draws.
+        const float scale = box.width / 24.0F;
+        const auto stroke = [&](float x0, float y0, float x1, float y1, float width) {
+            const float half = width * 0.5F;
+            const float left = std::min(x0, x1) - (std::abs(x1 - x0) < 0.01F ? half : 0.0F);
+            const float right = std::max(x0, x1) + (std::abs(x1 - x0) < 0.01F ? half : 0.0F);
+            const float top = std::min(y0, y1) - (std::abs(y1 - y0) < 0.01F ? half : 0.0F);
+            const float bottom = std::max(y0, y1) + (std::abs(y1 - y0) < 0.01F ? half : 0.0F);
+            const nk::Rect rect{
+                box.x + (left * scale),
+                box.y + (top * scale),
+                std::max(1.0F, (right - left) * scale),
+                std::max(1.0F, (bottom - top) * scale),
+            };
+            ctx.add_rounded_rect(rect, color, std::min(rect.width, rect.height) * 0.5F);
+        };
+
+        switch (icon_) {
+        case SessionIcon::Pause:
+            // M8 5v14 M16 5v14, stroke 3.
+            stroke(8.0F, 5.0F, 8.0F, 19.0F, 3.0F);
+            stroke(16.0F, 5.0F, 16.0F, 19.0F, 3.0F);
+            break;
+        case SessionIcon::Play: {
+            // Filled silhouette of m8 5 11 7 -11 7z. Horizontal slices stay
+            // inside the rounded-rect primitive Vulkan records.
+            constexpr float kApexX = 19.0F;
+            constexpr float kBaseX = 8.0F;
+            for (int step = 0; step <= 28; ++step) {
+                const float y = 5.0F + (14.0F * (static_cast<float>(step) / 28.0F));
+                const float toward_apex = y <= 12.0F ? (y - 5.0F) / 7.0F : (19.0F - y) / 7.0F;
+                const float x = kBaseX + ((kApexX - kBaseX) * toward_apex);
+                stroke(kBaseX, y, x, y, 0.7F);
+            }
+            break;
+        }
+        case SessionIcon::Fullscreen:
+            // Four corner brackets.
+            stroke(8.0F, 3.0F, 3.0F, 3.0F, 2.0F);
+            stroke(3.0F, 3.0F, 3.0F, 8.0F, 2.0F);
+            stroke(16.0F, 3.0F, 21.0F, 3.0F, 2.0F);
+            stroke(21.0F, 3.0F, 21.0F, 8.0F, 2.0F);
+            stroke(3.0F, 16.0F, 3.0F, 21.0F, 2.0F);
+            stroke(3.0F, 21.0F, 8.0F, 21.0F, 2.0F);
+            stroke(21.0F, 16.0F, 21.0F, 21.0F, 2.0F);
+            stroke(21.0F, 21.0F, 16.0F, 21.0F, 2.0F);
+            break;
+        }
+    }
+
+    [[nodiscard]] nk::Rect tooltip_bounds() const {
+        const nk::FontDescriptor font{
+            .family = {},
+            .size = 12.0F,
+            .weight = nk::FontWeight::Regular,
+        };
+        const auto measured =
+            measure_text(accessible() != nullptr ? accessible()->name() : "", font);
+        const float width = measured.width + 16.0F;
+        const float height = measured.height + 8.0F;
+        float x = allocation().x + ((allocation().width - width) * 0.5F);
+        if (const auto* window = host_window(); window != nullptr) {
+            x = std::clamp(x, 4.0F, std::max(4.0F, window->size().width - width - 4.0F));
+        }
+        return {x, allocation().bottom() + 6.0F, width, height};
+    }
+
+    SessionIcon icon_ = SessionIcon::Pause;
+    bool armed_ = false;
+    nk::Signal<> clicked_;
 };
 
 } // namespace mapperbus::frontend

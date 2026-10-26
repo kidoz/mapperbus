@@ -1,5 +1,7 @@
 #include "frontends/nodalkit/gui_audio_backend.hpp"
 
+#include <algorithm>
+
 #include "platform/audio/null_audio.hpp"
 
 #if defined(MAPPERBUS_HAVE_SDL3_AUDIO)
@@ -39,9 +41,19 @@ bool GuiAudioBackend::initialize(int sample_rate, int buffer_size, int channels)
 }
 
 void GuiAudioBackend::queue_samples(std::span<const float> samples) {
-    if (active_ && !muted_) {
-        active_->queue_samples(samples);
+    if (active_ == nullptr || muted_) {
+        return;
     }
+    if (volume_ >= 0.999F) {
+        active_->queue_samples(samples);
+        return;
+    }
+
+    scaled_samples_.resize(samples.size());
+    for (std::size_t index = 0; index < samples.size(); ++index) {
+        scaled_samples_[index] = samples[index] * volume_;
+    }
+    active_->queue_samples(scaled_samples_);
 }
 
 void GuiAudioBackend::shutdown() {
@@ -98,6 +110,14 @@ bool GuiAudioBackend::uses_realtime_output() const {
 
 void GuiAudioBackend::set_muted(bool muted) {
     muted_ = muted;
+}
+
+void GuiAudioBackend::set_volume(float volume) {
+    volume_ = std::clamp(volume, 0.0F, 1.0F);
+}
+
+float GuiAudioBackend::volume() const {
+    return volume_;
 }
 
 } // namespace mapperbus::frontend
