@@ -10,7 +10,10 @@
 #include <ctime>
 #include <filesystem>
 #include <functional>
+#if __has_include(<nk/actions/shortcut_registry.h>)
 #include <nk/actions/shortcut_registry.h>
+#define MAPPERBUS_HAVE_NODALKIT_SHORTCUTS 1
+#endif
 #include <nk/controllers/event_controller.h>
 #include <nk/platform/drag_drop.h>
 #include <nk/widgets/clamp.h>
@@ -1195,42 +1198,42 @@ void MapperBusGuiController::build_ui() {
 
     // F11 as a declared shortcut when the toolkit provides the registry;
     // the key-controller fallback keeps older NodalKit revisions working.
-    if constexpr (requires { window_.shortcuts(); }) {
-        auto& shortcuts = window_.shortcuts();
-        shortcuts.add_action("win.toggle-fullscreen", [this] { toggle_fullscreen(); });
-        shortcuts.add_shortcut(
-            {nk::Shortcut{static_cast<int>(nk::KeyCode::F11), nk::Modifiers::None},
-             "win.toggle-fullscreen"});
+#if defined(MAPPERBUS_HAVE_NODALKIT_SHORTCUTS)
+    auto& shortcuts = window_.shortcuts();
+    shortcuts.add_action("win.toggle-fullscreen", [this] { toggle_fullscreen(); });
+    shortcuts.add_shortcut({nk::Shortcut{static_cast<int>(nk::KeyCode::F11), nk::Modifiers::None},
+                            "win.toggle-fullscreen"});
 
-        // Session hotkeys match the SDL frontend: F5/F7 for slot 1, Shift+F5
-        // and Shift+F7 for slot 2. P, R, and F11 stay with the game commands.
-        // They stay inert while a modal sheet is presented — most importantly
-        // the rebind sheet, which captures keys and must not also pause or reset.
-        const auto bind_session_key =
-            [this, &shortcuts](nk::KeyCode key, nk::Modifiers modifiers, std::string_view action) {
-                shortcuts.add_action(std::string(action), [this, a = std::string(action)] {
-                    if (modal_dialog_presented()) {
-                        return;
-                    }
-                    handle_menu_action(a);
-                });
-                shortcuts.add_shortcut(
-                    {nk::Shortcut{static_cast<int>(key), modifiers}, std::string(action)});
-            };
-        bind_session_key(nk::KeyCode::P, nk::Modifiers::None, "emu.pause");
-        bind_session_key(nk::KeyCode::R, nk::Modifiers::None, "emu.reset");
-        bind_session_key(nk::KeyCode::F5, nk::Modifiers::None, "emu.save-state");
-        bind_session_key(nk::KeyCode::F7, nk::Modifiers::None, "emu.load-state");
-        bind_session_key(nk::KeyCode::F5, nk::Modifiers::Shift, "emu.save-state-1");
-        bind_session_key(nk::KeyCode::F7, nk::Modifiers::Shift, "emu.load-state-1");
-        // macOS menu equivalents already bind Ctrl/Command chords. Register
-        // them here for desktops whose native menu does not consume the key.
+    // Session hotkeys match the SDL frontend: F5/F7 for slot 1, Shift+F5
+    // and Shift+F7 for slot 2. P, R, and F11 stay with the game commands.
+    // They stay inert while a modal sheet is presented — most importantly
+    // the rebind sheet, which captures keys and must not also pause or reset.
+    const auto bind_session_key =
+        [this, &shortcuts](nk::KeyCode key, nk::Modifiers modifiers, std::string_view action) {
+            shortcuts.add_action(std::string(action), [this, a = std::string(action)] {
+                if (modal_dialog_presented()) {
+                    return;
+                }
+                handle_menu_action(a);
+            });
+            shortcuts.add_shortcut(
+                {nk::Shortcut{static_cast<int>(key), modifiers}, std::string(action)});
+        };
+    bind_session_key(nk::KeyCode::P, nk::Modifiers::None, "emu.pause");
+    bind_session_key(nk::KeyCode::R, nk::Modifiers::None, "emu.reset");
+    bind_session_key(nk::KeyCode::F5, nk::Modifiers::None, "emu.save-state");
+    bind_session_key(nk::KeyCode::F7, nk::Modifiers::None, "emu.load-state");
+    bind_session_key(nk::KeyCode::F5, nk::Modifiers::Shift, "emu.save-state-1");
+    bind_session_key(nk::KeyCode::F7, nk::Modifiers::Shift, "emu.load-state-1");
+    // macOS menu equivalents already bind Ctrl/Command chords. Register
+    // them here for desktops whose native menu does not consume the key.
 #if !defined(__APPLE__)
-        bind_session_key(nk::KeyCode::O, nk::Modifiers::Ctrl, "file.open");
-        bind_session_key(nk::KeyCode::Q, nk::Modifiers::Ctrl, "file.quit");
-        bind_session_key(nk::KeyCode::Comma, nk::Modifiers::Ctrl, "settings.open");
+    bind_session_key(nk::KeyCode::O, nk::Modifiers::Ctrl, "file.open");
+    bind_session_key(nk::KeyCode::Q, nk::Modifiers::Ctrl, "file.quit");
+    bind_session_key(nk::KeyCode::Comma, nk::Modifiers::Ctrl, "settings.open");
 #endif
-    } else {
+#else
+    {
         auto root_keys = std::make_shared<nk::KeyboardController>();
         (void)root_keys->on_key_pressed().connect([this](int key_code, int modifiers) {
             if (modal_dialog_presented()) {
@@ -1262,6 +1265,7 @@ void MapperBusGuiController::build_ui() {
         });
         root_->add_controller(std::move(root_keys));
     }
+#endif
 
     window_.set_child(root_);
 }
