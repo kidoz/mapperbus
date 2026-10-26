@@ -165,7 +165,7 @@ TEST_CASE("Battery PRG-RAM persists across reload via .sav", "[battery][integrat
     const std::filesystem::path sav = std::filesystem::path(rom).replace_extension(".sav");
     std::filesystem::remove(sav); // start clean
 
-    // First session: build up a counter in PRG-RAM, then unload (auto-saves).
+    // Emulator teardown persists direct core/CLI usage without an explicit unload.
     {
         Emulator emu;
         REQUIRE(emu.load_cartridge(rom.string()).has_value());
@@ -174,7 +174,6 @@ TEST_CASE("Battery PRG-RAM persists across reload via .sav", "[battery][integrat
         for (int i = 0; i < 40; ++i) {
             emu.step_frame();
         }
-        emu.unload_cartridge();
     }
     REQUIRE(std::filesystem::exists(sav));
     REQUIRE(std::filesystem::file_size(sav) == 0x2000);
