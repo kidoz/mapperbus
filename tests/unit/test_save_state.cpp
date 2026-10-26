@@ -202,6 +202,7 @@ TEST_CASE("Save-state survives a file round-trip", "[state]") {
         emu.step_frame();
     }
     REQUIRE(emu.save_state_to_file(state_path.string()).has_value());
+    REQUIRE_FALSE(std::filesystem::exists(state_path.string() + ".tmp"));
 
     // The framebuffer is not part of the blob (it re-renders on the next
     // frame), so compare after replaying an equal number of frames on both.

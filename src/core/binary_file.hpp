@@ -1,7 +1,9 @@
 #pragma once
 
 #include <cstdint>
+#include <filesystem>
 #include <fstream>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -40,6 +42,43 @@ namespace mapperbus::core {
         }
     }
     return data;
+}
+
+/// Atomically replaces a binary file through a same-directory temporary file.
+[[nodiscard]] inline Result<void> write_binary_file_atomic(const std::string& path,
+                                                           std::span<const Byte> data,
+                                                           std::string_view label) {
+    const std::filesystem::path destination(path);
+    const auto temporary = destination.parent_path() / (destination.filename().string() + ".tmp");
+    const auto fail = [&](std::string_view action) {
+        std::error_code cleanup_error;
+        std::filesystem::remove(temporary, cleanup_error);
+        return std::unexpected("Failed to " + std::string(action) + " " + std::string(label) +
+                               ": " + path);
+    };
+
+    std::ofstream file(temporary, std::ios::binary | std::ios::trunc);
+    if (!file) {
+        return std::unexpected("Failed to open " + std::string(label) + " for writing: " + path);
+    }
+    if (!data.empty()) {
+        file.write(reinterpret_cast<const char*>(data.data()),
+                   static_cast<std::streamsize>(data.size()));
+    }
+    if (!file) {
+        return fail("write");
+    }
+    file.close();
+    if (!file) {
+        return fail("close");
+    }
+
+    std::error_code error;
+    std::filesystem::rename(temporary, destination, error);
+    if (error) {
+        return fail("replace");
+    }
+    return {};
 }
 
 } // namespace mapperbus::core

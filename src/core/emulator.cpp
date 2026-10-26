@@ -2,8 +2,6 @@
 
 #include <array>
 #include <filesystem>
-#include <fstream>
-#include <iterator>
 #include <optional>
 
 #include "core/binary_file.hpp"
@@ -304,16 +302,7 @@ bool Emulator::load_state(std::span<const Byte> data) {
 
 Result<void> Emulator::save_state_to_file(const std::string& path) const {
     const std::vector<Byte> blob = save_state();
-    std::ofstream file(path, std::ios::binary);
-    if (!file) {
-        return std::unexpected("Failed to open save-state file for writing: " + path);
-    }
-    file.write(reinterpret_cast<const char*>(blob.data()),
-               static_cast<std::streamsize>(blob.size()));
-    if (!file) {
-        return std::unexpected("Failed to write save-state file: " + path);
-    }
-    return {};
+    return write_binary_file_atomic(path, blob, "save-state file");
 }
 
 Result<void> Emulator::load_state_from_file(const std::string& path) {
@@ -335,28 +324,18 @@ Result<void> Emulator::save_battery_ram(const std::string& path) const {
     if (ram.empty()) {
         return {};
     }
-    std::ofstream file(path, std::ios::binary);
-    if (!file) {
-        return std::unexpected("Failed to open battery save for writing: " + path);
-    }
-    file.write(reinterpret_cast<const char*>(ram.data()), static_cast<std::streamsize>(ram.size()));
-    if (!file) {
-        return std::unexpected("Failed to write battery save: " + path);
-    }
-    return {};
+    return write_binary_file_atomic(path, ram, "battery save");
 }
 
 Result<void> Emulator::load_battery_ram(const std::string& path) {
     if (!cartridge_) {
         return std::unexpected("No cartridge loaded");
     }
-    std::ifstream file(path, std::ios::binary);
-    if (!file) {
-        return std::unexpected("Failed to open battery save: " + path);
+    auto data = read_binary_file_capped(path, cartridge_->battery_ram().size(), "battery save");
+    if (!data) {
+        return std::unexpected(data.error());
     }
-    std::vector<Byte> data((std::istreambuf_iterator<char>(file)),
-                           std::istreambuf_iterator<char>());
-    cartridge_->set_battery_ram(data);
+    cartridge_->set_battery_ram(*data);
     return {};
 }
 

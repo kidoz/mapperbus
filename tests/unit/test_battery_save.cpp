@@ -231,3 +231,36 @@ TEST_CASE("Loading a new ROM flushes the previous cartridge's battery RAM", "[ba
     std::filesystem::remove(sav_a);
     std::filesystem::remove(sav_b);
 }
+
+TEST_CASE("Battery loads are capped and saves replace atomically", "[battery]") {
+    register_builtin_mappers();
+    const std::filesystem::path rom = write_counter_rom("battery-capped");
+    const std::filesystem::path sav = std::filesystem::path(rom).replace_extension(".sav");
+    const std::filesystem::path temporary = sav.string() + ".tmp";
+    std::filesystem::remove(sav);
+    std::filesystem::remove(temporary);
+
+    {
+        Emulator emu;
+        REQUIRE(emu.load_cartridge(rom.string()).has_value());
+        emu.reset();
+        emu.step_frame();
+        REQUIRE(emu.save_battery_ram(sav.string()).has_value());
+        REQUIRE(std::filesystem::file_size(sav) == 0x2000);
+        REQUIRE_FALSE(std::filesystem::exists(temporary));
+
+        const Byte before = emu.read_cpu(0x6000);
+        std::filesystem::resize_file(sav, 0x2001);
+        const auto loaded = emu.load_battery_ram(sav.string());
+        REQUIRE_FALSE(loaded.has_value());
+        REQUIRE(loaded.error().find("exceeds maximum size") != std::string::npos);
+        REQUIRE(emu.read_cpu(0x6000) == before);
+
+        REQUIRE(emu.save_battery_ram(sav.string()).has_value());
+        REQUIRE(std::filesystem::file_size(sav) == 0x2000);
+        REQUIRE_FALSE(std::filesystem::exists(temporary));
+    }
+
+    std::filesystem::remove(sav);
+    std::filesystem::remove(rom);
+}
