@@ -181,7 +181,7 @@ mapperbus-sdl3 [options] <rom-file>
   --fsr                 CPU FSR 1 upscaling
   --sample-rate N       Audio sample rate (default: 96000)
   --resampling MODE     blip or cubic (default: blip)
-  --filter-mode MODE    accurate, enhanced, or unfiltered (default: unfiltered)
+  --filter-mode MODE    accurate, enhanced, or unfiltered (default: accurate)
   --filter-profile P    nes or famicom (default: nes)
   --region R            ntsc, pal, or dendy (default: auto)
   --stereo              Enable pseudo-stereo output
@@ -230,7 +230,7 @@ region=auto
 sample_rate=96000
 buffer_size=2048
 resampling=blip
-filter_mode=unfiltered
+filter_mode=accurate
 filter_profile=nes
 stereo=mono
 dithering=false

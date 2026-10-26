@@ -15,7 +15,7 @@ TEST_CASE("AudioSettings defaults", "[audio]") {
     REQUIRE(s.sample_rate == 96000);
     REQUIRE(s.buffer_size_samples == 2048);
     REQUIRE(s.resampling == ResamplingMode::BlipBuffer);
-    REQUIRE(s.filter_mode == FilterMode::Unfiltered);
+    REQUIRE(s.filter_mode == FilterMode::HardwareAccurate);
     REQUIRE(s.filter_profile == FilterProfile::NES);
     REQUIRE(s.stereo_mode == StereoMode::Mono);
     REQUIRE_FALSE(s.dithering_enabled);

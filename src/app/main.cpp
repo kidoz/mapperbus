@@ -99,7 +99,7 @@ int main(int argc, char* argv[]) {
         mapperbus::core::logger::info("  --sample-rate N       audio sample rate (default: 96000)");
         mapperbus::core::logger::info("  --resampling MODE     blip or cubic (default: blip)");
         mapperbus::core::logger::info(
-            "  --filter-mode MODE    accurate, enhanced, or unfiltered (default: unfiltered)");
+            "  --filter-mode MODE    accurate, enhanced, or unfiltered (default: accurate)");
         mapperbus::core::logger::info(
             "  --region R            ntsc, pal, or dendy (default: auto)");
         mapperbus::core::logger::info("  --filter-profile P    nes or famicom (default: nes)");
