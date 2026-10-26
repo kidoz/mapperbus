@@ -54,6 +54,14 @@ void Ppu::load_state(StateReader& reader) {
     reader.read(write_latch_);
     reader.read_array(visible_sprites_);
     reader.read(visible_sprite_count_);
+    // evaluate_sprites never stores more than the 8 hardware sprites. A blob
+    // can, and render_pixel indexes the array with this count before the next
+    // evaluation at dot 257.
+    if (visible_sprite_count_ < 0 ||
+        static_cast<std::size_t>(visible_sprite_count_) > visible_sprites_.size()) {
+        visible_sprite_count_ = 0;
+        reader.fail();
+    }
     // Re-derive the backdrop cache from the restored palette (no need to
     // serialize it separately — palette_[0] fully determines it).
     backdrop_color_ = palette_[0];

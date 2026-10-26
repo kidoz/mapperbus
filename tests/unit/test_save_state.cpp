@@ -3,11 +3,15 @@
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <vector>
 
 #include "../support/test_rom.hpp"
 #include "core/emulator.hpp"
 #include "core/mappers/mapper_registry.hpp"
+#include "core/mappers/mmc5.hpp"
+#include "core/mappers/namco163.hpp"
+#include "core/ppu/ppu.hpp"
 #include "core/state/state.hpp"
 
 using namespace mapperbus::core;
@@ -78,6 +82,18 @@ TEST_CASE("StateReader rejects a byte run with a corrupt length prefix", "[state
     StateReader reader(blob);
     std::vector<Byte> out;
     reader.read_bytes(out);
+    REQUIRE_FALSE(reader.ok());
+    REQUIRE(out.empty());
+}
+
+TEST_CASE("StateReader rejects a byte run above the caller limit", "[state]") {
+    StateWriter writer;
+    const std::vector<Byte> run(8, 1);
+    writer.write_bytes(run);
+
+    StateReader reader(writer.data());
+    std::vector<Byte> out;
+    reader.read_bytes(out, 4);
     REQUIRE_FALSE(reader.ok());
     REQUIRE(out.empty());
 }
@@ -156,9 +172,14 @@ TEST_CASE("load_state rejects malformed and mismatched blobs", "[state]") {
         REQUIRE_FALSE(emu.load_state({}));
     }
     SECTION("truncated valid blob is rejected") {
-        std::vector<Byte> blob = emu.save_state();
+        const std::vector<Byte> before = emu.save_state();
+        std::vector<Byte> blob = before;
         blob.resize(blob.size() / 2);
         REQUIRE_FALSE(emu.load_state(blob));
+        // The rejected apply must roll back. A following frame also proves the
+        // restored PPU and mapper indexes are still in range.
+        REQUIRE(emu.save_state() == before);
+        emu.step_frame();
     }
     SECTION("corrupted magic is rejected") {
         std::vector<Byte> blob = emu.save_state();
@@ -198,4 +219,139 @@ TEST_CASE("Save-state survives a file round-trip", "[state]") {
     REQUIRE(hash_frame(restored.frame_buffer()) == reference);
 
     std::filesystem::remove(state_path);
+}
+
+TEST_CASE("Oversized ROM and save-state files are rejected before allocation", "[state]") {
+    register_builtin_mappers();
+    const auto directory = std::filesystem::temp_directory_path();
+    const auto rom_path = directory / "mapperbus-oversize.nes";
+    {
+        std::ofstream file(rom_path, std::ios::binary | std::ios::trunc);
+        file << "NES\x1A";
+    }
+    std::filesystem::resize_file(rom_path, kMaxRomBytes + 1);
+
+    Emulator emu;
+    const auto loaded = emu.load_cartridge(rom_path.string());
+    REQUIRE_FALSE(loaded);
+    REQUIRE(loaded.error().find("exceeds maximum size") != std::string::npos);
+    REQUIRE_FALSE(emu.has_cartridge());
+    std::filesystem::remove(rom_path);
+
+    const auto playable = mapperbus::tests::write_visible_nrom_test_rom("savestate-cap");
+    REQUIRE(emu.load_cartridge(playable.string()).has_value());
+    emu.reset();
+    const std::vector<Byte> before = emu.save_state();
+
+    const auto state_path = directory / "mapperbus-oversize.state";
+    {
+        std::ofstream file(state_path, std::ios::binary | std::ios::trunc);
+        file << "MBST";
+    }
+    std::filesystem::resize_file(state_path, Emulator::kMaxStateBytes + 1);
+    const auto state = emu.load_state_from_file(state_path.string());
+    REQUIRE_FALSE(state);
+    REQUIRE(state.error().find("exceeds maximum size") != std::string::npos);
+    REQUIRE(emu.save_state() == before);
+    std::filesystem::remove(state_path);
+    std::filesystem::remove(playable);
+}
+
+TEST_CASE("MMC5 save-state rejects a PRG mode outside 0..3", "[state][mmc5]") {
+    INesHeader header{};
+    header.mapper_number = 5;
+    header.mirror_mode = MirrorMode::Vertical;
+    const std::vector<Byte> prg(16 * 1024, 0xEA);
+    const std::vector<Byte> chr(8 * 1024, 0);
+
+    Mmc5 baseline(header, prg, chr);
+    StateWriter baseline_writer;
+    baseline.save_state(baseline_writer);
+
+    Mmc5 changed(header, prg, chr);
+    changed.write_expansion(0x5100, 0x00);
+    StateWriter changed_writer;
+    changed.save_state(changed_writer);
+
+    REQUIRE(baseline_writer.data().size() == changed_writer.data().size());
+    std::vector<Byte> blob = baseline_writer.data();
+    int diffs = 0;
+    for (std::size_t index = 0; index < blob.size(); ++index) {
+        if (baseline_writer.data()[index] != changed_writer.data()[index]) {
+            blob[index] = 0xFF;
+            ++diffs;
+        }
+    }
+    REQUIRE(diffs >= 1);
+
+    Mmc5 victim(header, prg, chr);
+    StateReader reader(blob);
+    victim.load_state(reader);
+    REQUIRE_FALSE(reader.ok());
+    (void)victim.read_prg(0x8000);
+    (void)victim.read_prg(0xE000);
+}
+
+TEST_CASE("Namco 163 save-state rejects a zero channel count", "[state][n163]") {
+    INesHeader header{};
+    header.mapper_number = 19;
+    header.mirror_mode = MirrorMode::Vertical;
+    const std::vector<Byte> prg(16 * 1024, 0xEA);
+    const std::vector<Byte> chr(8 * 1024, 0);
+
+    Namco163 baseline(header, prg, chr);
+    StateWriter baseline_writer;
+    baseline.save_state(baseline_writer);
+
+    Namco163 changed(header, prg, chr);
+    changed.write_prg(0xF800, 0x7F);
+    changed.write_expansion(0x4800, 0x70); // channel 8 enabled: ((0x70 >> 4) & 7) + 1
+    StateWriter changed_writer;
+    changed.save_state(changed_writer);
+
+    REQUIRE(baseline_writer.data().size() == changed_writer.data().size());
+    std::vector<Byte> blob = baseline_writer.data();
+    int diffs = 0;
+    for (std::size_t index = 0; index < blob.size(); ++index) {
+        if (baseline_writer.data()[index] != changed_writer.data()[index]) {
+            blob[index] = 0; // includes num_channels_, which hardware never stores as 0
+            ++diffs;
+        }
+    }
+    REQUIRE(diffs >= 1);
+
+    Namco163 victim(header, prg, chr);
+    StateReader reader(blob);
+    victim.load_state(reader);
+    REQUIRE_FALSE(reader.ok());
+    for (int step = 0; step < 64; ++step) {
+        victim.clock_audio();
+    }
+    (void)victim.audio_output();
+}
+
+TEST_CASE("PPU save-state rejects a sprite count above the hardware limit", "[state][ppu]") {
+    Ppu ppu;
+    StateWriter writer;
+    ppu.save_state(writer);
+    std::vector<Byte> blob = writer.take();
+    REQUIRE(blob.size() >= sizeof(int));
+
+    int accepted = 8;
+    std::memcpy(blob.data() + blob.size() - sizeof(accepted), &accepted, sizeof(accepted));
+    {
+        Ppu restored;
+        StateReader reader(blob);
+        restored.load_state(reader);
+        REQUIRE(reader.ok());
+        restored.step(30);
+    }
+
+    int rejected = 64;
+    std::memcpy(blob.data() + blob.size() - sizeof(rejected), &rejected, sizeof(rejected));
+    Ppu restored;
+    StateReader reader(blob);
+    restored.load_state(reader);
+    REQUIRE_FALSE(reader.ok());
+    restored.step(30);
 }

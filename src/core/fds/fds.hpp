@@ -23,6 +23,11 @@ class StateReader;
 class Fds {
   public:
     static constexpr std::size_t kSideSize = 65500;
+    /// Commercial disks are one or two sides. Sixteen is far above that and
+    /// still small enough to reject a multi-gigabyte image before allocation.
+    static constexpr int kMaxSides = 16;
+    static constexpr std::size_t kMaxDiskImageBytes =
+        kSideSize * static_cast<std::size_t>(kMaxSides);
 
     Fds() = default;
 
@@ -36,8 +41,10 @@ class Fds {
     void load_state(StateReader& reader);
 
     /// Mounts a `.fds` image (optionally prefixed with the 16-byte "FDS\x1a"
-    /// fwNES header). Returns false if the payload is not a whole number of
-    /// 65500-byte sides. Side 0 is inserted on success.
+    /// fwNES header). Returns false when the image is empty or larger than
+    /// `kMaxDiskImageBytes` (plus the optional header). A short payload is
+    /// padded up to a whole number of 65500-byte sides. Side 0 is inserted
+    /// on success.
     [[nodiscard]] bool load_disk(std::span<const Byte> image);
     void insert_side(int side);
     void eject();
@@ -75,6 +82,10 @@ class Fds {
     void write_drive_register(Address reg, Byte value);
     void step_timer(uint32_t cpu_cycles);
     void step_transfer(uint32_t cpu_cycles);
+    /// Keeps side and head position inside `disk_data_`. Runs even when the
+    /// reader has already failed, so a truncated blob cannot leave an index
+    /// that `step_transfer` would apply.
+    void sanitize_disk_geometry();
 
     bool loaded_ = false;
 

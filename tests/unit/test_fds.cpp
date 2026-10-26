@@ -235,6 +235,32 @@ TEST_CASE("FDS load_state clamps inconsistent disk geometry", "[fds][state]") {
         restored.step(1000);
         REQUIRE((restored.read(0x4030) & 0x40) != 0);
     }
+
+    SECTION("truncation after the disk image still clamps the head") {
+        std::vector<Byte> blob = writer.data();
+        blob[5] = 40; // current_side_ = 40, past the single serialized side
+        // Keep the disk payload and only part of the following fields, so the
+        // reader fails after current_side_ was already consumed.
+        const std::size_t keep = 10 + 8 + Fds::kSideSize + 4;
+        REQUIRE(blob.size() > keep);
+        blob.resize(keep);
+
+        Fds restored;
+        StateReader reader(blob);
+        restored.load_state(reader);
+        REQUIRE_FALSE(reader.ok());
+        REQUIRE(restored.current_side() == -1);
+        restored.write(0x4023, 0x01);
+        restored.write(0x4025, 0x01 | 0x40); // motor on + start, write mode
+        restored.step(5000);
+    }
+}
+
+TEST_CASE("FDS rejects an image past the side cap", "[fds]") {
+    std::vector<Byte> image(Fds::kMaxDiskImageBytes + 1, 0);
+    Fds fds;
+    REQUIRE_FALSE(fds.load_disk(image));
+    REQUIRE_FALSE(fds.is_loaded());
 }
 
 // --- FDS audio ---

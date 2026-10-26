@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <span>
 #include <type_traits>
 #include <vector>
@@ -87,11 +88,13 @@ class StateReader {
     }
 
     /// Reads a length-prefixed byte run written by write_bytes.
-    void read_bytes(std::vector<Byte>& out) {
+    /// `max_size` rejects a blob-controlled length before the buffer is allocated.
+    void read_bytes(std::vector<Byte>& out,
+                    std::size_t max_size = std::numeric_limits<std::size_t>::max()) {
         const auto size = read<std::uint64_t>();
         // Compare against the remaining size (not pos_ + size): the length is
         // blob-controlled, so pos_ + size could wrap and pass the check.
-        if (!ok_ || size > data_.size() - pos_) {
+        if (!ok_ || size > data_.size() - pos_ || size > max_size) {
             ok_ = false;
             out.clear();
             return;
@@ -99,6 +102,11 @@ class StateReader {
         out.assign(data_.begin() + static_cast<std::ptrdiff_t>(pos_),
                    data_.begin() + static_cast<std::ptrdiff_t>(pos_ + size));
         pos_ += size;
+    }
+
+    /// Latches a failed load. Later reads zero their outputs and leave `ok()` false.
+    void fail() {
+        ok_ = false;
     }
 
     [[nodiscard]] bool ok() const {

@@ -1,8 +1,6 @@
 #include "core/cartridge/cartridge.hpp"
 
-#include <fstream>
-#include <iterator>
-
+#include "core/binary_file.hpp"
 #include "core/cartridge/rom_crc32.hpp"
 #include "core/cartridge/rom_database.hpp"
 #include "core/mappers/mapper_registry.hpp"
@@ -22,15 +20,12 @@ void Cartridge::load_state(StateReader& reader) {
 }
 
 Result<Cartridge> Cartridge::from_file(const std::string& path) {
-    std::ifstream file(path, std::ios::binary);
-    if (!file) {
-        return std::unexpected("Failed to open ROM file: " + path);
+    auto data = read_binary_file_capped(path, kMaxRomBytes, "ROM file");
+    if (!data) {
+        return std::unexpected(data.error());
     }
 
-    std::vector<Byte> data((std::istreambuf_iterator<char>(file)),
-                           std::istreambuf_iterator<char>());
-
-    auto result = from_data(data);
+    auto result = from_data(*data);
     if (!result) {
         return result;
     }
@@ -40,7 +35,7 @@ Result<Cartridge> Cartridge::from_file(const std::string& path) {
     // 2. Filename region tags
     // 3. Default NTSC (already set)
     if (!result->header().is_nes2) {
-        uint32_t crc = rom_crc32(data);
+        uint32_t crc = rom_crc32(*data);
         auto db_region = lookup_region_by_crc32(crc);
         if (db_region) {
             result->header_.region = *db_region;
@@ -56,6 +51,10 @@ Result<Cartridge> Cartridge::from_file(const std::string& path) {
 }
 
 Result<Cartridge> Cartridge::from_data(std::span<const Byte> rom_data) {
+    if (rom_data.size() > kMaxRomBytes) {
+        return std::unexpected("ROM data exceeds maximum size");
+    }
+
     auto header_result = parse_ines_header(rom_data);
     if (!header_result) {
         return std::unexpected(header_result.error());

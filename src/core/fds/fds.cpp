@@ -83,7 +83,7 @@ void Fds::load_state(StateReader& reader) {
     reader.read(num_sides_);
     reader.read(current_side_);
     reader.read(write_protected_);
-    reader.read_bytes(disk_data_);
+    reader.read_bytes(disk_data_, kMaxDiskImageBytes);
 
     reader.read(irq_reload_);
     reader.read(irq_timer_);
@@ -136,13 +136,14 @@ void Fds::load_state(StateReader& reader) {
     reader.read(mod_env_increase_);
     reader.read(mod_env_timer_);
 
-    // Cross-field validation: the transfer engine indexes disk_data_ by
-    // current_side_ and disk_position_, so a corrupt blob must not be able
-    // to push those out of range. Clamp inconsistent geometry rather than
-    // rejecting the blob outright (the header check already gates version).
-    if (!reader.ok()) {
-        return;
-    }
+    // Always clamp. A later field can fail the reader after current_side_ and
+    // disk_position_ were already taken from the blob; skipping this would
+    // leave step_transfer an out-of-range index. Inconsistent but fully read
+    // geometry is repaired, matching the previous success-path contract.
+    sanitize_disk_geometry();
+}
+
+void Fds::sanitize_disk_geometry() {
     if (!loaded_) {
         num_sides_ = 0;
         current_side_ = -1;
@@ -222,13 +223,18 @@ void Fds::reset() {
 }
 
 bool Fds::load_disk(std::span<const Byte> image) {
+    // 16-byte fwNES header plus the capped payload. Reject before any copy.
+    if (image.size() > kMaxDiskImageBytes + 16) {
+        return false;
+    }
+
     std::span<const Byte> payload = image;
     // Strip the optional 16-byte fwNES "FDS\x1a" header.
     if (payload.size() >= 16 && payload[0] == 'F' && payload[1] == 'D' && payload[2] == 'S' &&
         payload[3] == 0x1A) {
         payload = payload.subspan(16);
     }
-    if (payload.empty()) {
+    if (payload.empty() || payload.size() > kMaxDiskImageBytes) {
         return false;
     }
 

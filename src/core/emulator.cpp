@@ -4,7 +4,9 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <optional>
 
+#include "core/binary_file.hpp"
 #include "core/logger.hpp"
 #include "core/state/state.hpp"
 
@@ -19,6 +21,35 @@ constexpr std::uint32_t kStateVersion = 3; // v3: VRC7 audio_halted_
 
 [[nodiscard]] std::string battery_path_for(const std::string& rom_path) {
     return std::filesystem::path(rom_path).replace_extension(".sav").string();
+}
+
+/// Header fields shared by the probe in load_state and the apply in
+/// restore_state. Does not modify the machine. Logs and returns nullopt
+/// when the blob cannot be applied.
+[[nodiscard]] std::optional<Region> decode_state_header(std::span<const Byte> data,
+                                                        std::uint16_t expected_mapper) {
+    StateReader reader(data);
+
+    std::array<Byte, 4> magic{};
+    reader.read_array(magic);
+    if (!reader.ok() || magic != kStateMagic) {
+        logger::warn("Save-state rejected: bad magic");
+        return std::nullopt;
+    }
+    if (reader.read<std::uint32_t>() != kStateVersion) {
+        logger::warn("Save-state rejected: unsupported version");
+        return std::nullopt;
+    }
+    const auto mapper_number = reader.read<std::uint16_t>();
+    if (!reader.ok() || mapper_number != expected_mapper) {
+        logger::warn("Save-state rejected: mapper mismatch (state does not match loaded ROM)");
+        return std::nullopt;
+    }
+    const auto region = reader.read<Region>();
+    if (!reader.ok()) {
+        return std::nullopt;
+    }
+    return region;
 }
 } // namespace
 
@@ -98,13 +129,12 @@ Result<void> Emulator::load_cartridge(const std::string& path) {
 }
 
 Result<void> Emulator::load_disk(const std::string& path) {
-    std::ifstream file(path, std::ios::binary);
-    if (!file) {
-        return std::unexpected("Failed to open FDS disk image: " + path);
+    // Optional 16-byte fwNES header plus the capped disk payload.
+    auto data = read_binary_file_capped(path, Fds::kMaxDiskImageBytes + 16, "FDS disk image");
+    if (!data) {
+        return std::unexpected(data.error());
     }
-    std::vector<Byte> data((std::istreambuf_iterator<char>(file)),
-                           std::istreambuf_iterator<char>());
-    if (!fds_.load_disk(data)) {
+    if (!fds_.load_disk(*data)) {
         return std::unexpected("Invalid FDS disk image (not a whole number of sides): " + path);
     }
     logger::info("Mounted FDS disk: {} ({} side(s))", path, fds_.side_count());
@@ -211,34 +241,24 @@ std::vector<Byte> Emulator::save_state() const {
     return writer.take();
 }
 
-bool Emulator::load_state(std::span<const Byte> data) {
-    StateReader reader(data);
-
-    std::array<Byte, 4> magic{};
-    reader.read_array(magic);
-    if (!reader.ok() || magic != kStateMagic) {
-        logger::warn("Save-state rejected: bad magic");
-        return false;
-    }
-    if (reader.read<std::uint32_t>() != kStateVersion) {
-        logger::warn("Save-state rejected: unsupported version");
-        return false;
-    }
-    const auto mapper_number = reader.read<std::uint16_t>();
+bool Emulator::restore_state(std::span<const Byte> data) {
     const std::uint16_t expected =
         cartridge_ ? cartridge_->header().mapper_number : std::uint16_t{0xFFFF};
-    if (!reader.ok() || mapper_number != expected) {
-        logger::warn("Save-state rejected: mapper mismatch (state does not match loaded ROM)");
+    const auto region = decode_state_header(data, expected);
+    if (!region) {
         return false;
     }
-    const auto region = reader.read<Region>();
-    if (!reader.ok()) {
-        return false;
-    }
+
+    StateReader reader(data);
+    std::array<Byte, 4> magic{};
+    reader.read_array(magic);
+    (void)reader.read<std::uint32_t>();
+    (void)reader.read<std::uint16_t>();
+    (void)reader.read<Region>();
 
     // Header validated — region affects subsystem timing tables, so apply it
     // before deserializing the timing-dependent subsystems.
-    set_region(region);
+    set_region(*region);
 
     cpu_.load_state(reader);
     ppu_.load_state(reader);
@@ -251,10 +271,34 @@ bool Emulator::load_state(std::span<const Byte> data) {
     }
 
     if (!reader.ok()) {
-        logger::error("Save-state load failed: blob truncated; machine state may be inconsistent");
+        logger::warn("Save-state rejected: truncated or failed validation");
         return false;
     }
     return true;
+}
+
+bool Emulator::load_state(std::span<const Byte> data) {
+    if (data.size() > kMaxStateBytes) {
+        logger::warn("Save-state rejected: exceeds maximum size");
+        return false;
+    }
+
+    const std::uint16_t expected =
+        cartridge_ ? cartridge_->header().mapper_number : std::uint16_t{0xFFFF};
+    // Reject a bad header before snapshotting. The body can still fail after
+    // this probe; that path restores the snapshot taken below.
+    if (!decode_state_header(data, expected)) {
+        return false;
+    }
+
+    const std::vector<Byte> snapshot = save_state();
+    if (restore_state(data)) {
+        return true;
+    }
+    if (!restore_state(snapshot)) {
+        logger::error("Save-state rollback failed; machine state may be inconsistent");
+    }
+    return false;
 }
 
 Result<void> Emulator::save_state_to_file(const std::string& path) const {
@@ -272,13 +316,11 @@ Result<void> Emulator::save_state_to_file(const std::string& path) const {
 }
 
 Result<void> Emulator::load_state_from_file(const std::string& path) {
-    std::ifstream file(path, std::ios::binary);
-    if (!file) {
-        return std::unexpected("Failed to open save-state file: " + path);
+    auto blob = read_binary_file_capped(path, kMaxStateBytes, "save-state file");
+    if (!blob) {
+        return std::unexpected(blob.error());
     }
-    std::vector<Byte> blob((std::istreambuf_iterator<char>(file)),
-                           std::istreambuf_iterator<char>());
-    if (!load_state(blob)) {
+    if (!load_state(*blob)) {
         return std::unexpected("Save-state is invalid or does not match the loaded ROM: " + path);
     }
     return {};
