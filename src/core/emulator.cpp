@@ -60,6 +60,10 @@ Emulator::Emulator(const AudioSettings& audio_settings) : cpu_(bus_), apu_(audio
     wire_apu();
 }
 
+Emulator::~Emulator() {
+    flush_battery_ram();
+}
+
 void Emulator::wire_apu() {
     bus_.connect_ppu(&ppu_);
     bus_.connect_apu(&apu_);
