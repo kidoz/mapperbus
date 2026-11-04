@@ -30,6 +30,7 @@
 #include <vector>
 
 #include "core/mappers/mapper_registry.hpp"
+#include "frontends/nodalkit/input_binding_table.hpp"
 #include "platform/video/fsr1.hpp"
 #include "platform/video/null_video.hpp"
 #include "platform/video/xbrz.hpp"
@@ -472,61 +473,6 @@ std::shared_ptr<nk::PreferencesRow> pref_value_row(std::string title, std::strin
     return pref_row(std::move(title), text);
 }
 
-constexpr float kBindingActionColumnWidth = 72.0F;
-constexpr float kBindingValueColumnWidth = 132.0F;
-constexpr float kBindingButtonColumnWidth = 64.0F;
-constexpr float kBindingRowTrailingInset = 8.0F;
-
-std::shared_ptr<Box> input_binding_row(std::string label,
-                                       std::string keyboard_value,
-                                       std::string gamepad_value,
-                                       std::function<void()> keyboard_action,
-                                       std::function<void()> gamepad_action,
-                                       bool gamepad_available) {
-    auto row = Box::horizontal(10.0F);
-    row->set_horizontal_size_policy(nk::SizePolicy::Expanding);
-
-    row->append(
-        FixedWidthSlot::create(kBindingActionColumnWidth, FieldLabel::create(std::move(label))));
-
-    auto keyboard_field = ValueText::create(std::move(keyboard_value));
-    row->append(FixedWidthSlot::create(kBindingValueColumnWidth, keyboard_field));
-
-    auto gamepad_field = ValueText::create(std::move(gamepad_value));
-    gamepad_field->set_dimmed(!gamepad_available);
-    row->append(FixedWidthSlot::create(kBindingValueColumnWidth, gamepad_field));
-
-    row->append(Spacer::create());
-
-    auto key_button = nk::Button::create("Key");
-    (void)key_button->on_clicked().connect(std::move(keyboard_action));
-    row->append(FixedWidthSlot::create(kBindingButtonColumnWidth, key_button));
-
-    auto pad_button = nk::Button::create("Pad");
-    pad_button->set_sensitive(gamepad_available);
-    (void)pad_button->on_clicked().connect(std::move(gamepad_action));
-    row->append(FixedWidthSlot::create(kBindingButtonColumnWidth, pad_button));
-
-    row->append(FixedWidthSlot::create(kBindingRowTrailingInset));
-    return row;
-}
-
-std::shared_ptr<Box> input_bindings_header() {
-    auto row = Box::horizontal(10.0F);
-    row->set_horizontal_size_policy(nk::SizePolicy::Expanding);
-    row->append(FixedWidthSlot::create(kBindingActionColumnWidth, FieldLabel::create("Action")));
-
-    row->append(FixedWidthSlot::create(kBindingValueColumnWidth, FieldLabel::create("Keyboard")));
-
-    row->append(FixedWidthSlot::create(kBindingValueColumnWidth, FieldLabel::create("Gamepad")));
-
-    row->append(Spacer::create());
-    row->append(FixedWidthSlot::create(kBindingButtonColumnWidth * 2.0F + 10.0F,
-                                       FieldLabel::create("Rebind")));
-    row->append(FixedWidthSlot::create(kBindingRowTrailingInset));
-    return row;
-}
-
 std::string basename_for_display(std::string_view path) {
     if (path.empty()) {
         return "No ROM loaded";
@@ -799,6 +745,10 @@ std::string button_name(core::Button button) {
 }
 
 std::string key_label(nk::KeyCode key) {
+    if (key >= nk::KeyCode::A && key <= nk::KeyCode::Z) {
+        return std::string(
+            1, static_cast<char>('A' + static_cast<int>(key) - static_cast<int>(nk::KeyCode::A)));
+    }
     for (const auto& option : kKeyBindingOptions) {
         if (option.key == key) {
             return option.label;
@@ -2107,15 +2057,38 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
     auto page = Box::vertical(16.0F);
     page->set_horizontal_size_policy(nk::SizePolicy::Expanding);
     if (settings_page_ == SettingsPage::Input) {
-        page->append(SecondaryText::create("Choose the keys and the gamepad buttons."));
+        const bool gamepad_support = input_backend_->gamepad_support_available();
+        const bool gamepad_plugged_in = input_backend_->gamepad_device_count() > 0;
+        const bool gamepad_enabled = input_backend_->gamepad_config().enabled;
+        const bool gamepad_available = gamepad_support && gamepad_enabled && gamepad_plugged_in;
+        const std::string gamepad_state = !gamepad_support      ? "Unavailable"
+                                          : !gamepad_enabled    ? "Disabled"
+                                          : !gamepad_plugged_in ? "Not connected"
+                                                                : "";
+        const std::string gamepad_help = input_backend_->gamepad_status_text();
 
-        if (!input_backend_->gamepad_support_available()) {
-            page->append(SecondaryText::create("Gamepad support is unavailable in this build."));
-        } else {
+        auto bindings = Box::vertical(6.0F);
+        bindings->set_horizontal_size_policy(nk::SizePolicy::Expanding);
+        bindings->append(SectionTitle::create("Bindings"));
+        input_test_label_ = SecondaryText::create(input_test_status_text());
+        bindings->append(input_test_label_);
+        auto table = InputBindingTable::create(gamepad_state);
+        for (const auto button : kBindingOrder) {
+            table->add_binding(
+                button_name(button),
+                key_label(input_backend_->binding(button)),
+                gamepad_control_label(input_backend_->gamepad_binding(button)),
+                [this, button] { open_rebind_dialog(RebindDevice::Keyboard, button); },
+                [this, button] { open_rebind_dialog(RebindDevice::Gamepad, button); },
+                gamepad_available,
+                gamepad_help);
+        }
+        bindings->append(table);
+        page->append(bindings);
+
+        if (gamepad_support) {
             auto controller_group = nk::PreferencesGroup::create("Controller");
             controller_group->set_horizontal_size_policy(nk::SizePolicy::Expanding);
-            const bool gamepad_plugged_in = input_backend_->gamepad_device_count() > 0;
-            const bool gamepad_enabled = input_backend_->gamepad_config().enabled;
             auto enabled_switch = nk::Switch::create();
             enabled_switch->set_active(gamepad_enabled);
             (void)enabled_switch->on_toggled().connect([this](bool active) {
@@ -2125,73 +2098,46 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
                 refresh_ui();
                 refresh_settings_dialog_sections();
             });
-            controller_group->add(pref_row("Gamepad input", enabled_switch));
+            controller_group->add(
+                pref_row("Gamepad input", enabled_switch, gamepad_available ? "" : gamepad_help));
 
-            auto index_combo = nk::ComboBox::create();
-            auto device_labels = input_backend_->gamepad_device_labels();
-            index_combo->set_items(device_labels);
-            index_combo->set_selected_index(
-                std::clamp(input_backend_->gamepad_config().gamepad_index,
-                           0,
-                           std::max(0, static_cast<int>(device_labels.size()) - 1)));
-            // Nothing to choose until a device is actually connected.
-            index_combo->set_sensitive(gamepad_enabled && gamepad_plugged_in);
-            (void)index_combo->on_selection_changed().connect([this](int index) {
-                input_backend_->set_gamepad_index(index);
-                save_configuration_state();
-                set_message("Preferred gamepad updated.");
-                refresh_ui();
-                refresh_settings_dialog_sections();
-            });
-            controller_group->add(pref_row("Preferred device", index_combo));
+            if (gamepad_available) {
+                auto index_combo = nk::ComboBox::create();
+                auto device_labels = input_backend_->gamepad_device_labels();
+                index_combo->set_items(device_labels);
+                index_combo->set_selected_index(
+                    std::clamp(input_backend_->gamepad_config().gamepad_index,
+                               0,
+                               std::max(0, static_cast<int>(device_labels.size()) - 1)));
+                // Nothing to choose until a device is actually connected.
+                index_combo->set_sensitive(gamepad_enabled && gamepad_plugged_in);
+                (void)index_combo->on_selection_changed().connect([this](int index) {
+                    input_backend_->set_gamepad_index(index);
+                    save_configuration_state();
+                    set_message("Preferred gamepad updated.");
+                    refresh_ui();
+                    refresh_settings_dialog_sections();
+                });
+                controller_group->add(pref_row("Preferred device", index_combo));
 
-            auto deadzone_control = nk::SegmentedControl::create();
-            deadzone_control->set_segments(owned_labels(kGamepadDeadzoneLabels));
-            deadzone_control->set_selected_index(
-                gamepad_deadzone_index(input_backend_->gamepad_config().axis_deadzone));
-            deadzone_control->set_sensitive(gamepad_enabled && gamepad_plugged_in);
-            (void)deadzone_control->on_selection_changed().connect([this](int index) {
-                input_backend_->set_gamepad_deadzone(gamepad_deadzone_for_index(index));
-                save_configuration_state();
-                set_message(
-                    "Gamepad deadzone set to " +
-                    std::string(
-                        kGamepadDeadzoneLabels[static_cast<std::size_t>(std::clamp(index, 0, 3))]) +
-                    ".");
-                refresh_ui();
-            });
-            controller_group->add(pref_row("Deadzone", deadzone_control));
-
+                auto deadzone_control = nk::SegmentedControl::create();
+                deadzone_control->set_segments(owned_labels(kGamepadDeadzoneLabels));
+                deadzone_control->set_selected_index(
+                    gamepad_deadzone_index(input_backend_->gamepad_config().axis_deadzone));
+                deadzone_control->set_sensitive(gamepad_enabled && gamepad_plugged_in);
+                (void)deadzone_control->on_selection_changed().connect([this](int index) {
+                    input_backend_->set_gamepad_deadzone(gamepad_deadzone_for_index(index));
+                    save_configuration_state();
+                    set_message("Gamepad deadzone set to " +
+                                std::string(kGamepadDeadzoneLabels[static_cast<std::size_t>(
+                                    std::clamp(index, 0, 3))]) +
+                                ".");
+                    refresh_ui();
+                });
+                controller_group->add(pref_row("Deadzone", deadzone_control));
+            }
             page->append(controller_group);
-            page->append(SecondaryText::create(input_backend_->gamepad_status_text()));
         }
-
-        page->append(SectionTitle::create("Bindings"));
-        input_test_label_ = SecondaryText::create(input_test_status_text());
-        page->append(input_test_label_);
-        const bool gamepad_available = input_backend_->gamepad_support_available() &&
-                                       input_backend_->gamepad_config().enabled &&
-                                       input_backend_->gamepad_device_count() > 0;
-        auto bindings_table = Box::vertical(0.0F);
-        bindings_table->set_horizontal_size_policy(nk::SizePolicy::Expanding);
-        bindings_table->set_margin({0.0F, 0.0F, 18.0F, 0.0F});
-        auto bindings_header = StripedRow::wrap(input_bindings_header(), false);
-        bindings_header->set_margin({0.0F, 0.0F, 6.0F, 0.0F});
-        bindings_table->append(std::move(bindings_header));
-        int binding_row_index = 0;
-        for (const auto button : kBindingOrder) {
-            auto binding_row = input_binding_row(
-                button_name(button),
-                key_label(input_backend_->binding(button)),
-                gamepad_control_label(input_backend_->gamepad_binding(button)),
-                [this, button] { open_rebind_dialog(RebindDevice::Keyboard, button); },
-                [this, button] { open_rebind_dialog(RebindDevice::Gamepad, button); },
-                gamepad_available);
-            bindings_table->append(
-                StripedRow::wrap(std::move(binding_row), (binding_row_index % 2) == 1));
-            ++binding_row_index;
-        }
-        page->append(bindings_table);
     } else if (settings_page_ == SettingsPage::Video) {
         input_test_label_.reset();
         page->append(SecondaryText::create("Choose how the picture and the window look."));
@@ -2388,7 +2334,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_footer_conten
     auto footer = Box::horizontal(12.0F);
     footer->set_horizontal_size_policy(nk::SizePolicy::Expanding);
     if (settings_page_ == SettingsPage::Input) {
-        auto restore_keyboard = nk::Button::create("Restore Keyboard");
+        auto restore_keyboard = nk::Button::create("Restore Keyboard Defaults");
         (void)restore_keyboard->on_clicked().connect([this] {
             input_backend_->reset_default_bindings();
             save_configuration_state();
@@ -2396,9 +2342,9 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_footer_conten
             refresh_ui();
             refresh_settings_dialog_sections();
         });
-        footer->append(restore_keyboard);
+        footer->append(FixedWidthSlot::create(208.0F, restore_keyboard));
 
-        auto restore_gamepad = nk::Button::create("Restore Gamepad");
+        auto restore_gamepad = nk::Button::create("Restore Gamepad Defaults");
         restore_gamepad->set_sensitive(input_backend_->gamepad_support_available());
         (void)restore_gamepad->on_clicked().connect([this] {
             input_backend_->reset_default_gamepad_bindings();
@@ -2407,7 +2353,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_footer_conten
             refresh_ui();
             refresh_settings_dialog_sections();
         });
-        footer->append(restore_gamepad);
+        footer->append(FixedWidthSlot::create(208.0F, restore_gamepad));
     }
     footer->append(Spacer::create());
     auto close_button = nk::Button::create("Close");
@@ -2611,7 +2557,7 @@ std::string MapperBusGuiController::input_test_status_text() const {
     }
 
     if (pressed.empty()) {
-        return "Hold a button to test it.";
+        return "Click a binding to change it. Hold a key to test.";
     }
 
     std::string text = "Holding: ";

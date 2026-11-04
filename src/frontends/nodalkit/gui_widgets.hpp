@@ -8,14 +8,32 @@
 #include <nk/platform/events.h>
 #include <nk/platform/key_codes.h>
 #include <nk/render/snapshot_context.h>
+#include <nk/style/theme.h>
 #include <nk/text/font.h>
 #include <nk/ui_core/widget.h>
+#include <nk/widgets/scroll_area.h>
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace mapperbus::frontend {
+
+inline std::shared_ptr<nk::ScrollArea> rectangular_scroll_area() {
+    auto theme = nk::Theme::active();
+    const std::vector<std::string> classes{"scroll-area", "rectangular"};
+    const auto* radius =
+        theme->resolve("ScrollArea", classes, nk::StateFlags::None, "corner-radius");
+    // NodalKit 0.3.0 needs an explicit rule for square viewport corners.
+    if (!radius || !std::holds_alternative<float>(*radius) || std::get<float>(*radius) != 0.0F) {
+        theme->add_rule(
+            {.selector = {.classes = classes}, .properties = {{"corner-radius", 0.0F}}});
+    }
+    auto scroll = nk::ScrollArea::create();
+    scroll->add_style_class("rectangular");
+    return scroll;
+}
 
 class Box : public nk::Widget {
   public:
@@ -615,70 +633,6 @@ class BoundedHeightSlot : public nk::Widget {
 
     float max_height_ = 0.0F;
     std::shared_ptr<nk::Widget> child_;
-};
-
-class StripedRow : public nk::Widget {
-  public:
-    static std::shared_ptr<StripedRow> wrap(std::shared_ptr<nk::Widget> child,
-                                            bool striped,
-                                            float vertical_padding = 4.0F) {
-        auto row = std::shared_ptr<StripedRow>(new StripedRow(striped, vertical_padding));
-        row->set_horizontal_size_policy(nk::SizePolicy::Expanding);
-        row->set_content(std::move(child));
-        return row;
-    }
-
-    void set_content(std::shared_ptr<nk::Widget> content) {
-        if (content_) {
-            remove_child(*content_);
-        }
-        content_ = std::move(content);
-        if (content_) {
-            append_child(content_);
-        }
-        queue_layout();
-    }
-
-    [[nodiscard]] nk::SizeRequest measure(const nk::Constraints& constraints) const override {
-        if (!content_) {
-            return {0.0F, padding_ * 2.0F, 0.0F, padding_ * 2.0F};
-        }
-        const auto req = content_->measure(constraints);
-        return {
-            req.minimum_width,
-            req.minimum_height + (padding_ * 2.0F),
-            req.natural_width,
-            req.natural_height + (padding_ * 2.0F),
-        };
-    }
-
-    void allocate(const nk::Rect& allocation) override {
-        Widget::allocate(allocation);
-        if (content_) {
-            content_->allocate({
-                allocation.x,
-                allocation.y + padding_,
-                allocation.width,
-                std::max(0.0F, allocation.height - (padding_ * 2.0F)),
-            });
-        }
-    }
-
-  protected:
-    void snapshot(nk::SnapshotContext& ctx) const override {
-        if (striped_) {
-            ctx.add_color_rect(allocation(),
-                               theme_color("surface-hover", nk::Color{0.96F, 0.97F, 0.98F, 1.0F}));
-        }
-        Widget::snapshot(ctx);
-    }
-
-  private:
-    StripedRow(bool striped, float padding) : striped_(striped), padding_(padding) {}
-
-    bool striped_ = false;
-    float padding_ = 0.0F;
-    std::shared_ptr<nk::Widget> content_;
 };
 
 class SurfacePanel : public nk::Widget {

@@ -111,6 +111,15 @@ test_configuration = executable('test-configuration',
 )
 test('configuration', test_configuration)
 
+if get_option('enable_nodalkit_gui')
+    test_input_binding_table = executable('test-input-binding-table',
+        'unit/test_input_binding_table.cpp',
+        include_directories : mapperbus_inc,
+        dependencies : [nodalkit_dep, catch2_dep],
+    )
+    test('input-binding-table', test_input_binding_table)
+endif
+
 test_cpu_accuracy = executable('test-cpu-accuracy',
     'unit/test_cpu_accuracy.cpp',
     dependencies : [mapperbus_app_dep, catch2_dep],
