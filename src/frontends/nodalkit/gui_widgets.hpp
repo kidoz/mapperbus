@@ -27,8 +27,8 @@ inline std::shared_ptr<nk::ScrollArea> rectangular_scroll_area() {
         theme->resolve("ScrollArea", classes, nk::StateFlags::None, "corner-radius");
     // NodalKit 0.3.0 needs an explicit rule for square viewport corners.
     if (!radius || !std::holds_alternative<float>(*radius) || std::get<float>(*radius) != 0.0F) {
-        theme->add_rule(
-            {.selector = {.classes = classes}, .properties = {{"corner-radius", 0.0F}}});
+        theme->add_rule({.selector = {.type_name = {}, .classes = classes},
+                         .properties = {{"corner-radius", 0.0F}}});
     }
     auto scroll = nk::ScrollArea::create();
     scroll->add_style_class("rectangular");

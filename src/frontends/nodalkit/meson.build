@@ -1,4 +1,4 @@
-nodalkit_dep = dependency('nodalkit', version : '>=0.3.0', fallback : ['nodalkit', 'nk_dep'])
+nodalkit_dep = dependency('nodalkit', version : '>=0.3.1', fallback : ['nodalkit', 'nk_dep'])
 sdl3_audio_dep = dependency('sdl3', required : false, fallback : ['sdl3', 'sdl3_dep'])
 
 mapperbus_gui_sources = files(

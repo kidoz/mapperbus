@@ -1453,6 +1453,7 @@ void MapperBusGuiController::update_native_toolbar() {
                     app_.event_loop().post([this, action] { handle_menu_action(action); },
                                            "mapperbus.native-toolbar-action");
                 },
+            .on_search_submit = {},
         });
     };
     add("open", "Open ROM…", "folder", "file.open", !modal);
