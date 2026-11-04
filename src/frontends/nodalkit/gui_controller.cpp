@@ -949,12 +949,12 @@ gamepad_capture_controls() {
 } // namespace
 
 MapperBusGuiController::MapperBusGuiController(nk::Application& app, nk::Window& window)
-    : app_(app), window_(window), configuration_(app::load_mapperbus_configuration()) {
+    : app_(app), window_(window), configuration_(app::load_mapperbus_configuration()),
+      settings_page_(static_cast<SettingsPage>(configuration_.frontend.settings_page_index)),
+      preview_scale_option_(preview_scale_for_index(configuration_.frontend.preview_scale_index)) {
     auto theme_selection = app_.theme_selection();
     theme_selection.density = density_for_index(configuration_.frontend.ui_density_index);
     app_.set_theme_selection(theme_selection);
-
-    preview_scale_option_ = preview_scale_for_index(configuration_.frontend.preview_scale_index);
 
     auto audio = std::make_unique<GuiAudioBackend>();
     audio_backend_ = audio.get();
@@ -2096,6 +2096,8 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_dialog_shell(
             return;
         }
         settings_page_ = next_page;
+        configuration_.frontend.settings_page_index = index;
+        save_configuration_state();
         refresh_settings_dialog_sections();
     });
     tabs_row->append(settings_tabs_);

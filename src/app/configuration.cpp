@@ -265,6 +265,11 @@ void apply_setting(MapperBusConfiguration& configuration,
         configuration.frontend.audio_muted = parse_bool_setting(value, false, full_key);
         return;
     }
+    if (full_key == "frontend.settings_page") {
+        const int page = parse_int(value, 0, full_key);
+        configuration.frontend.settings_page_index = page >= 0 && page <= 2 ? page : 0;
+        return;
+    }
     if (full_key == "frontend.audio_volume") {
         configuration.frontend.audio_volume_percent =
             std::clamp(parse_int(value, 100, full_key), 0, 100);
@@ -623,6 +628,7 @@ core::Result<void> save_mapperbus_configuration_to_file(const MapperBusConfigura
     file << "[frontend]\n";
     file << "preview_scale=" << configuration.frontend.preview_scale_index << '\n';
     file << "ui_density=" << configuration.frontend.ui_density_index << '\n';
+    file << "settings_page=" << configuration.frontend.settings_page_index << '\n';
     file << "audio_muted=" << (configuration.frontend.audio_muted ? "true" : "false") << '\n';
     file << "audio_volume=" << configuration.frontend.audio_volume_percent << '\n';
     file << "region=" << region_preference_token(configuration.frontend.region) << "\n\n";
