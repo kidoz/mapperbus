@@ -1107,7 +1107,13 @@ void MapperBusGuiController::build_ui() {
         header_menu_->ensure_accessible().set_name("Application menu");
     }
 
-    root_->append(headerbar_);
+    if (app_.system_preferences().platform_family == nk::PlatformFamily::MacOS) {
+        // Headerbar is client-side chrome and collapses under AppKit. Keep
+        // its invisible controls out of the macOS focus/accessibility tree.
+        headerbar_->set_visible(false);
+    } else {
+        root_->append(headerbar_);
+    }
 
     if (app_.supports_native_app_menu()) {
         app_.set_native_app_menu(build_native_menus(app_.app_name()));
@@ -1406,6 +1412,62 @@ void MapperBusGuiController::refresh_ui() {
         headerbar_->set_title(display_title);
         headerbar_->set_subtitle(loaded ? "MapperBus" : "");
     }
+    update_native_toolbar();
+}
+
+void MapperBusGuiController::update_native_toolbar() {
+    if (app_.system_preferences().platform_family != nk::PlatformFamily::MacOS) {
+        return;
+    }
+    const auto snapshot = actions_->snapshot();
+    const bool loaded = snapshot.has_cartridge;
+    const bool paused = snapshot.paused;
+    const bool fullscreen = window_.is_fullscreen();
+    const bool modal = modal_dialog_presented();
+    const int state = (loaded ? 1 : 0) | (paused ? 2 : 0) | (fullscreen ? 4 : 0) | (modal ? 8 : 0);
+    if (native_toolbar_state_ == state) {
+        return;
+    }
+    native_toolbar_state_ = state;
+    nk::NativeToolbarConfig toolbar;
+    toolbar.identifier = "dev.mapperbus.main-toolbar";
+    toolbar.allows_user_customization = false;
+    const auto add = [&](std::string id,
+                         std::string label,
+                         std::string symbol,
+                         std::string action,
+                         bool enabled) {
+        // NodalKit 0.3.0 has no disabled state for native toolbar items.
+        if (!enabled) {
+            return;
+        }
+        toolbar.items.push_back({
+            .identifier = std::move(id),
+            .label = label,
+            .tooltip = std::move(label),
+            .symbol_name = std::move(symbol),
+            .on_activate =
+                [this, action = std::move(action)] {
+                    // Mutating AppKit's toolbar or presenting a sheet must happen
+                    // after the native action finishes dispatching.
+                    app_.event_loop().post([this, action] { handle_menu_action(action); },
+                                           "mapperbus.native-toolbar-action");
+                },
+        });
+    };
+    add("open", "Open ROM…", "folder", "file.open", !modal);
+    add("pause",
+        paused ? "Resume" : "Pause",
+        paused ? "play.fill" : "pause.fill",
+        "emu.pause",
+        loaded && !modal);
+    add("fullscreen",
+        fullscreen ? "Leave fullscreen" : "Fullscreen",
+        fullscreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right",
+        "win.toggle-fullscreen",
+        !modal);
+    add("settings", "Settings…", "gearshape", "settings.open", !modal);
+    window_.set_native_toolbar(std::move(toolbar));
 }
 
 void MapperBusGuiController::set_message(std::string message) {
@@ -1476,7 +1538,8 @@ void MapperBusGuiController::toggle_fullscreen() {
 void MapperBusGuiController::update_fullscreen_chrome() {
     const bool fullscreen = window_.is_fullscreen();
     if (headerbar_) {
-        headerbar_->set_visible(!fullscreen);
+        headerbar_->set_visible(!fullscreen && app_.system_preferences().platform_family !=
+                                                   nk::PlatformFamily::MacOS);
     }
     if (status_bar_) {
         status_bar_->set_visible(!fullscreen);
@@ -1486,6 +1549,7 @@ void MapperBusGuiController::update_fullscreen_chrome() {
         set_message(fullscreen ? "Fullscreen — press F11 to leave." : "Left fullscreen.");
     }
     focus_game_surface();
+    update_native_toolbar();
 }
 
 void MapperBusGuiController::browse_for_rom() {
@@ -2470,6 +2534,7 @@ void MapperBusGuiController::open_settings_dialog() {
             "mapperbus.settings-dialog-close");
     });
     settings_dialog_->present(window_);
+    update_native_toolbar();
 }
 
 bool MapperBusGuiController::modal_dialog_presented() const {

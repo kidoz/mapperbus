@@ -79,6 +79,7 @@ class MapperBusGuiController {
     void focus_game_surface();
     void toggle_fullscreen();
     void update_fullscreen_chrome();
+    void update_native_toolbar();
     void browse_for_rom();
     void attempt_open(std::string rom_path);
     void toggle_pause();
@@ -165,6 +166,7 @@ class MapperBusGuiController {
     std::chrono::nanoseconds frame_accumulator_{0};
     nk::CallbackHandle tick_handle_{};
     bool announced_fullscreen_ = false;
+    std::optional<int> native_toolbar_state_;
 };
 
 } // namespace mapperbus::frontend
