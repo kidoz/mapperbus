@@ -8,7 +8,5 @@ These pages explain the design and the relationships between components.
   frames, and why output processing is separate from machine behavior.
 
 For exact interfaces and file locations, see [Reference](../reference/README.md).
-Earlier proposals and reviews are listed in the
-[historical records index](../history/README.md).
 
 [Documentation index](../README.md)

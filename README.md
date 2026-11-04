@@ -53,8 +53,7 @@ for dependencies, platform details, and reconfiguring an existing build.
   and shared frontend configuration.
 
 See [compatibility and scope](docs/reference/compatibility.md) for the boundaries
-of this feature list and [historical design records](docs/history/README.md)
-for earlier GUI reviews and proposals.
+of this feature list.
 
 ## License and author
 
