@@ -1,0 +1,78 @@
+# Architecture
+
+MapperBus separates the emulated machine from the operating system and from
+the interface used to control it. This lets the same core run in a desktop
+window, inside the GUI, or under tests without a display or audio device.
+
+## The machine and the host
+
+`core::Emulator` owns the CPU, PPU, APU, memory bus, cartridge, emulated controller,
+and FDS subsystem. It advances the machine and exposes a framebuffer, audio
+samples, and state serialization. None of these responsibilities requires SDL3
+or NodalKit.
+
+The platform layer describes host capabilities through video, audio, and input
+interfaces. Concrete SDL3 backends implement those interfaces; null backends
+make sessions usable in headless tests. CPU upscalers also live in this layer
+because they transform output without changing emulation.
+
+```mermaid
+flowchart TD
+    SDL[SDL3 entry point] --> App[App and EmulationSession]
+    GUI[NodalKit GUI controller] --> App
+    CLI[Headless CLI] --> Core[Emulator core]
+    App --> Core
+    App --> Interfaces[Platform interfaces]
+    SDL --> Backends[Concrete host backends]
+    GUI --> Backends
+    Backends -. implements .-> Interfaces
+```
+
+The core does not depend on the frontend layers. The CLI can therefore link
+directly to it, while the interactive applications share session behavior.
+
+## A session bridges machine and presentation
+
+`app::EmulationSession` owns an emulator and receives video, audio, and input
+backends through its constructor. It handles opening and closing cartridges,
+pause and reset, frame advancement, input synchronization, audio queueing,
+presentation, and save slots.
+
+This is the common behavior that both interactive frontends need. SDL3's
+`App` supplies a run loop; the NodalKit GUI integrates the session into the
+toolkit's event loop. Keeping these loops outside the core prevents toolkit
+events and host pacing from becoming machine dependencies.
+
+At startup, each frontend creates its concrete backends and passes them to the
+application layer. This composition makes backend choices visible at the
+boundary and avoids having a session silently choose a windowing toolkit.
+
+## A cartridge supplies variable hardware
+
+NES cartridges use different bank-switching and sometimes audio hardware.
+The cartridge loader parses a header, and the mapper registry selects a factory
+by mapper number. The rest of the machine talks to a mapper interface instead
+of branching on individual game titles.
+
+Expansion audio follows the same boundary. Mappers can clock their own sound
+hardware and expose an output that the APU mixes. Register routing and IRQ
+polling remain coordinated through the bus and emulator timing.
+
+## Persistence belongs at different boundaries
+
+Machine snapshots serialize emulation state. Battery files persist cartridge
+RAM. User configuration describes host preferences such as input mappings and
+audio settings. Keeping these separate means a UI preference does not become
+part of cartridge hardware state.
+
+The core implements snapshot and battery operations. The session assigns save
+slot filenames. The application configuration layer reads and writes
+`mapperbus.conf`; frontends decide which preferences they support.
+
+## Where to explore next
+
+- [Source tree](../reference/source-tree.md) maps these responsibilities to files.
+- [Audio and video](audio-and-video.md) follows the output path and pacing.
+- [Build options](../reference/build-options.md) shows how to select layers for a build.
+- [Emulator](../../src/core/emulator.hpp) and
+  [EmulationSession](../../src/app/emulation_session.hpp) define the main APIs.

@@ -1,0 +1,13 @@
+# Reference
+
+Reference pages describe the implemented interfaces, defaults, and boundaries.
+
+- [Build options](build-options.md) — Meson switches, dependencies, targets, and paths.
+- [Commands and controls](commands-and-controls.md) — frontend arguments and keyboard controls.
+- [Configuration](configuration.md) — `mapperbus.conf` locations, keys, and defaults.
+- [Compatibility](compatibility.md) — supported mapper numbers, regions, and frontend scope.
+- [Source tree](source-tree.md) — directories, modules, and test locations.
+
+For instructions to perform a task, see the [how-to guides](../how-to/README.md).
+
+[Documentation index](../README.md)

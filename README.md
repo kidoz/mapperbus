@@ -3,304 +3,59 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![C++23](https://img.shields.io/badge/C%2B%2B-23-00599C.svg)](https://en.cppreference.com/w/cpp/23)
 [![Build System](https://img.shields.io/badge/build-Meson-blueviolet.svg)](https://mesonbuild.com/)
-[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey.svg)]()
 
-A clean, extensible NES/Famicom emulator with FDS support, written in modern C++23.
+A NES/Famicom emulator written in C++23, with a headless emulation core,
+SDL3 and NodalKit frontends, and Famicom Disk System subsystems.
 
 ![Battle City running in MapperBus](docs/screenshots/battle-city.png)
 
-## Features
+## Documentation
 
-### Emulation Core
+Start at the [documentation index](docs/README.md). Documentation follows
+[Diátaxis](https://diataxis.fr/), with separate paths for learning, completing
+tasks, looking up facts, and understanding the design.
 
-- **CPU** -- MOS 6502 with unofficial opcodes, NMI/IRQ handling
-- **PPU** -- Scanline-accurate rendering, sprites, sprite 0 hit, sprite overflow
-- **APU** -- 5 channels, DMC stalling, LP/HP filters, BLEP resampling, ring buffer, DRC, HP-TPDF dithering, pseudo-stereo
-- **FDS** -- Famicom Disk System with wavetable audio, envelope and modulation
+| I want to… | Read |
+|---|---|
+| Build the project for the first time | [Build and test MapperBus](docs/tutorials/build-and-test.md) |
+| Play a game | [Run your first game](docs/tutorials/first-game.md) |
+| Build the GUI, a headless binary, or a Linux installation | [Build and install](docs/how-to/build-and-install.md) |
+| Change input, scaling, or audio | [Configure the SDL3 frontend](docs/how-to/configure-sdl3.md) |
+| Look up options and defaults | [Reference](docs/reference/README.md) |
+| Understand the codebase | [Architecture](docs/explanation/architecture.md) |
 
-### Supported Mappers
+## Quick start
 
-| #  | Name         | Expansion Audio |
-|----|--------------|-----------------|
-| 0  | NROM         |                 |
-| 1  | MMC1         |                 |
-| 2  | UxROM        |                 |
-| 3  | CNROM        |                 |
-| 4  | MMC3         |                 |
-| 5  | MMC5         | Yes             |
-| 7  | AxROM        |                 |
-| 9  | MMC2         |                 |
-| 11 | Color Dreams |                 |
-| 19 | Namco 163    | Yes             |
-| 24 | VRC6a        | Yes             |
-| 26 | VRC6b        | Yes             |
-| 69 | Sunsoft 5B   | Yes             |
-| 85 | VRC7         | Yes             |
+From the repository root, with a C++23 compiler and standard library, Meson,
+and Ninja installed:
 
-### Video Upscaling
-
-- **xBRZ** -- CPU-based edge-smoothing upscaler (2x--6x)
-- **xBRZ GPU** -- Metal (macOS) and Vulkan (Linux) compute shader accelerated xBRZ
-- **FSR 1** -- CPU-based AMD FidelityFX Super Resolution
-- **FSR 1 GPU** -- Metal and Vulkan compute shader EASU + RCAS pipeline with zero-copy presentation
-
-### Audio Pipeline
-
-- BlipBuffer band-limited resampling with Blackman-Nuttall windowed sinc (64-tap, 256 phases)
-- Hardware-accurate or enhanced Butterworth filter chains
-- NES and Famicom filter profiles
-- Resistance-modeled expansion audio mixing
-- Dynamic rate control for drift-free playback
-
-### Region Support
-
-Auto-detection via NES 2.0 header, CRC32 database, and filename heuristics. Manual override for NTSC, PAL, and Dendy.
-
-### Input
-
-- Keyboard: `Z` = B, `X` = A, right shift = Select, enter = Start, arrow keys = D-pad
-- SDL3 gamepad: D-pad, Start, Back/Select, A on the east face button, B on the south face button
-- Gamepad bindings can be changed from the SDL3 frontend command line
-- The GUI Settings panel can configure keyboard and gamepad bindings, gamepad slot, deadzone, preview scale, UI density, and audio output settings
-- Frontends share a universal `mapperbus.conf` file under the user configuration directory and restore supported settings on the next launch
-
-## Building
-
-### Requirements
-
-- C++23 compiler (Clang 17+ or GCC 13+)
-- [Meson](https://mesonbuild.com/) and Ninja (Meson 1.11+ for the optional NodalKit GUI)
-- [just](https://github.com/casey/just) command runner (optional)
-- SDL3 (fetched automatically via Meson wraps)
-- `glslangValidator` for Vulkan GPU upscaling (optional; shaders are compiled and embedded at build time)
-
-### Quick Start
-
-```bash
-just setup
-just build
-```
-
-Or manually:
-
-```bash
+```sh
 meson setup buildDir
 meson compile -C buildDir
+meson test -C buildDir --suite mapperbus --print-errorlogs
+./buildDir/src/app/mapperbus-sdl3 "/path/to/game.nes"
 ```
 
-### Linux
+The default build includes SDL3, the headless CLI, and tests. The NodalKit GUI
+is optional. See [build requirements and variants](docs/how-to/build-and-install.md)
+for dependencies, platform details, and reconfiguring an existing build.
 
-The SDL3 frontend supports Wayland and X11. The optional NodalKit GUI currently
-requires a Wayland session. The CLI runs without a display or audio device.
+## Features
 
-On Arch Linux, install the build and desktop dependencies:
+- MOS 6502 CPU with unofficial opcodes, per-pixel PPU rendering, and five-channel APU.
+- [Cartridge mappers](docs/reference/compatibility.md) including MMC1, MMC2, MMC3,
+  MMC5, VRC6, VRC7, Namco 163, and Sunsoft 5B, with expansion audio.
+- NTSC, PAL, and Dendy region detection and overrides.
+- CPU and GPU xBRZ and FSR 1 upscaling, using Metal or Vulkan where available.
+- BLEP resampling, selectable audio filters, dynamic rate control, dithering,
+  and pseudo-stereo output.
+- Keyboard and gamepad input, two-player SDL3 input, save states, battery saves,
+  and shared frontend configuration.
 
-```bash
-sudo pacman -S --needed base-devel git meson ninja pkgconf sdl3 \
-    wayland wayland-protocols libxkbcommon freetype2 fontconfig harfbuzz glib2 \
-    glslang vulkan-headers vulkan-icd-loader
-```
+See [compatibility and scope](docs/reference/compatibility.md) for the boundaries
+of this feature list and [historical design records](docs/history/README.md)
+for earlier GUI reviews and proposals.
 
-Vulkan rendering also needs the Vulkan driver for your GPU. To build all frontends
-with Vulkan upscaling enabled:
+## License and author
 
-```bash
-meson setup buildDir -Denable_nodalkit_gui=true -Dvulkan_shaders=enabled
-meson compile -C buildDir
-meson test -C buildDir --print-errorlogs
-./buildDir/src/frontends/nodalkit/mapperbus-gui
-```
-
-Add `--reconfigure` to the setup command when using an existing build directory.
-Install the executables, GUI toolkit runtime, desktop launcher, and icon with:
-
-```bash
-sudo meson install -C buildDir --tags runtime
-```
-
-Without `glslangValidator`, the default build still provides CPU upscaling;
-requesting an unavailable GPU upscaler uses nearest-neighbor scaling. Set
-`-Dvulkan_shaders=disabled` to explicitly omit Vulkan shaders. Shadercross, when
-installed as a system library, provides an alternative HLSL compilation path.
-
-For a build with only the CLI and tests:
-
-```bash
-meson setup buildDir-headless -Denable_sdl3=false -Denable_nodalkit_gui=false
-meson compile -C buildDir-headless
-meson test -C buildDir-headless --print-errorlogs
-```
-
-### Build Options
-
-| Option               | Default | Description              |
-|----------------------|---------|--------------------------|
-| `enable_sdl3`        | `true`  | Build SDL3 frontend      |
-| `enable_nodalkit_gui`| `false` | Build NodalKit GUI frontend |
-| `enable_cli`         | `true`  | Build CLI frontend       |
-| `enable_tests`       | `true`  | Build test suite         |
-| `vulkan_shaders`     | `auto`  | Embed Vulkan GPU upscaler shaders (`auto`, `enabled`, `disabled`) |
-
-## Usage
-
-```bash
-# Standard
-just run <rom.nes>
-
-# With GPU xBRZ upscaling (2x-6x, default 3x)
-just run-gpu <rom.nes> [scale]
-
-# With GPU FSR 1 upscaling (2x-6x, default 4x)
-just run-gpu-fsr <rom.nes> [scale]
-
-# CPU xBRZ upscaling
-just run-xbrz <rom.nes> [scale]
-
-# Headless CLI
-just run-cli <rom.nes>
-```
-
-SDL3 runtime scaler hotkeys:
-
-- `0` or `1`: native scale
-- `2`-`6`: switch to that scale factor immediately
-- `F9`: cycle scaler mode for the active factor (`CPU xBRZ`, `CPU FSR`, `GPU xBRZ`, `GPU FSR`)
-- `F5` / `F7`: save / load state (slot 0)
-- `Shift+F5` / `Shift+F7`: save / load state (slot 1)
-- `F11`: toggle fullscreen
-- `V`: toggle vsync
-
-### Full Options
-
-```
-mapperbus-sdl3 [options] <rom-file>
-
-  --scale N             Upscale factor (2-6)
-  --gpu                 GPU-accelerated xBRZ upscaling
-  --gpu-fsr             GPU-accelerated FSR 1 upscaling
-  --fsr                 CPU FSR 1 upscaling
-  --sample-rate N       Audio sample rate (default: 96000)
-  --resampling MODE     blip or cubic (default: blip)
-  --filter-mode MODE    accurate, enhanced, or unfiltered (default: accurate)
-  --filter-profile P    nes or famicom (default: nes)
-  --region R            ntsc, pal, or dendy (default: auto)
-  --stereo              Enable pseudo-stereo output
-  --dither              Enable HP-TPDF dithering
-  --expansion-mixing M  simple or resistance (default: simple)
-  --gamepad N           SDL gamepad index (default: 0)
-  --gamepad-deadzone N  Analog axis deadzone (default: 12000)
-  --gamepad-map MAP     Comma-separated NES=SDL map
-  --gamepad2 N          SDL gamepad index for player 2 (enables two-player)
-  --gamepad2-map MAP    Player 2 gamepad mapping (same format as --gamepad-map)
-```
-
-Example gamepad remap:
-
-```bash
-mapperbus-sdl3 --gamepad-map a=east,b=south,up=lefty-,down=lefty+,left=leftx-,right=leftx+ <rom-file>
-```
-
-Gamepad controls use SDL names such as `a`, `b`, `x`, `y`, `start`, `back`, `dpup`, `dpdown`, `dpleft`, `dpright`, `leftshoulder`, `rightshoulder`, and axis directions such as `leftx-`, `leftx+`, `lefty-`, and `lefty+`.
-
-### Two-Player Input
-
-Player 1 defaults to keyboard. When `--gamepad2` is provided, a second gamepad drives player 2:
-
-```bash
-mapperbus-sdl3 --gamepad2 1 <rom-file>
-```
-
-### Configuration
-
-MapperBus uses a frontend-neutral `mapperbus.conf` file:
-
-```ini
-[mapperbus]
-format=mapperbus.conf
-version=1
-
-[frontend]
-preview_scale=0
-ui_density=0
-audio_muted=false
-audio_volume=100
-region=auto
-
-[audio]
-sample_rate=96000
-buffer_size=2048
-resampling=blip
-filter_mode=accurate
-filter_profile=nes
-stereo=mono
-dithering=false
-expansion_mixing=simple
-
-[input.keyboard]
-up=82
-down=81
-left=80
-right=79
-a=27
-b=29
-start=40
-select=229
-
-[input.gamepad]
-enabled=true
-index=0
-deadzone=12000
-up=dpup
-down=dpdown
-left=dpleft
-right=dpright
-a=east
-b=south
-start=start
-select=back
-```
-
-Default locations:
-
-- macOS: `~/Library/Application Support/MapperBus/mapperbus.conf`
-- Linux: `$XDG_CONFIG_HOME/mapperbus/mapperbus.conf` or `~/.config/mapperbus/mapperbus.conf`
-- Windows: `%APPDATA%\MapperBus\mapperbus.conf`
-
-On Linux, empty or relative `XDG_CONFIG_HOME` values use the `~/.config` fallback.
-
-## Testing
-
-```bash
-just test
-```
-
-Unit and integration suites cover bus logic, mappers, APU, audio pipeline, input mapping, configuration, region detection, emulation sessions, render integration, and synthesized CPU accuracy tests (opcode dispatch, flag behavior, unofficial opcodes).
-
-The `sdl3-gpu` suite checks GPU readback, shader colors, and vsync device lifetime.
-It skips cases requiring an unavailable display or GPU backend. To require a
-compatible GPU device during validation:
-
-```bash
-MAPPERBUS_REQUIRE_GPU=1 meson test -C buildDir sdl3-gpu --print-errorlogs
-```
-
-## Project Structure
-
-```
-src/
-  core/         # Emulation core (zero platform dependencies)
-  platform/     # Platform abstraction interfaces
-  frontends/    # SDL3, NodalKit GUI, and CLI implementations
-  app/          # EmulationSession and composition root
-tests/
-  unit/         # Deterministic headless tests
-  integration/  # ROM-based render tests
-```
-
-## License
-
-This project is licensed under the MIT License -- see the [LICENSE](LICENSE) file for details.
-
-## Author
-
-Aleksandr Pavlov <ckidoz@gmail.com>
+[MIT](LICENSE). Aleksandr Pavlov <ckidoz@gmail.com>.
