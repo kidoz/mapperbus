@@ -1858,7 +1858,9 @@ void MapperBusGuiController::open_rebind_dialog(RebindDevice device, core::Butto
                 }
                 apply_keyboard_rebind(pending_rebind_->button, key);
             });
-        content->add_controller(std::move(keyboard_controller));
+        // Capture at the dialog boundary so keys arrive from either its content
+        // or the modal root during native focus restoration.
+        rebind_dialog_->add_controller(std::move(keyboard_controller));
     }
 
     rebind_dialog_->set_content(content);
