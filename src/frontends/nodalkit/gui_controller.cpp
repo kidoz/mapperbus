@@ -460,6 +460,13 @@ std::shared_ptr<nk::PreferencesRow> pref_row(std::string title,
                                              std::string subtitle = {}) {
     auto row = nk::PreferencesRow::create(std::move(title), std::move(subtitle));
     if (suffix != nullptr) {
+        // ComboBox uses its accessible name for the current selection.
+        // Preserve that value and expose the row label as its description.
+        if (dynamic_cast<nk::ComboBox*>(suffix.get()) != nullptr) {
+            suffix->ensure_accessible().set_description(std::string(row->title()));
+        } else {
+            suffix->ensure_accessible().set_name(std::string(row->title()));
+        }
         suffix->set_horizontal_size_policy(nk::SizePolicy::Preferred);
         row->set_suffix(std::move(suffix));
     }
@@ -2003,6 +2010,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_dialog_shell(
 
     auto tabs_row = Box::horizontal(12.0F);
     settings_tabs_ = nk::SegmentedControl::create();
+    settings_tabs_->ensure_accessible().set_name("Settings categories");
     settings_tabs_->set_segments({"Input", "Video", "Audio"});
     settings_tabs_->set_selected_index(page_index());
     (void)settings_tabs_->on_selection_changed().connect([this](int index) {
