@@ -1,8 +1,7 @@
 # Write and maintain documentation
 
-Choose the reader's need before adding a page. MapperBus follows
-[Diátaxis](https://diataxis.fr/start-here/), which separates learning, practical
-tasks, factual lookup, and understanding.
+Choose the reader's need before adding a page. MapperBus follows Diátaxis, which
+separates learning, practical tasks, factual lookup, and understanding.
 
 ## Choose the destination
 

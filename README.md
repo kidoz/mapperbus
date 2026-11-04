@@ -17,8 +17,8 @@ SDL3 and NodalKit frontends, and Famicom Disk System subsystems.
 ## Documentation
 
 Start at the [documentation index](docs/README.md). Documentation follows
-[Diátaxis](https://diataxis.fr/), with separate paths for learning, completing
-tasks, looking up facts, and understanding the design.
+Diátaxis, with separate paths for learning, completing tasks, looking up facts,
+and understanding the design.
 
 | I want to… | Read |
 |---|---|

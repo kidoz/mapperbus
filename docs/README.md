@@ -3,8 +3,7 @@
 MapperBus is a C++23 NES/Famicom emulator with a headless core, an SDL3 frontend,
 an optional NodalKit GUI, and a headless CLI.
 
-These documents follow [Diátaxis](https://diataxis.fr/start-here/): choose a path
-based on what you need now.
+These documents follow Diátaxis: choose a path based on what you need now.
 
 | Your need | Documentation | Start here |
 |---|---|---|
