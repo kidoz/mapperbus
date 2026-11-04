@@ -60,16 +60,16 @@ struct GamepadControlOption {
     const char* label = "";
 };
 
-constexpr std::array<core::Button, 8> kBindingOrder = {
-    core::Button::Up,
-    core::Button::Down,
-    core::Button::Left,
-    core::Button::Right,
-    core::Button::A,
-    core::Button::B,
-    core::Button::Start,
-    core::Button::Select,
-};
+constexpr auto kBindingOrder = std::array{platform::InputAction::Up,
+                                          platform::InputAction::Down,
+                                          platform::InputAction::Left,
+                                          platform::InputAction::Right,
+                                          platform::InputAction::A,
+                                          platform::InputAction::B,
+                                          platform::InputAction::TurboA,
+                                          platform::InputAction::TurboB,
+                                          platform::InputAction::Start,
+                                          platform::InputAction::Select};
 
 constexpr std::array<KeyBindingOption, 17> kKeyBindingOptions = {{
     {nk::KeyCode::Up, "Up Arrow"},
@@ -735,23 +735,27 @@ std::string file_dialog_error_text(nk::FileDialogError error) {
     }
 }
 
-std::string button_name(core::Button button) {
+std::string button_name(platform::InputAction button) {
     switch (button) {
-    case core::Button::Up:
+    case platform::InputAction::Up:
         return "Up";
-    case core::Button::Down:
+    case platform::InputAction::Down:
         return "Down";
-    case core::Button::Left:
+    case platform::InputAction::Left:
         return "Left";
-    case core::Button::Right:
+    case platform::InputAction::Right:
         return "Right";
-    case core::Button::A:
+    case platform::InputAction::TurboA:
+        return "Turbo A";
+    case platform::InputAction::TurboB:
+        return "Turbo B";
+    case platform::InputAction::A:
         return "A";
-    case core::Button::B:
+    case platform::InputAction::B:
         return "B";
-    case core::Button::Start:
+    case platform::InputAction::Start:
         return "Start";
-    case core::Button::Select:
+    case platform::InputAction::Select:
         return "Select";
     }
 
@@ -759,6 +763,8 @@ std::string button_name(core::Button button) {
 }
 
 std::string key_label(nk::KeyCode key) {
+    if (key == nk::KeyCode::Unknown)
+        return "Unbound";
     if (key >= nk::KeyCode::A && key <= nk::KeyCode::Z) {
         return std::string(
             1, static_cast<char>('A' + static_cast<int>(key) - static_cast<int>(nk::KeyCode::A)));
@@ -913,6 +919,8 @@ std::string key_label(nk::KeyCode key) {
 }
 
 std::string gamepad_control_label(const platform::GamepadControl& control) {
+    if (control.kind == platform::GamepadControlKind::None)
+        return "Unbound";
     for (const auto& option : kGamepadControlOptions) {
         if (option.control == control) {
             return option.label;
@@ -989,6 +997,7 @@ MapperBusGuiController::MapperBusGuiController(nk::Application& app, nk::Window&
                                                        std::move(input),
                                                        configuration_.audio);
     actions_ = std::make_unique<app::SessionActions>(*session_);
+    session_->set_turbo_period(configuration_.input.turbo_period_frames);
     if (replaced_reserved_binding) {
         save_configuration_state();
     }
@@ -1820,7 +1829,7 @@ void MapperBusGuiController::save_configuration_state() {
     update_settings_save_status("Saved automatically");
 }
 
-void MapperBusGuiController::open_rebind_dialog(RebindDevice device, core::Button button) {
+void MapperBusGuiController::open_rebind_dialog(RebindDevice device, platform::InputAction button) {
     pending_rebind_ = PendingInputRebind{
         .device = device,
         .button = button,
@@ -1837,6 +1846,7 @@ void MapperBusGuiController::open_rebind_dialog(RebindDevice device, core::Butto
     rebind_dialog_->set_presentation_style(nk::DialogPresentationStyle::Sheet);
     rebind_dialog_->set_minimum_panel_width(420.0F);
     rebind_dialog_->add_button("Cancel", nk::DialogResponse::Cancel);
+    rebind_dialog_->add_button("Clear", nk::DialogResponse::Custom);
 
     auto content = Box::vertical(10.0F);
     content->set_focusable(true);
@@ -1879,7 +1889,16 @@ void MapperBusGuiController::open_rebind_dialog(RebindDevice device, core::Butto
 
     rebind_dialog_->set_content(content);
     auto dialog = rebind_dialog_;
-    (void)rebind_dialog_->on_response().connect([this, dialog](nk::DialogResponse /*response*/) {
+    (void)rebind_dialog_->on_response().connect([this, dialog](nk::DialogResponse response) {
+        if (rebind_dialog_ == dialog && pending_rebind_ && response == nk::DialogResponse::Custom) {
+            const auto pending = *pending_rebind_;
+            if (pending.device == RebindDevice::Keyboard) {
+                apply_keyboard_rebind(pending.button, nk::KeyCode::Unknown);
+            } else {
+                apply_gamepad_rebind(pending.button, {.kind = platform::GamepadControlKind::None});
+            }
+            return;
+        }
         if (rebind_dialog_ == dialog && pending_rebind_) {
             pending_rebind_.reset();
             set_message("Input rebinding cancelled.");
@@ -1936,11 +1955,12 @@ void MapperBusGuiController::poll_pending_rebind() {
     }
 }
 
-void MapperBusGuiController::apply_keyboard_rebind(core::Button button, nk::KeyCode key) {
+void MapperBusGuiController::apply_keyboard_rebind(platform::InputAction button, nk::KeyCode key) {
     const auto previous = input_backend_->binding(button);
-    std::optional<core::Button> conflict_button;
+    std::optional<platform::InputAction> conflict_button;
     for (const auto other : kBindingOrder) {
-        if (other != button && input_backend_->binding(other) == key) {
+        if (key != nk::KeyCode::Unknown && other != button &&
+            input_backend_->binding(other) == key) {
             conflict_button = other;
             break;
         }
@@ -1987,12 +2007,13 @@ void MapperBusGuiController::apply_keyboard_rebind(core::Button button, nk::KeyC
     close_rebind_dialog();
 }
 
-void MapperBusGuiController::apply_gamepad_rebind(core::Button button,
+void MapperBusGuiController::apply_gamepad_rebind(platform::InputAction button,
                                                   platform::GamepadControl control) {
     const auto previous = input_backend_->gamepad_binding(button);
-    std::optional<core::Button> conflict_button;
+    std::optional<platform::InputAction> conflict_button;
     for (const auto other : kBindingOrder) {
-        if (other != button && input_backend_->gamepad_binding(other) == control) {
+        if (control.kind != platform::GamepadControlKind::None && other != button &&
+            input_backend_->gamepad_binding(other) == control) {
             conflict_button = other;
             break;
         }
@@ -2166,6 +2187,24 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
         }
         bindings->append(table);
         page->append(bindings);
+
+        auto turbo_group = SettingsGroup::create("Turbo");
+        auto turbo_speed = nk::SegmentedControl::create();
+        turbo_speed->set_segments({"Slow", "Normal", "Fast"});
+        const int period = configuration_.input.turbo_period_frames;
+        turbo_speed->set_selected_index(period == 6 ? 0 : period == 2 ? 2 : 1);
+        (void)turbo_speed->on_selection_changed().connect([this](int index) {
+            const int frames = index == 0 ? 6 : index == 2 ? 2 : 4;
+            configuration_.input.turbo_period_frames = frames;
+            session_->set_turbo_period(frames);
+            save_configuration_state();
+            set_message("Turbo speed updated.");
+        });
+        turbo_group->add(pref_row(
+            "Speed",
+            turbo_speed,
+            "Hold Turbo A or Turbo B for repeated presses. Use Slow if a game misses presses."));
+        page->append(turbo_group);
 
         if (gamepad_support) {
             auto controller_group = SettingsGroup::create("Controller");
@@ -2695,7 +2734,7 @@ std::string MapperBusGuiController::input_status_text() const {
 std::string MapperBusGuiController::input_test_status_text() const {
     std::vector<std::string> pressed;
     for (const auto button : kBindingOrder) {
-        if (input_backend_->is_button_pressed(0, button) ||
+        if (input_backend_->is_action_pressed(0, button) ||
             (settings_window_ && settings_window_->is_visible() && settings_window_->is_focused() &&
              settings_window_->is_key_pressed(input_backend_->binding(button)))) {
             pressed.push_back(button_name(button));

@@ -7,14 +7,16 @@ namespace {
 
 [[nodiscard]] Sdl3KeyboardBindings default_keyboard_bindings() {
     Sdl3KeyboardBindings bindings{};
-    bindings[platform::button_index(core::Button::Up)] = SDL_SCANCODE_UP;
-    bindings[platform::button_index(core::Button::Down)] = SDL_SCANCODE_DOWN;
-    bindings[platform::button_index(core::Button::Left)] = SDL_SCANCODE_LEFT;
-    bindings[platform::button_index(core::Button::Right)] = SDL_SCANCODE_RIGHT;
-    bindings[platform::button_index(core::Button::A)] = SDL_SCANCODE_X;
-    bindings[platform::button_index(core::Button::B)] = SDL_SCANCODE_Z;
-    bindings[platform::button_index(core::Button::Start)] = SDL_SCANCODE_RETURN;
-    bindings[platform::button_index(core::Button::Select)] = SDL_SCANCODE_RSHIFT;
+    bindings[platform::button_index(platform::InputAction::Up)] = SDL_SCANCODE_UP;
+    bindings[platform::button_index(platform::InputAction::Down)] = SDL_SCANCODE_DOWN;
+    bindings[platform::button_index(platform::InputAction::Left)] = SDL_SCANCODE_LEFT;
+    bindings[platform::button_index(platform::InputAction::Right)] = SDL_SCANCODE_RIGHT;
+    bindings[platform::button_index(platform::InputAction::A)] = SDL_SCANCODE_X;
+    bindings[platform::button_index(platform::InputAction::B)] = SDL_SCANCODE_Z;
+    bindings[platform::button_index(platform::InputAction::Start)] = SDL_SCANCODE_RETURN;
+    bindings[platform::button_index(platform::InputAction::Select)] = SDL_SCANCODE_RSHIFT;
+    bindings[platform::button_index(platform::InputAction::TurboA)] = SDL_SCANCODE_S;
+    bindings[platform::button_index(platform::InputAction::TurboB)] = SDL_SCANCODE_A;
     return bindings;
 }
 
@@ -282,45 +284,45 @@ void Sdl3Input::handle_event(const SDL_Event& event) {
     }
 }
 
-std::uint8_t Sdl3Input::keyboard_state() const {
+std::uint16_t Sdl3Input::keyboard_state() const {
     int key_count = 0;
     const bool* keys = SDL_GetKeyboardState(&key_count);
 
-    std::uint8_t state = 0;
-    for (const auto button : platform::controller_buttons()) {
+    std::uint16_t state = 0;
+    for (const auto button : platform::input_actions()) {
         const int scancode = keyboard_bindings_[platform::button_index(button)];
         if (scancode >= 0 && scancode < key_count && keys[scancode]) {
-            state |= static_cast<std::uint8_t>(button);
+            state |= (1U << platform::button_index(button));
         }
     }
 
     return state;
 }
 
-std::uint8_t Sdl3Input::gamepad_state() const {
+std::uint16_t Sdl3Input::gamepad_state() const {
     if (gamepad_ == nullptr) {
         return 0;
     }
 
-    std::uint8_t state = 0;
-    for (const auto nes_button : platform::controller_buttons()) {
+    std::uint16_t state = 0;
+    for (const auto nes_button : platform::input_actions()) {
         if (is_control_pressed(platform::gamepad_control_for_button(config_, nes_button))) {
-            state |= static_cast<std::uint8_t>(nes_button);
+            state |= (1U << platform::button_index(nes_button));
         }
     }
 
     return state;
 }
 
-std::uint8_t Sdl3Input::gamepad2_state() const {
+std::uint16_t Sdl3Input::gamepad2_state() const {
     if (gamepad2_ == nullptr) {
         return 0;
     }
 
-    std::uint8_t state = 0;
-    for (const auto nes_button : platform::controller_buttons()) {
+    std::uint16_t state = 0;
+    for (const auto nes_button : platform::input_actions()) {
         if (is_control_pressed2(platform::gamepad_control_for_button(config2_, nes_button))) {
-            state |= static_cast<std::uint8_t>(nes_button);
+            state |= (1U << platform::button_index(nes_button));
         }
     }
 
@@ -333,6 +335,8 @@ bool Sdl3Input::is_control_pressed(const GamepadControl& control) const {
     }
 
     switch (control.kind) {
+    case platform::GamepadControlKind::None:
+        return false;
     case platform::GamepadControlKind::Button:
         return SDL_GetGamepadButton(gamepad_, to_sdl_button(control.button));
     case platform::GamepadControlKind::AxisNegative:
@@ -352,6 +356,8 @@ bool Sdl3Input::is_control_pressed2(const GamepadControl& control) const {
     }
 
     switch (control.kind) {
+    case platform::GamepadControlKind::None:
+        return false;
     case platform::GamepadControlKind::Button:
         return SDL_GetGamepadButton(gamepad2_, to_sdl_button(control.button));
     case platform::GamepadControlKind::AxisNegative:
@@ -366,9 +372,13 @@ bool Sdl3Input::is_control_pressed2(const GamepadControl& control) const {
 }
 
 bool Sdl3Input::is_button_pressed(int player, core::Button button) const {
+    return is_action_pressed(player, platform::input_action(button));
+}
+
+bool Sdl3Input::is_action_pressed(int player, platform::InputAction button) const {
     if (player < 0 || player > 1)
         return false;
-    return (button_state_[player] & static_cast<std::uint8_t>(button)) != 0;
+    return (button_state_[player] & (1U << platform::button_index(button))) != 0;
 }
 
 bool Sdl3Input::should_quit() const {

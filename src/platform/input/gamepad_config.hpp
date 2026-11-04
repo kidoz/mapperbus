@@ -7,12 +7,13 @@
 #include <string>
 #include <string_view>
 
-#include "core/input/controller.hpp"
 #include "core/types.hpp"
+#include "platform/input/input_action.hpp"
 
 namespace mapperbus::platform {
 
 enum class GamepadControlKind {
+    None,
     Button,
     AxisNegative,
     AxisPositive,
@@ -56,7 +57,7 @@ struct GamepadInputConfig {
     bool enabled = true;
     int gamepad_index = 0;
     std::int16_t axis_deadzone = 12000;
-    std::array<GamepadControl, 8> bindings{};
+    std::array<GamepadControl, kInputActionCount> bindings{};
 
     GamepadInputConfig();
 };
@@ -75,26 +76,12 @@ struct GamepadInputConfig {
 }
 
 [[nodiscard]] constexpr std::size_t button_index(core::Button button) {
-    switch (button) {
-    case core::Button::Up:
-        return 0;
-    case core::Button::Down:
-        return 1;
-    case core::Button::Left:
-        return 2;
-    case core::Button::Right:
-        return 3;
-    case core::Button::A:
-        return 4;
-    case core::Button::B:
-        return 5;
-    case core::Button::Start:
-        return 6;
-    case core::Button::Select:
-        return 7;
-    }
+    return button_index(input_action(button));
+}
 
-    return 0;
+[[nodiscard]] inline const GamepadControl& gamepad_control_for_button(
+    const GamepadInputConfig& config, InputAction action) {
+    return config.bindings[button_index(action)];
 }
 
 [[nodiscard]] constexpr GamepadControl gamepad_button_control(GamepadButton button) {
@@ -106,8 +93,8 @@ struct GamepadInputConfig {
     return {.kind = kind, .axis = axis};
 }
 
-[[nodiscard]] inline std::array<GamepadControl, 8> default_gamepad_bindings() {
-    std::array<GamepadControl, 8> bindings{};
+[[nodiscard]] inline std::array<GamepadControl, kInputActionCount> default_gamepad_bindings() {
+    std::array<GamepadControl, kInputActionCount> bindings{};
     bindings[button_index(core::Button::Up)] = gamepad_button_control(GamepadButton::DpadUp);
     bindings[button_index(core::Button::Down)] = gamepad_button_control(GamepadButton::DpadDown);
     bindings[button_index(core::Button::Left)] = gamepad_button_control(GamepadButton::DpadLeft);
@@ -116,6 +103,8 @@ struct GamepadInputConfig {
     bindings[button_index(core::Button::B)] = gamepad_button_control(GamepadButton::South);
     bindings[button_index(core::Button::Start)] = gamepad_button_control(GamepadButton::Start);
     bindings[button_index(core::Button::Select)] = gamepad_button_control(GamepadButton::Back);
+    bindings[button_index(InputAction::TurboA)] = gamepad_button_control(GamepadButton::North);
+    bindings[button_index(InputAction::TurboB)] = gamepad_button_control(GamepadButton::West);
     return bindings;
 }
 
@@ -183,6 +172,18 @@ inline GamepadInputConfig::GamepadInputConfig() : bindings(default_gamepad_bindi
     }
 
     return std::unexpected("unknown NES button '" + trim_copy(text) + "'");
+}
+
+[[nodiscard]] inline core::Result<InputAction> parse_input_action(std::string_view text) {
+    const auto name = normalized_token(text);
+    if (name == "turboa")
+        return InputAction::TurboA;
+    if (name == "turbob")
+        return InputAction::TurboB;
+    auto button = parse_controller_button(text);
+    if (!button)
+        return std::unexpected(button.error());
+    return input_action(*button);
 }
 
 [[nodiscard]] inline core::Result<GamepadButton> parse_gamepad_button(std::string_view text) {
@@ -313,6 +314,10 @@ inline GamepadInputConfig::GamepadInputConfig() : bindings(default_gamepad_bindi
         return std::unexpected(std::string("empty gamepad control"));
     }
 
+    if (normalized_token(token) == "none") {
+        return GamepadControl{.kind = GamepadControlKind::None};
+    }
+
     auto axis_result = parse_gamepad_axis_control(token);
     if (axis_result) {
         return axis_result;
@@ -343,7 +348,7 @@ inline GamepadInputConfig::GamepadInputConfig() : bindings(default_gamepad_bindi
                 return std::unexpected("gamepad mapping entry '" + pair + "' is missing '='");
             }
 
-            auto nes_button = parse_controller_button(std::string_view(pair).substr(0, equals));
+            auto nes_button = parse_input_action(std::string_view(pair).substr(0, equals));
             if (!nes_button) {
                 return std::unexpected(nes_button.error());
             }
@@ -420,6 +425,8 @@ inline GamepadInputConfig::GamepadInputConfig() : bindings(default_gamepad_bindi
 }
 
 [[nodiscard]] inline std::string gamepad_control_token(const GamepadControl& control) {
+    if (control.kind == GamepadControlKind::None)
+        return "none";
     if (control.kind == GamepadControlKind::Button) {
         return gamepad_button_token(control.button);
     }

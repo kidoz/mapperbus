@@ -250,6 +250,7 @@ int main(int argc, char* argv[]) {
 
     // --- Wire into App and run ---
     mapperbus::app::App app(std::move(video), std::move(audio), std::move(input), audio_settings);
+    app.session().set_turbo_period(mapperbus_config.input.turbo_period_frames);
     auto result = app.initialize(rom_path);
     if (!result) {
         mapperbus::core::logger::error("{}", result.error());

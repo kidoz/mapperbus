@@ -47,6 +47,71 @@ TEST_CASE("Linux configuration ignores invalid XDG paths", "[app][configuration]
            ("mapperbus-config-test-" + std::to_string(stamp)) / "mapperbus.conf";
 }
 
+TEST_CASE("Turbo bindings and speed persist with optional version one keys",
+          "[app][configuration][turbo]") {
+    const auto path = temporary_config_path();
+    MapperBusConfiguration config;
+    const auto ta = platform::button_index(platform::InputAction::TurboA);
+    const auto tb = platform::button_index(platform::InputAction::TurboB);
+    REQUIRE(config.input.keyboard_bindings[ta] == 22);
+    REQUIRE(config.input.keyboard_bindings[tb] == 4);
+    REQUIRE(config.input.gamepad.bindings[ta].button == platform::GamepadButton::North);
+    REQUIRE(config.input.gamepad.bindings[tb].button == platform::GamepadButton::West);
+    REQUIRE(config.input.turbo_period_frames == 4);
+    for (const int period : {2, 4, 6}) {
+        config.input.turbo_period_frames = period;
+        config.input.keyboard_bindings[ta] = 0; // explicitly unbound
+        config.input.keyboard_bindings[tb] = 6;
+        config.input.gamepad.bindings[ta] = {.kind = platform::GamepadControlKind::None};
+        config.input.gamepad.bindings[tb] = platform::gamepad_axis_control(
+            platform::GamepadAxis::RightTrigger, platform::GamepadControlKind::AxisPositive);
+        REQUIRE(save_mapperbus_configuration_to_file(config, path));
+        const auto loaded = load_mapperbus_configuration_from_file(path);
+        CHECK(loaded.version == 1);
+        CHECK(loaded.input.keyboard_bindings == config.input.keyboard_bindings);
+        CHECK(loaded.input.gamepad.bindings == config.input.gamepad.bindings);
+        CHECK(loaded.input.turbo_period_frames == period);
+    }
+    for (const auto* value : {"0", "-2", "3", "1000000", "garbage"}) {
+        std::ofstream file(path);
+        file << "[input.keyboard]\na=44\n[input.turbo]\nperiod_frames=" << value << '\n';
+        file.close();
+        const auto loaded = load_mapperbus_configuration_from_file(path);
+        CHECK(loaded.input.turbo_period_frames == 4);
+        CHECK(loaded.input.keyboard_bindings[ta] == 22);
+        CHECK(loaded.input.keyboard_bindings[platform::button_index(core::Button::A)] == 44);
+    }
+    std::filesystem::remove_all(path.parent_path());
+}
+
+TEST_CASE("New turbo defaults do not overlap existing custom bindings",
+          "[app][configuration][turbo]") {
+    const auto path = temporary_config_path();
+    std::filesystem::create_directories(path.parent_path());
+    std::ofstream file(path);
+    file << "[input.keyboard]\na=22\nleft=4\n[input.gamepad]\nb=north\nup=west\n";
+    file.close();
+    auto loaded = load_mapperbus_configuration_from_file(path);
+    for (auto action : {platform::InputAction::TurboA, platform::InputAction::TurboB}) {
+        const auto index = platform::button_index(action);
+        CHECK(loaded.input.keyboard_bindings[index] == 0);
+        CHECK(loaded.input.gamepad.bindings[index].kind == platform::GamepadControlKind::None);
+    }
+    CHECK(loaded.input.keyboard_bindings[platform::button_index(core::Button::A)] == 22);
+    CHECK(loaded.input.gamepad.bindings[platform::button_index(core::Button::B)].button ==
+          platform::GamepadButton::North);
+    // An explicit duplicate is retained rather than silently remapped.
+    std::ofstream explicit_file(path, std::ios::app);
+    explicit_file << "[input.keyboard]\nturbo_a=22\n[input.gamepad]\nturbo_a=north\n";
+    explicit_file.close();
+    loaded = load_mapperbus_configuration_from_file(path);
+    CHECK(loaded.input.keyboard_bindings[platform::button_index(platform::InputAction::TurboA)] ==
+          22);
+    CHECK(loaded.input.gamepad.bindings[platform::button_index(platform::InputAction::TurboA)]
+              .button == platform::GamepadButton::North);
+    std::filesystem::remove_all(path.parent_path());
+}
+
 TEST_CASE("MapperBus configuration round-trips universal settings", "[app][configuration]") {
     MapperBusConfiguration configuration;
     configuration.audio.sample_rate = 48000;

@@ -14,8 +14,9 @@ namespace mapperbus::app {
 inline constexpr int kMapperBusConfigurationVersion = 1;
 
 struct MapperBusInputConfiguration {
-    std::array<int, 8> keyboard_bindings{};
+    std::array<int, platform::kInputActionCount> keyboard_bindings{};
     platform::GamepadInputConfig gamepad;
+    int turbo_period_frames = 4;
 
     MapperBusInputConfiguration();
 };
@@ -66,7 +67,10 @@ void remove_recent_rom(MapperBusConfiguration& configuration, const std::filesys
 /// Forget all recently opened ROMs. Never touches game or save files.
 void clear_recent_roms(MapperBusConfiguration& configuration);
 
-[[nodiscard]] std::string controller_button_name(core::Button button);
+[[nodiscard]] std::string controller_button_name(platform::InputAction button);
+[[nodiscard]] inline std::string controller_button_name(core::Button button) {
+    return controller_button_name(platform::input_action(button));
+}
 [[nodiscard]] std::filesystem::path mapperbus_configuration_path();
 [[nodiscard]] MapperBusConfiguration load_mapperbus_configuration();
 [[nodiscard]] MapperBusConfiguration load_mapperbus_configuration_from_file(

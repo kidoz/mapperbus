@@ -16,23 +16,27 @@
 namespace mapperbus::app {
 namespace {
 
-[[nodiscard]] int default_keyboard_code_for_button(core::Button button) {
+[[nodiscard]] int default_keyboard_code_for_button(platform::InputAction button) {
     switch (button) {
-    case core::Button::A:
+    case platform::InputAction::TurboA:
+        return 22; // S
+    case platform::InputAction::TurboB:
+        return 4; // A
+    case platform::InputAction::A:
         return 27; // NodalKit X / USB HID X
-    case core::Button::B:
+    case platform::InputAction::B:
         return 29; // NodalKit Z / USB HID Z
-    case core::Button::Select:
+    case platform::InputAction::Select:
         return 229; // Right Shift
-    case core::Button::Start:
+    case platform::InputAction::Start:
         return 40; // Return
-    case core::Button::Up:
+    case platform::InputAction::Up:
         return 82;
-    case core::Button::Down:
+    case platform::InputAction::Down:
         return 81;
-    case core::Button::Left:
+    case platform::InputAction::Left:
         return 80;
-    case core::Button::Right:
+    case platform::InputAction::Right:
         return 79;
     }
 
@@ -358,6 +362,11 @@ void apply_setting(MapperBusConfiguration& configuration,
             std::clamp(parse_double(value, 0.005, full_key), 0.0, 0.05);
         return;
     }
+    if (full_key == "input.turbo.period_frames") {
+        const int period = parse_int(value, 4, full_key);
+        configuration.input.turbo_period_frames = period == 2 || period == 6 ? period : 4;
+        return;
+    }
     if (full_key == "input.gamepad.enabled") {
         configuration.input.gamepad.enabled = parse_bool_setting(value, true, full_key);
         return;
@@ -372,7 +381,7 @@ void apply_setting(MapperBusConfiguration& configuration,
         return;
     }
 
-    for (const auto button : platform::controller_buttons()) {
+    for (const auto button : platform::input_actions()) {
         const std::string button_name = controller_button_name(button);
         if (full_key == "input.keyboard." + button_name) {
             configuration.input.keyboard_bindings[platform::button_index(button)] =
@@ -499,29 +508,33 @@ void apply_setting(MapperBusConfiguration& configuration,
 } // namespace
 
 MapperBusInputConfiguration::MapperBusInputConfiguration() {
-    for (const auto button : platform::controller_buttons()) {
+    for (const auto button : platform::input_actions()) {
         keyboard_bindings[platform::button_index(button)] =
             default_keyboard_code_for_button(button);
     }
 }
 
-std::string controller_button_name(core::Button button) {
+std::string controller_button_name(platform::InputAction button) {
     switch (button) {
-    case core::Button::A:
+    case platform::InputAction::TurboA:
+        return "turbo_a";
+    case platform::InputAction::TurboB:
+        return "turbo_b";
+    case platform::InputAction::A:
         return "a";
-    case core::Button::B:
+    case platform::InputAction::B:
         return "b";
-    case core::Button::Select:
+    case platform::InputAction::Select:
         return "select";
-    case core::Button::Start:
+    case platform::InputAction::Start:
         return "start";
-    case core::Button::Up:
+    case platform::InputAction::Up:
         return "up";
-    case core::Button::Down:
+    case platform::InputAction::Down:
         return "down";
-    case core::Button::Left:
+    case platform::InputAction::Left:
         return "left";
-    case core::Button::Right:
+    case platform::InputAction::Right:
         return "right";
     }
 
@@ -547,6 +560,8 @@ MapperBusConfiguration load_mapperbus_configuration() {
 
 MapperBusConfiguration load_mapperbus_configuration_from_file(const std::filesystem::path& path) {
     MapperBusConfiguration configuration;
+    std::array<bool, 2> explicit_turbo_keyboard{};
+    std::array<bool, 2> explicit_turbo_gamepad{};
 
     std::ifstream file(path);
     if (!file) {
@@ -594,8 +609,42 @@ MapperBusConfiguration load_mapperbus_configuration_from_file(const std::filesys
         }
 
         apply_setting(configuration, section, key, value);
+        const auto full_key = scoped_key(section, key);
+        for (int index = 0; index < 2; ++index) {
+            const auto name = index == 0 ? "turbo_a" : "turbo_b";
+            if (full_key == std::string("input.keyboard.") + name)
+                explicit_turbo_keyboard[index] = true;
+            if (full_key == std::string("input.gamepad.") + name)
+                explicit_turbo_gamepad[index] = true;
+        }
     }
 
+    // New defaults must not make an older custom binding activate a second
+    // action. Explicitly configured duplicates remain the user's choice.
+    for (int index = 0; index < 2; ++index) {
+        const auto action =
+            index == 0 ? platform::InputAction::TurboA : platform::InputAction::TurboB;
+        const auto target = platform::button_index(action);
+        for (auto other : platform::input_actions()) {
+            if (other == action)
+                continue;
+            const auto source = platform::button_index(other);
+            if (!explicit_turbo_keyboard[index] &&
+                configuration.input.keyboard_bindings[target] != 0 &&
+                configuration.input.keyboard_bindings[target] ==
+                    configuration.input.keyboard_bindings[source]) {
+                configuration.input.keyboard_bindings[target] = 0;
+            }
+            if (!explicit_turbo_gamepad[index] &&
+                configuration.input.gamepad.bindings[target].kind !=
+                    platform::GamepadControlKind::None &&
+                configuration.input.gamepad.bindings[target] ==
+                    configuration.input.gamepad.bindings[source]) {
+                configuration.input.gamepad.bindings[target] = {
+                    .kind = platform::GamepadControlKind::None};
+            }
+        }
+    }
     return configuration;
 }
 
@@ -657,8 +706,9 @@ core::Result<void> save_mapperbus_configuration_to_file(const MapperBusConfigura
         file << '\n';
     }
 
+    file << "[input.turbo]\nperiod_frames=" << configuration.input.turbo_period_frames << "\n\n";
     file << "[input.keyboard]\n";
-    for (const auto button : platform::controller_buttons()) {
+    for (const auto button : platform::input_actions()) {
         file << controller_button_name(button) << '='
              << configuration.input.keyboard_bindings[platform::button_index(button)] << '\n';
     }
@@ -668,7 +718,7 @@ core::Result<void> save_mapperbus_configuration_to_file(const MapperBusConfigura
     file << "enabled=" << (configuration.input.gamepad.enabled ? "true" : "false") << '\n';
     file << "index=" << configuration.input.gamepad.gamepad_index << '\n';
     file << "deadzone=" << configuration.input.gamepad.axis_deadzone << '\n';
-    for (const auto button : platform::controller_buttons()) {
+    for (const auto button : platform::input_actions()) {
         file << controller_button_name(button) << '='
              << platform::gamepad_control_token(
                     configuration.input.gamepad.bindings[platform::button_index(button)])

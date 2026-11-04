@@ -50,6 +50,10 @@ class NodalKitInput : public platform::InputBackend {
     }
 
     bool is_button_pressed(int player, core::Button button) const override {
+        return is_action_pressed(player, platform::input_action(button));
+    }
+
+    bool is_action_pressed(int player, platform::InputAction button) const override {
         if (player != 0) {
             return false;
         }
@@ -61,11 +65,11 @@ class NodalKitInput : public platform::InputBackend {
         return false;
     }
 
-    void set_binding(core::Button button, nk::KeyCode key) {
+    void set_binding(platform::InputAction button, nk::KeyCode key) {
         bindings_[button_index(button)] = key;
     }
 
-    [[nodiscard]] nk::KeyCode binding(core::Button button) const {
+    [[nodiscard]] nk::KeyCode binding(platform::InputAction button) const {
         return bindings_[button_index(button)];
     }
 
@@ -99,11 +103,12 @@ class NodalKitInput : public platform::InputBackend {
             static_cast<std::int16_t>(std::clamp(static_cast<int>(deadzone), 1, 32767));
     }
 
-    void set_gamepad_binding(core::Button button, platform::GamepadControl control) {
+    void set_gamepad_binding(platform::InputAction button, platform::GamepadControl control) {
         gamepad_config_.bindings[platform::button_index(button)] = control;
     }
 
-    [[nodiscard]] const platform::GamepadControl& gamepad_binding(core::Button button) const {
+    [[nodiscard]] const platform::GamepadControl& gamepad_binding(
+        platform::InputAction button) const {
         return platform::gamepad_control_for_button(gamepad_config_, button);
     }
 
@@ -276,23 +281,27 @@ class NodalKitInput : public platform::InputBackend {
         return true;
     }
 
-    [[nodiscard]] static nk::KeyCode default_key_for_button(core::Button button) {
+    [[nodiscard]] static nk::KeyCode default_key_for_button(platform::InputAction button) {
         switch (button) {
-        case core::Button::A:
+        case platform::InputAction::TurboA:
+            return nk::KeyCode::S;
+        case platform::InputAction::TurboB:
+            return nk::KeyCode::A;
+        case platform::InputAction::A:
             return nk::KeyCode::X;
-        case core::Button::B:
+        case platform::InputAction::B:
             return nk::KeyCode::Z;
-        case core::Button::Select:
+        case platform::InputAction::Select:
             return nk::KeyCode::RightShift;
-        case core::Button::Start:
+        case platform::InputAction::Start:
             return nk::KeyCode::Return;
-        case core::Button::Up:
+        case platform::InputAction::Up:
             return nk::KeyCode::Up;
-        case core::Button::Down:
+        case platform::InputAction::Down:
             return nk::KeyCode::Down;
-        case core::Button::Left:
+        case platform::InputAction::Left:
             return nk::KeyCode::Left;
-        case core::Button::Right:
+        case platform::InputAction::Right:
             return nk::KeyCode::Right;
         }
 
@@ -301,7 +310,7 @@ class NodalKitInput : public platform::InputBackend {
 
   private:
     [[nodiscard]] bool keyboard_button_pressed(nk::KeyCode key) const {
-        if (is_reserved_game_key(key)) {
+        if (key == nk::KeyCode::Unknown || is_reserved_game_key(key)) {
             return false;
         }
         // Ctrl+O, Ctrl+Q, and Ctrl+, open, quit, and show settings. Those
@@ -314,40 +323,13 @@ class NodalKitInput : public platform::InputBackend {
         return window_.is_key_pressed(key);
     }
 
-    [[nodiscard]] static constexpr std::array<core::Button, 8> buttons() {
-        return {
-            core::Button::Up,
-            core::Button::Down,
-            core::Button::Left,
-            core::Button::Right,
-            core::Button::A,
-            core::Button::B,
-            core::Button::Start,
-            core::Button::Select,
-        };
+    [[nodiscard]] static constexpr std::array<platform::InputAction, platform::kInputActionCount>
+    buttons() {
+        return platform::input_actions();
     }
 
-    [[nodiscard]] static constexpr std::size_t button_index(core::Button button) {
-        switch (button) {
-        case core::Button::Up:
-            return 0;
-        case core::Button::Down:
-            return 1;
-        case core::Button::Left:
-            return 2;
-        case core::Button::Right:
-            return 3;
-        case core::Button::A:
-            return 4;
-        case core::Button::B:
-            return 5;
-        case core::Button::Start:
-            return 6;
-        case core::Button::Select:
-            return 7;
-        }
-
-        return 0;
+    [[nodiscard]] static constexpr std::size_t button_index(platform::InputAction button) {
+        return platform::button_index(button);
     }
 
     void initialize_gamepad_subsystem() {
@@ -428,7 +410,7 @@ class NodalKitInput : public platform::InputBackend {
 #endif
     }
 
-    [[nodiscard]] bool is_gamepad_button_pressed(core::Button button) const {
+    [[nodiscard]] bool is_gamepad_button_pressed(platform::InputAction button) const {
 #ifdef MAPPERBUS_HAVE_SDL3_GAMEPAD
         if (!gamepad_config_.enabled || gamepad_ == nullptr) {
             return false;
@@ -436,6 +418,7 @@ class NodalKitInput : public platform::InputBackend {
 
         return is_control_pressed(platform::gamepad_control_for_button(gamepad_config_, button));
 #else
+        (void)button;
         return false;
 #endif
     }
@@ -497,6 +480,8 @@ class NodalKitInput : public platform::InputBackend {
 
     [[nodiscard]] bool is_control_pressed(const platform::GamepadControl& control) const {
         switch (control.kind) {
+        case platform::GamepadControlKind::None:
+            return false;
         case platform::GamepadControlKind::Button:
             return SDL_GetGamepadButton(gamepad_, to_sdl_button(control.button));
         case platform::GamepadControlKind::AxisNegative:
@@ -512,7 +497,7 @@ class NodalKitInput : public platform::InputBackend {
 #endif
 
     nk::Window& window_;
-    std::array<nk::KeyCode, 8> bindings_{};
+    std::array<nk::KeyCode, platform::kInputActionCount> bindings_{};
     platform::GamepadInputConfig gamepad_config_;
 #ifdef MAPPERBUS_HAVE_SDL3_GAMEPAD
     bool gamepad_initialized_ = false;

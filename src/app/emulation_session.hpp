@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "app/turbo_input.hpp"
 #include "core/apu/audio_settings.hpp"
 #include "core/emulator.hpp"
 #include "platform/audio/audio_backend.hpp"
@@ -43,6 +44,9 @@ class EmulationSession {
     void request_stop();
     void set_paused(bool paused);
     void set_region(core::Region region);
+    void set_turbo_period(int frames) {
+        turbo_input_.set_period(frames);
+    }
     core::Result<void> apply_audio_settings(const core::AudioSettings& settings);
     core::Result<void> set_upscaler(std::unique_ptr<platform::Upscaler> upscaler);
 
@@ -114,6 +118,7 @@ class EmulationSession {
     std::unique_ptr<platform::VideoBackend> video_;
     std::unique_ptr<platform::AudioBackend> audio_;
     std::unique_ptr<platform::InputBackend> input_;
+    TurboInput turbo_input_;
     bool initialized_ = false;
     bool running_ = false;
     bool paused_ = false;

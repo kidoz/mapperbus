@@ -44,7 +44,8 @@ Source: [SDL3 composition root](../../src/app/main.cpp).
 
 ### Gamepad mapping tokens
 
-NES names are `a`, `b`, `start`, `select`, `up`, `down`, `left`, and `right`.
+Input action names are `a`, `b`, `start`, `select`, `up`, `down`, `left`, `right`,
+`turbo_a`, and `turbo_b`. Use `none` as a control value to clear a binding.
 SDL controls include physical face positions `south`, `east`, `west`, `north`,
 aliases `a`, `b`, `x`, `y`, D-pad tokens `dpup`, `dpdown`, `dpleft`, `dpright`,
 and buttons such as `start`, `back`, `leftshoulder`, and `rightshoulder`.
@@ -52,8 +53,8 @@ Axis directions use a sign suffix, for example `leftx-`, `leftx+`, `lefty-`,
 and `lefty+`.
 
 Defaults use D-pad directions, A on `east`, B on `south`, Start on `start`,
-and Select on `back`. Player 1 combines keyboard and gamepad state. Player 2
-uses the second gamepad when enabled.
+Select on `back`, Turbo A on `north`, and Turbo B on `west`. Player 1 combines
+keyboard and gamepad state. Player 2 uses the second gamepad when enabled.
 
 Source: [Gamepad configuration](../../src/platform/input/gamepad_config.hpp).
 
@@ -63,11 +64,31 @@ Source: [Gamepad configuration](../../src/platform/input/gamepad_config.hpp).
 |---|---|
 | A | X |
 | B | Z |
+| Turbo A | S |
+| Turbo B | A |
 | Select | Right Shift |
 | Start | Enter / Return |
 | D-pad | Arrow keys |
 
-Saved `[input.keyboard]` values can override these bindings.
+Saved `[input.keyboard]` values can override these bindings. Code `0` means unbound.
+
+Hold Turbo A or Turbo B to repeat that button; release to stop. Ordinary A/B
+remain continuous holds, including when their turbo action is also held.
+Settings → Input → Turbo → Speed selects Slow (3 frames pressed, 3 released),
+Normal (2 + 2, default), or Fast (1 + 1). Rates at 60 fps are 10, 15, and 30
+presses per second; PAL/Dendy rates are approximately 8.3, 12.5, and 25. Use Slow if a
+game misses presses. The shared `[input.turbo]` setting is `period_frames=6`,
+`4`, or `2`, respectively.
+
+Turbo advances with emulated frames, including manual frame stepping. Pausing
+and audio backpressure freeze its phase. Release, ROM changes, reset, successful
+state loading, and speed changes restart the pulse with a press. Turbo phase is
+session input state and is not stored in emulator save-state blobs.
+
+In Input Settings, click a binding to capture a replacement or choose Clear to
+unbind it. Conflicts use the existing swap confirmation. When reading an older
+configuration, a new turbo default that conflicts with another binding starts
+unbound; existing custom controls keep their values.
 
 ### SDL3 runtime shortcuts
 

@@ -67,6 +67,7 @@ core::Result<void> EmulationSession::open_rom(const std::string& rom_path) {
     }
 
     emulator_.reset();
+    turbo_input_.reset();
     // Go through set_paused() so a previously suspended audio device is
     // resumed; assigning paused_ directly would leave the new ROM silent.
     set_paused(false);
@@ -83,6 +84,7 @@ void EmulationSession::close_rom() {
     }
 
     emulator_.unload_cartridge();
+    turbo_input_.reset();
     rom_loaded_ = false;
     running_ = false;
     paused_ = false;
@@ -142,6 +144,7 @@ TickResult EmulationSession::step_frame() {
 
 void EmulationSession::reset() {
     emulator_.reset();
+    turbo_input_.reset();
 }
 
 void EmulationSession::power_cycle() {
@@ -149,6 +152,7 @@ void EmulationSession::power_cycle() {
         return;
     }
     emulator_.reset();
+    turbo_input_.reset();
     set_paused(false);
 }
 
@@ -233,7 +237,11 @@ core::Result<void> EmulationSession::load_state(int slot) {
     if (!rom_loaded_) {
         return std::unexpected(std::string("No ROM loaded to load state into"));
     }
-    return emulator_.load_state_from_file(state_path_for_slot(slot));
+    auto result = emulator_.load_state_from_file(state_path_for_slot(slot));
+    if (result) {
+        turbo_input_.reset();
+    }
+    return result;
 }
 
 core::Result<void> EmulationSession::set_upscaler(std::unique_ptr<platform::Upscaler> upscaler) {
@@ -272,9 +280,21 @@ void EmulationSession::sync_input() {
                                    Button::Left,
                                    Button::Right};
 
-    for (auto button : kButtons) {
-        emulator_.controller().set_button_state(0, button, input_->is_button_pressed(0, button));
-        emulator_.controller().set_button_state(1, button, input_->is_button_pressed(1, button));
+    for (int player = 0; player < 2; ++player) {
+        // Consume each turbo action even when ordinary A/B is held, so its
+        // phase remains independent of the normal binding.
+        const bool turbo_a = turbo_input_.next(
+            player, 0, input_->is_action_pressed(player, platform::InputAction::TurboA));
+        const bool turbo_b = turbo_input_.next(
+            player, 1, input_->is_action_pressed(player, platform::InputAction::TurboB));
+        for (auto button : kButtons) {
+            bool pressed = input_->is_action_pressed(player, platform::input_action(button));
+            if (button == Button::A)
+                pressed |= turbo_a;
+            if (button == Button::B)
+                pressed |= turbo_b;
+            emulator_.controller().set_button_state(player, button, pressed);
+        }
     }
 }
 

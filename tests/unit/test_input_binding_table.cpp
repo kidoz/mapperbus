@@ -11,6 +11,7 @@
 
 #include "frontends/nodalkit/gui_widgets.hpp"
 #include "frontends/nodalkit/input_binding_table.hpp"
+#include "frontends/nodalkit/nodalkit_input.hpp"
 
 namespace {
 
@@ -231,4 +232,35 @@ TEST_CASE("Settings groups render one themed card in both appearances", "[gui][s
             CHECK(background < 100);
         }
     }
+}
+
+TEST_CASE("NodalKit turbo keys remain separate from A B and support rebinding",
+          "[gui][bindings][turbo]") {
+    using namespace mapperbus;
+    nk::Window window({.title = "Turbo input", .width = 600, .height = 300});
+    frontend::NodalKitInput input(window);
+    using platform::InputAction;
+    CHECK(input.binding(InputAction::TurboA) == nk::KeyCode::S);
+    CHECK(input.binding(InputAction::TurboB) == nk::KeyCode::A);
+    window.dispatch_key_event({.type = nk::KeyEvent::Type::Press, .key = nk::KeyCode::S});
+    window.dispatch_key_event({.type = nk::KeyEvent::Type::Press, .key = nk::KeyCode::A});
+    for (int i = 0; i < 8; ++i) {
+        input.poll();
+        CHECK(input.is_action_pressed(0, InputAction::TurboA));
+        CHECK(input.is_action_pressed(0, InputAction::TurboB));
+        CHECK_FALSE(input.is_button_pressed(0, core::Button::A));
+        CHECK_FALSE(input.is_button_pressed(0, core::Button::B));
+        CHECK_FALSE(input.is_action_pressed(1, InputAction::TurboA));
+    }
+    input.set_binding(InputAction::TurboA, nk::KeyCode::Unknown);
+    CHECK_FALSE(input.is_action_pressed(0, InputAction::TurboA));
+    input.set_binding(InputAction::TurboB, nk::KeyCode::C);
+    CHECK_FALSE(input.is_action_pressed(0, InputAction::TurboB));
+    window.dispatch_key_event({.type = nk::KeyEvent::Type::Press, .key = nk::KeyCode::C});
+    CHECK(input.is_action_pressed(0, InputAction::TurboB));
+    window.dispatch_key_event({.type = nk::KeyEvent::Type::Release, .key = nk::KeyCode::C});
+    CHECK_FALSE(input.is_action_pressed(0, InputAction::TurboB));
+    input.reset_default_bindings();
+    CHECK(input.uses_default_bindings());
+    CHECK(input.is_action_pressed(0, InputAction::TurboA));
 }

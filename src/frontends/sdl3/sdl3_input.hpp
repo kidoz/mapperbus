@@ -12,7 +12,7 @@ namespace mapperbus::frontend {
 using GamepadControl = platform::GamepadControl;
 using GamepadControlKind = platform::GamepadControlKind;
 using Sdl3InputConfig = platform::GamepadInputConfig;
-using Sdl3KeyboardBindings = std::array<int, 8>;
+using Sdl3KeyboardBindings = std::array<int, platform::kInputActionCount>;
 using platform::apply_gamepad_mapping;
 using platform::gamepad_control_for_button;
 using platform::parse_gamepad_control;
@@ -79,6 +79,7 @@ class Sdl3Input : public platform::InputBackend {
 
     void poll() override;
     bool is_button_pressed(int player, core::Button button) const override;
+    bool is_action_pressed(int player, platform::InputAction action) const override;
     bool should_quit() const override;
     [[nodiscard]] Sdl3ScalerCommand consume_scaler_command();
     [[nodiscard]] static Sdl3ScalerCommand scaler_command_for_scancode(SDL_Scancode scancode);
@@ -99,9 +100,9 @@ class Sdl3Input : public platform::InputBackend {
     void close_gamepad();
     void close_gamepad2();
     void handle_event(const SDL_Event& event);
-    [[nodiscard]] std::uint8_t keyboard_state() const;
-    [[nodiscard]] std::uint8_t gamepad_state() const;
-    [[nodiscard]] std::uint8_t gamepad2_state() const;
+    [[nodiscard]] std::uint16_t keyboard_state() const;
+    [[nodiscard]] std::uint16_t gamepad_state() const;
+    [[nodiscard]] std::uint16_t gamepad2_state() const;
     [[nodiscard]] bool is_control_pressed(const GamepadControl& control) const;
     [[nodiscard]] bool is_control_pressed2(const GamepadControl& control) const;
 
@@ -115,7 +116,7 @@ class Sdl3Input : public platform::InputBackend {
     SDL_Gamepad* gamepad2_ = nullptr;
     SDL_JoystickID gamepad_id_ = 0;
     SDL_JoystickID gamepad2_id_ = 0;
-    std::array<std::uint8_t, 2> button_state_{};
+    std::array<std::uint16_t, 2> button_state_{};
     Sdl3ScalerCommand pending_scaler_command_{};
     Sdl3SessionCommand pending_session_command_{};
     Sdl3WindowCommand pending_window_command_{};

@@ -91,6 +91,8 @@ Keyboard values are integer NodalKit / USB HID-style key codes, not characters.
 | `right` | `79` | Right arrow |
 | `a` | `27` | X |
 | `b` | `29` | Z |
+| `turbo_a` | `22` | S |
+| `turbo_b` | `4` | A |
 | `start` | `40` | Return |
 | `select` | `229` | Right Shift |
 
@@ -101,11 +103,22 @@ Keyboard values are integer NodalKit / USB HID-style key codes, not characters.
 | `deadzone` | `12000` (clamped to 1–32767) |
 | `up`, `down`, `left`, `right` | `dpup`, `dpdown`, `dpleft`, `dpright` |
 | `a`, `b` | `east`, `south` |
+| `turbo_a`, `turbo_b` | `north`, `west` |
 | `start`, `select` | `start`, `back` |
 
 See [mapping tokens](commands-and-controls.md#gamepad-mapping-tokens) for accepted
 control names. This persisted gamepad section is shared input configuration;
 SDL3 player 2 selection and remapping are supplied at runtime.
+
+Keyboard code `0` and gamepad token `none` explicitly leave an action unbound.
+Missing turbo bindings use the defaults above unless those controls already
+belong to another action in the saved configuration; conflicting new defaults
+start unbound.
+
+`[input.turbo]` stores `period_frames`: `6` (Slow), `4` (Normal, default), or
+`2` (Fast). Other values fall back to `4`. Half the period is pressed and half
+released. This optional version-1 setting applies to keyboard and gamepad input
+in both graphical frontends. See [turbo behavior](commands-and-controls.md#default-keyboard-bindings).
 
 ## Recent ROMs
 

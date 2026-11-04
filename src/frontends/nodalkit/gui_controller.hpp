@@ -62,7 +62,7 @@ class MapperBusGuiController {
 
     struct PendingInputRebind {
         RebindDevice device = RebindDevice::Keyboard;
-        core::Button button = core::Button::A;
+        platform::InputAction button = platform::InputAction::A;
         std::chrono::steady_clock::time_point started_at{};
         std::vector<platform::GamepadControl> initially_pressed_gamepad_controls{};
     };
@@ -104,12 +104,12 @@ class MapperBusGuiController {
     void update_preview_surface(const std::uint32_t* data, int width, int height);
     void update_configuration_from_state();
     void save_configuration_state();
-    void open_rebind_dialog(RebindDevice device, core::Button button);
+    void open_rebind_dialog(RebindDevice device, platform::InputAction button);
     void close_rebind_dialog();
     void cancel_rebind_dialog();
     void poll_pending_rebind();
-    void apply_keyboard_rebind(core::Button button, nk::KeyCode key);
-    void apply_gamepad_rebind(core::Button button, platform::GamepadControl control);
+    void apply_keyboard_rebind(platform::InputAction button, nk::KeyCode key);
+    void apply_gamepad_rebind(platform::InputAction button, platform::GamepadControl control);
     void apply_audio_settings_change(std::string message);
     void update_input_test_status();
     void update_settings_save_status(std::string text);
