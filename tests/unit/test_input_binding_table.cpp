@@ -141,3 +141,94 @@ TEST_CASE("Settings viewport leaves both bottom stripe corners square", "[gui][b
         CHECK(left[0] != gutter[0]);
     }
 }
+
+TEST_CASE("Keyboard focus reveals binding controls through nested viewports",
+          "[gui][focus][scroll]") {
+    MacTheme theme;
+    nk::Window window({.title = "Nested settings", .width = 400, .height = 180});
+    auto table = mapperbus::frontend::InputBindingTable::create("Disabled");
+    for (int i = 0; i < 8; ++i) {
+        table->add_binding("Action", "Key", "Pad", [] {}, [] {}, false, "Disabled");
+    }
+    auto inner = mapperbus::frontend::rectangular_scroll_area();
+    inner->set_h_scroll_policy(nk::ScrollPolicy::Never);
+    inner->set_content(table);
+    auto column = mapperbus::frontend::Box::vertical();
+    column->append(mapperbus::frontend::FixedHeightSlot::create(100));
+    column->append(mapperbus::frontend::BoundedHeightSlot::create(120, inner));
+    auto outer = mapperbus::frontend::rectangular_scroll_area();
+    outer->set_h_scroll_policy(nk::ScrollPolicy::Never);
+    outer->set_content(column);
+    window.set_child(outer);
+    outer->allocate({0, 0, 400, 180});
+    // The outer viewport gets the column's natural height; the inner viewport
+    // still has to scroll within its own 120-point allocation.
+    for (int i = 0; i < 8; ++i) {
+        window.dispatch_key_event({.type = nk::KeyEvent::Type::Press, .key = nk::KeyCode::Tab});
+        const auto cell = table->children()[i * 2]->allocation();
+        CHECK(cell.y >= inner->allocation().y);
+        CHECK(cell.bottom() <= inner->allocation().bottom());
+        CHECK(cell.y >= outer->allocation().y);
+        CHECK(cell.bottom() <= outer->allocation().bottom());
+    }
+    CHECK(inner->v_offset() > 0);
+    CHECK(outer->v_offset() > 0);
+    CHECK(inner->h_offset() == 0);
+    CHECK(outer->h_offset() == 0);
+    for (int i = 6; i >= 0; --i) {
+        window.dispatch_key_event({.type = nk::KeyEvent::Type::Press,
+                                   .key = nk::KeyCode::Tab,
+                                   .modifiers = nk::Modifiers::Shift});
+        const auto cell = table->children()[i * 2]->allocation();
+        CHECK(cell.y >= inner->allocation().y);
+        CHECK(cell.bottom() <= outer->allocation().bottom());
+    }
+}
+
+TEST_CASE("Settings viewport yields space to its navigation and footer", "[gui][layout]") {
+    MacTheme theme;
+    auto root = mapperbus::frontend::Box::vertical(16);
+    auto heading = mapperbus::frontend::FixedHeightSlot::create(28);
+    auto scroll = mapperbus::frontend::rectangular_scroll_area();
+    scroll->set_content(mapperbus::frontend::FixedHeightSlot::create(900));
+    auto viewport = mapperbus::frontend::BoundedHeightSlot::create(520, scroll);
+    auto footer = mapperbus::frontend::FixedHeightSlot::create(28);
+    root->append(heading);
+    root->append(viewport);
+    root->append(footer);
+    for (const float height : {220.0F, 400.0F, 600.0F}) {
+        root->allocate({0, 0, 600, height});
+        CHECK(viewport->allocation().height > 0);
+        CHECK(viewport->allocation().bottom() <= footer->allocation().y);
+        CHECK(footer->allocation().bottom() <= height);
+    }
+}
+
+TEST_CASE("Settings groups render one themed card in both appearances", "[gui][settings][render]") {
+    for (const auto scheme : {nk::ColorScheme::Light, nk::ColorScheme::Dark}) {
+        MacTheme theme(scheme);
+        auto group = mapperbus::frontend::SettingsGroup::create("Display");
+        group->add(nk::PreferencesRow::create("Scale"));
+        group->add(nk::PreferencesRow::create("Density"));
+        const auto height = group->measure(nk::Constraints::unbounded()).natural_height;
+        group->allocate({0, 0, 400, height});
+        nk::SnapshotContext snapshot;
+        static_cast<nk::Widget&>(*group).snapshot(snapshot);
+        const auto root = snapshot.take_root();
+        nk::SoftwareRenderer renderer;
+        renderer.begin_frame({400, height}, 1);
+        renderer.render(*root);
+        renderer.end_frame();
+        const auto* rgba = renderer.pixel_data();
+        const auto first = group->rows().front()->allocation();
+        const auto second = group->rows().back()->allocation();
+        CHECK(first.bottom() == second.y);
+        const int y = static_cast<int>(first.y + 10);
+        const auto background = rgba[(y * 400 + 390) * 4];
+        if (scheme == nk::ColorScheme::Light) {
+            CHECK(background > 200);
+        } else {
+            CHECK(background < 100);
+        }
+    }
+}

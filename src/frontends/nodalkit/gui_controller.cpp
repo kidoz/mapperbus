@@ -2150,7 +2150,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
 
         auto bindings = Box::vertical(6.0F);
         bindings->set_horizontal_size_policy(nk::SizePolicy::Expanding);
-        bindings->append(SectionTitle::create("Bindings"));
+        bindings->append(SectionTitle::create("Bindings", true));
         input_test_label_ = SecondaryText::create(input_test_status_text());
         bindings->append(input_test_label_);
         auto table = InputBindingTable::create(gamepad_state);
@@ -2168,7 +2168,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
         page->append(bindings);
 
         if (gamepad_support) {
-            auto controller_group = nk::PreferencesGroup::create("Controller");
+            auto controller_group = SettingsGroup::create("Controller");
             controller_group->set_horizontal_size_policy(nk::SizePolicy::Expanding);
             auto enabled_switch = nk::Switch::create();
             enabled_switch->set_active(gamepad_enabled);
@@ -2223,7 +2223,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
         input_test_label_.reset();
         page->append(SecondaryText::create("Choose how the picture and the window look."));
 
-        auto display_group = nk::PreferencesGroup::create("Display");
+        auto display_group = SettingsGroup::create("Display");
         display_group->set_horizontal_size_policy(nk::SizePolicy::Expanding);
 
         auto scale_combo = nk::ComboBox::create();
@@ -2246,6 +2246,8 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
             app_.set_theme_selection(selection);
             save_configuration_state();
             set_message("Interface density updated.");
+            app_.event_loop().post([this] { refresh_settings_dialog_sections(); },
+                                   "mapperbus.settings-density");
         });
         display_group->add(pref_row("Density", density_combo));
 
@@ -2298,7 +2300,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
         input_test_label_.reset();
         page->append(SecondaryText::create("Set the volume and the sound."));
 
-        auto audio_group = nk::PreferencesGroup::create("Audio Output");
+        auto audio_group = SettingsGroup::create("Audio Output");
         audio_group->set_horizontal_size_policy(nk::SizePolicy::Expanding);
 
         auto mute_switch = nk::Switch::create();
@@ -2312,6 +2314,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
         audio_group->add(pref_row("Mute", mute_switch));
 
         auto volume_slider = nk::Slider::create();
+        volume_slider->ensure_accessible().set_name("Volume");
         volume_slider->set_range(0.0, 100.0);
         volume_slider->set_step(5.0);
         volume_slider->set_value(static_cast<double>(configuration_.frontend.audio_volume_percent));
@@ -2415,7 +2418,9 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_footer_conten
     auto footer = Box::horizontal(12.0F);
     footer->set_horizontal_size_policy(nk::SizePolicy::Expanding);
     if (settings_page_ == SettingsPage::Input) {
-        auto restore_keyboard = nk::Button::create("Restore Keyboard Defaults");
+        auto restore_keyboard = nk::Button::create("Keyboard Defaults");
+        restore_keyboard->add_style_class("flat");
+        restore_keyboard->ensure_accessible().set_name("Restore Keyboard Defaults");
         (void)restore_keyboard->on_clicked().connect([this] {
             input_backend_->reset_default_bindings();
             save_configuration_state();
@@ -2423,9 +2428,11 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_footer_conten
             refresh_ui();
             refresh_settings_dialog_sections();
         });
-        footer->append(FixedWidthSlot::create(208.0F, restore_keyboard));
+        footer->append(restore_keyboard);
 
-        auto restore_gamepad = nk::Button::create("Restore Gamepad Defaults");
+        auto restore_gamepad = nk::Button::create("Gamepad Defaults");
+        restore_gamepad->add_style_class("flat");
+        restore_gamepad->ensure_accessible().set_name("Restore Gamepad Defaults");
         restore_gamepad->set_sensitive(input_backend_->gamepad_support_available());
         (void)restore_gamepad->on_clicked().connect([this] {
             input_backend_->reset_default_gamepad_bindings();
@@ -2434,7 +2441,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_footer_conten
             refresh_ui();
             refresh_settings_dialog_sections();
         });
-        footer->append(FixedWidthSlot::create(208.0F, restore_gamepad));
+        footer->append(restore_gamepad);
     }
     footer->append(Spacer::create());
     auto close_button = nk::Button::create("Close");
@@ -2485,9 +2492,8 @@ void MapperBusGuiController::refresh_settings_dialog_sections() {
         page->set_vertical_size_policy(nk::SizePolicy::Preferred);
         page->set_vertical_stretch(0);
 
-        // ScrollArea draws its thumb over the viewport, 8–15 logical pixels
-        // from the trailing edge. Keep cards and focus rings out of that lane
-        // on every page so changing tabs does not shift the content column.
+        // Keep the scrollbar lane outside the content column. The matching
+        // bleed below cancels this inset so cards retain equal outer margins.
         auto padded = PaddingSlot::create({0.0F, 24.0F, 4.0F, 0.0F}, std::move(page));
         padded->set_horizontal_size_policy(nk::SizePolicy::Expanding);
         padded->set_vertical_size_policy(nk::SizePolicy::Preferred);
@@ -2501,7 +2507,8 @@ void MapperBusGuiController::refresh_settings_dialog_sections() {
         scroll->set_vertical_stretch(1);
         scroll->set_content(std::move(padded));
         settings_scroll_area_ = scroll;
-        settings_page_slot_->set_child(BoundedHeightSlot::create(kSettingsPageMaxHeight, scroll));
+        settings_page_slot_->set_child(BoundedHeightSlot::create(
+            kSettingsPageMaxHeight, RightBleedSlot::create(24.0F, scroll)));
         settings_scroll_area_->scroll_to(previous_h_offset, previous_v_offset);
         app_.event_loop().post(
             [scroll, previous_h_offset, previous_v_offset] {

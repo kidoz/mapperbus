@@ -11,6 +11,7 @@
 #include <nk/style/theme.h>
 #include <nk/text/font.h>
 #include <nk/ui_core/widget.h>
+#include <nk/widgets/preferences.h>
 #include <nk/widgets/scroll_area.h>
 #include <optional>
 #include <string>
@@ -343,13 +344,14 @@ class PaddingSlot : public nk::Widget {
 
 class SectionTitle : public nk::Widget {
   public:
-    static std::shared_ptr<SectionTitle> create(std::string text) {
-        return std::shared_ptr<SectionTitle>(new SectionTitle(std::move(text)));
+    static std::shared_ptr<SectionTitle> create(std::string text, bool compact = false) {
+        return std::shared_ptr<SectionTitle>(new SectionTitle(std::move(text), compact));
     }
 
     void set_text(std::string text) {
         if (text_ != text) {
             text_ = std::move(text);
+            ensure_accessible().set_name(text_);
             cached_size_.reset();
             queue_layout();
             queue_redraw();
@@ -378,17 +380,22 @@ class SectionTitle : public nk::Widget {
     }
 
   private:
-    explicit SectionTitle(std::string text) : text_(std::move(text)) {}
+    explicit SectionTitle(std::string text, bool compact)
+        : text_(std::move(text)), compact_(compact) {
+        ensure_accessible().set_name(text_);
+        ensure_accessible().set_role(nk::AccessibleRole::Label);
+    }
 
-    static nk::FontDescriptor font_descriptor() {
+    nk::FontDescriptor font_descriptor() const {
         return {
             .family = {},
-            .size = 18.0F,
-            .weight = nk::FontWeight::Medium,
+            .size = compact_ ? theme_number("heading-font-size", 14.0F) : 18.0F,
+            .weight = compact_ ? nk::FontWeight::Bold : nk::FontWeight::Medium,
         };
     }
 
     std::string text_;
+    bool compact_ = false;
     mutable std::optional<nk::Size> cached_size_;
 };
 
@@ -615,7 +622,7 @@ class BoundedHeightSlot : public nk::Widget {
         const auto req = child_->measure(constraints);
         return {
             req.minimum_width,
-            std::min(req.minimum_height, max_height_),
+            0.0F,
             req.natural_width,
             std::min(req.natural_height, max_height_),
         };
@@ -633,6 +640,57 @@ class BoundedHeightSlot : public nk::Widget {
 
     float max_height_ = 0.0F;
     std::shared_ptr<nk::Widget> child_;
+};
+
+// One outline per related section. Row-specific rules are scoped to Settings,
+// so welcome recents and other toolkit consumers keep their existing style.
+class SettingsGroup final : public nk::PreferencesGroup {
+  public:
+    static std::shared_ptr<SettingsGroup> create(std::string title) {
+        return std::shared_ptr<SettingsGroup>(new SettingsGroup(std::move(title)));
+    }
+
+    void add(std::shared_ptr<nk::PreferencesRow> row) {
+        row->add_style_class("settings-row");
+        nk::PreferencesGroup::add(std::move(row));
+    }
+
+  protected:
+    void snapshot(nk::SnapshotContext& ctx) const override {
+        const auto entries = rows();
+        if (!entries.empty()) {
+            const auto first = entries.front()->allocation();
+            const auto last = entries.back()->allocation();
+            const nk::Rect card{first.x, first.y, first.width, last.bottom() - first.y};
+            const float radius = theme_number("radius-card", 10.0F);
+            ctx.add_rounded_rect(
+                card, theme_color("card-bg", nk::Color::from_rgb(255, 255, 255)), radius);
+            const auto border = theme_color("border-subtle", nk::Color::from_rgb(210, 210, 214));
+            ctx.add_border(card, border, 1.0F, radius);
+            for (std::size_t i = 1; i < entries.size(); ++i) {
+                ctx.add_color_rect({card.x + 16, entries[i]->allocation().y, card.width - 32, 0.5F},
+                                   border);
+            }
+        }
+        nk::PreferencesGroup::snapshot(ctx);
+    }
+
+  private:
+    explicit SettingsGroup(std::string title) : nk::PreferencesGroup(std::move(title)) {
+        const auto theme = nk::Theme::active();
+        const std::vector<std::string> classes{"preferences-row", "settings-row"};
+        if (!theme->resolve("PreferencesRow", classes, nk::StateFlags::None, "settings-styled")) {
+            theme->add_rule({.selector = {.type_name = {}, .classes = classes},
+                             .properties = {{"background", nk::Color{0, 0, 0, 0}},
+                                            {"border-color", nk::Color{0, 0, 0, 0}},
+                                            {"corner-radius", 0.0F},
+                                            {"settings-styled", 1.0F}}});
+            theme->add_rule(
+                {.selector = {.type_name = {}, .classes = {"preferences-group", "settings-group"}},
+                 .properties = {{"row-spacing", 0.0F}}});
+        }
+        add_style_class("settings-group");
+    }
 };
 
 class SurfacePanel : public nk::Widget {
