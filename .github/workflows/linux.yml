@@ -73,4 +73,7 @@ jobs:
             test -x "$RUNNER_TEMP/mapperbus-install/usr/local/bin/mapperbus-gui"
             desktop-file-validate "$RUNNER_TEMP/mapperbus-install/usr/local/share/applications/dev.mapperbus.gui.desktop"
             test -f "$RUNNER_TEMP/mapperbus-install/usr/local/share/icons/hicolor/scalable/apps/dev.mapperbus.gui.svg"
+            for size in 16 24 32 48 64 128 256 512; do
+              test -f "$RUNNER_TEMP/mapperbus-install/usr/local/share/icons/hicolor/${size}x${size}/apps/dev.mapperbus.gui.png"
+            done
           fi

@@ -1,0 +1,2 @@
+// Keep the first icon resource as the executable's Explorer icon.
+1 ICON "mapperbus.ico"

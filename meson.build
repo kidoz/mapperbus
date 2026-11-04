@@ -45,6 +45,7 @@ mapperbus_inc = include_directories('src')
 
 subdir('src/core')
 subdir('src/platform')
+subdir('packaging')
 
 if get_option('enable_sdl3')
     subdir('src/frontends/sdl3')

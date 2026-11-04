@@ -1,6 +1,7 @@
 #include "frontends/sdl3/sdl3_video.hpp"
 
 #include "core/types.hpp"
+#include "frontends/app_icon.hpp"
 
 namespace mapperbus::frontend {
 
@@ -23,6 +24,14 @@ bool Sdl3Video::initialize(int width, int height) {
     window_ = SDL_CreateWindow("MapperBus", win_w, win_h, SDL_WINDOW_RESIZABLE);
     if (!window_) {
         return false;
+    }
+
+    // SDL copies the pixels; the temporary surface does not own this buffer.
+    auto icon_pixels = kAppIconRgba;
+    if (auto* icon =
+            SDL_CreateSurfaceFrom(32, 32, SDL_PIXELFORMAT_RGBA32, icon_pixels.data(), 128)) {
+        SDL_SetWindowIcon(window_, icon);
+        SDL_DestroySurface(icon);
     }
 
     // Apply the vsync hint before creating the renderer so the chosen

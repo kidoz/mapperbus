@@ -38,7 +38,9 @@ meson setup buildDir-gui -Denable_nodalkit_gui=true
 meson compile -C buildDir-gui mapperbus-gui
 ```
 
-On macOS, launch the `mapperbus` executable:
+For a macOS application bundle with Finder and Dock artwork, see
+[application icons and bundles](update-branding.md#build-the-macos-application-icon-into-a-bundle).
+You can also launch the `mapperbus` executable directly:
 
 ```sh
 ./buildDir-gui/src/frontends/nodalkit/mapperbus

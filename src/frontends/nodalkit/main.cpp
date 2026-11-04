@@ -1,3 +1,11 @@
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <nk/platform/windows_interop.h>
+#include <windows.h>
+#endif
+
 #include <nk/platform/application.h>
 #include <nk/platform/window.h>
 #include <nk/style/theme_selection.h>
@@ -35,5 +43,30 @@ int main(int argc, char** argv) {
     }
 
     window.present();
+#if defined(_WIN32)
+    // NodalKit leaves application artwork to the executable. LR_SHARED keeps
+    // these resource handles valid for the process lifetime without ownership.
+    if (const auto hwnd = nk::window_hwnd(window)) {
+        const auto instance = GetModuleHandleW(nullptr);
+        const auto large = LoadImageW(instance,
+                                      MAKEINTRESOURCEW(1),
+                                      IMAGE_ICON,
+                                      GetSystemMetrics(SM_CXICON),
+                                      GetSystemMetrics(SM_CYICON),
+                                      LR_SHARED);
+        const auto small = LoadImageW(instance,
+                                      MAKEINTRESOURCEW(1),
+                                      IMAGE_ICON,
+                                      GetSystemMetrics(SM_CXSMICON),
+                                      GetSystemMetrics(SM_CYSMICON),
+                                      LR_SHARED);
+        if (large) {
+            SendMessageW(hwnd, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(large));
+        }
+        if (small) {
+            SendMessageW(hwnd, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(small));
+        }
+    }
+#endif
     return app.run();
 }

@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=mapperbus
+Name=MapperBus
 GenericName=NES/Famicom Emulator
 Comment=Play NES and Famicom games
 Exec=mapperbus-gui

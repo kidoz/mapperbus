@@ -1,5 +1,10 @@
 # MapperBus
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/branding/mapperbus-logo-light.svg">
+  <img alt="MapperBus — pixel-art cartridge logo" src="assets/branding/mapperbus-logo.svg" width="640">
+</picture>
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![C++23](https://img.shields.io/badge/C%2B%2B-23-00599C.svg)](https://en.cppreference.com/w/cpp/23)
 [![Build System](https://img.shields.io/badge/build-Meson-blueviolet.svg)](https://mesonbuild.com/)

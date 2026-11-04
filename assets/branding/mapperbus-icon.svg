@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">MapperBus</title>
+  <desc id="desc">A pixel-art game cartridge with an M-shaped circuit and gold bus contacts on a blue tile.</desc>
+  <rect x="32" y="32" width="448" height="448" rx="96" fill="#2563c7"/>
+  <path d="M128 32h256v16H128zM64 64h32v16H64zM48 96h16v32H48z" fill="#4798f5"/>
+  <g transform="scale(16)">
+    <path d="M10 8h12v2h2v14h-1v2H9v-2H8V10h2z" fill="#184798"/>
+    <path d="M10 6h12v2h2v15h-1v1H9v-1H8V8h2z" fill="#e2eaf0"/>
+    <path d="M10 6h12v2H10zM8 8h2v15H8z" fill="#fff9e9"/>
+    <path d="M10 9h12v11H10z" fill="#112c51"/>
+    <path d="M11 18v-7h2v1h1v1h1v1h2v-1h1v-1h1v-1h2v7h-2v-4h-1v1h-1v1h-2v-1h-1v-1h-1v4z" fill="#65b5ff"/>
+    <path d="M11 17h2v2h-2zm8 0h2v2h-2z" fill="#f4bc59"/>
+    <path id="detail" d="M10 21h3v1h-3zm9 0h3v1h-3z" fill="#a8bacb"/>
+    <path d="M14 21h5v3h-5z" fill="#112c51"/>
+    <path d="M14 22h1v2h-1zm2 0h1v2h-1zm2 0h1v2h-1z" fill="#f4bc59"/>
+  </g>
+</svg>
