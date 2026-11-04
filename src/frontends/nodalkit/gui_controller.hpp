@@ -96,6 +96,8 @@ class MapperBusGuiController {
     [[nodiscard]] std::shared_ptr<nk::Widget> build_settings_page_content();
     [[nodiscard]] std::shared_ptr<nk::Widget> build_settings_footer_content();
     void open_settings_dialog();
+    void close_settings();
+    [[nodiscard]] nk::Window& settings_host_window();
     void refresh_settings_dialog_sections();
     void handle_menu_action(std::string_view action);
     void set_preview_scale_option(PreviewScaleOption option);
@@ -148,6 +150,7 @@ class MapperBusGuiController {
     std::shared_ptr<nk::ToastOverlay> toast_overlay_;
     std::shared_ptr<nk::StatusBar> status_bar_;
     std::shared_ptr<nk::Dialog> settings_dialog_;
+    std::unique_ptr<nk::Window> settings_window_;
     std::shared_ptr<nk::Dialog> rebind_dialog_;
     std::shared_ptr<nk::SegmentedControl> settings_tabs_;
     std::shared_ptr<ContentSlot> settings_page_slot_;

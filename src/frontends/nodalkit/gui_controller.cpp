@@ -174,6 +174,11 @@ std::vector<nk::NativeMenu> build_native_menus(std::string_view app_name) {
          {
              nk::NativeMenuItem::action("About " + resolved_app_name, "help.about"),
              nk::NativeMenuItem::make_separator(),
+#if defined(__APPLE__)
+             nk::NativeMenuItem::action(
+                 "Settings…", "settings.open", command_shortcut(nk::KeyCode::Comma)),
+             nk::NativeMenuItem::make_separator(),
+#endif
              nk::NativeMenuItem::action(
                  "Quit " + resolved_app_name, "file.quit", command_shortcut(nk::KeyCode::Q)),
          }},
@@ -204,11 +209,13 @@ std::vector<nk::NativeMenu> build_native_menus(std::string_view app_name) {
              nk::NativeMenuItem::action("Step Frame", "emu.step"),
              nk::NativeMenuItem::action("Power Cycle", "emu.power"),
          }},
+#if !defined(__APPLE__)
         {"Settings",
          {
              nk::NativeMenuItem::action(
                  "Settings…", "settings.open", command_shortcut(nk::KeyCode::Comma)),
          }},
+#endif
         {"Help",
          {
              nk::NativeMenuItem::action("About " + resolved_app_name, "help.about"),
@@ -1234,6 +1241,10 @@ void MapperBusGuiController::build_ui() {
 }
 
 void MapperBusGuiController::wire_ui() {
+    (void)app_.on_system_preferences_changed().connect([this](const nk::SystemPreferences&) {
+        app_.event_loop().post([this] { refresh_settings_dialog_sections(); },
+                               "mapperbus.settings-theme");
+    });
     (void)window_.on_close_requested().connect([this] {
         save_configuration_state();
         app_.quit(0);
@@ -1467,7 +1478,6 @@ void MapperBusGuiController::update_native_toolbar() {
         fullscreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right",
         "win.toggle-fullscreen",
         !modal);
-    add("settings", "Settings…", "gearshape", "settings.open", !modal);
     window_.set_native_toolbar(std::move(toolbar));
 }
 
@@ -1524,6 +1534,9 @@ void MapperBusGuiController::rebuild_header_menu() {
 }
 
 void MapperBusGuiController::focus_game_surface() {
+    if (settings_window_ && settings_window_->is_visible() && settings_window_->is_focused()) {
+        return;
+    }
     if (preview_) {
         preview_->grab_focus();
     }
@@ -1876,7 +1889,7 @@ void MapperBusGuiController::open_rebind_dialog(RebindDevice device, core::Butto
             focus_game_surface();
         }
     });
-    rebind_dialog_->present(window_);
+    rebind_dialog_->present(settings_host_window());
     app_.event_loop().post([content] { content->grab_focus(); }, "mapperbus.rebind-focus");
 }
 
@@ -1966,7 +1979,7 @@ void MapperBusGuiController::apply_keyboard_rebind(core::Button button, nk::KeyC
             }
             focus_game_surface();
         });
-        dialog->present(window_);
+        dialog->present(settings_host_window());
         return;
     }
 
@@ -2020,7 +2033,7 @@ void MapperBusGuiController::apply_gamepad_rebind(core::Button button,
             }
             focus_game_surface();
         });
-        dialog->present(window_);
+        dialog->present(settings_host_window());
         return;
     }
 
@@ -2044,7 +2057,7 @@ void MapperBusGuiController::apply_audio_settings_change(std::string message) {
 }
 
 void MapperBusGuiController::update_input_test_status() {
-    if (!input_test_label_) {
+    if (!input_test_label_ || (settings_window_ && !settings_window_->is_visible())) {
         return;
     }
 
@@ -2112,13 +2125,13 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_dialog_shell(
 
     settings_footer_slot_ = ContentSlot::create();
     settings_footer_slot_->set_horizontal_size_policy(nk::SizePolicy::Expanding);
-    settings_footer_slot_->set_margin({4.0F, 24.0F, 0.0F, 0.0F});
+    settings_footer_slot_->set_margin({4.0F, 0.0F, 0.0F, 0.0F});
     content->append(settings_footer_slot_);
 
     refresh_settings_dialog_sections();
     // A width constraint does not add an empty layout row or shift the
     // content column relative to the dialog's title and footer.
-    return FixedWidthSlot::create(600.0F, content);
+    return content;
 }
 
 std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content() {
@@ -2425,11 +2438,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_footer_conten
     }
     footer->append(Spacer::create());
     auto close_button = nk::Button::create("Close");
-    (void)close_button->on_clicked().connect([this] {
-        if (settings_dialog_) {
-            settings_dialog_->close(nk::DialogResponse::Close);
-        }
-    });
+    (void)close_button->on_clicked().connect([this] { close_settings(); });
     footer->append(close_button);
     container->append(footer);
 
@@ -2437,7 +2446,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_footer_conten
 }
 
 void MapperBusGuiController::refresh_settings_dialog_sections() {
-    if (!settings_dialog_) {
+    if (!settings_dialog_ && !settings_window_) {
         return;
     }
 
@@ -2455,6 +2464,10 @@ void MapperBusGuiController::refresh_settings_dialog_sections() {
 
     if (settings_tabs_) {
         settings_tabs_->set_selected_index(page_index());
+    }
+    if (settings_window_) {
+        const std::array<std::string_view, 3> names{"Input", "Video", "Audio"};
+        settings_window_->set_title(std::string(names[page_index()]) + " — Settings");
     }
     if (settings_page_slot_) {
         constexpr float kSettingsPageMaxHeight = 520.0F;
@@ -2499,21 +2512,61 @@ void MapperBusGuiController::refresh_settings_dialog_sections() {
     if (settings_footer_slot_) {
         settings_footer_slot_->set_child(build_settings_footer_content());
     }
-    if (settings_dialog_->is_presented()) {
+    if (settings_dialog_ && settings_dialog_->is_presented()) {
         settings_dialog_->queue_layout();
         settings_dialog_->queue_redraw();
     }
 }
 
 void MapperBusGuiController::open_settings_dialog() {
-    settings_page_ = SettingsPage::Input;
+    if (app_.system_preferences().platform_family == nk::PlatformFamily::MacOS) {
+        if (!settings_window_) {
+            settings_window_ = std::make_unique<nk::Window>(nk::WindowConfig{
+                .title = "Settings",
+                .width = 640,
+                .height = 660,
+            });
+            auto content = build_settings_dialog_shell();
+            auto root =
+                PaddingSlot::create({.top = 20, .right = 20, .bottom = 20, .left = 20}, content);
+            settings_window_->set_child(root);
+            auto actions = std::make_shared<nk::ActionGroup>();
+            auto close = std::make_shared<nk::Action>("settings.close");
+            (void)close->on_activated().connect([this] { close_settings(); });
+            actions->add(close);
+            settings_window_->set_action_group(actions);
+            // Let controls consume Escape (for example, to dismiss a dropdown)
+            // before treating it as a request to close the Settings window.
+            auto keys = std::make_shared<nk::KeyboardController>();
+            (void)keys->on_key_pressed().connect([this](int key, int modifiers) {
+                if (static_cast<nk::KeyCode>(key) == nk::KeyCode::Escape &&
+                    static_cast<nk::Modifiers>(modifiers) == nk::Modifiers::None) {
+                    close_settings();
+                }
+            });
+            root->add_controller(std::move(keys));
+            settings_window_->add_shortcut({
+                .shortcut = {.key_code = static_cast<int>(nk::KeyCode::W),
+                             .modifiers = nk::Modifiers::Super},
+                .action_name = "settings.close",
+            });
+            (void)settings_window_->on_close_requested().connect([this] {
+                if (rebind_dialog_) {
+                    cancel_rebind_dialog();
+                }
+            });
+        }
+        settings_window_->present();
+        settings_tabs_->grab_focus();
+        return;
+    }
     if (settings_dialog_ && settings_dialog_->is_presented()) {
         refresh_settings_dialog_sections();
         return;
     }
 
     settings_dialog_ = nk::Dialog::create("Settings");
-    settings_dialog_->set_content(build_settings_dialog_shell());
+    settings_dialog_->set_content(FixedWidthSlot::create(600.0F, build_settings_dialog_shell()));
     settings_dialog_->set_presentation_style(nk::DialogPresentationStyle::Sheet);
     settings_dialog_->set_minimum_panel_width(640.0F);
     auto dialog = settings_dialog_;
@@ -2540,6 +2593,18 @@ void MapperBusGuiController::open_settings_dialog() {
     });
     settings_dialog_->present(window_);
     update_native_toolbar();
+}
+
+void MapperBusGuiController::close_settings() {
+    if (settings_window_) {
+        settings_window_->request_close();
+    } else if (settings_dialog_) {
+        settings_dialog_->close(nk::DialogResponse::Close);
+    }
+}
+
+nk::Window& MapperBusGuiController::settings_host_window() {
+    return settings_window_ && settings_window_->is_visible() ? *settings_window_ : window_;
 }
 
 bool MapperBusGuiController::modal_dialog_presented() const {
@@ -2623,7 +2688,9 @@ std::string MapperBusGuiController::input_status_text() const {
 std::string MapperBusGuiController::input_test_status_text() const {
     std::vector<std::string> pressed;
     for (const auto button : kBindingOrder) {
-        if (input_backend_->is_button_pressed(0, button)) {
+        if (input_backend_->is_button_pressed(0, button) ||
+            (settings_window_ && settings_window_->is_visible() && settings_window_->is_focused() &&
+             settings_window_->is_key_pressed(input_backend_->binding(button)))) {
             pressed.push_back(button_name(button));
         }
     }
