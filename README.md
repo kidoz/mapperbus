@@ -12,7 +12,7 @@
 A NES/Famicom emulator written in C++23, with a headless emulation core,
 SDL3 and NodalKit frontends, and Famicom Disk System subsystems.
 
-![Battle City running in MapperBus](docs/screenshots/battle-city.png)
+![Battle City running in the current NodalKit GUI on macOS](docs/screenshots/battle-city.png)
 
 ## Documentation
 
@@ -56,6 +56,10 @@ for dependencies, platform details, and reconfiguring an existing build.
   and pseudo-stereo output.
 - Keyboard and gamepad input, two-player SDL3 input, save states, battery saves,
   and shared frontend configuration.
+
+Input settings in the NodalKit GUI on macOS:
+
+<img alt="Current input settings with keyboard bindings, gamepad mappings, and turbo speed" src="docs/screenshots/input-settings.png" width="640">
 
 See [compatibility and scope](docs/reference/compatibility.md) for the boundaries
 of this feature list.
