@@ -10,13 +10,13 @@
 #include <ctime>
 #include <filesystem>
 #include <functional>
+
 #if __has_include(<nk/actions/shortcut_registry.h>)
 #include <nk/actions/shortcut_registry.h>
 #define MAPPERBUS_HAVE_NODALKIT_SHORTCUTS 1
 #endif
 #include <nk/controllers/event_controller.h>
 #include <nk/platform/drag_drop.h>
-#include <nk/widgets/clamp.h>
 #include <nk/widgets/headerbar.h>
 #include <nk/widgets/label.h>
 #include <nk/widgets/preferences.h>
@@ -1986,7 +1986,7 @@ void MapperBusGuiController::update_settings_save_status(std::string text) {
 }
 
 std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_dialog_shell() {
-    auto content = Box::vertical(18.0F);
+    auto content = Box::vertical(16.0F);
     content->set_vertical_size_policy(nk::SizePolicy::Expanding);
     content->set_vertical_stretch(1);
     const auto page_index = [this]() {
@@ -2027,11 +2027,6 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_dialog_shell(
     tabs_row->append(Spacer::create());
     content->append(tabs_row);
 
-    // Column guide (zero-height fixed width): pages without wide content
-    // otherwise clamp to their natural width and the dialog resizes when
-    // switching tabs.
-    content->append(FixedWidthSlot::create(600.0F));
-
     settings_page_slot_ = ContentSlot::create();
     settings_page_slot_->set_horizontal_size_policy(nk::SizePolicy::Expanding);
     settings_page_slot_->set_vertical_size_policy(nk::SizePolicy::Expanding);
@@ -2040,17 +2035,13 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_dialog_shell(
 
     settings_footer_slot_ = ContentSlot::create();
     settings_footer_slot_->set_horizontal_size_policy(nk::SizePolicy::Expanding);
-    settings_footer_slot_->set_margin({8.0F, 4.0F, 0.0F, 4.0F});
+    settings_footer_slot_->set_margin({4.0F, 24.0F, 0.0F, 0.0F});
     content->append(settings_footer_slot_);
 
     refresh_settings_dialog_sections();
-    // Clamp content to a GNOME-HIG responsive max width (default 720, tightening
-    // below 540) read from theme tokens, instead of a hardcoded 640px box. This
-    // matches libadwaita AdwClamp behavior and scales with the text setting.
-    auto clamp = nk::Clamp::create(nk::Orientation::Horizontal);
-    clamp->set_child(content);
-    clamp->set_margin({20.0F, 20.0F, 0.0F, 20.0F});
-    return clamp;
+    // A width constraint does not add an empty layout row or shift the
+    // content column relative to the dialog's title and footer.
+    return FixedWidthSlot::create(600.0F, content);
 }
 
 std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content() {
@@ -2389,7 +2380,7 @@ void MapperBusGuiController::refresh_settings_dialog_sections() {
         settings_tabs_->set_selected_index(page_index());
     }
     if (settings_page_slot_) {
-        constexpr float kSettingsPageMaxHeight = 440.0F;
+        constexpr float kSettingsPageMaxHeight = 520.0F;
         // Keep the reading position within a page, but start a freshly
         // switched page at the top instead of inheriting the old offset.
         const bool same_page_as_before = settings_built_page_ == settings_page_;
@@ -2404,12 +2395,15 @@ void MapperBusGuiController::refresh_settings_dialog_sections() {
         page->set_vertical_size_policy(nk::SizePolicy::Preferred);
         page->set_vertical_stretch(0);
 
-        auto padded = PaddingSlot::create({16.0F, 0.0F, 0.0F, 0.0F}, std::move(page));
+        // ScrollArea draws its thumb over the viewport, 8–15 logical pixels
+        // from the trailing edge. Keep cards and focus rings out of that lane
+        // on every page so changing tabs does not shift the content column.
+        auto padded = PaddingSlot::create({0.0F, 24.0F, 4.0F, 0.0F}, std::move(page));
         padded->set_horizontal_size_policy(nk::SizePolicy::Expanding);
         padded->set_vertical_size_policy(nk::SizePolicy::Preferred);
         padded->set_vertical_stretch(0);
 
-        auto scroll = nk::ScrollArea::create();
+        auto scroll = rectangular_scroll_area();
         scroll->set_h_scroll_policy(nk::ScrollPolicy::Never);
         scroll->set_v_scroll_policy(nk::ScrollPolicy::Automatic);
         scroll->set_horizontal_size_policy(nk::SizePolicy::Expanding);
