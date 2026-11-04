@@ -5,7 +5,7 @@ All notable changes to MapperBus are documented in this file.
 The format is based on Keep a Changelog, and this project adheres to Semantic
 Versioning.
 
-## [Unreleased]
+## [0.2.0] - 2026-11-04
 
 ### Added
 
@@ -63,5 +63,5 @@ Versioning.
 - Initial release with the emulator core, SDL3 frontend, CPU and GPU FSR
   upscaling, and BlipBuffer-based audio output.
 
-[Unreleased]: https://github.com/kidoz/mapperbus/compare/v0.1.0...HEAD
+[0.2.0]: https://github.com/kidoz/mapperbus/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/kidoz/mapperbus/releases/tag/v0.1.0
