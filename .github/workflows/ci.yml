@@ -24,19 +24,23 @@ jobs:
         include:
           - os: ubuntu-24.04
             compiler: clang
-            cc: clang-18
-            cxx: clang++-18
+            cc: clang-19
+            cxx: clang++-19
+            ldflags: -lstdc++exp
           - os: ubuntu-24.04
             compiler: gcc
             cc: gcc-14
             cxx: g++-14
-          - os: macos-14
+            ldflags: -lstdc++exp
+          - os: macos-15
             compiler: clang
             cc: clang
             cxx: clang++
+            ldflags: ""
     env:
       CC: ${{ matrix.cc }}
       CXX: ${{ matrix.cxx }}
+      LDFLAGS: ${{ matrix.ldflags }}
     steps:
       - uses: actions/checkout@v4
 
@@ -44,13 +48,13 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build pkg-config libsdl2-dev \
+          sudo apt-get install -y ninja-build pkg-config libsdl2-dev g++-14 \
             libx11-dev libxext-dev libxrandr-dev libxinerama-dev \
             libxcursor-dev libxi-dev libwayland-dev libxkbcommon-dev \
             libdecor-0-dev libdbus-1-dev libibus-1.0-dev libpulse-dev \
-            libasound2-dev libudev-dev
+            libasound2-dev libudev-dev libusb-1.0-0-dev libpipewire-0.3-dev
           if [ "${{ matrix.compiler }}" = "clang" ]; then
-            sudo apt-get install -y clang-18 libc++-18-dev libc++abi-18-dev
+            sudo apt-get install -y clang-19
           fi
 
       - name: Install macOS dependencies
@@ -83,13 +87,13 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y ninja-build pkg-config clang-format-18 \
-            clang-tidy-18 libsdl2-dev libx11-dev libwayland-dev \
+            clang-19 clang-tidy-19 g++-14 libsdl2-dev libx11-dev libwayland-dev \
             libxkbcommon-dev libdecor-0-dev libdbus-1-dev libasound2-dev \
-            libudev-dev
+            libudev-dev libusb-1.0-0-dev libpipewire-0.3-dev
           sudo update-alternatives --install /usr/bin/clang-format clang-format \
             /usr/bin/clang-format-18 100
           sudo update-alternatives --install /usr/bin/clang-tidy clang-tidy \
-            /usr/bin/clang-tidy-18 100
+            /usr/bin/clang-tidy-19 100
 
       - uses: actions/setup-python@v5
         with:
@@ -105,8 +109,9 @@ jobs:
 
       - name: Configure build for compile_commands.json
         env:
-          CC: clang-18
-          CXX: clang++-18
+          CC: clang-19
+          CXX: clang++-19
+          LDFLAGS: -lstdc++exp
         run: meson setup buildDir -Denable_nodalkit_gui=false
 
       - name: clang-tidy
@@ -123,10 +128,10 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build pkg-config clang-18 \
-            libc++-18-dev libc++abi-18-dev libsdl2-dev libx11-dev \
+          sudo apt-get install -y ninja-build pkg-config clang-19 g++-14 \
+            libsdl2-dev libx11-dev \
             libwayland-dev libxkbcommon-dev libdecor-0-dev libdbus-1-dev \
-            libasound2-dev libudev-dev
+            libasound2-dev libudev-dev libusb-1.0-0-dev libpipewire-0.3-dev
 
       - uses: actions/setup-python@v5
         with:
@@ -137,8 +142,9 @@ jobs:
 
       - name: Configure sanitizer build
         env:
-          CC: clang-18
-          CXX: clang++-18
+          CC: clang-19
+          CXX: clang++-19
+          LDFLAGS: -lstdc++exp
         run: |
           meson setup buildDir-sanitize \
             -Db_sanitize=address,undefined \
@@ -148,8 +154,8 @@ jobs:
 
       - name: Build with sanitizers
         env:
-          CC: clang-18
-          CXX: clang++-18
+          CC: clang-19
+          CXX: clang++-19
         run: meson compile -C buildDir-sanitize
 
       - name: Test with sanitizers

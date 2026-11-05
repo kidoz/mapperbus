@@ -6,6 +6,7 @@ project('mapperbus', 'cpp',
         'werror=true',
         'cpp_std=c++23',
         'b_lto=true',
+        'sdl3:werror=false',
         'catch2:tests=false',
     ],
 )
