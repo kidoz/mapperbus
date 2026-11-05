@@ -99,6 +99,74 @@ TEST_CASE("Malformed state storage records use defaults", "[app][configuration][
     std::filesystem::remove_all(path.parent_path());
 }
 
+TEST_CASE("Both input profiles persist independently", "[app][configuration][input]") {
+    const auto path = temporary_config_path();
+    MapperBusConfiguration config;
+    const auto a = platform::button_index(platform::InputAction::A);
+    CHECK(config.input.player2_gamepad.gamepad_index == 1);
+    for (const auto key : config.input.player2_keyboard_bindings) {
+        CHECK(key == 0);
+    }
+    config.input.keyboard_bindings[a] = 6;
+    config.input.player2_keyboard_bindings[a] = 13;
+    config.input.player2_keyboard_bindings[platform::button_index(platform::InputAction::TurboB)] =
+        14;
+    config.input.gamepad.enabled = false;
+    config.input.player2_gamepad.enabled = true;
+    config.input.player2_gamepad.gamepad_index = 3;
+    config.input.player2_gamepad.axis_deadzone = 16000;
+    REQUIRE(platform::apply_gamepad_mapping(config.input.player2_gamepad,
+                                            "a=leftx+,b=west,turbo_a=none,turbo_b=leftshoulder"));
+    REQUIRE(save_mapperbus_configuration_to_file(config, path));
+    const auto loaded = load_mapperbus_configuration_from_file(path);
+    CHECK(loaded.version == 1);
+    CHECK(loaded.input.keyboard_bindings == config.input.keyboard_bindings);
+    CHECK(loaded.input.player2_keyboard_bindings == config.input.player2_keyboard_bindings);
+    CHECK_FALSE(loaded.input.gamepad.enabled);
+    CHECK(loaded.input.gamepad.bindings == config.input.gamepad.bindings);
+    CHECK(loaded.input.player2_gamepad.enabled);
+    CHECK(loaded.input.player2_gamepad.gamepad_index == 3);
+    CHECK(loaded.input.player2_gamepad.axis_deadzone == 16000);
+    CHECK(loaded.input.player2_gamepad.bindings == config.input.player2_gamepad.bindings);
+    std::filesystem::remove_all(path.parent_path());
+}
+
+TEST_CASE("Older input files keep player one settings and independent player two defaults",
+          "[app][configuration][input]") {
+    const auto path = temporary_config_path();
+    std::filesystem::create_directories(path.parent_path());
+    {
+        std::ofstream file(path);
+        file << "[input.keyboard]\na=6\n[input.gamepad]\nindex=2\na=west\n";
+    }
+    const auto loaded = load_mapperbus_configuration_from_file(path);
+    const MapperBusInputConfiguration defaults;
+    CHECK(loaded.input.keyboard_bindings[platform::button_index(core::Button::A)] == 6);
+    CHECK(loaded.input.gamepad.gamepad_index == 2);
+    CHECK(loaded.input.player2_keyboard_bindings == defaults.player2_keyboard_bindings);
+    CHECK(loaded.input.player2_gamepad.gamepad_index == 1);
+    CHECK(loaded.input.player2_gamepad.bindings == defaults.player2_gamepad.bindings);
+    {
+        std::ofstream file(path);
+        file << "[input.player2.keyboard]\na=invalid\nb=0\n"
+                "[input.player2.gamepad]\nindex=invalid\ndeadzone=99999\n"
+                "enabled=invalid\na=invalid\nb=north\n";
+    }
+    const auto malformed = load_mapperbus_configuration_from_file(path);
+    CHECK(malformed.input.keyboard_bindings == defaults.keyboard_bindings);
+    CHECK(malformed.input.player2_keyboard_bindings == defaults.player2_keyboard_bindings);
+    CHECK(malformed.input.player2_gamepad.gamepad_index == 1);
+    CHECK(malformed.input.player2_gamepad.axis_deadzone == 32767);
+    CHECK(malformed.input.player2_gamepad.enabled);
+    CHECK(malformed.input.player2_gamepad.bindings[platform::button_index(core::Button::A)] ==
+          defaults.player2_gamepad.bindings[platform::button_index(core::Button::A)]);
+    CHECK(malformed.input.player2_gamepad
+              .bindings[platform::button_index(platform::InputAction::TurboA)]
+              .kind == platform::GamepadControlKind::None);
+    CHECK(malformed.input.gamepad.bindings == defaults.gamepad.bindings);
+    std::filesystem::remove_all(path.parent_path());
+}
+
 TEST_CASE("Turbo bindings and speed persist with optional version one keys",
           "[app][configuration][turbo]") {
     const auto path = temporary_config_path();

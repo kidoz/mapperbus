@@ -20,6 +20,9 @@ inline constexpr int kMapperBusConfigurationVersion = 1;
 struct MapperBusInputConfiguration {
     std::array<int, platform::kInputActionCount> keyboard_bindings{};
     platform::GamepadInputConfig gamepad;
+    /// Player two starts with unbound keyboard controls and gamepad index 1.
+    std::array<int, platform::kInputActionCount> player2_keyboard_bindings{};
+    platform::GamepadInputConfig player2_gamepad;
     int turbo_period_frames = 4;
 
     MapperBusInputConfiguration();
