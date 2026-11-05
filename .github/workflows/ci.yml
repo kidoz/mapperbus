@@ -90,10 +90,6 @@ jobs:
             clang-19 clang-tidy-19 g++-14 libsdl2-dev libx11-dev libwayland-dev \
             libxkbcommon-dev libdecor-0-dev libdbus-1-dev libasound2-dev \
             libudev-dev libusb-1.0-0-dev libpipewire-0.3-dev
-          sudo update-alternatives --install /usr/bin/clang-format clang-format \
-            /usr/bin/clang-format-18 100
-          sudo update-alternatives --install /usr/bin/clang-tidy clang-tidy \
-            /usr/bin/clang-tidy-19 100
 
       - uses: actions/setup-python@v5
         with:
@@ -105,7 +101,7 @@ jobs:
       - name: clang-format check
         run: |
           find src tests -name '*.hpp' -o -name '*.cpp' \
-            | sort | xargs clang-format --dry-run --Werror
+            | sort | xargs clang-format-18 --dry-run --Werror
 
       - name: Configure build for compile_commands.json
         env:
@@ -117,7 +113,7 @@ jobs:
       - name: clang-tidy
         run: |
           find src -name '*.cpp' ! -path 'src/frontends/nodalkit/*' | sort | \
-            xargs clang-tidy -p buildDir --header-filter='src/.*'
+            xargs clang-tidy-19 -p buildDir --header-filter='src/.*'
 
   sanitize:
     name: sanitize (ASan + UBSan)
