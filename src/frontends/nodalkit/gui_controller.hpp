@@ -149,6 +149,7 @@ class MapperBusGuiController {
     /// Region the loaded cartridge selected, before a manual override.
     std::optional<core::Region> detected_region_;
     int active_state_slot_ = 0;
+    int settings_input_player_ = 0;
     std::shared_ptr<nk::Dialog> state_slot_dialog_;
     std::weak_ptr<nk::ComboBox> state_slot_control_;
     std::shared_ptr<nk::ContextMenu> header_menu_;

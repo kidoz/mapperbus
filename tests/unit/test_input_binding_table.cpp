@@ -238,10 +238,12 @@ TEST_CASE("NodalKit turbo keys remain separate from A B and support rebinding",
           "[gui][bindings][turbo]") {
     using namespace mapperbus;
     nk::Window window({.title = "Turbo input", .width = 600, .height = 300});
-    frontend::NodalKitInput input(window);
+    platform::GamepadInputConfig player2;
+    player2.gamepad_index = 1;
+    frontend::NodalKitInput input(window, {}, player2);
     using platform::InputAction;
-    CHECK(input.binding(InputAction::TurboA) == nk::KeyCode::S);
-    CHECK(input.binding(InputAction::TurboB) == nk::KeyCode::A);
+    CHECK(input.player_input(0).binding(InputAction::TurboA) == nk::KeyCode::S);
+    CHECK(input.player_input(0).binding(InputAction::TurboB) == nk::KeyCode::A);
     window.dispatch_key_event({.type = nk::KeyEvent::Type::Press, .key = nk::KeyCode::S});
     window.dispatch_key_event({.type = nk::KeyEvent::Type::Press, .key = nk::KeyCode::A});
     for (int i = 0; i < 8; ++i) {
@@ -252,15 +254,60 @@ TEST_CASE("NodalKit turbo keys remain separate from A B and support rebinding",
         CHECK_FALSE(input.is_button_pressed(0, core::Button::B));
         CHECK_FALSE(input.is_action_pressed(1, InputAction::TurboA));
     }
-    input.set_binding(InputAction::TurboA, nk::KeyCode::Unknown);
+    input.player_input(0).set_binding(InputAction::TurboA, nk::KeyCode::Unknown);
     CHECK_FALSE(input.is_action_pressed(0, InputAction::TurboA));
-    input.set_binding(InputAction::TurboB, nk::KeyCode::C);
+    input.player_input(0).set_binding(InputAction::TurboB, nk::KeyCode::C);
     CHECK_FALSE(input.is_action_pressed(0, InputAction::TurboB));
     window.dispatch_key_event({.type = nk::KeyEvent::Type::Press, .key = nk::KeyCode::C});
     CHECK(input.is_action_pressed(0, InputAction::TurboB));
     window.dispatch_key_event({.type = nk::KeyEvent::Type::Release, .key = nk::KeyCode::C});
     CHECK_FALSE(input.is_action_pressed(0, InputAction::TurboB));
-    input.reset_default_bindings();
-    CHECK(input.uses_default_bindings());
+    input.player_input(0).reset_default_bindings();
+    CHECK(input.player_input(0).uses_default_bindings());
     CHECK(input.is_action_pressed(0, InputAction::TurboA));
+}
+
+TEST_CASE("NodalKit routes and resets each player's bindings independently", "[gui][bindings]") {
+    using namespace mapperbus;
+    using platform::InputAction;
+    nk::Window window({.title = "Two player input", .width = 600, .height = 300});
+    platform::GamepadInputConfig player1;
+    player1.enabled = false;
+    auto player2 = player1;
+    player2.gamepad_index = 1;
+    frontend::NodalKitInput input(window, player1, player2);
+    auto& first = input.player_input(0);
+    auto& second = input.player_input(1);
+    CHECK(first.uses_default_bindings());
+    CHECK(second.uses_default_bindings());
+    for (auto action : platform::input_actions()) {
+        CHECK(second.binding(action) == nk::KeyCode::Unknown);
+    }
+    second.set_binding(InputAction::A, nk::KeyCode::J);
+    second.set_binding(InputAction::TurboB, nk::KeyCode::K);
+    window.dispatch_key_event({.type = nk::KeyEvent::Type::Press, .key = nk::KeyCode::J});
+    window.dispatch_key_event({.type = nk::KeyEvent::Type::Press, .key = nk::KeyCode::K});
+    window.dispatch_key_event({.type = nk::KeyEvent::Type::Press, .key = nk::KeyCode::X});
+    input.poll();
+    CHECK(input.is_button_pressed(0, core::Button::A));
+    CHECK(input.is_button_pressed(1, core::Button::A));
+    CHECK(input.is_action_pressed(1, InputAction::TurboB));
+    CHECK_FALSE(input.is_action_pressed(0, InputAction::TurboB));
+    CHECK_FALSE(input.is_action_pressed(-1, InputAction::A));
+    CHECK_FALSE(input.is_action_pressed(2, InputAction::A));
+    window.dispatch_key_event({.type = nk::KeyEvent::Type::Release, .key = nk::KeyCode::J});
+    CHECK_FALSE(input.is_button_pressed(1, core::Button::A));
+    CHECK(input.is_button_pressed(0, core::Button::A));
+    second.reset_default_bindings();
+    CHECK(second.uses_default_bindings());
+    CHECK(first.binding(InputAction::A) == nk::KeyCode::X);
+    CHECK_FALSE(input.is_action_pressed(1, InputAction::TurboB));
+    second.set_gamepad_index(3);
+    second.set_gamepad_binding(InputAction::A,
+                               platform::gamepad_button_control(platform::GamepadButton::West));
+    second.reset_default_gamepad_bindings();
+    CHECK(second.gamepad_config().gamepad_index == 1);
+    CHECK(second.uses_default_gamepad_bindings());
+    CHECK(first.gamepad_config().gamepad_index == 0);
+    CHECK_FALSE(first.gamepad_config().enabled);
 }

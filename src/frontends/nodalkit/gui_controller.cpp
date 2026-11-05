@@ -1000,19 +1000,26 @@ MapperBusGuiController::MapperBusGuiController(nk::Application& app, nk::Window&
     audio_backend_->set_volume(static_cast<float>(configuration_.frontend.audio_volume_percent) /
                                100.0F);
 
-    auto input = std::make_unique<NodalKitInput>(window_, configuration_.input.gamepad);
+    auto input = std::make_unique<NodalKitInput>(
+        window_, configuration_.input.gamepad, configuration_.input.player2_gamepad);
     input_backend_ = input.get();
     const app::MapperBusInputConfiguration default_input;
     bool replaced_reserved_binding = false;
-    for (const auto button : kBindingOrder) {
-        const auto index = platform::button_index(button);
-        auto key = static_cast<nk::KeyCode>(configuration_.input.keyboard_bindings[index]);
-        if (NodalKitInput::is_reserved_game_key(key)) {
-            key = static_cast<nk::KeyCode>(default_input.keyboard_bindings[index]);
-            configuration_.input.keyboard_bindings[index] = static_cast<int>(key);
-            replaced_reserved_binding = true;
+    for (int player = 0; player < 2; ++player) {
+        auto& bindings = player == 0 ? configuration_.input.keyboard_bindings
+                                     : configuration_.input.player2_keyboard_bindings;
+        const auto& defaults =
+            player == 0 ? default_input.keyboard_bindings : default_input.player2_keyboard_bindings;
+        for (const auto button : kBindingOrder) {
+            const auto index = platform::button_index(button);
+            auto key = static_cast<nk::KeyCode>(bindings[index]);
+            if (NodalKitInput::is_reserved_game_key(key)) {
+                key = static_cast<nk::KeyCode>(defaults[index]);
+                bindings[index] = static_cast<int>(key);
+                replaced_reserved_binding = true;
+            }
+            input_backend_->player_input(player).set_binding(button, key);
         }
-        input_backend_->set_binding(button, key);
     }
 
     session_ = std::make_unique<app::EmulationSession>(std::make_unique<platform::NullVideo>(),
@@ -2021,11 +2028,16 @@ void MapperBusGuiController::update_preview_surface(const std::uint32_t* data,
 }
 
 void MapperBusGuiController::update_configuration_from_state() {
-    for (const auto button : kBindingOrder) {
-        configuration_.input.keyboard_bindings[platform::button_index(button)] =
-            static_cast<int>(input_backend_->binding(button));
+    for (int player = 0; player < 2; ++player) {
+        const auto& input = input_backend_->player_input(player);
+        auto& keyboard = player == 0 ? configuration_.input.keyboard_bindings
+                                     : configuration_.input.player2_keyboard_bindings;
+        for (const auto button : kBindingOrder) {
+            keyboard[platform::button_index(button)] = static_cast<int>(input.binding(button));
+        }
+        (player == 0 ? configuration_.input.gamepad : configuration_.input.player2_gamepad) =
+            input.gamepad_config();
     }
-    configuration_.input.gamepad = input_backend_->gamepad_config();
     configuration_.audio = actions_->snapshot().audio_settings;
     configuration_.frontend.preview_scale_index = preview_scale_index(preview_scale_option_);
     configuration_.frontend.ui_density_index = density_index(app_.theme_selection().density);
@@ -2052,10 +2064,12 @@ void MapperBusGuiController::open_rebind_dialog(RebindDevice device, platform::I
     };
     if (device == RebindDevice::Gamepad) {
         pending_rebind_->initially_pressed_gamepad_controls =
-            input_backend_->pressed_gamepad_controls(gamepad_capture_controls());
+            input_backend_->player_input(settings_input_player_)
+                .pressed_gamepad_controls(gamepad_capture_controls());
     }
 
-    const std::string target = button_name(button);
+    const std::string target =
+        "Player " + std::to_string(settings_input_player_ + 1) + " · " + button_name(button);
     const bool keyboard = device == RebindDevice::Keyboard;
     rebind_dialog_ = nk::Dialog::create("Rebind " + target);
     rebind_dialog_->set_presentation_style(nk::DialogPresentationStyle::Sheet);
@@ -2156,7 +2170,8 @@ void MapperBusGuiController::poll_pending_rebind() {
         return;
     }
 
-    const auto pressed = input_backend_->pressed_gamepad_controls(gamepad_capture_controls());
+    const auto pressed = input_backend_->player_input(settings_input_player_)
+                             .pressed_gamepad_controls(gamepad_capture_controls());
     auto& initially_pressed = pending_rebind_->initially_pressed_gamepad_controls;
     std::erase_if(initially_pressed, [&pressed](const platform::GamepadControl& control) {
         return std::find(pressed.begin(), pressed.end(), control) == pressed.end();
@@ -2171,31 +2186,32 @@ void MapperBusGuiController::poll_pending_rebind() {
 }
 
 void MapperBusGuiController::apply_keyboard_rebind(platform::InputAction button, nk::KeyCode key) {
-    const auto previous = input_backend_->binding(button);
+    const auto previous = input_backend_->player_input(settings_input_player_).binding(button);
     std::optional<platform::InputAction> conflict_button;
     for (const auto other : kBindingOrder) {
         if (key != nk::KeyCode::Unknown && other != button &&
-            input_backend_->binding(other) == key) {
+            input_backend_->player_input(settings_input_player_).binding(other) == key) {
             conflict_button = other;
             break;
         }
     }
 
-    const auto commit = [this, button, key, previous, conflict_button] {
-        if (conflict_button) {
-            input_backend_->set_binding(*conflict_button, previous);
-        }
-        input_backend_->set_binding(button, key);
-        save_configuration_state();
+    const auto commit =
+        [this, player = settings_input_player_, button, key, previous, conflict_button] {
+            if (conflict_button) {
+                input_backend_->player_input(player).set_binding(*conflict_button, previous);
+            }
+            input_backend_->player_input(player).set_binding(button, key);
+            save_configuration_state();
 
-        std::string message = button_name(button) + " mapped to " + key_label(key) + ".";
-        if (conflict_button) {
-            message += " Replaced " + button_name(*conflict_button) + ".";
-        }
-        set_message(std::move(message));
-        refresh_settings_dialog_sections();
-        refresh_ui();
-    };
+            std::string message = button_name(button) + " mapped to " + key_label(key) + ".";
+            if (conflict_button) {
+                message += " Replaced " + button_name(*conflict_button) + ".";
+            }
+            set_message(std::move(message));
+            refresh_settings_dialog_sections();
+            refresh_ui();
+        };
 
     if (conflict_button) {
         close_rebind_dialog();
@@ -2224,32 +2240,36 @@ void MapperBusGuiController::apply_keyboard_rebind(platform::InputAction button,
 
 void MapperBusGuiController::apply_gamepad_rebind(platform::InputAction button,
                                                   platform::GamepadControl control) {
-    const auto previous = input_backend_->gamepad_binding(button);
+    const auto previous =
+        input_backend_->player_input(settings_input_player_).gamepad_binding(button);
     std::optional<platform::InputAction> conflict_button;
     for (const auto other : kBindingOrder) {
         if (control.kind != platform::GamepadControlKind::None && other != button &&
-            input_backend_->gamepad_binding(other) == control) {
+            input_backend_->player_input(settings_input_player_).gamepad_binding(other) ==
+                control) {
             conflict_button = other;
             break;
         }
     }
 
-    const auto commit = [this, button, control, previous, conflict_button] {
-        if (conflict_button) {
-            input_backend_->set_gamepad_binding(*conflict_button, previous);
-        }
-        input_backend_->set_gamepad_binding(button, control);
-        save_configuration_state();
+    const auto commit =
+        [this, player = settings_input_player_, button, control, previous, conflict_button] {
+            if (conflict_button) {
+                input_backend_->player_input(player).set_gamepad_binding(*conflict_button,
+                                                                         previous);
+            }
+            input_backend_->player_input(player).set_gamepad_binding(button, control);
+            save_configuration_state();
 
-        std::string message = button_name(button) + " gamepad input mapped to " +
-                              gamepad_control_label(control) + ".";
-        if (conflict_button) {
-            message += " Replaced " + button_name(*conflict_button) + ".";
-        }
-        set_message(std::move(message));
-        refresh_settings_dialog_sections();
-        refresh_ui();
-    };
+            std::string message = button_name(button) + " gamepad input mapped to " +
+                                  gamepad_control_label(control) + ".";
+            if (conflict_button) {
+                message += " Replaced " + button_name(*conflict_button) + ".";
+            }
+            set_message(std::move(message));
+            refresh_settings_dialog_sections();
+            refresh_ui();
+        };
 
     if (conflict_button) {
         close_rebind_dialog();
@@ -2374,15 +2394,31 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
     auto page = Box::vertical(16.0F);
     page->set_horizontal_size_policy(nk::SizePolicy::Expanding);
     if (settings_page_ == SettingsPage::Input) {
-        const bool gamepad_support = input_backend_->gamepad_support_available();
-        const bool gamepad_plugged_in = input_backend_->gamepad_device_count() > 0;
-        const bool gamepad_enabled = input_backend_->gamepad_config().enabled;
+        auto player_selector = nk::SegmentedControl::create();
+        player_selector->set_segments({"Player 1", "Player 2"});
+        player_selector->set_selected_index(settings_input_player_);
+        player_selector->ensure_accessible().set_name("Input player");
+        (void)player_selector->on_selection_changed().connect([this](int player) {
+            settings_input_player_ = std::clamp(player, 0, 1);
+            refresh_settings_dialog_sections();
+        });
+        page->append(player_selector);
+        const bool gamepad_support =
+            input_backend_->player_input(settings_input_player_).gamepad_support_available();
+        const int gamepad_count =
+            input_backend_->player_input(settings_input_player_).gamepad_device_count();
+        const bool gamepad_plugged_in =
+            gamepad_count >
+            input_backend_->player_input(settings_input_player_).gamepad_config().gamepad_index;
+        const bool gamepad_enabled =
+            input_backend_->player_input(settings_input_player_).gamepad_config().enabled;
         const bool gamepad_available = gamepad_support && gamepad_enabled && gamepad_plugged_in;
         const std::string gamepad_state = !gamepad_support      ? "Unavailable"
                                           : !gamepad_enabled    ? "Disabled"
                                           : !gamepad_plugged_in ? "Not connected"
                                                                 : "";
-        const std::string gamepad_help = input_backend_->gamepad_status_text();
+        const std::string gamepad_help =
+            input_backend_->player_input(settings_input_player_).gamepad_status_text();
 
         auto bindings = Box::vertical(6.0F);
         bindings->set_horizontal_size_policy(nk::SizePolicy::Expanding);
@@ -2393,8 +2429,9 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
         for (const auto button : kBindingOrder) {
             table->add_binding(
                 button_name(button),
-                key_label(input_backend_->binding(button)),
-                gamepad_control_label(input_backend_->gamepad_binding(button)),
+                key_label(input_backend_->player_input(settings_input_player_).binding(button)),
+                gamepad_control_label(
+                    input_backend_->player_input(settings_input_player_).gamepad_binding(button)),
                 [this, button] { open_rebind_dialog(RebindDevice::Keyboard, button); },
                 [this, button] { open_rebind_dialog(RebindDevice::Gamepad, button); },
                 gamepad_available,
@@ -2427,7 +2464,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
             auto enabled_switch = nk::Switch::create();
             enabled_switch->set_active(gamepad_enabled);
             (void)enabled_switch->on_toggled().connect([this](bool active) {
-                input_backend_->set_gamepad_enabled(active);
+                input_backend_->player_input(settings_input_player_).set_gamepad_enabled(active);
                 save_configuration_state();
                 set_message(active ? "Gamepad input enabled." : "Gamepad input disabled.");
                 refresh_ui();
@@ -2436,18 +2473,21 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
             controller_group->add(
                 pref_row("Gamepad input", enabled_switch, gamepad_available ? "" : gamepad_help));
 
-            if (gamepad_available) {
+            if (gamepad_enabled && gamepad_count > 0) {
                 auto index_combo = nk::ComboBox::create();
-                auto device_labels = input_backend_->gamepad_device_labels();
+                auto device_labels =
+                    input_backend_->player_input(settings_input_player_).gamepad_device_labels();
                 index_combo->set_items(device_labels);
                 index_combo->set_selected_index(
-                    std::clamp(input_backend_->gamepad_config().gamepad_index,
+                    std::clamp(input_backend_->player_input(settings_input_player_)
+                                   .gamepad_config()
+                                   .gamepad_index,
                                0,
                                std::max(0, static_cast<int>(device_labels.size()) - 1)));
                 // Nothing to choose until a device is actually connected.
-                index_combo->set_sensitive(gamepad_enabled && gamepad_plugged_in);
+                index_combo->set_sensitive(gamepad_enabled);
                 (void)index_combo->on_selection_changed().connect([this](int index) {
-                    input_backend_->set_gamepad_index(index);
+                    input_backend_->player_input(settings_input_player_).set_gamepad_index(index);
                     save_configuration_state();
                     set_message("Preferred gamepad updated.");
                     refresh_ui();
@@ -2458,10 +2498,13 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
                 auto deadzone_control = nk::SegmentedControl::create();
                 deadzone_control->set_segments(owned_labels(kGamepadDeadzoneLabels));
                 deadzone_control->set_selected_index(
-                    gamepad_deadzone_index(input_backend_->gamepad_config().axis_deadzone));
-                deadzone_control->set_sensitive(gamepad_enabled && gamepad_plugged_in);
+                    gamepad_deadzone_index(input_backend_->player_input(settings_input_player_)
+                                               .gamepad_config()
+                                               .axis_deadzone));
+                deadzone_control->set_sensitive(gamepad_enabled);
                 (void)deadzone_control->on_selection_changed().connect([this](int index) {
-                    input_backend_->set_gamepad_deadzone(gamepad_deadzone_for_index(index));
+                    input_backend_->player_input(settings_input_player_)
+                        .set_gamepad_deadzone(gamepad_deadzone_for_index(index));
                     save_configuration_state();
                     set_message("Gamepad deadzone set to " +
                                 std::string(kGamepadDeadzoneLabels[static_cast<std::size_t>(
@@ -2676,7 +2719,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_footer_conten
         restore_keyboard->add_style_class("flat");
         restore_keyboard->ensure_accessible().set_name("Restore Keyboard Defaults");
         (void)restore_keyboard->on_clicked().connect([this] {
-            input_backend_->reset_default_bindings();
+            input_backend_->player_input(settings_input_player_).reset_default_bindings();
             save_configuration_state();
             set_message("Restored default keyboard bindings.");
             refresh_ui();
@@ -2687,9 +2730,10 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_footer_conten
         auto restore_gamepad = nk::Button::create("Gamepad Defaults");
         restore_gamepad->add_style_class("flat");
         restore_gamepad->ensure_accessible().set_name("Restore Gamepad Defaults");
-        restore_gamepad->set_sensitive(input_backend_->gamepad_support_available());
+        restore_gamepad->set_sensitive(
+            input_backend_->player_input(settings_input_player_).gamepad_support_available());
         (void)restore_gamepad->on_clicked().connect([this] {
-            input_backend_->reset_default_gamepad_bindings();
+            input_backend_->player_input(settings_input_player_).reset_default_gamepad_bindings();
             save_configuration_state();
             set_message("Restored default gamepad bindings.");
             refresh_ui();
@@ -2973,18 +3017,22 @@ void MapperBusGuiController::handle_menu_action(std::string_view action) {
 }
 
 std::string MapperBusGuiController::input_status_text() const {
-    return input_backend_->uses_default_bindings() &&
-                   input_backend_->uses_default_gamepad_bindings()
-               ? "Input default"
-               : "Input custom";
+    for (int player = 0; player < 2; ++player) {
+        const auto& input = input_backend_->player_input(player);
+        if (!input.uses_default_bindings() || !input.uses_default_gamepad_bindings()) {
+            return "Input custom";
+        }
+    }
+    return "Input default";
 }
 
 std::string MapperBusGuiController::input_test_status_text() const {
     std::vector<std::string> pressed;
     for (const auto button : kBindingOrder) {
-        if (input_backend_->is_action_pressed(0, button) ||
+        if (input_backend_->is_action_pressed(settings_input_player_, button) ||
             (settings_window_ && settings_window_->is_visible() && settings_window_->is_focused() &&
-             settings_window_->is_key_pressed(input_backend_->binding(button)))) {
+             settings_window_->is_key_pressed(
+                 input_backend_->player_input(settings_input_player_).binding(button)))) {
             pressed.push_back(button_name(button));
         }
     }

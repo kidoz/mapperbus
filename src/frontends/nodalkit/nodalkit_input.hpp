@@ -18,19 +18,24 @@
 
 namespace mapperbus::frontend {
 
-class NodalKitInput : public platform::InputBackend {
+class NodalKitPlayerInput {
   public:
-    explicit NodalKitInput(nk::Window& window, platform::GamepadInputConfig gamepad_config = {})
-        : window_(window), gamepad_config_(gamepad_config) {
+    explicit NodalKitPlayerInput(nk::Window& window,
+                                 platform::GamepadInputConfig gamepad_config,
+                                 int player)
+        : window_(window), default_gamepad_index_(player), gamepad_config_(gamepad_config) {
         reset_default_bindings();
         initialize_gamepad_subsystem();
     }
 
-    ~NodalKitInput() override {
+    NodalKitPlayerInput(const NodalKitPlayerInput&) = delete;
+    NodalKitPlayerInput& operator=(const NodalKitPlayerInput&) = delete;
+
+    ~NodalKitPlayerInput() {
         shutdown_gamepad_subsystem();
     }
 
-    void poll() override {
+    void poll() {
         poll_gamepad();
     }
 
@@ -49,20 +54,8 @@ class NodalKitInput : public platform::InputBackend {
         }
     }
 
-    bool is_button_pressed(int player, core::Button button) const override {
-        return is_action_pressed(player, platform::input_action(button));
-    }
-
-    bool is_action_pressed(int player, platform::InputAction button) const override {
-        if (player != 0) {
-            return false;
-        }
-
+    [[nodiscard]] bool is_action_pressed(platform::InputAction button) const {
         return keyboard_button_pressed(binding(button)) || is_gamepad_button_pressed(button);
-    }
-
-    bool should_quit() const override {
-        return false;
     }
 
     void set_binding(platform::InputAction button, nk::KeyCode key) {
@@ -253,7 +246,7 @@ class NodalKitInput : public platform::InputBackend {
     void reset_default_gamepad_bindings() {
         gamepad_config_.bindings = platform::default_gamepad_bindings();
         gamepad_config_.axis_deadzone = 12000;
-        gamepad_config_.gamepad_index = 0;
+        gamepad_config_.gamepad_index = default_gamepad_index_;
         gamepad_config_.enabled = true;
         initialize_gamepad_subsystem();
         close_gamepad();
@@ -262,26 +255,30 @@ class NodalKitInput : public platform::InputBackend {
 
     [[nodiscard]] bool uses_default_gamepad_bindings() const {
         const auto defaults = platform::default_gamepad_bindings();
-        return gamepad_config_.enabled && gamepad_config_.gamepad_index == 0 &&
+        return gamepad_config_.enabled && gamepad_config_.gamepad_index == default_gamepad_index_ &&
                gamepad_config_.axis_deadzone == 12000 && gamepad_config_.bindings == defaults;
     }
 
     void reset_default_bindings() {
         for (const auto button : buttons()) {
-            set_binding(button, default_key_for_button(button));
+            set_binding(button, default_key_for_button(button, default_gamepad_index_));
         }
     }
 
     [[nodiscard]] bool uses_default_bindings() const {
         for (const auto button : buttons()) {
-            if (binding(button) != default_key_for_button(button)) {
+            if (binding(button) != default_key_for_button(button, default_gamepad_index_)) {
                 return false;
             }
         }
         return true;
     }
 
-    [[nodiscard]] static nk::KeyCode default_key_for_button(platform::InputAction button) {
+    [[nodiscard]] static nk::KeyCode default_key_for_button(platform::InputAction button,
+                                                            int player = 0) {
+        if (player != 0) {
+            return nk::KeyCode::Unknown;
+        }
         switch (button) {
         case platform::InputAction::TurboA:
             return nk::KeyCode::S;
@@ -366,8 +363,7 @@ class NodalKitInput : public platform::InputBackend {
         }
 
         SDL_UpdateGamepads();
-        if (gamepad_ != nullptr &&
-            SDL_GetGamepadConnectionState(gamepad_) == SDL_JOYSTICK_CONNECTION_INVALID) {
+        if (gamepad_ != nullptr && !SDL_GamepadConnected(gamepad_)) {
             close_gamepad();
         }
         if (gamepad_ == nullptr) {
@@ -497,6 +493,7 @@ class NodalKitInput : public platform::InputBackend {
 #endif
 
     nk::Window& window_;
+    int default_gamepad_index_ = 0;
     std::array<nk::KeyCode, platform::kInputActionCount> bindings_{};
     platform::GamepadInputConfig gamepad_config_;
 #ifdef MAPPERBUS_HAVE_SDL3_GAMEPAD
@@ -504,6 +501,49 @@ class NodalKitInput : public platform::InputBackend {
     SDL_Gamepad* gamepad_ = nullptr;
     SDL_JoystickID gamepad_id_ = 0;
 #endif
+};
+
+/// Own independent bindings and gamepad handles for the two NES ports.
+class NodalKitInput : public platform::InputBackend {
+  public:
+    NodalKitInput(nk::Window& window,
+                  platform::GamepadInputConfig player1,
+                  platform::GamepadInputConfig player2)
+        : players_{NodalKitPlayerInput(window, player1, 0),
+                   NodalKitPlayerInput(window, player2, 1)} {}
+
+    void poll() override {
+        for (auto& player : players_) {
+            player.poll();
+        }
+    }
+
+    bool is_button_pressed(int player, core::Button button) const override {
+        return is_action_pressed(player, platform::input_action(button));
+    }
+
+    bool is_action_pressed(int player, platform::InputAction action) const override {
+        return player >= 0 && player < 2 && players_[player].is_action_pressed(action);
+    }
+
+    bool should_quit() const override {
+        return false;
+    }
+
+    [[nodiscard]] NodalKitPlayerInput& player_input(int player) {
+        return players_.at(player);
+    }
+
+    [[nodiscard]] const NodalKitPlayerInput& player_input(int player) const {
+        return players_.at(player);
+    }
+
+    [[nodiscard]] static bool is_reserved_game_key(nk::KeyCode key) {
+        return NodalKitPlayerInput::is_reserved_game_key(key);
+    }
+
+  private:
+    std::array<NodalKitPlayerInput, 2> players_;
 };
 
 } // namespace mapperbus::frontend
