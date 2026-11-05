@@ -3,8 +3,12 @@
 #include <array>
 #include <cstdint>
 #include <filesystem>
+#include <map>
+#include <string>
+#include <string_view>
 #include <vector>
 
+#include "app/state_storage.hpp"
 #include "core/apu/audio_settings.hpp"
 #include "core/types.hpp"
 #include "platform/input/gamepad_config.hpp"
@@ -53,7 +57,16 @@ struct MapperBusConfiguration {
     MapperBusFrontendConfiguration frontend;
     /// Recently opened ROMs, newest first, at most five entries.
     std::vector<RecentRomEntry> recent_roms;
+    StateStorageSettings save_states;
+    /// Selected zero-based state slot, keyed by the ROM content SHA-256.
+    std::map<std::string, int> state_slots;
 };
+
+[[nodiscard]] int selected_state_slot(const MapperBusConfiguration& configuration,
+                                      std::string_view identity);
+void remember_state_slot(MapperBusConfiguration& configuration,
+                         std::string_view identity,
+                         int slot);
 
 /// Record a successful open: dedupe by normalized path, move to front, stamp
 /// the time, and trim to the newest five entries.

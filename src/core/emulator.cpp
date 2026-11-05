@@ -1,5 +1,6 @@
 #include "core/emulator.hpp"
 
+#include <algorithm>
 #include <array>
 #include <filesystem>
 #include <optional>
@@ -13,9 +14,8 @@ namespace mapperbus::core {
 namespace {
 // "MBST" — MapperBus STate. Bump kStateVersion on any layout change.
 constexpr std::array<Byte, 4> kStateMagic = {'M', 'B', 'S', 'T'};
-constexpr std::uint32_t kStateVersion = 3; // v3: VRC7 audio_halted_
-                                           // v2: audio-accuracy state (FDS envelopes, VRC7
-                                           // operators, 5B noise/env, MMC5 PCM, VRC6 $9003)
+// v4 adds media SHA-256. v3 added VRC7 audio_halted_; v2 expanded audio state.
+constexpr std::uint32_t kStateVersion = 4;
 
 [[nodiscard]] std::string battery_path_for(const std::string& rom_path) {
     return std::filesystem::path(rom_path).replace_extension(".sav").string();
@@ -25,7 +25,9 @@ constexpr std::uint32_t kStateVersion = 3; // v3: VRC7 audio_halted_
 /// restore_state. Does not modify the machine. Logs and returns nullopt
 /// when the blob cannot be applied.
 [[nodiscard]] std::optional<Region> decode_state_header(std::span<const Byte> data,
-                                                        std::uint16_t expected_mapper) {
+                                                        std::uint16_t expected_mapper,
+                                                        const Sha256Digest& expected_hash,
+                                                        bool allow_legacy = false) {
     StateReader reader(data);
 
     std::array<Byte, 4> magic{};
@@ -34,7 +36,8 @@ constexpr std::uint32_t kStateVersion = 3; // v3: VRC7 audio_halted_
         logger::warn("Save-state rejected: bad magic");
         return std::nullopt;
     }
-    if (reader.read<std::uint32_t>() != kStateVersion) {
+    const auto version = reader.read<std::uint32_t>();
+    if (version != kStateVersion && !(version == 3 && allow_legacy)) {
         logger::warn("Save-state rejected: unsupported version");
         return std::nullopt;
     }
@@ -47,6 +50,14 @@ constexpr std::uint32_t kStateVersion = 3; // v3: VRC7 audio_halted_
     if (!reader.ok() || region > Region::Multi) {
         logger::warn("Save-state rejected: invalid region");
         return std::nullopt;
+    }
+    if (version == kStateVersion) {
+        Sha256Digest hash{};
+        reader.read_array(hash);
+        if (!reader.ok() || hash != expected_hash) {
+            logger::warn("Save-state rejected: ROM content identity mismatch");
+            return std::nullopt;
+        }
     }
     return region;
 }
@@ -140,6 +151,7 @@ Result<void> Emulator::load_disk(const std::string& path) {
     if (!fds_.load_disk(*data)) {
         return std::unexpected("Invalid FDS disk image (not a whole number of sides): " + path);
     }
+    disk_hash_ = rom_sha256(*data);
     logger::info("Mounted FDS disk: {} ({} side(s))", path, fds_.side_count());
     return {};
 }
@@ -223,6 +235,20 @@ bool Emulator::step_instruction() {
     return ppu_.frame_ready();
 }
 
+Sha256Digest Emulator::content_hash() const {
+    const auto cartridge_hash = cartridge_ ? cartridge_->content_hash() : Sha256Digest{};
+    if (disk_hash_ == Sha256Digest{}) {
+        return cartridge_hash;
+    }
+    if (!cartridge_) {
+        return disk_hash_;
+    }
+    std::array<Byte, 64> combined{};
+    std::ranges::copy(cartridge_hash, combined.begin());
+    std::ranges::copy(disk_hash_, combined.begin() + 32);
+    return rom_sha256(combined);
+}
+
 std::vector<Byte> Emulator::save_state() const {
     StateWriter writer;
     writer.write_array(kStateMagic);
@@ -231,6 +257,7 @@ std::vector<Byte> Emulator::save_state() const {
         cartridge_ ? cartridge_->header().mapper_number : std::uint16_t{0xFFFF};
     writer.write(mapper_number);
     writer.write(region_);
+    writer.write_array(content_hash());
 
     cpu_.save_state(writer);
     ppu_.save_state(writer);
@@ -244,10 +271,10 @@ std::vector<Byte> Emulator::save_state() const {
     return writer.take();
 }
 
-bool Emulator::restore_state(std::span<const Byte> data) {
+bool Emulator::restore_state(std::span<const Byte> data, bool allow_legacy) {
     const std::uint16_t expected =
         cartridge_ ? cartridge_->header().mapper_number : std::uint16_t{0xFFFF};
-    const auto region = decode_state_header(data, expected);
+    const auto region = decode_state_header(data, expected, content_hash(), allow_legacy);
     if (!region) {
         return false;
     }
@@ -255,9 +282,13 @@ bool Emulator::restore_state(std::span<const Byte> data) {
     StateReader reader(data);
     std::array<Byte, 4> magic{};
     reader.read_array(magic);
-    (void)reader.read<std::uint32_t>();
+    const auto version = reader.read<std::uint32_t>();
     (void)reader.read<std::uint16_t>();
     (void)reader.read<Region>();
+    if (version == kStateVersion) {
+        Sha256Digest hash{};
+        reader.read_array(hash);
+    }
 
     // Header validated — region affects subsystem timing tables, so apply it
     // before deserializing the timing-dependent subsystems.
@@ -280,7 +311,7 @@ bool Emulator::restore_state(std::span<const Byte> data) {
     return true;
 }
 
-bool Emulator::load_state(std::span<const Byte> data) {
+bool Emulator::load_state(std::span<const Byte> data, bool allow_legacy) {
     if (data.size() > kMaxStateBytes) {
         logger::warn("Save-state rejected: exceeds maximum size");
         return false;
@@ -290,12 +321,12 @@ bool Emulator::load_state(std::span<const Byte> data) {
         cartridge_ ? cartridge_->header().mapper_number : std::uint16_t{0xFFFF};
     // Reject a bad header before snapshotting. The body can still fail after
     // this probe; that path restores the snapshot taken below.
-    if (!decode_state_header(data, expected)) {
+    if (!decode_state_header(data, expected, content_hash(), allow_legacy)) {
         return false;
     }
 
     const std::vector<Byte> snapshot = save_state();
-    if (restore_state(data)) {
+    if (restore_state(data, allow_legacy)) {
         return true;
     }
     if (!restore_state(snapshot)) {
@@ -309,12 +340,12 @@ Result<void> Emulator::save_state_to_file(const std::string& path) const {
     return write_binary_file_atomic(path, blob, "save-state file");
 }
 
-Result<void> Emulator::load_state_from_file(const std::string& path) {
+Result<void> Emulator::load_state_from_file(const std::string& path, bool allow_legacy) {
     auto blob = read_binary_file_capped(path, kMaxStateBytes, "save-state file");
     if (!blob) {
         return std::unexpected(blob.error());
     }
-    if (!load_state(*blob)) {
+    if (!load_state(*blob, allow_legacy)) {
         return std::unexpected("Save-state is invalid or does not match the loaded ROM: " + path);
     }
     return {};

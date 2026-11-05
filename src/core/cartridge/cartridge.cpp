@@ -87,7 +87,9 @@ Result<Cartridge> Cartridge::from_data(std::span<const Byte> rom_data) {
         return std::unexpected(mapper_result.error());
     }
 
-    return Cartridge(header, std::move(*mapper_result));
+    Cartridge cartridge(header, std::move(*mapper_result));
+    cartridge.content_hash_ = rom_sha256(rom_data);
+    return cartridge;
 }
 
 Byte Cartridge::read_prg(Address addr) {

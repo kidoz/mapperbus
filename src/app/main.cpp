@@ -117,7 +117,11 @@ int main(int argc, char* argv[]) {
             "  --gamepad2-map MAP    player 2 gamepad mapping (same format as --gamepad-map)");
         mapperbus::core::logger::info(
             "Runtime scaler hotkeys: 0/1 native, 2-6 scale factor, F9 cycle scaler mode");
-        mapperbus::core::logger::info("Save-state: F5 save, F7 load (Shift+Fx for slot 1)");
+        mapperbus::core::logger::info(
+            "Save-state: F5 save, F7 load; Ctrl+1..9/0 selects slots 1..10 (Shift+Fx: slot 2)");
+        mapperbus::core::logger::info("  --state-dir PATH      absolute save-state root override");
+        mapperbus::core::logger::info(
+            "  --portable-states     store states beside the ROM collection");
         mapperbus::core::logger::info("Window: F11 toggle fullscreen, V toggle vsync");
         return EXIT_FAILURE;
     }
@@ -129,6 +133,7 @@ int main(int argc, char* argv[]) {
     const char* region_override = nullptr;
     const char* rom_path = nullptr;
     auto mapperbus_config = mapperbus::app::load_mapperbus_configuration();
+    auto state_storage = mapperbus_config.save_states;
     mapperbus::core::AudioSettings audio_settings = mapperbus_config.audio;
     mapperbus::frontend::Sdl3InputConfig input_config = mapperbus_config.input.gamepad;
     mapperbus::frontend::Sdl3InputConfig input_config2 = mapperbus_config.input.gamepad;
@@ -202,6 +207,15 @@ int main(int argc, char* argv[]) {
                 return EXIT_FAILURE;
             }
             two_player = true;
+        } else if (std::strcmp(argv[i], "--state-dir") == 0 && i + 1 < argc) {
+            state_storage.directory = argv[++i];
+            if (!state_storage.directory.is_absolute()) {
+                mapperbus::core::logger::error("--state-dir requires an absolute path");
+                return EXIT_FAILURE;
+            }
+        } else if (std::strcmp(argv[i], "--portable-states") == 0) {
+            state_storage.mode = mapperbus::app::StateStorageMode::Portable;
+            state_storage.directory.clear();
         } else if (std::strcmp(argv[i], "--region") == 0 && i + 1 < argc) {
             region_override = argv[++i];
         } else {
@@ -251,11 +265,24 @@ int main(int argc, char* argv[]) {
     // --- Wire into App and run ---
     mapperbus::app::App app(std::move(video), std::move(audio), std::move(input), audio_settings);
     app.session().set_turbo_period(mapperbus_config.input.turbo_period_frames);
+    app.session().set_state_storage(state_storage);
     auto result = app.initialize(rom_path);
     if (!result) {
         mapperbus::core::logger::error("{}", result.error());
         return EXIT_FAILURE;
     }
+
+    sdl_input->set_active_slot(
+        mapperbus::app::selected_state_slot(mapperbus_config, app.session().game_identity()));
+    mapperbus::core::logger::info("Active state slot: {} (Ctrl+1..9/0 to select)",
+                                  sdl_input->active_slot() + 1);
+    const auto remember_slot = [&](int slot) {
+        sdl_input->set_active_slot(slot);
+        mapperbus::app::remember_state_slot(mapperbus_config, app.session().game_identity(), slot);
+        if (auto saved = mapperbus::app::save_mapperbus_configuration(mapperbus_config); !saved) {
+            mapperbus::core::logger::error("Could not remember state slot: {}", saved.error());
+        }
+    };
 
     if (region_override != nullptr) {
         if (std::strcmp(region_override, "ntsc") == 0) {
@@ -291,18 +318,26 @@ int main(int argc, char* argv[]) {
 
         if (const auto session_command = sdl_input->consume_session_command()) {
             const int slot = session_command.slot;
-            if (session_command.kind == mapperbus::frontend::Sdl3SessionCommandKind::SaveState) {
+            if (session_command.kind == mapperbus::frontend::Sdl3SessionCommandKind::SlotSelect) {
+                remember_slot(slot);
+                mapperbus::core::logger::info("Selected state slot {}. F5 saves; F7 loads.",
+                                              slot + 1);
+            } else if (session_command.kind ==
+                       mapperbus::frontend::Sdl3SessionCommandKind::SaveState) {
                 if (auto saved = session.save_state(slot)) {
+                    remember_slot(slot);
                     mapperbus::core::logger::info(
-                        "Saved state (slot {}): {}", slot, session.state_path_for_slot(slot));
+                        "Saved state (slot {}): {}", slot + 1, session.state_path_for_slot(slot));
                 } else {
                     mapperbus::core::logger::error("{}", saved.error());
                 }
             } else if (session_command.kind ==
                        mapperbus::frontend::Sdl3SessionCommandKind::LoadState) {
+                const auto state_path = session.state_load_path_for_slot(slot);
                 if (auto loaded = session.load_state(slot)) {
+                    remember_slot(slot);
                     mapperbus::core::logger::info(
-                        "Loaded state (slot {}): {}", slot, session.state_path_for_slot(slot));
+                        "Loaded state (slot {}): {}", slot + 1, state_path.value_or(""));
                 } else {
                     mapperbus::core::logger::error("{}", loaded.error());
                 }

@@ -47,6 +47,58 @@ TEST_CASE("Linux configuration ignores invalid XDG paths", "[app][configuration]
            ("mapperbus-config-test-" + std::to_string(stamp)) / "mapperbus.conf";
 }
 
+TEST_CASE("Content-identified slot selections persist independently of recent games",
+          "[app][configuration][state]") {
+    MapperBusConfiguration configuration;
+    const auto path = temporary_config_path();
+    const std::string game(64, 'a');
+    const std::string other(64, 'b');
+    REQUIRE(selected_state_slot(configuration, game) == 0);
+    remember_state_slot(configuration, game, 9);
+    remember_state_slot(configuration, other, 3);
+    clear_recent_roms(configuration);
+    remember_state_slot(configuration, game, -1);
+    remember_state_slot(configuration, game, 10);
+    remember_state_slot(configuration, "not a hash", 2);
+    REQUIRE(configuration.state_slots.size() == 2);
+    configuration.state_slots["invalid\n[frontend]\npreview_scale=3"] = 1;
+    configuration.save_states.mode = StateStorageMode::Portable;
+    configuration.save_states.directory = path.parent_path() / "states = #;[x]\n\"";
+    REQUIRE(save_mapperbus_configuration_to_file(configuration, path));
+    auto restored = load_mapperbus_configuration_from_file(path);
+    REQUIRE(restored.recent_roms.empty());
+    REQUIRE(restored.state_slots.size() == 2);
+    REQUIRE(restored.frontend.preview_scale_index == 0);
+    REQUIRE(selected_state_slot(restored, game) == 9);
+    REQUIRE(selected_state_slot(restored, other) == 3);
+    REQUIRE(restored.save_states.mode == StateStorageMode::Portable);
+    REQUIRE(restored.save_states.directory == configuration.save_states.directory);
+    remember_state_slot(restored, game, 0);
+    REQUIRE(save_mapperbus_configuration_to_file(restored, path));
+    REQUIRE(selected_state_slot(load_mapperbus_configuration_from_file(path), game) == 0);
+    std::filesystem::remove_all(path.parent_path());
+}
+
+TEST_CASE("Malformed state storage records use defaults", "[app][configuration][state]") {
+    const auto path = temporary_config_path();
+    std::filesystem::create_directories(path.parent_path());
+    {
+        std::ofstream file(path);
+        file << "[state_slots]\nzz=2\n"
+             << std::string(64, 'a') << "=-1\n"
+             << std::string(64, 'b') << "=10\n"
+             << std::string(64, 'c') << "=nope\n"
+             << std::string(64, 'd')
+             << "=9\n[save_states]\nmode=unknown\ndirectory=relative/path\n";
+    }
+    const auto configuration = load_mapperbus_configuration_from_file(path);
+    REQUIRE(configuration.state_slots.size() == 1);
+    REQUIRE(selected_state_slot(configuration, std::string(64, 'd')) == 9);
+    REQUIRE(configuration.save_states.mode == StateStorageMode::UserData);
+    REQUIRE(configuration.save_states.directory.empty());
+    std::filesystem::remove_all(path.parent_path());
+}
+
 TEST_CASE("Turbo bindings and speed persist with optional version one keys",
           "[app][configuration][turbo]") {
     const auto path = temporary_config_path();

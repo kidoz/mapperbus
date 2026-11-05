@@ -97,10 +97,15 @@ unbound; existing custom controls keep their values.
 | `0`, `1` | Native scale |
 | `2`–`6` | Select that upscale factor |
 | `F9` | Cycle CPU xBRZ → CPU FSR → GPU xBRZ → GPU FSR |
-| `F5`, `F7` | Save / load slot 0 |
-| `Shift+F5`, `Shift+F7` | Save / load slot 1 |
+| `Ctrl+1`–`Ctrl+9`, `Ctrl+0` | Select slots 1–9, or slot 10; remembered per game |
+| `F5`, `F7` | Save / load the selected slot |
+| `Shift+F5`, `Shift+F7` | Save / load slot 2 directly; select it on success |
 | `F11` | Toggle fullscreen |
 | `V` | Toggle vsync |
+
+`--state-dir PATH` sets an absolute save-state root for the run.
+`--portable-states` uses a `mapperbus-states` folder beside the ROM.
+Both override the saved storage preference without persisting that override.
 
 Source: [SDL3 input](../../src/frontends/sdl3/sdl3_input.cpp).
 

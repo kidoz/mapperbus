@@ -247,6 +247,27 @@ void apply_setting(MapperBusConfiguration& configuration,
                    std::string_view section,
                    std::string_view key,
                    std::string_view value) {
+    if (section == "state_slots") {
+        const auto slot = parse_int_value(value);
+        if (valid_game_identity(key) && slot && *slot >= 0 && *slot < kSaveStateSlotCount) {
+            remember_state_slot(configuration, key, *slot);
+        }
+        return;
+    }
+    if (section == "save_states") {
+        if (key == "mode") {
+            configuration.save_states.mode =
+                value == "portable" ? StateStorageMode::Portable : StateStorageMode::UserData;
+        } else if (key == "directory") {
+            const std::filesystem::path directory(value);
+            if (directory.empty() || directory.is_absolute()) {
+                configuration.save_states.directory = directory;
+            } else {
+                core::logger::warn("Ignoring relative save-state directory: {}", value);
+            }
+        }
+        return;
+    }
     const std::string full_key = scoped_key(section, key);
 
     if (full_key == "mapperbus.format" || full_key == "format") {
@@ -706,6 +727,24 @@ core::Result<void> save_mapperbus_configuration_to_file(const MapperBusConfigura
         file << '\n';
     }
 
+    file << "[save_states]\n";
+    file << "mode="
+         << (configuration.save_states.mode == StateStorageMode::Portable ? "portable"
+                                                                          : "user-data")
+         << '\n';
+    file << "directory=" << quote_config_value(configuration.save_states.directory.string())
+         << "\n\n";
+
+    if (!configuration.state_slots.empty()) {
+        file << "[state_slots]\n";
+        for (const auto& [rom, slot] : configuration.state_slots) {
+            if (valid_game_identity(rom) && slot >= 0 && slot < kSaveStateSlotCount) {
+                file << rom << '=' << slot << '\n';
+            }
+        }
+        file << '\n';
+    }
+
     file << "[input.turbo]\nperiod_frames=" << configuration.input.turbo_period_frames << "\n\n";
     file << "[input.keyboard]\n";
     for (const auto button : platform::input_actions()) {
@@ -742,6 +781,23 @@ core::Result<void> save_mapperbus_configuration_to_file(const MapperBusConfigura
     }
 
     return {};
+}
+
+int selected_state_slot(const MapperBusConfiguration& configuration, std::string_view identity) {
+    const auto entry = configuration.state_slots.find(std::string(identity));
+    if (entry == configuration.state_slots.end() || entry->second < 0 ||
+        entry->second >= kSaveStateSlotCount) {
+        return 0;
+    }
+    return entry->second;
+}
+
+void remember_state_slot(MapperBusConfiguration& configuration,
+                         std::string_view identity,
+                         int slot) {
+    if (valid_game_identity(identity) && slot >= 0 && slot < kSaveStateSlotCount) {
+        configuration.state_slots[std::string(identity)] = slot;
+    }
 }
 
 void touch_recent_rom(MapperBusConfiguration& configuration, const std::filesystem::path& path) {

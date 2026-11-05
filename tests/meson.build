@@ -111,6 +111,13 @@ test_configuration = executable('test-configuration',
 )
 test('configuration', test_configuration)
 
+test_state_storage = executable('test-state-storage',
+    'unit/test_state_storage.cpp',
+    dependencies : [mapperbus_app_dep, catch2_dep],
+)
+test('state-storage', test_state_storage)
+
+
 if get_option('enable_nodalkit_gui')
     test_input_binding_table = executable('test-input-binding-table',
         'unit/test_input_binding_table.cpp',

@@ -29,6 +29,94 @@ namespace {
 
 } // namespace
 
+TEST_CASE("SHA-256 agrees with standard vectors including multi-block padding",
+          "[state][identity]") {
+    const auto hash = [](std::string_view input) {
+        return sha256_hex(
+            rom_sha256(std::span(reinterpret_cast<const Byte*>(input.data()), input.size())));
+    };
+    REQUIRE(hash("") == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+    REQUIRE(hash("abc") == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+    REQUIRE(hash("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq") ==
+            "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1");
+    REQUIRE(hash(std::string(1'000'000, 'a')) ==
+            "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0");
+}
+
+TEST_CASE("State identity rejects a different ROM with the same mapper", "[state][identity]") {
+    register_builtin_mappers();
+    const auto first = mapperbus::tests::write_visible_nrom_test_rom("identity-first");
+    const auto other = mapperbus::tests::write_visible_nrom_test_rom("identity-other");
+    { // A CHR byte changes content without changing mapper or ROM structure.
+        std::fstream file(other, std::ios::binary | std::ios::in | std::ios::out);
+        file.seekp(-1, std::ios::end);
+        file.put('x');
+    }
+    Emulator source;
+    REQUIRE(source.load_cartridge(first.string()));
+    source.reset();
+    const auto state = source.save_state();
+    Emulator target;
+    REQUIRE(target.load_cartridge(other.string()));
+    target.reset();
+    const auto before = target.save_state();
+    REQUIRE_FALSE(target.load_state(state));
+    REQUIRE(target.save_state() == before);
+    auto wrong_hash = before;
+    wrong_hash[11] ^= 1;
+    REQUIRE_FALSE(target.load_state(wrong_hash));
+    REQUIRE(target.save_state() == before);
+    std::filesystem::remove(first);
+    std::filesystem::remove(other);
+}
+
+TEST_CASE("Disk media identity rejects snapshots from another disk", "[state][identity][fds]") {
+    const auto path = std::filesystem::temp_directory_path() / "mapperbus-identity-disk.fds";
+    std::vector<Byte> image(Fds::kSideSize, 0);
+    const auto write = [&] {
+        std::ofstream file(path, std::ios::binary);
+        file.write(reinterpret_cast<const char*>(image.data()),
+                   static_cast<std::streamsize>(image.size()));
+        REQUIRE(file.good());
+    };
+    write();
+    Emulator source;
+    REQUIRE(source.load_disk(path.string()));
+    const auto state = source.save_state();
+    image[100] = 1;
+    write();
+    Emulator target;
+    REQUIRE(target.load_disk(path.string()));
+    const auto before = target.save_state();
+    REQUIRE_FALSE(target.load_state(state));
+    REQUIRE(target.save_state() == before);
+    image[100] = 0;
+    write();
+    REQUIRE(target.load_disk(path.string()));
+    REQUIRE(target.load_state(state));
+    std::filesystem::remove(path);
+}
+
+TEST_CASE("Version 3 states require explicit legacy import", "[state][identity]") {
+    register_builtin_mappers();
+    const auto rom = mapperbus::tests::write_visible_nrom_test_rom("identity-legacy");
+    Emulator emulator;
+    REQUIRE(emulator.load_cartridge(rom.string()));
+    emulator.reset();
+    emulator.step_frame();
+    const auto original = emulator.save_state();
+    auto legacy = original;
+    legacy.erase(legacy.begin() + 11, legacy.begin() + 43);
+    const std::uint32_t version = 3;
+    std::memcpy(legacy.data() + 4, &version, sizeof(version));
+    REQUIRE_FALSE(emulator.load_state(legacy));
+    REQUIRE(emulator.save_state() == original);
+    emulator.step_frame();
+    REQUIRE(emulator.load_state(legacy, true));
+    REQUIRE(emulator.save_state() == original);
+    std::filesystem::remove(rom);
+}
+
 TEST_CASE("StateWriter/StateReader round-trips primitives, arrays and byte runs", "[state]") {
     StateWriter writer;
     writer.write<std::uint8_t>(0xAB);
@@ -418,7 +506,7 @@ TEST_CASE("Invalid APU state is rejected and rolled back", "[state][apu]") {
     emu.cpu().save_state(cpu_writer);
     StateWriter ppu_writer;
     emu.ppu().save_state(ppu_writer);
-    constexpr std::size_t header_size = 4 + sizeof(std::uint32_t) + sizeof(std::uint16_t) + 1;
+    constexpr std::size_t header_size = 4 + sizeof(std::uint32_t) + sizeof(std::uint16_t) + 1 + 32;
     const std::size_t apu_offset =
         header_size + cpu_writer.data().size() + ppu_writer.data().size();
 

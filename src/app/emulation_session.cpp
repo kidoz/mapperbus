@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <filesystem>
 
+#include "core/logger.hpp"
+
 namespace mapperbus::app {
 namespace {
 constexpr std::size_t kAudioStagingSamples = 8192;
@@ -74,6 +76,7 @@ core::Result<void> EmulationSession::open_rom(const std::string& rom_path) {
     running_ = true;
     rom_loaded_ = true;
     current_rom_path_ = rom_path;
+    set_state_storage(state_storage_);
     reset_audio_fill_ratio_history();
     return {};
 }
@@ -89,6 +92,7 @@ void EmulationSession::close_rom() {
     running_ = false;
     paused_ = false;
     current_rom_path_.clear();
+    state_directory_.clear();
     reset_audio_fill_ratio_history();
 }
 
@@ -218,26 +222,70 @@ core::Result<void> EmulationSession::apply_audio_settings(const core::AudioSetti
     return std::unexpected(original_error);
 }
 
-std::string EmulationSession::state_path_for_slot(int slot) const {
-    std::string extension = ".state";
-    if (slot > 0) {
-        extension += std::to_string(slot);
+void EmulationSession::set_state_storage(const StateStorageSettings& settings) {
+    state_storage_ = settings;
+    if (rom_loaded_) {
+        state_directory_ =
+            state_directory_for_game(state_storage_, current_rom_path_, game_identity());
     }
-    return std::filesystem::path(current_rom_path_).replace_extension(extension).string();
+}
+
+std::string EmulationSession::game_identity() const {
+    return rom_loaded_ ? core::sha256_hex(emulator_.content_hash()) : std::string{};
+}
+
+std::string EmulationSession::state_path_for_slot(int slot) const {
+    return (state_directory_ / ("slot-" + std::to_string(slot) + ".state")).string();
+}
+
+core::Result<std::string> EmulationSession::state_load_path_for_slot(int slot) const {
+    if (!rom_loaded_ || slot < 0 || slot >= kSaveStateSlotCount) {
+        return std::unexpected(std::string("Load a ROM and choose a slot between 1 and 10"));
+    }
+    auto primary = state_path_for_slot(slot);
+    std::error_code error;
+    if (std::filesystem::exists(primary, error)) {
+        return primary;
+    }
+    if (error) {
+        return std::unexpected("Cannot access save-state file: " + primary + ": " +
+                               error.message());
+    }
+    auto legacy = legacy_state_path(current_rom_path_, slot).string();
+    if (std::filesystem::exists(legacy, error)) {
+        return legacy;
+    }
+    if (error) {
+        return std::unexpected("Cannot access legacy save-state file: " + legacy + ": " +
+                               error.message());
+    }
+    return primary;
 }
 
 core::Result<void> EmulationSession::save_state(int slot) {
+    if (slot < 0 || slot >= kSaveStateSlotCount) {
+        return std::unexpected(std::string("State slot must be between 1 and 10"));
+    }
     if (!rom_loaded_) {
         return std::unexpected(std::string("No ROM loaded to save state from"));
+    }
+    if (auto directory = ensure_state_directory(state_directory_); !directory) {
+        return directory;
     }
     return emulator_.save_state_to_file(state_path_for_slot(slot));
 }
 
 core::Result<void> EmulationSession::load_state(int slot) {
-    if (!rom_loaded_) {
-        return std::unexpected(std::string("No ROM loaded to load state into"));
+    const auto path = state_load_path_for_slot(slot);
+    if (!path) {
+        return std::unexpected(path.error());
     }
-    auto result = emulator_.load_state_from_file(state_path_for_slot(slot));
+    const bool legacy = *path == legacy_state_path(current_rom_path_, slot).string();
+    if (legacy) {
+        core::logger::warn(
+            "Importing a legacy sibling state; old versions cannot verify ROM identity: {}", *path);
+    }
+    auto result = emulator_.load_state_from_file(*path, legacy);
     if (result) {
         turbo_input_.reset();
     }

@@ -11,6 +11,24 @@
 #include <filesystem>
 #include <functional>
 
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <shellapi.h>
+#include <windows.h>
+#else
+#include <cerrno>
+#include <cstring>
+#include <spawn.h>
+#include <sys/wait.h>
+#if defined(__APPLE__)
+#include <crt_externs.h>
+#else
+extern char** environ;
+#endif
+#endif
+
 #if __has_include(<nk/actions/shortcut_registry.h>)
 #include <nk/actions/shortcut_registry.h>
 #define MAPPERBUS_HAVE_NODALKIT_SHORTCUTS 1
@@ -167,7 +185,17 @@ nk::NativeMenuShortcut plain_shortcut(
     };
 }
 
-std::vector<nk::NativeMenu> build_native_menus(std::string_view app_name) {
+std::vector<nk::NativeMenu> build_native_menus(std::string_view app_name, int active_slot = 0) {
+    std::vector<nk::NativeMenuItem> slots;
+    slots.reserve(app::kSaveStateSlotCount + 3);
+    for (int slot = 0; slot < app::kSaveStateSlotCount; ++slot) {
+        slots.push_back(nk::NativeMenuItem::action("Slot " + std::to_string(slot + 1) +
+                                                       (slot == active_slot ? " (selected)" : ""),
+                                                   "emu.slot-" + std::to_string(slot)));
+    }
+    slots.push_back(nk::NativeMenuItem::make_separator());
+    slots.push_back(nk::NativeMenuItem::action("Choose State Slot…", "emu.choose-slot"));
+    slots.push_back(nk::NativeMenuItem::action("Open States Folder", "emu.open-states-folder"));
     const std::string resolved_app_name = app_name.empty() ? "mapperbus" : std::string(app_name);
     return {
         {resolved_app_name,
@@ -193,18 +221,13 @@ std::vector<nk::NativeMenu> build_native_menus(std::string_view app_name) {
                  "Pause or Resume", "emu.pause", plain_shortcut(nk::KeyCode::P)),
              nk::NativeMenuItem::action("Reset", "emu.reset", plain_shortcut(nk::KeyCode::R)),
              nk::NativeMenuItem::make_separator(),
-             nk::NativeMenuItem::action(
-                 "Save State", "emu.save-state", plain_shortcut(nk::KeyCode::F5)),
-             nk::NativeMenuItem::action(
-                 "Load State", "emu.load-state", plain_shortcut(nk::KeyCode::F7)),
-             nk::NativeMenuItem::action(
-                 "Save Slot 2",
-                 "emu.save-state-1",
-                 plain_shortcut(nk::KeyCode::F5, nk::NativeMenuModifier::Shift)),
-             nk::NativeMenuItem::action(
-                 "Load Slot 2",
-                 "emu.load-state-1",
-                 plain_shortcut(nk::KeyCode::F7, nk::NativeMenuModifier::Shift)),
+             nk::NativeMenuItem::action("Save State — Slot " + std::to_string(active_slot + 1),
+                                        "emu.save-state",
+                                        plain_shortcut(nk::KeyCode::F5)),
+             nk::NativeMenuItem::action("Load State — Slot " + std::to_string(active_slot + 1),
+                                        "emu.load-state",
+                                        plain_shortcut(nk::KeyCode::F7)),
+             nk::NativeMenuItem::submenu("State Slot", std::move(slots)),
              nk::NativeMenuItem::make_separator(),
              nk::NativeMenuItem::action("Step Frame", "emu.step"),
              nk::NativeMenuItem::action("Power Cycle", "emu.power"),
@@ -998,6 +1021,7 @@ MapperBusGuiController::MapperBusGuiController(nk::Application& app, nk::Window&
                                                        configuration_.audio);
     actions_ = std::make_unique<app::SessionActions>(*session_);
     session_->set_turbo_period(configuration_.input.turbo_period_frames);
+    session_->set_state_storage(configuration_.save_states);
     if (replaced_reserved_binding) {
         save_configuration_state();
     }
@@ -1131,9 +1155,7 @@ void MapperBusGuiController::build_ui() {
         root_->append(headerbar_);
     }
 
-    if (app_.supports_native_app_menu()) {
-        app_.set_native_app_menu(build_native_menus(app_.app_name()));
-    }
+    update_native_menu();
 
     preview_ = PreviewCanvas::create();
     preview_->set_scale_mode(nk::ScaleMode::NearestNeighbor);
@@ -1183,7 +1205,7 @@ void MapperBusGuiController::build_ui() {
     shortcuts.add_shortcut({nk::Shortcut{static_cast<int>(nk::KeyCode::F11), nk::Modifiers::None},
                             "win.toggle-fullscreen"});
 
-    // Session hotkeys match the SDL frontend: F5/F7 for slot 1, Shift+F5
+    // Session hotkeys match the SDL frontend: F5/F7 for the selected slot, Shift+F5
     // and Shift+F7 for slot 2. P, R, and F11 stay with the game commands.
     // They stay inert while a modal sheet is presented — most importantly
     // the rebind sheet, which captures keys and must not also pause or reset.
@@ -1266,8 +1288,11 @@ void MapperBusGuiController::wire_ui() {
         open_dropped_files(event.payload->files);
     });
     (void)window_.on_window_state_changed().connect([this] { update_fullscreen_chrome(); });
-    (void)app_.on_native_app_menu_action().connect(
-        [this](std::string_view action) { handle_menu_action(action); });
+    (void)app_.on_native_app_menu_action().connect([this](std::string_view action) {
+        // AppKit must finish dispatching before a slot change rebuilds its menu.
+        app_.event_loop().post([this, action = std::string(action)] { handle_menu_action(action); },
+                               "mapperbus.native-menu-action");
+    });
     if (header_menu_button_ && header_menu_) {
         (void)header_menu_button_->on_clicked().connect([this] {
             if (header_menu_->is_open()) {
@@ -1398,7 +1423,10 @@ void MapperBusGuiController::refresh_ui() {
     }
     std::vector<std::string> segments;
     if (loaded) {
-        segments = {state_text, region_name(snapshot.region), nominal_fps_label(snapshot.region)};
+        segments = {state_text,
+                    region_name(snapshot.region),
+                    nominal_fps_label(snapshot.region),
+                    "Slot " + std::to_string(active_state_slot_ + 1)};
     } else {
         segments = {state_text};
     }
@@ -1412,7 +1440,8 @@ void MapperBusGuiController::refresh_ui() {
         status_bar_->set_segments({state_text,
                                    region_name(snapshot.region),
                                    nominal_fps_label(snapshot.region),
-                                   mapper_detail(snapshot.mapper_number)});
+                                   mapper_detail(snapshot.mapper_number),
+                                   "Slot " + std::to_string(active_state_slot_ + 1)});
     }
     if (pause_button_) {
         const bool show_session_actions = loaded;
@@ -1432,7 +1461,18 @@ void MapperBusGuiController::refresh_ui() {
         headerbar_->set_title(display_title);
         headerbar_->set_subtitle(loaded ? "MapperBus" : "");
     }
+    update_native_menu();
     update_native_toolbar();
+}
+
+void MapperBusGuiController::update_native_menu() {
+    if (!app_.supports_native_app_menu() || native_menu_slot_ == active_state_slot_) {
+        return;
+    }
+    // Replacing AppKit's menu bar interrupts an open menu. Frame refreshes must
+    // preserve it; the selected slot is the only changing input to this model.
+    app_.set_native_app_menu(build_native_menus(app_.app_name(), active_state_slot_));
+    native_menu_slot_ = active_state_slot_;
 }
 
 void MapperBusGuiController::update_native_toolbar() {
@@ -1524,10 +1564,12 @@ void MapperBusGuiController::rebuild_header_menu() {
         add_action(menu_label(snapshot.paused ? "Resume" : "Pause", "P"), "emu.pause");
         add_action(menu_label("Reset", "R"), "emu.reset");
         add_separator();
-        add_action(menu_label("Save State", "F5"), "emu.save-state");
-        add_action(menu_label("Load State", "F7"), "emu.load-state");
-        add_action(menu_label("Save Slot 2", "Shift+F5"), "emu.save-state-1");
-        add_action(menu_label("Load Slot 2", "Shift+F7"), "emu.load-state-1");
+        add_action(menu_label("Save State — Slot " + std::to_string(active_state_slot_ + 1), "F5"),
+                   "emu.save-state");
+        add_action(menu_label("Load State — Slot " + std::to_string(active_state_slot_ + 1), "F7"),
+                   "emu.load-state");
+        add_action("Choose State Slot…", "emu.choose-slot");
+        add_action("Open States Folder", "emu.open-states-folder");
         add_separator();
         add_action("Step Frame", "emu.step");
         add_action("Power Cycle", "emu.power");
@@ -1591,6 +1633,9 @@ void MapperBusGuiController::browse_for_rom() {
 }
 
 void MapperBusGuiController::attempt_open(std::string rom_path) {
+    if (state_slot_dialog_ && state_slot_dialog_->is_presented()) {
+        return;
+    }
     if (rom_path.empty()) {
         set_message("Open a ROM to start playback.");
         focus_game_surface();
@@ -1613,6 +1658,7 @@ void MapperBusGuiController::attempt_open(std::string rom_path) {
         return;
     }
 
+    active_state_slot_ = app::selected_state_slot(configuration_, session_->game_identity());
     touch_recent_rom(configuration_, rom_path);
     save_configuration_state();
     detected_region_ = actions_->snapshot().region;
@@ -1661,6 +1707,170 @@ void MapperBusGuiController::power_cycle_session() {
     focus_game_surface();
 }
 
+void MapperBusGuiController::select_state_slot(int slot) {
+    if (!actions_->snapshot().has_cartridge || slot < 0 || slot >= app::kSaveStateSlotCount ||
+        slot == active_state_slot_) {
+        return;
+    }
+    active_state_slot_ = slot;
+    if (auto control = state_slot_control_.lock(); control && control->selected_index() != slot) {
+        control->set_selected_index(slot);
+    }
+    app::remember_state_slot(configuration_, session_->game_identity(), slot);
+    save_configuration_state();
+    refresh_ui();
+}
+
+void MapperBusGuiController::choose_state_slot() {
+    if (!actions_->snapshot().has_cartridge || state_slot_dialog_) {
+        return;
+    }
+    auto combo = nk::ComboBox::create();
+    state_slot_control_ = combo;
+    const auto update_slots = [this, weak_combo = std::weak_ptr<nk::ComboBox>(combo)] {
+        auto control = weak_combo.lock();
+        if (!control)
+            return;
+        std::vector<std::string> labels;
+        labels.reserve(app::kSaveStateSlotCount);
+        for (int slot = 0; slot < app::kSaveStateSlotCount; ++slot) {
+            const auto path = session_->state_load_path_for_slot(slot);
+            std::error_code error;
+            const bool saved = path && std::filesystem::is_regular_file(*path, error);
+            const bool unavailable =
+                !path || (error && error != std::errc::no_such_file_or_directory);
+            labels.push_back("Slot " + std::to_string(slot + 1) +
+                             (unavailable ? " — Unavailable"
+                              : saved     ? " — Saved"
+                                          : " — Empty"));
+        }
+        control->set_items(std::move(labels));
+        control->set_selected_index(active_state_slot_);
+    };
+    update_slots();
+    combo->set_selected_index(active_state_slot_);
+    (void)combo->on_selection_changed().connect([this](int slot) { select_state_slot(slot); });
+    auto group = SettingsGroup::create("Save states");
+    group->set_horizontal_size_policy(nk::SizePolicy::Expanding);
+    group->add(pref_row("Slot", combo));
+    auto content = Box::vertical(12.0F);
+    content->append(group);
+    content->append(SecondaryText::create("Remembered for this game. F5 saves; F7 loads."));
+    auto storage_group = SettingsGroup::create("Storage");
+    storage_group->set_horizontal_size_policy(nk::SizePolicy::Expanding);
+    auto mode = nk::ComboBox::create();
+    mode->set_items({"User data directory", "Portable (beside ROM)"});
+    mode->set_selected_index(
+        configuration_.save_states.mode == app::StateStorageMode::Portable ? 1 : 0);
+    storage_group->add(pref_row("Location", mode));
+    content->append(storage_group);
+    auto directory = nk::TextField::create(configuration_.save_states.directory.string());
+    directory->set_horizontal_size_policy(nk::SizePolicy::Expanding);
+    directory->set_placeholder("Optional absolute folder override");
+    directory->ensure_accessible().set_name("Save-state folder override");
+    content->append(directory);
+    content->append(SecondaryText::create("Folder overrides take priority over Location."));
+    auto apply = nk::Button::create("Apply Storage Location");
+    const auto apply_storage = [this,
+                                weak_mode = std::weak_ptr<nk::ComboBox>(mode),
+                                weak_directory = std::weak_ptr<nk::TextField>(directory),
+                                update_slots] {
+        const auto mode_control = weak_mode.lock();
+        const auto directory_control = weak_directory.lock();
+        if (!mode_control || !directory_control)
+            return;
+        app::StateStorageSettings settings;
+        settings.mode = mode_control->selected_index() == 1 ? app::StateStorageMode::Portable
+                                                            : app::StateStorageMode::UserData;
+        settings.directory = std::filesystem::path(directory_control->text());
+        if (!settings.directory.empty() && !settings.directory.is_absolute()) {
+            set_message("Choose an absolute save-state folder path.");
+            return;
+        }
+        const auto folder = app::state_directory_for_game(
+            settings, actions_->snapshot().rom_path, session_->game_identity());
+        if (auto created = app::ensure_state_directory(folder); !created) {
+            set_message(created.error());
+            return;
+        }
+        configuration_.save_states = settings;
+        session_->set_state_storage(settings);
+        save_configuration_state();
+        update_slots();
+        set_message("Save-state location updated. Existing files stay in their current folders.");
+    };
+    (void)apply->on_clicked().connect(apply_storage);
+    (void)directory->on_activate().connect(apply_storage);
+    auto open_folder = nk::Button::create("Open States Folder");
+    (void)open_folder->on_clicked().connect([this] { open_states_folder(); });
+    auto storage_actions = Box::horizontal(12.0F);
+    storage_actions->append(apply);
+    storage_actions->append(open_folder);
+    content->append(storage_actions);
+    state_slot_dialog_ = nk::Dialog::create("Choose State Slot");
+    state_slot_dialog_->set_content(FixedWidthSlot::create(440.0F, content));
+    state_slot_dialog_->add_button("Done", nk::DialogResponse::Close);
+    (void)state_slot_dialog_->on_response().connect([this](nk::DialogResponse) {
+        auto dialog = state_slot_dialog_;
+        app_.event_loop().post(
+            [this, dialog] {
+                if (state_slot_dialog_ == dialog) {
+                    state_slot_dialog_.reset();
+                    state_slot_control_.reset();
+                }
+                focus_game_surface();
+                update_native_toolbar();
+            },
+            "mapperbus.state-slot-close");
+    });
+    state_slot_dialog_->present(window_);
+    combo->grab_focus();
+    update_native_toolbar();
+}
+
+void MapperBusGuiController::open_states_folder() {
+    if (!actions_->snapshot().has_cartridge) {
+        set_message("Open a ROM to view its save-state folder.");
+        return;
+    }
+    const auto directory = session_->state_directory();
+    if (auto created = app::ensure_state_directory(directory); !created) {
+        set_message(created.error());
+        return;
+    }
+#if defined(_WIN32)
+    const auto result = reinterpret_cast<std::intptr_t>(
+        ShellExecuteW(nullptr, L"open", directory.c_str(), nullptr, nullptr, SW_SHOWNORMAL));
+    if (result <= 32)
+        set_message("Unable to open states folder: " + directory.string());
+#else
+#if defined(__APPLE__)
+    std::string opener = "open";
+    char** environment = *_NSGetEnviron();
+#else
+    std::string opener = "xdg-open";
+    char** environment = environ;
+#endif
+    auto path = directory.string();
+    std::array<char*, 3> arguments{opener.data(), path.data(), nullptr};
+    pid_t pid = 0;
+    const int result =
+        posix_spawnp(&pid, opener.c_str(), nullptr, nullptr, arguments.data(), environment);
+    if (result != 0) {
+        set_message("Unable to open states folder: " + std::string(std::strerror(result)));
+        return;
+    }
+    int status = 0;
+    pid_t waited = 0;
+    do {
+        waited = waitpid(pid, &status, 0);
+    } while (waited < 0 && errno == EINTR);
+    if (waited < 0 || !WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+        set_message("Unable to open states folder: " + path);
+    }
+#endif
+}
+
 void MapperBusGuiController::save_session_state(int slot) {
     if (!actions_->snapshot().has_cartridge) {
         set_message("No ROM loaded to save state from.");
@@ -1668,6 +1878,9 @@ void MapperBusGuiController::save_session_state(int slot) {
     }
 
     const auto result = actions_->save_state(slot);
+    if (result) {
+        select_state_slot(slot);
+    }
     set_message(result ? "Saved state to " + basename_for_display(actions_->state_path(slot)) + "."
                        : result.error());
     refresh_ui();
@@ -1680,10 +1893,12 @@ void MapperBusGuiController::load_session_state(int slot) {
         return;
     }
 
+    const auto path = session_->state_load_path_for_slot(slot);
     const auto result = actions_->load_state(slot);
     if (result) {
+        select_state_slot(slot);
         refresh_preview();
-        set_message("Loaded state from " + basename_for_display(actions_->state_path(slot)) + ".");
+        set_message("Loaded state from " + basename_for_display(path.value_or("")) + ".");
     } else {
         set_message(result.error());
     }
@@ -2655,10 +2870,24 @@ nk::Window& MapperBusGuiController::settings_host_window() {
 
 bool MapperBusGuiController::modal_dialog_presented() const {
     return (settings_dialog_ && settings_dialog_->is_presented()) ||
-           (rebind_dialog_ && rebind_dialog_->is_presented());
+           (rebind_dialog_ && rebind_dialog_->is_presented()) ||
+           (state_slot_dialog_ && state_slot_dialog_->is_presented());
 }
 
 void MapperBusGuiController::handle_menu_action(std::string_view action) {
+    if (state_slot_dialog_ && state_slot_dialog_->is_presented() &&
+        (action == "file.open" || action == "file.close" || action == "settings.open")) {
+        return;
+    }
+    // The menu and chooser edit the same selection. Allow that action while
+    // the chooser is open, but keep emulation commands and other dialogs guarded.
+    const bool choosing_slot =
+        action.starts_with("emu.slot-") && state_slot_dialog_ && state_slot_dialog_->is_presented();
+    const bool other_modal = (settings_dialog_ && settings_dialog_->is_presented()) ||
+                             (rebind_dialog_ && rebind_dialog_->is_presented());
+    if (action.starts_with("emu.") && modal_dialog_presented() && (!choosing_slot || other_modal)) {
+        return;
+    }
     if (action == "file.open") {
         browse_for_rom();
         return;
@@ -2688,12 +2917,31 @@ void MapperBusGuiController::handle_menu_action(std::string_view action) {
         power_cycle_session();
         return;
     }
+    if (action == "emu.open-states-folder") {
+        open_states_folder();
+        return;
+    }
+    if (action == "emu.choose-slot") {
+        choose_state_slot();
+        return;
+    }
+    for (int slot = 0; slot < app::kSaveStateSlotCount; ++slot) {
+        if (action == "emu.slot-" + std::to_string(slot)) {
+            select_state_slot(slot);
+            set_message("Selected state slot " + std::to_string(slot + 1) +
+                        ". F5 saves; F7 loads.");
+            if (!choosing_slot) {
+                focus_game_surface();
+            }
+            return;
+        }
+    }
     if (action == "emu.save-state") {
-        save_session_state(0);
+        save_session_state(active_state_slot_);
         return;
     }
     if (action == "emu.load-state") {
-        load_session_state(0);
+        load_session_state(active_state_slot_);
         return;
     }
     if (action == "emu.save-state-1") {

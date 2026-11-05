@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "app/state_storage.hpp"
 #include "app/turbo_input.hpp"
 #include "core/apu/audio_settings.hpp"
 #include "core/emulator.hpp"
@@ -62,12 +63,17 @@ class EmulationSession {
         }
     }
 
-    /// Serializes the emulator to the slot's sibling state file (like battery
-    /// .sav files, states live next to the ROM). Slot 0 maps to `<rom>.state`,
-    /// higher slots to `<rom>.state<N>`.
+    /// Ten content-identified state files (indices 0–9), centralized by default.
+    void set_state_storage(const StateStorageSettings& settings);
+    [[nodiscard]] const std::filesystem::path& state_directory() const {
+        return state_directory_;
+    }
+    [[nodiscard]] std::string game_identity() const;
     core::Result<void> save_state(int slot = 0);
     core::Result<void> load_state(int slot = 0);
     [[nodiscard]] std::string state_path_for_slot(int slot = 0) const;
+    /// Prefer the configured directory; only a missing file falls back to the legacy sibling.
+    [[nodiscard]] core::Result<std::string> state_load_path_for_slot(int slot = 0) const;
 
     [[nodiscard]] bool initialized() const {
         return initialized_;
@@ -124,6 +130,8 @@ class EmulationSession {
     bool paused_ = false;
     bool rom_loaded_ = false;
     std::string current_rom_path_;
+    StateStorageSettings state_storage_;
+    std::filesystem::path state_directory_;
     std::vector<float> audio_staging_;
     std::array<float, 16> audio_fill_ratio_history_{};
     std::size_t audio_fill_ratio_index_ = 0;

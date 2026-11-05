@@ -79,6 +79,7 @@ class MapperBusGuiController {
     void focus_game_surface();
     void toggle_fullscreen();
     void update_fullscreen_chrome();
+    void update_native_menu();
     void update_native_toolbar();
     void browse_for_rom();
     void attempt_open(std::string rom_path);
@@ -86,6 +87,9 @@ class MapperBusGuiController {
     void step_frame();
     void reset_session();
     void power_cycle_session();
+    void select_state_slot(int slot);
+    void choose_state_slot();
+    void open_states_folder();
     void save_session_state(int slot);
     void load_session_state(int slot);
     void close_current_rom();
@@ -144,6 +148,9 @@ class MapperBusGuiController {
     std::shared_ptr<nk::Button> header_menu_button_;
     /// Region the loaded cartridge selected, before a manual override.
     std::optional<core::Region> detected_region_;
+    int active_state_slot_ = 0;
+    std::shared_ptr<nk::Dialog> state_slot_dialog_;
+    std::weak_ptr<nk::ComboBox> state_slot_control_;
     std::shared_ptr<nk::ContextMenu> header_menu_;
     std::vector<std::string> header_menu_actions_;
     std::shared_ptr<PreviewCanvas> preview_;
@@ -169,6 +176,7 @@ class MapperBusGuiController {
     std::chrono::nanoseconds frame_accumulator_{0};
     nk::CallbackHandle tick_handle_{};
     bool announced_fullscreen_ = false;
+    std::optional<int> native_menu_slot_;
     std::optional<int> native_toolbar_state_;
 };
 

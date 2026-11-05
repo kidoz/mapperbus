@@ -11,7 +11,7 @@ mapperbus_gui_sources = files(
 
 mapperbus_gui_deps = [mapperbus_app_dep, nodalkit_dep]
 if host_machine.system() == 'windows'
-    mapperbus_gui_deps += cpp.find_library('user32')
+    mapperbus_gui_deps += [cpp.find_library('user32'), cpp.find_library('shell32')]
 endif
 
 mapperbus_gui_cpp_args = ['-DMAPPERBUS_VERSION="' + meson.project_version() + '"']

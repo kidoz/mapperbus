@@ -86,9 +86,11 @@ class Sdl3Input : public platform::InputBackend {
     [[nodiscard]] Sdl3SessionCommand consume_session_command();
     [[nodiscard]] static Sdl3SessionCommand session_command_for_scancode(SDL_Scancode scancode,
                                                                          bool shift,
-                                                                         int active_slot = 0);
+                                                                         int active_slot = 0,
+                                                                         bool ctrl = false);
     [[nodiscard]] Sdl3WindowCommand consume_window_command();
     [[nodiscard]] static Sdl3WindowCommand window_command_for_scancode(SDL_Scancode scancode);
+    void set_active_slot(int slot);
     [[nodiscard]] int active_slot() const {
         return active_slot_;
     }

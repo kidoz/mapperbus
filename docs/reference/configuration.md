@@ -31,7 +31,7 @@ When `mapperbus.conf` is absent, the loader can read a sibling legacy
   numeric settings with bounds are clamped.
 - Saving writes recognized settings through a sibling temporary file followed
   by rename. Unknown settings and comments are not preserved.
-- GUI settings can be saved. The SDL3 frontend reads supported settings and
+- GUI settings and per-game slot selections can be saved. The SDL3 frontend reads supported settings and
   applies process-local command-line overrides. The headless CLI does not load
   this configuration.
 
@@ -59,6 +59,36 @@ as GUI presentation settings or as its startup region override.
 
 Use the GUI to choose indexed preferences rather than treating the stored index
 as a literal scale multiplier or pixel density.
+
+## Save-state storage and selected slots
+
+| `[save_states]` key | Default | Values |
+|---|---|---|
+| `mode` | `user-data` | `user-data` or `portable`; unknown values use `user-data` |
+| `directory` | empty | Absolute state-root override; empty uses `mode`; relative paths are ignored |
+
+The user-data root is the OS-specific data directory plus `states`: Linux uses
+absolute `$XDG_DATA_HOME` or `~/.local/share`, macOS uses
+`~/Library/Application Support/MapperBus`, and Windows uses
+`%APPDATA%\MapperBus` (home `AppData/Roaming/MapperBus` fallback).
+Portable mode uses `<ROM-folder>/mapperbus-states`. An explicit `directory`
+takes priority over either mode. Roots contain sanitized display-name folders
+suffixed by the full ROM SHA-256. Existing folders are matched by hash, so a
+filename change does not create a new save identity.
+
+`[state_slots]` maps lowercase, 64-digit content SHA-256 keys to selected slot
+indices `0`–`9` (displayed as 1–10), shared by SDL3 and the GUI. Missing or invalid
+records use slot 1. Entries are independent of the recent-games list. Both
+sections are optional version-1 additions; older builds ignore them.
+
+SDL3 `--state-dir PATH` and `--portable-states` override storage for the current
+run without persisting that override. Explicit slot changes and successful
+save/load targets are remembered by content hash.
+
+The core writes version-4 snapshots with media SHA-256 in the header; directory
+policy lives in the application layer. Legacy version-3 loading is enabled
+only when importing a sibling `.state`/`.stateN` file. Battery `.sav` behavior
+is unchanged. See [Save and restore a game](../how-to/save-and-restore.md).
 
 ## Audio
 

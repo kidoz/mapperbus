@@ -4,6 +4,7 @@
 #include <string>
 
 #include "core/cartridge/ines_header.hpp"
+#include "core/cartridge/rom_sha256.hpp"
 #include "core/mappers/mapper.hpp"
 
 namespace mapperbus::core {
@@ -47,6 +48,9 @@ class Cartridge {
     [[nodiscard]] const INesHeader& header() const {
         return header_;
     }
+    [[nodiscard]] const Sha256Digest& content_hash() const {
+        return content_hash_;
+    }
     void reset() {
         mapper_->reset();
     }
@@ -87,6 +91,7 @@ class Cartridge {
   private:
     Cartridge(INesHeader header, std::unique_ptr<Mapper> mapper);
 
+    Sha256Digest content_hash_{};
     INesHeader header_;
     std::unique_ptr<Mapper> mapper_;
 };

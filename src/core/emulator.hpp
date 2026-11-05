@@ -51,20 +51,24 @@ class Emulator {
     }
 
     /// Serializes the full machine state into a self-describing blob
-    /// (magic + version + mapper id + region, then each subsystem).
+    /// (magic + version + mapper id + region + SHA-256 identity, then subsystems).
+    [[nodiscard]] Sha256Digest content_hash() const;
     [[nodiscard]] std::vector<Byte> save_state() const;
     /// Restores state from a blob produced by save_state(). Returns false if
     /// the blob is too large, malformed, an unknown version, contains an
     /// out-of-range restored index, or the mapper id does not match the
-    /// loaded cartridge. A rejected blob leaves the running machine unchanged.
-    [[nodiscard]] bool load_state(std::span<const Byte> data);
+    /// loaded cartridge or the content hash differs. Version 3 requires explicit
+    /// allow_legacy for importing an old sibling file (no content check possible).
+    /// A rejected blob leaves the running machine unchanged.
+    [[nodiscard]] bool load_state(std::span<const Byte> data, bool allow_legacy = false);
 
     /// Largest accepted save-state blob. Above the biggest honest state (a
     /// 16-side FDS image plus mapper RAM) and below an unbounded allocation.
     static constexpr std::size_t kMaxStateBytes = 4 * 1024 * 1024;
 
     [[nodiscard]] Result<void> save_state_to_file(const std::string& path) const;
-    [[nodiscard]] Result<void> load_state_from_file(const std::string& path);
+    [[nodiscard]] Result<void> load_state_from_file(const std::string& path,
+                                                    bool allow_legacy = false);
 
     /// True when a battery-backed cartridge is loaded (its PRG-RAM persists).
     [[nodiscard]] bool has_battery() const {
@@ -137,9 +141,10 @@ class Emulator {
     void clock_expansion_audio(uint32_t cycles);
     /// Applies a blob that has already passed the size check. On failure the
     /// machine may be partially updated; `load_state` rolls that back.
-    [[nodiscard]] bool restore_state(std::span<const Byte> data);
+    [[nodiscard]] bool restore_state(std::span<const Byte> data, bool allow_legacy = false);
 
     std::string rom_path_;
+    Sha256Digest disk_hash_{};
     Region region_ = Region::NTSC;
     MemoryBus bus_;
     Cpu cpu_;

@@ -2,6 +2,8 @@
 
 #include <algorithm>
 
+#include "app/configuration.hpp"
+
 namespace mapperbus::frontend {
 namespace {
 
@@ -140,9 +142,15 @@ Sdl3ScalerCommand Sdl3Input::consume_scaler_command() {
 
 Sdl3SessionCommand Sdl3Input::session_command_for_scancode(SDL_Scancode scancode,
                                                            bool shift,
-                                                           int active_slot) {
-    // F5/F7 operate on the active slot. Shift+F5/F7 operate on slot 1.
-    // This gives both "select slot then save" and "quick-save slot 1" flows.
+                                                           int active_slot,
+                                                           bool ctrl) {
+    // Ctrl+1..9/0 selects slots 1..10 without conflicting with scaler keys.
+    if (ctrl && !shift && scancode >= SDL_SCANCODE_1 && scancode <= SDL_SCANCODE_0) {
+        return {.kind = Sdl3SessionCommandKind::SlotSelect,
+                .slot = static_cast<int>(scancode - SDL_SCANCODE_1)};
+    }
+    // F5/F7 operate on the active slot. Shift+F5/F7 operate on UI slot 2.
+    // This gives both "select slot then save" and "quick-save slot 2" flows.
     switch (scancode) {
     case SDL_SCANCODE_F5:
         return {.kind = Sdl3SessionCommandKind::SaveState, .slot = shift ? 1 : active_slot};
@@ -150,6 +158,12 @@ Sdl3SessionCommand Sdl3Input::session_command_for_scancode(SDL_Scancode scancode
         return {.kind = Sdl3SessionCommandKind::LoadState, .slot = shift ? 1 : active_slot};
     default:
         return {};
+    }
+}
+
+void Sdl3Input::set_active_slot(int slot) {
+    if (slot >= 0 && slot < app::kSaveStateSlotCount) {
+        active_slot_ = slot;
     }
 }
 
@@ -254,16 +268,21 @@ void Sdl3Input::handle_event(const SDL_Event& event) {
     if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat) {
         const bool shift = (event.key.mod & SDL_KMOD_SHIFT) != 0;
 
+        const bool ctrl = (event.key.mod & SDL_KMOD_CTRL) != 0;
+        if (auto cmd =
+                session_command_for_scancode(event.key.scancode, shift, active_slot_, ctrl)) {
+            if (cmd.kind == Sdl3SessionCommandKind::SlotSelect) {
+                set_active_slot(cmd.slot);
+            }
+            pending_session_command_ = cmd;
+            return;
+        }
         if (auto cmd = scaler_command_for_scancode(event.key.scancode)) {
             pending_scaler_command_ = cmd;
             return;
         }
         if (auto cmd = window_command_for_scancode(event.key.scancode)) {
             pending_window_command_ = cmd;
-            return;
-        }
-        if (auto cmd = session_command_for_scancode(event.key.scancode, shift, active_slot_)) {
-            pending_session_command_ = cmd;
             return;
         }
     }

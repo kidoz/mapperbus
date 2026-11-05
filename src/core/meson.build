@@ -9,6 +9,7 @@ core_sources = files(
     'cartridge/cartridge.cpp',
     'cartridge/ines_header.cpp',
     'cartridge/rom_crc32.cpp',
+    'cartridge/rom_sha256.cpp',
     'cartridge/rom_database.cpp',
     'mappers/mapper_registry.cpp',
     'mappers/mapper_state.cpp',

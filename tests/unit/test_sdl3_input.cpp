@@ -206,6 +206,22 @@ TEST_CASE("SDL3 save-state hotkeys map to session commands", "[sdl3][input]") {
     REQUIRE_FALSE(Sdl3Input::session_command_for_scancode(SDL_SCANCODE_A, false, 0));
 }
 
+TEST_CASE("SDL3 selects ten state slots without consuming scaler number keys", "[sdl3][input]") {
+    for (int slot = 0; slot < 10; ++slot) {
+        const auto key = static_cast<SDL_Scancode>(SDL_SCANCODE_1 + slot);
+        const auto select = Sdl3Input::session_command_for_scancode(key, false, 0, true);
+        REQUIRE(select.kind == Sdl3SessionCommandKind::SlotSelect);
+        REQUIRE(select.slot == slot);
+        REQUIRE_FALSE(Sdl3Input::session_command_for_scancode(key, false, 0));
+        const auto save = Sdl3Input::session_command_for_scancode(SDL_SCANCODE_F5, false, slot);
+        const auto load = Sdl3Input::session_command_for_scancode(SDL_SCANCODE_F7, false, slot);
+        REQUIRE(save.slot == slot);
+        REQUIRE(load.slot == slot);
+    }
+    REQUIRE(Sdl3Input::scaler_command_for_scancode(SDL_SCANCODE_3).kind ==
+            Sdl3ScalerCommandKind::SetFactor);
+}
+
 TEST_CASE("SDL3 window hotkeys map to fullscreen/vsync", "[sdl3][input]") {
     auto fullscreen = Sdl3Input::window_command_for_scancode(SDL_SCANCODE_F11);
     REQUIRE(fullscreen.kind == Sdl3WindowCommandKind::ToggleFullscreen);

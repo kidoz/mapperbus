@@ -1,4 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -326,13 +327,23 @@ TEST_CASE("SessionActions exposes GUI-friendly transport and snapshot state", "[
     REQUIRE_FALSE(actions.snapshot().mapper_number.has_value());
 }
 
-TEST_CASE("EmulationSession saves and loads state through sibling slot files",
+static StateStorageSettings temporary_state_storage() {
+    StateStorageSettings settings;
+    settings.directory =
+        std::filesystem::temp_directory_path() /
+        ("mapperbus-session-states-" +
+         std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    return settings;
+}
+
+TEST_CASE("EmulationSession saves and loads state through centralized slot files",
           "[app][session][state]") {
     core::register_builtin_mappers();
 
     EmulationSession session(std::make_unique<platform::NullVideo>(),
                              std::make_unique<TestAudioBackend>(),
                              std::make_unique<platform::NullInput>());
+    session.set_state_storage(temporary_state_storage());
     SessionActions actions(session);
 
     SECTION("state operations require a loaded ROM") {
@@ -344,9 +355,10 @@ TEST_CASE("EmulationSession saves and loads state through sibling slot files",
         const std::string rom_path = test_rom_path();
         REQUIRE(actions.open_rom(rom_path));
 
-        // Slot 0 maps to a sibling .state file, mirroring battery .sav naming.
+        // UI slot 1 maps to slot-0.state inside the content-identified folder.
         const std::string state_path = actions.state_path();
-        REQUIRE(state_path == std::filesystem::path(rom_path).replace_extension(".state").string());
+        REQUIRE(std::filesystem::path(state_path).filename() == "slot-0.state");
+        REQUIRE(std::filesystem::path(state_path).parent_path() == session.state_directory());
 
         for (int i = 0; i < 3; ++i) {
             (void)session.step_frame();
@@ -364,11 +376,10 @@ TEST_CASE("EmulationSession saves and loads state through sibling slot files",
         std::filesystem::remove(state_path);
     }
 
-    SECTION("named slots resolve to numbered sibling files") {
+    SECTION("named slots resolve to numbered centralized files") {
         const std::string rom_path = test_rom_path();
         REQUIRE(actions.open_rom(rom_path));
-        REQUIRE(actions.state_path(2) ==
-                std::filesystem::path(rom_path).replace_extension(".state2").string());
+        REQUIRE(std::filesystem::path(actions.state_path(2)).filename() == "slot-2.state");
 
         REQUIRE(actions.save_state(2));
         REQUIRE(std::filesystem::exists(actions.state_path(2)));
@@ -376,6 +387,35 @@ TEST_CASE("EmulationSession saves and loads state through sibling slot files",
 
         std::filesystem::remove(actions.state_path(2));
     }
+}
+
+TEST_CASE("All ten state slots preserve independent snapshots", "[app][session][state]") {
+    core::register_builtin_mappers();
+    EmulationSession session(std::make_unique<platform::NullVideo>(),
+                             std::make_unique<TestAudioBackend>(),
+                             std::make_unique<platform::NullInput>());
+    session.set_state_storage(temporary_state_storage());
+    SessionActions actions(session);
+    const auto rom = tests::write_visible_nrom_test_rom("ten-slots");
+    REQUIRE(actions.open_rom(rom.string()));
+    std::vector<std::vector<core::Byte>> snapshots;
+    for (int slot = 0; slot < 10; ++slot) {
+        REQUIRE(session.step_frame() == TickResult::FrameAdvanced);
+        snapshots.push_back(session.emulator().save_state());
+        REQUIRE(actions.save_state(slot));
+    }
+    // Unsupported indices must neither overwrite slot 1 nor mutate the machine.
+    REQUIRE_FALSE(actions.save_state(-1));
+    REQUIRE_FALSE(actions.save_state(10));
+    REQUIRE_FALSE(actions.load_state(-1));
+    REQUIRE_FALSE(actions.load_state(10));
+    REQUIRE(session.emulator().save_state() == snapshots.back());
+    for (int slot = 0; slot < 10; ++slot) {
+        REQUIRE(actions.load_state(slot));
+        REQUIRE(session.emulator().save_state() == snapshots[slot]);
+        REQUIRE(std::filesystem::remove(actions.state_path(slot)));
+    }
+    std::filesystem::remove(rom);
 }
 
 TEST_CASE("EmulationSession flushes battery RAM to the .sav file on destruction",
@@ -570,6 +610,7 @@ TEST_CASE("Turbo restarts on session transitions and speed changes", "[app][sess
     EmulationSession session(std::make_unique<platform::NullVideo>(),
                              std::make_unique<TestAudioBackend>(),
                              std::move(input));
+    session.set_state_storage(temporary_state_storage());
     REQUIRE(session.load_rom(test_rom_path()));
     REQUIRE(session.save_state(9));
     for (int i = 0; i < 3; ++i)
