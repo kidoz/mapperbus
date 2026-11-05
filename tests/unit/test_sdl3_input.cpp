@@ -2,6 +2,7 @@
 #include <string>
 
 #include "../support/test_rom.hpp"
+#include "app/configuration.hpp"
 #include "app/emulation_session.hpp"
 #include "core/mappers/mapper_registry.hpp"
 #include "frontends/sdl3/sdl3_input.hpp"
@@ -63,6 +64,8 @@ TEST_CASE("Virtual SDL gamepads deliver turbo through a running NES ROM",
         REQUIRE(index < count);
         (player == 0 ? config.player1 : config.player2).gamepad_index = index;
     }
+    REQUIRE(apply_gamepad_mapping(config.player1, "turbo_a=leftshoulder"));
+    REQUIRE(apply_gamepad_mapping(config.player2, "turbo_b=rightshoulder"));
     core::register_builtin_mappers();
     // Continuously latch and read A/B for both players into RAM. Repeated
     // reads within one frame must not change the generated signal.
@@ -76,14 +79,27 @@ TEST_CASE("Virtual SDL gamepads deliver turbo through a running NES ROM",
         0x4C, 0x00, 0x80                                // JMP $8000
     };
     const auto rom = tests::build_ines_rom("turbo-functional", 0, 1, 1, kProgram);
-    auto input = std::make_unique<Sdl3Input>(config);
+    // Load independently persisted profiles before driving the actual NES ports.
+    const auto config_path = std::filesystem::path(rom.string() + ".conf");
+    app::MapperBusConfiguration saved;
+    saved.input.gamepad = config.player1;
+    saved.input.player2_gamepad = config.player2;
+    REQUIRE(app::save_mapperbus_configuration_to_file(saved, config_path));
+    const auto loaded = app::load_mapperbus_configuration_from_file(config_path);
+    auto input = std::make_unique<Sdl3Input>(
+        Sdl3TwoPlayerInputConfig{loaded.input.gamepad, loaded.input.player2_gamepad},
+        loaded.input.keyboard_bindings,
+        loaded.input.player2_keyboard_bindings);
+    std::filesystem::remove(config_path);
     auto* backend = input.get();
     app::EmulationSession session(std::make_unique<platform::NullVideo>(),
                                   std::make_unique<platform::NullAudio>(),
                                   std::move(input));
     REQUIRE(session.load_rom(rom.string()));
-    REQUIRE(SDL_SetJoystickVirtualButton(pads.joysticks[0], SDL_GAMEPAD_BUTTON_NORTH, true));
-    REQUIRE(SDL_SetJoystickVirtualButton(pads.joysticks[1], SDL_GAMEPAD_BUTTON_WEST, true));
+    REQUIRE(
+        SDL_SetJoystickVirtualButton(pads.joysticks[0], SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, true));
+    REQUIRE(
+        SDL_SetJoystickVirtualButton(pads.joysticks[1], SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, true));
     for (const auto region : {core::Region::NTSC, core::Region::PAL, core::Region::Dendy}) {
         session.set_region(region);
         session.reset();

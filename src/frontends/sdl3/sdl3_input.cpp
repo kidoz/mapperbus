@@ -78,21 +78,18 @@ namespace {
 
 } // namespace
 
-Sdl3Input::Sdl3Input(Sdl3InputConfig config, Sdl3KeyboardBindings keyboard_bindings)
-    : config_(config), keyboard_bindings_(keyboard_bindings) {
-    if (std::ranges::all_of(keyboard_bindings_, [](int code) { return code == 0; })) {
-        keyboard_bindings_ = default_keyboard_bindings();
-    }
+Sdl3Input::Sdl3Input(Sdl3InputConfig config, std::optional<Sdl3KeyboardBindings> keyboard_bindings)
+    : config_(config), keyboard_bindings_(keyboard_bindings.value_or(default_keyboard_bindings())) {
     init_gamepad_subsystem();
     open_configured_gamepad();
 }
 
-Sdl3Input::Sdl3Input(Sdl3TwoPlayerInputConfig config, Sdl3KeyboardBindings keyboard_bindings)
+Sdl3Input::Sdl3Input(Sdl3TwoPlayerInputConfig config,
+                     std::optional<Sdl3KeyboardBindings> keyboard_bindings,
+                     Sdl3KeyboardBindings player2_keyboard_bindings)
     : config_(config.player1), config2_(config.player2), two_player_(true),
-      keyboard_bindings_(keyboard_bindings) {
-    if (std::ranges::all_of(keyboard_bindings_, [](int code) { return code == 0; })) {
-        keyboard_bindings_ = default_keyboard_bindings();
-    }
+      keyboard_bindings_(keyboard_bindings.value_or(default_keyboard_bindings())),
+      player2_keyboard_bindings_(player2_keyboard_bindings) {
     init_gamepad_subsystem();
     open_configured_gamepad();
 }
@@ -196,10 +193,9 @@ void Sdl3Input::poll() {
         handle_event(event);
     }
 
-    button_state_[0] = keyboard_state() | gamepad_state();
-    // Player 2 is driven by a second gamepad when two-player mode is active;
-    // otherwise no player-2 input.
-    button_state_[1] = two_player_ ? gamepad2_state() : 0;
+    button_state_[0] = keyboard_state(keyboard_bindings_) | gamepad_state();
+    button_state_[1] =
+        two_player_ ? keyboard_state(player2_keyboard_bindings_) | gamepad2_state() : 0;
 }
 
 void Sdl3Input::open_configured_gamepad() {
@@ -296,21 +292,22 @@ void Sdl3Input::handle_event(const SDL_Event& event) {
         if (event.gdevice.which == gamepad_id_) {
             close_gamepad();
             open_configured_gamepad();
-        } else if (event.gdevice.which == gamepad2_id_) {
+        }
+        if (event.gdevice.which == gamepad2_id_) {
             close_gamepad2();
             open_configured_gamepad();
         }
     }
 }
 
-std::uint16_t Sdl3Input::keyboard_state() const {
+std::uint16_t Sdl3Input::keyboard_state(const Sdl3KeyboardBindings& bindings) const {
     int key_count = 0;
     const bool* keys = SDL_GetKeyboardState(&key_count);
 
     std::uint16_t state = 0;
     for (const auto button : platform::input_actions()) {
-        const int scancode = keyboard_bindings_[platform::button_index(button)];
-        if (scancode >= 0 && scancode < key_count && keys[scancode]) {
+        const int scancode = bindings[platform::button_index(button)];
+        if (scancode > 0 && scancode < key_count && keys[scancode]) {
             state |= (1U << platform::button_index(button));
         }
     }

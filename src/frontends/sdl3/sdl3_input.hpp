@@ -3,6 +3,7 @@
 #include <SDL3/SDL.h>
 #include <array>
 #include <cstdint>
+#include <optional>
 
 #include "platform/input/gamepad_config.hpp"
 #include "platform/input/input_backend.hpp"
@@ -63,8 +64,7 @@ struct Sdl3WindowCommand {
     }
 };
 
-/// Configuration for a second gamepad (player 2). Mirrors Sdl3InputConfig
-/// but is opened independently so two physical gamepads can play together.
+/// Independent gamepad profiles for the two NES ports.
 struct Sdl3TwoPlayerInputConfig {
     Sdl3InputConfig player1{};
     Sdl3InputConfig player2{};
@@ -72,9 +72,11 @@ struct Sdl3TwoPlayerInputConfig {
 
 class Sdl3Input : public platform::InputBackend {
   public:
-    explicit Sdl3Input(Sdl3InputConfig config = {}, Sdl3KeyboardBindings keyboard_bindings = {});
+    explicit Sdl3Input(Sdl3InputConfig config = {},
+                       std::optional<Sdl3KeyboardBindings> keyboard_bindings = std::nullopt);
     explicit Sdl3Input(Sdl3TwoPlayerInputConfig config,
-                       Sdl3KeyboardBindings keyboard_bindings = {});
+                       std::optional<Sdl3KeyboardBindings> keyboard_bindings = std::nullopt,
+                       Sdl3KeyboardBindings player2_keyboard_bindings = {});
     ~Sdl3Input() override;
 
     void poll() override;
@@ -102,7 +104,7 @@ class Sdl3Input : public platform::InputBackend {
     void close_gamepad();
     void close_gamepad2();
     void handle_event(const SDL_Event& event);
-    [[nodiscard]] std::uint16_t keyboard_state() const;
+    [[nodiscard]] std::uint16_t keyboard_state(const Sdl3KeyboardBindings& bindings) const;
     [[nodiscard]] std::uint16_t gamepad_state() const;
     [[nodiscard]] std::uint16_t gamepad2_state() const;
     [[nodiscard]] bool is_control_pressed(const GamepadControl& control) const;
@@ -112,6 +114,7 @@ class Sdl3Input : public platform::InputBackend {
     Sdl3InputConfig config2_{};
     bool two_player_ = false;
     Sdl3KeyboardBindings keyboard_bindings_{};
+    Sdl3KeyboardBindings player2_keyboard_bindings_{};
     bool quit_requested_ = false;
     bool gamepad_initialized_ = false;
     SDL_Gamepad* gamepad_ = nullptr;

@@ -136,9 +136,7 @@ int main(int argc, char* argv[]) {
     auto state_storage = mapperbus_config.save_states;
     mapperbus::core::AudioSettings audio_settings = mapperbus_config.audio;
     mapperbus::frontend::Sdl3InputConfig input_config = mapperbus_config.input.gamepad;
-    mapperbus::frontend::Sdl3InputConfig input_config2 = mapperbus_config.input.gamepad;
-    input_config2.gamepad_index = 1;
-    bool two_player = false;
+    mapperbus::frontend::Sdl3InputConfig input_config2 = mapperbus_config.input.player2_gamepad;
 
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--scale") == 0 && i + 1 < argc) {
@@ -199,14 +197,12 @@ int main(int argc, char* argv[]) {
             }
         } else if (std::strcmp(argv[i], "--gamepad2") == 0 && i + 1 < argc) {
             input_config2.gamepad_index = std::max(0, std::atoi(argv[++i]));
-            two_player = true;
         } else if (std::strcmp(argv[i], "--gamepad2-map") == 0 && i + 1 < argc) {
             auto result = mapperbus::frontend::apply_gamepad_mapping(input_config2, argv[++i]);
             if (!result) {
                 mapperbus::core::logger::error("Invalid gamepad2 map: {}", result.error());
                 return EXIT_FAILURE;
             }
-            two_player = true;
         } else if (std::strcmp(argv[i], "--state-dir") == 0 && i + 1 < argc) {
             state_storage.directory = argv[++i];
             if (!state_storage.directory.is_absolute()) {
@@ -249,17 +245,13 @@ int main(int argc, char* argv[]) {
     }
 
     auto audio = std::make_unique<mapperbus::frontend::Sdl3Audio>();
-    std::unique_ptr<mapperbus::frontend::Sdl3Input> input;
-    if (two_player) {
-        mapperbus::frontend::Sdl3TwoPlayerInputConfig tp_config;
-        tp_config.player1 = input_config;
-        tp_config.player2 = input_config2;
-        input = std::make_unique<mapperbus::frontend::Sdl3Input>(
-            tp_config, mapperbus_config.input.keyboard_bindings);
-    } else {
-        input = std::make_unique<mapperbus::frontend::Sdl3Input>(
-            input_config, mapperbus_config.input.keyboard_bindings);
-    }
+    mapperbus::frontend::Sdl3TwoPlayerInputConfig tp_config;
+    tp_config.player1 = input_config;
+    tp_config.player2 = input_config2;
+    auto input = std::make_unique<mapperbus::frontend::Sdl3Input>(
+        tp_config,
+        mapperbus_config.input.keyboard_bindings,
+        mapperbus_config.input.player2_keyboard_bindings);
     auto* sdl_input = input.get();
 
     // --- Wire into App and run ---
