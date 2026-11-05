@@ -137,8 +137,15 @@ Keyboard values are integer NodalKit / USB HID-style key codes, not characters.
 | `start`, `select` | `start`, `back` |
 
 See [mapping tokens](commands-and-controls.md#gamepad-mapping-tokens) for accepted
-control names. This persisted gamepad section is shared input configuration;
-SDL3 player 2 selection and remapping are supplied at runtime.
+control names. These sections configure player 1. Player 2 has independent
+`[input.player2.keyboard]` and `[input.player2.gamepad]` sections with the same
+keys. Its keyboard defaults to unbound (`0`) for every action, and its gamepad
+defaults to index `1`; the other gamepad defaults match player 1.
+
+In GUI Settings → Input, select **Player 1** or **Player 2** before rebinding,
+choosing a gamepad, or restoring defaults. Each profile saves automatically.
+Both graphical frontends combine the keyboard and gamepad assigned to each
+player. Turbo speed is shared by both players.
 
 Keyboard code `0` and gamepad token `none` explicitly leave an action unbound.
 Missing turbo bindings use the defaults above unless those controls already

@@ -29,8 +29,8 @@ process. Scaling and region use their own startup defaults.
 | `--gamepad N` | Nonnegative SDL gamepad index | `0` for player 1 |
 | `--gamepad-deadzone N` | 1–32767 | `12000`; command-line value is clamped |
 | `--gamepad-map MAP` | Comma-separated `NES=SDL` pairs | Override named player 1 bindings |
-| `--gamepad2 N` | Nonnegative SDL gamepad index | Enable player 2 with the given index |
-| `--gamepad2-map MAP` | Same mapping format | Enable player 2 and override its bindings; default index is 1 |
+| `--gamepad2 N` | Nonnegative SDL gamepad index | Override player 2 device; default index is 1 |
+| `--gamepad2-map MAP` | Same mapping format | Override named player 2 bindings |
 
 CPU xBRZ is selected when `--scale` is supplied without a mode flag. If multiple
 mode flags are supplied, precedence is `--gpu-fsr`, then `--fsr`, then `--gpu`.
@@ -53,8 +53,9 @@ Axis directions use a sign suffix, for example `leftx-`, `leftx+`, `lefty-`,
 and `lefty+`.
 
 Defaults use D-pad directions, A on `east`, B on `south`, Start on `start`,
-Select on `back`, Turbo A on `north`, and Turbo B on `west`. Player 1 combines
-keyboard and gamepad state. Player 2 uses the second gamepad when enabled.
+Select on `back`, Turbo A on `north`, and Turbo B on `west`. Each player combines
+their keyboard and gamepad state. Player 2 defaults to the second gamepad and
+unbound keyboard controls.
 
 Source: [Gamepad configuration](../../src/platform/input/gamepad_config.hpp).
 
@@ -70,7 +71,9 @@ Source: [Gamepad configuration](../../src/platform/input/gamepad_config.hpp).
 | Start | Enter / Return |
 | D-pad | Arrow keys |
 
-Saved `[input.keyboard]` values can override these bindings. Code `0` means unbound.
+These are player 1 defaults, overridden by `[input.keyboard]`. Player 2 uses
+`[input.player2.keyboard]` and starts unbound. Code `0` means unbound. Configure
+either player with the selector in GUI Settings → Input.
 
 Hold Turbo A or Turbo B to repeat that button; release to stop. Ordinary A/B
 remain continuous holds, including when their turbo action is also held.

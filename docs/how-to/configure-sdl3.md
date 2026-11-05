@@ -22,9 +22,9 @@ and B on the south face button:
 ```
 
 Set `--gamepad-deadzone 16000`, for example, if an analog stick drifts. The accepted
-range is 1–32767. Player 1 combines keyboard and gamepad input.
+range is 1–32767. Each player combines their keyboard and gamepad input.
 
-To enable player 2 on a second gamepad:
+Player 2 uses gamepad index 1 by default. To select its device explicitly:
 
 ```sh
 ./buildDir/src/app/mapperbus-sdl3 --gamepad 0 --gamepad2 1 "/path/to/game.nes"
@@ -32,9 +32,14 @@ To enable player 2 on a second gamepad:
 
 Use `--gamepad2-map` with the same mapping format to remap player 2.
 
-For persistent bindings, use the GUI Settings panel, or edit `[input.keyboard]`
-and `[input.gamepad]` in [mapperbus.conf](../reference/configuration.md) while the
-GUI is closed. If gamepad input was disabled there, set `enabled=true` before
+For persistent bindings, open GUI Settings → Input and select **Player 1** or
+**Player 2**. Click a keyboard or gamepad binding to change it; the device,
+deadzone, enable switch, and default buttons apply to that player. Player 2's
+keyboard starts unbound. Both frontends use these saved profiles.
+
+You can also edit `[input.keyboard]` / `[input.gamepad]` for player 1 and
+`[input.player2.keyboard]` / `[input.player2.gamepad]` for player 2 in
+[mapperbus.conf](../reference/configuration.md) while the GUI is closed. If gamepad input was disabled there, set `enabled=true` before
 using these commands.
 
 ## Select an upscaler
