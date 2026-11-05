@@ -32,7 +32,7 @@ jobs:
             cc: gcc-14
             cxx: g++-14
             ldflags: -lstdc++exp
-          - os: macos-15
+          - os: macos-26
             compiler: clang
             cc: clang
             cxx: clang++
