@@ -10,6 +10,7 @@
 #include <cstring>
 #include <filesystem>
 
+#include "../support/legacy_state.hpp"
 #include "../support/test_rom.hpp"
 #include "core/emulator.hpp"
 #include "core/mappers/mapper_registry.hpp"
@@ -294,8 +295,9 @@ TEST_CASE("Accepted IRQ survives snapshots with I set and rejects invalid interr
                                          {ppu_end - 2, Byte{2}},
                                          {ppu_end - 3, Byte{2}},
                                          {apu_end - 1, Byte{5}},
-                                         {bus_end - 1, Byte{2}},
-                                         {bus_end - 2, Byte{2}}}) {
+                                         {bus_end - 1, Byte{1}},
+                                         {bus_end - 2, Byte{2}},
+                                         {bus_end - 3, Byte{2}}}) {
         auto corrupt = before;
         corrupt[offset] = invalid;
         CHECK_FALSE(emulator.load_state(corrupt));
@@ -416,37 +418,43 @@ TEST_CASE("DMC reload requests wait through writes without stopping the output u
 
 TEST_CASE("Pending DMC loads survive snapshots and reject corrupt scheduling state",
           "[cpu][dma][state]") {
-    DmaMachine fixture({0xA9, 0x10, 0x8D, 0x15, 0x40, 0xEA, 0xEA, 0xEA});
-    Emulator emulator;
-    if (fixture.cartridge.has_value())
-        REQUIRE(emulator.load_cartridge(std::move(*fixture.cartridge), {}));
-    else
-        FAIL("DMA fixture did not produce a cartridge");
-    emulator.reset();
-    emulator.step_instruction();
-    emulator.step_instruction(); // $4015 load request is still delayed
-    const auto before = emulator.save_state();
-    emulator.step_instruction();
-    emulator.step_instruction();
-    CHECK(emulator.cpu().cycles() == 13);
-    const auto after = emulator.save_state();
-    REQUIRE(emulator.load_state(before));
-    emulator.step_instruction();
-    emulator.step_instruction();
-    CHECK(emulator.save_state() == after);
-
-    StateWriter prefix;
-    emulator.cpu().save_state(prefix);
-    emulator.ppu().save_state(prefix);
-    StateWriter apu_state;
-    Apu{}.save_state(apu_state);
-    const auto dma_end = 43 + prefix.data().size() + apu_state.data().size();
-    for (const auto [back, value] :
-         {std::pair{12U, Byte{0}}, {4U, Byte{4}}, {3U, Byte{2}}, {2U, Byte{2}}, {1U, Byte{5}}}) {
-        auto corrupt = before;
-        corrupt[dma_end - back] = value;
-        CHECK_FALSE(emulator.load_state(corrupt));
+    for (const auto region : {Region::NTSC, Region::PAL, Region::Dendy}) {
+        DmaMachine fixture({0xA9, 0x10, 0x8D, 0x15, 0x40, 0xEA, 0xEA, 0xEA});
+        Emulator emulator;
+        if (fixture.cartridge.has_value())
+            REQUIRE(emulator.load_cartridge(std::move(*fixture.cartridge), {}));
+        else
+            FAIL("DMA fixture did not produce a cartridge");
+        emulator.set_region(region);
+        emulator.reset();
+        emulator.step_instruction();
+        emulator.step_instruction(); // $4015 load request is still delayed
+        const auto before = emulator.save_state();
+        emulator.step_instruction();
+        emulator.step_instruction();
+        CHECK(emulator.cpu().cycles() == 13);
+        const auto after = emulator.save_state();
+        REQUIRE(emulator.load_state(before));
+        emulator.step_instruction();
+        emulator.step_instruction();
         CHECK(emulator.save_state() == after);
+
+        StateWriter prefix;
+        emulator.cpu().save_state(prefix);
+        emulator.ppu().save_state(prefix);
+        StateWriter apu_state;
+        Apu{}.save_state(apu_state);
+        const auto dma_end = 43 + prefix.data().size() + apu_state.data().size();
+        for (const auto [back, value] : {std::pair{12U, Byte{0}},
+                                         {4U, Byte{4}},
+                                         {3U, Byte{2}},
+                                         {2U, Byte{2}},
+                                         {1U, Byte{5}}}) {
+            auto corrupt = before;
+            corrupt[dma_end - back] = value;
+            CHECK_FALSE(emulator.load_state(corrupt));
+            CHECK(emulator.save_state() == after);
+        }
     }
 }
 
@@ -616,4 +624,112 @@ TEST_CASE("Step instruction advances PC monotonically", "[cpu][accuracy]") {
     REQUIRE(emu.cpu().pc() == start_pc + 2);
     emu.step_instruction(); // LDA #$01 (2 bytes)
     REQUIRE(emu.cpu().pc() == start_pc + 4);
+}
+
+TEST_CASE("PAL machine snapshots retain every divider phase and replay frame boundaries",
+          "[cpu][ppu][region][state]") {
+    register_builtin_mappers();
+    DmaMachine fixture({0x4C, 0, 0x80}); // three-cycle loop visits all five phases
+    Emulator emulator;
+    if (fixture.cartridge)
+        REQUIRE(emulator.load_cartridge(std::move(*fixture.cartridge), {}));
+    else
+        FAIL("PAL fixture did not produce a cartridge");
+    emulator.set_region(Region::PAL);
+    emulator.reset();
+    const auto position = [&] {
+        StateWriter writer;
+        emulator.ppu().save_state(writer);
+        StateReader reader(writer.data());
+        const auto line = reader.read<uint16_t>();
+        const auto dot = reader.read<uint16_t>();
+        return static_cast<uint64_t>(line) * 341U + dot;
+    };
+    for (unsigned phase = 0; phase < 5; ++phase) {
+        INFO("phase sample " << phase);
+        CHECK(position() == emulator.cpu().cycles() * 16U / 5U % (uint64_t{312} * 341U));
+        const auto before = emulator.save_state();
+        emulator.step_frame();
+        emulator.step_frame();
+        const auto after = emulator.save_state();
+        emulator.set_region(Region::NTSC); // restore also installs the PAL timing policy
+        REQUIRE(emulator.load_state(before));
+        CHECK(emulator.region() == Region::PAL);
+        emulator.step_frame();
+        emulator.step_frame();
+        CHECK(emulator.save_state() == after);
+        REQUIRE(emulator.load_state(before));
+        emulator.step_instruction();
+    }
+    emulator.step_instruction(); // move to a nonzero remainder before resetting
+    emulator.reset();
+    emulator.step_instruction();
+    CHECK(position() == 9); // reset restarts at divider phase zero
+}
+
+TEST_CASE("PAL version 10 snapshots import with a defined fresh divider phase",
+          "[cpu][ppu][region][state]") {
+    DmaMachine fixture({0x4C, 0, 0x80});
+    Emulator emulator;
+    if (fixture.cartridge)
+        REQUIRE(emulator.load_cartridge(std::move(*fixture.cartridge), {}));
+    else
+        FAIL("PAL fixture did not produce a cartridge");
+    emulator.set_region(Region::PAL);
+    emulator.reset();
+    emulator.step_instruction(); // remainder three in the new scheduler
+    const auto legacy = mapperbus::tests::legacy_state(emulator, 10);
+    StateWriter ppu_before;
+    emulator.ppu().save_state(ppu_before);
+    REQUIRE(emulator.load_state(legacy));
+    StateWriter ppu_after;
+    emulator.ppu().save_state(ppu_after);
+    CHECK(ppu_after.data() == ppu_before.data()); // no old PPU position is rewritten
+    const auto before = emulator.save_state();
+    emulator.step_instruction();
+    StateWriter ppu;
+    emulator.ppu().save_state(ppu);
+    StateReader reader(ppu.data());
+    CHECK(reader.read<uint16_t>() == 0);
+    CHECK(reader.read<uint16_t>() == 18); // 9 retained dots + 9 dots from phase zero
+    const auto after = emulator.save_state();
+    REQUIRE(emulator.load_state(before));
+    emulator.step_instruction();
+    CHECK(emulator.save_state() == after);
+}
+
+TEST_CASE("Invalid CPU PPU divider phases reject snapshots with rollback", "[cpu][region][state]") {
+    DmaMachine fixture({0x4C, 0, 0x80});
+    Emulator emulator;
+    if (fixture.cartridge)
+        REQUIRE(emulator.load_cartridge(std::move(*fixture.cartridge), {}));
+    else
+        FAIL("PAL fixture did not produce a cartridge");
+    for (const auto region : {Region::NTSC, Region::PAL, Region::Dendy}) {
+        emulator.set_region(region);
+        emulator.reset();
+        emulator.step_instruction();
+        StateWriter cpu, ppu, apu, bus;
+        emulator.cpu().save_state(cpu);
+        emulator.ppu().save_state(ppu);
+        Apu{}.save_state(apu);
+        MemoryBus{}.save_state(bus);
+        const auto phase_offset =
+            43 + cpu.data().size() + ppu.data().size() + apu.data().size() + bus.data().size() - 1;
+        const auto before = emulator.save_state();
+        for (const Byte invalid :
+             {Byte{5}, Byte{255}, static_cast<Byte>(region == Region::PAL ? 6U : 1U)}) {
+            auto corrupt = before;
+            corrupt[phase_offset] = invalid;
+            CHECK_FALSE(emulator.load_state(corrupt));
+            CHECK(emulator.save_state() == before);
+        }
+        if (region == Region::PAL) {
+            auto wrong_region = before;
+            wrong_region[10] = static_cast<Byte>(Region::NTSC);
+            CHECK_FALSE(emulator.load_state(wrong_region)); // phase three is invalid for NTSC
+            CHECK(emulator.region() == Region::PAL);
+            CHECK(emulator.save_state() == before);
+        }
+    }
 }

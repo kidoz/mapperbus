@@ -27,9 +27,10 @@ and the hardware-derived [6502 interrupt recognition analysis](https://www.nesde
 
 ## Source timing
 
-The bus advances two PPU dots before the access and one afterward. This fixes a
-deterministic CPU/PPU phase while keeping the existing per-pixel renderer and
-scroll rules. PPUSTATUS read at the dot before vblank suppresses that frame's
+For NTSC and Dendy, the bus advances two PPU dots before the access and one
+afterward. PAL advances 16 dots every five CPU cycles, retaining an integer
+remainder around each access; see [PPU clock scheduling](ppu-timing.md#cpuppu-clock-scheduling).
+These selected alignments keep the existing per-pixel renderer and scroll rules. PPUSTATUS read at the dot before vblank suppresses that frame's
 flag and NMI; the CPU's already latched edges survive later reads. The source
 uses the [PPU frame-timing reference](https://www.nesdev.org/wiki/PPU_frame_timing).
 
@@ -60,7 +61,8 @@ Versions 4–8 remain readable. Missing sampling history is reconstructed from
 restored source state, so exact pending-interrupt replay requires version 9.
 Version 3 retains the explicit legacy-import policy.
 Version 10 additionally preserves PPU frame parity and a retained skipped-dot
-decision; see [PPU timing](ppu-timing.md#snapshots).
+decision. Version 11 retains the fractional PAL clock phase; see
+[PPU timing](ppu-timing.md#snapshots).
 
 ## Validation
 

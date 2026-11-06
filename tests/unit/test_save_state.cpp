@@ -107,6 +107,9 @@ TEST_CASE("Version 3 states require explicit legacy import", "[state][identity]"
     emulator.reset();
     emulator.step_frame();
     const auto original = emulator.save_state();
+    const auto version10 = mapperbus::tests::legacy_state(emulator, 10);
+    REQUIRE(emulator.load_state(version10));
+    REQUIRE(emulator.save_state() == original);
     const auto version9 = mapperbus::tests::legacy_state(emulator, 9);
     REQUIRE(emulator.load_state(version9));
     REQUIRE(emulator.save_state() == original);

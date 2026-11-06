@@ -28,18 +28,26 @@ class MemoryBus {
     /// Advance machine clocks for CPU/DMA cycles without performing an access.
     /// Ordinary read/write remain untimed debugger/test operations.
     void clock_cpu_bus(Address addr, uint32_t cycles = 1);
-    /// CPU/DMA access falls between the second and third PPU dots of a cycle.
+    /// Advance to the region's selected CPU/DMA access point. PAL uses a
+    /// fractional divider; NTSC/Dendy retain the two-dot/one-dot split.
     void begin_cpu_cycle(Address addr);
     void end_cpu_cycle();
     uint32_t run_oam_dma(Byte page, Address halt_address, bool odd_alignment);
     /// Service a ready DMC request before this eligible CPU read.
     uint32_t run_dmc_dma(Address halt_address);
     void set_region(Region region) {
+        if (region_ != region)
+            reset_clock();
         region_ = region;
+    }
+    void reset_clock() {
+        ppu_clock_phase_ = 0;
     }
 
     void save_state(StateWriter& writer) const;
-    void load_state(StateReader& reader, bool has_interrupt_state = true);
+    void load_state(StateReader& reader,
+                    bool has_interrupt_state = true,
+                    bool has_clock_phase = true);
     /// Detector outputs for the current CPU cycle: IRQ level and latched NMI edge.
     [[nodiscard]] Byte interrupt_sample() const {
         return static_cast<Byte>((irq_sampled_ ? 1U : 0U) | (nmi_pending_ ? 2U : 0U));
@@ -76,6 +84,7 @@ class MemoryBus {
   private:
     uint32_t run_dma(Address halt_address, std::optional<Byte> page, bool odd_alignment);
     void update_mappings();
+    void clock_ppu(unsigned master_clocks);
 
     using ReadFunc = Byte (MemoryBus::*)(Address);
     using WriteFunc = void (MemoryBus::*)(Address, Byte);
@@ -100,6 +109,7 @@ class MemoryBus {
     Byte open_bus_ = 0;
     uint32_t dma_cycles_ = 0;
     Region region_ = Region::NTSC;
+    Byte ppu_clock_phase_ = 0; // elapsed master clocks since the last PPU dot
     bool irq_sampled_ = false;
     bool nmi_line_ = false;
     bool nmi_pending_ = false;

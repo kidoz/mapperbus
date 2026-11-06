@@ -48,6 +48,7 @@ void Cpu::reset() {
     total_cycles_ = 0;
     interrupt_pending_ = 0;
     bus_.reset_interrupts();
+    bus_.reset_clock();
     jammed_ = false;
     bus_cycles_ = 0;
     dma_stall_cycles_ = 0;

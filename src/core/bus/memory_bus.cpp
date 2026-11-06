@@ -20,9 +20,10 @@ void MemoryBus::save_state(StateWriter& writer) const {
     writer.write(dma_cycles_);
     writer.write(static_cast<Byte>(nmi_line_));
     writer.write(static_cast<Byte>(nmi_pending_));
+    writer.write(ppu_clock_phase_);
 }
 
-void MemoryBus::load_state(StateReader& reader, bool has_interrupt_state) {
+void MemoryBus::load_state(StateReader& reader, bool has_interrupt_state, bool has_clock_phase) {
     reader.read_array(ram_);
     reader.read(open_bus_);
     reader.read(dma_cycles_);
@@ -37,6 +38,12 @@ void MemoryBus::load_state(StateReader& reader, bool has_interrupt_state) {
     } else if (ppu_ != nullptr) {
         nmi_pending_ = ppu_->consume_nmi();
     }
+    // Older PAL snapshots used a fixed three-dot clock, so no fractional
+    // phase can be recovered from their CPU cycle count. Start at phase zero.
+    ppu_clock_phase_ = has_clock_phase ? reader.read<Byte>() : Byte{0};
+    if ((region_ == Region::PAL && ppu_clock_phase_ >= kPalTiming.ppu_clock_divider) ||
+        (region_ != Region::PAL && ppu_clock_phase_ != 0))
+        reader.fail();
     irq_sampled_ = poll_irq();
 }
 
@@ -72,8 +79,7 @@ void MemoryBus::begin_cpu_cycle(Address addr) {
     const bool nmi = ppu_ != nullptr && ppu_->nmi_line();
     nmi_pending_ = nmi_pending_ || (nmi && !nmi_line_);
     nmi_line_ = nmi;
-    if (ppu_ != nullptr)
-        ppu_->step_dots(2);
+    clock_ppu(timing_for_region(region_).cpu_access_master_clock);
     if (fds_ != nullptr && fds_->is_loaded()) {
         fds_->clock_cpu_cycle(addr);
         fds_->step(1);
@@ -87,8 +93,16 @@ void MemoryBus::begin_cpu_cycle(Address addr) {
 }
 
 void MemoryBus::end_cpu_cycle() {
+    const auto& timing = timing_for_region(region_);
+    clock_ppu(timing.cpu_clock_divider - timing.cpu_access_master_clock);
+}
+
+void MemoryBus::clock_ppu(unsigned master_clocks) {
+    const auto divider = timing_for_region(region_).ppu_clock_divider;
+    const auto elapsed = ppu_clock_phase_ + master_clocks;
+    ppu_clock_phase_ = static_cast<Byte>(elapsed % divider);
     if (ppu_ != nullptr)
-        ppu_->step_dots(1);
+        ppu_->step_dots(elapsed / divider);
 }
 
 uint32_t MemoryBus::run_dmc_dma(Address halt_address) {

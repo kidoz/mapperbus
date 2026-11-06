@@ -77,7 +77,10 @@ and reloads; the bus halts eligible CPU reads and arbitrates DMC/OAM gets. See
 IRQ/NMI detector outputs are recorded during bus cycles and polled at the
 instruction's hardware polling points. Accepted decisions survive source
 acknowledgements and I-flag changes; late NMI can redirect IRQ/BRK vectoring. See
-[interrupt timing](../reference/interrupt-timing.md).
+[interrupt timing](../reference/interrupt-timing.md). CPU/PPU scheduling uses
+integer master-clock dividers from `RegionTiming`: PAL carries its fractional
+dot remainder across accesses and DMA, while NTSC/Dendy retain three dots per
+CPU cycle. Audio and disk clocks remain CPU-based.
 
 ## Persistence belongs at different boundaries
 
@@ -87,11 +90,12 @@ audio settings. Keeping these separate means a UI preference does not become
 part of cartridge hardware state.
 
 Snapshots are taken between instructions, after any OAM DMA. CPU bus-cycle and
-active-DMA bookkeeping is transient. Version 10 preserves PPU frame parity and
-the retained skipped-dot decision, alongside interrupt/source state added in
-version 9 and APU phase/DMC fields added in version 8. Earlier snapshots
-reconstruct missing history; exact replay across frame-length decisions requires
-version 10. See [PPU timing](../reference/ppu-timing.md).
+active-DMA bookkeeping is transient. Version 11 preserves the CPU/PPU clock
+remainder, alongside frame parity and skipped-dot decisions added in version 10,
+interrupt/source state added in version 9, and APU phase/DMC fields added in
+version 8. Versions 4–10 remain readable; older PAL snapshots resume with a fresh
+fractional phase at their retained PPU position. Exact replay across fractional
+clock phases requires version 11. See [PPU timing](../reference/ppu-timing.md).
 
 The core implements snapshot and battery operations. The session assigns save
 slot filenames. The application configuration layer reads and writes

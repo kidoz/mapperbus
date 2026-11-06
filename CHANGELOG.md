@@ -30,6 +30,9 @@ Versioning.
 
 ### Fixed
 
+- PAL CPU/PPU scheduling now advances 16 dots every five CPU cycles, including
+  OAM/DMC DMA, with an integer divider phase around register accesses.
+
 - Omit one dot on rendered odd NTSC frames, retaining the pre-render skip
   decision through late PPUMASK writes. PAL/Dendy retain full-length frames.
 - Poll IRQ/NMI detector outputs at instruction-specific cycles, retain accepted
@@ -57,9 +60,9 @@ Versioning.
 
 ### Changed
 
-- Save-state version 10 preserves PPU frame parity and the retained skipped-dot
-  decision alongside interrupt, DMA, and FDS state. Versions 4–9 remain readable
-  with reconstructed timing history.
+- Save-state version 11 preserves the fractional CPU/PPU clock phase alongside
+  frame parity, skipped-dot decisions, interrupt, DMA, and FDS state. Versions
+  4–10 remain readable; legacy PAL states start with a fresh divider phase.
 
 ## [0.2.0] - 2026-11-04
 

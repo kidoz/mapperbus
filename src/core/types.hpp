@@ -43,11 +43,30 @@ struct RegionTiming {
     int pre_render_scanline;
     long frame_duration_ns; // nanoseconds per frame
     bool odd_frame_skip = false;
+    unsigned cpu_clock_divider = 12;
+    unsigned ppu_clock_divider = 4;
+    // Selected divider alignment: retain the NTSC two-dot/one-dot bus split.
+    unsigned cpu_access_master_clock = 8;
 };
 
-inline constexpr RegionTiming kNtscTiming = {262, 241, 261, 16'639'267, true};
-inline constexpr RegionTiming kPalTiming = {312, 241, 311, 19'997'200};
-inline constexpr RegionTiming kDendyTiming = {312, 291, 311, 20'000'000};
+inline constexpr RegionTiming kNtscTiming = {.scanlines_per_frame = 262,
+                                             .vblank_scanline = 241,
+                                             .pre_render_scanline = 261,
+                                             .frame_duration_ns = 16'639'267,
+                                             .odd_frame_skip = true};
+inline constexpr RegionTiming kPalTiming = {.scanlines_per_frame = 312,
+                                            .vblank_scanline = 241,
+                                            .pre_render_scanline = 311,
+                                            .frame_duration_ns = 19'997'200,
+                                            .cpu_clock_divider = 16,
+                                            .ppu_clock_divider = 5};
+inline constexpr RegionTiming kDendyTiming = {.scanlines_per_frame = 312,
+                                              .vblank_scanline = 291,
+                                              .pre_render_scanline = 311,
+                                              .frame_duration_ns = 20'000'000,
+                                              .cpu_clock_divider = 15,
+                                              .ppu_clock_divider = 5,
+                                              .cpu_access_master_clock = 10};
 
 inline constexpr const RegionTiming& timing_for_region(Region region) {
     switch (region) {
