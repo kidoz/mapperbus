@@ -63,7 +63,7 @@ as a literal scale multiplier or pixel density.
 
 `[fds] bios_path` is an optional, quoted path to an exactly 8192-byte BIOS.
 It defaults to empty, selecting application data `bios/disksys.rom`. The GUI
-persists it through File → Famicom Disk System; SDL3 and CLI accept a process-local
+persists it through Settings → General → BIOS; SDL3 and CLI accept a process-local
 `--fds-bios PATH` override. See [FDS setup](../how-to/play-fds-games.md).
 
 ## Save-state storage and selected slots

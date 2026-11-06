@@ -6,8 +6,8 @@ root after [building MapperBus](build-and-install.md).
 
 ## Select the BIOS and open a disk
 
-In the NodalKit GUI, open **File → Famicom Disk System…**, click **Choose FDS
-BIOS…**, and select the BIOS file. Then use **Open ROM** to open a `.fds` image.
+In the NodalKit GUI, open **Settings → General → BIOS**, click **Choose BIOS…**,
+and select the BIOS file. Then use **Open ROM** to open a `.fds` image.
 The BIOS path is remembered in the shared configuration. Changing the BIOS
 selection takes effect the next time a disk is opened.
 
@@ -38,7 +38,7 @@ Disks can also be [opened from ZIP or 7z archives](open-archived-roms.md). Use
 | `Shift+F6` | Eject the disk, or reinsert side A |
 | `F8` | Toggle write protection |
 
-The GUI's **File → Famicom Disk System…** dialog also lets you select any side,
+The GUI's **Emulation → Disk Controls…** dialog also lets you select any side,
 eject, change write protection, and export a modified disk. The status bar shows
 the selected disk/side, drive activity, write protection, and unsaved changes.
 
