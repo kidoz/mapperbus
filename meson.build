@@ -52,7 +52,9 @@ if get_option('enable_sdl3')
     subdir('src/frontends/sdl3')
 endif
 
-subdir('src/app')
+if get_option('enable_sdl3') or get_option('enable_nodalkit_gui') or get_option('enable_cli') or get_option('enable_tests')
+    subdir('src/app')
+endif
 
 if get_option('enable_nodalkit_gui')
     subdir('src/frontends/nodalkit')
