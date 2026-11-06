@@ -362,7 +362,8 @@ class Apu {
     void load_state(StateReader& reader,
                     bool has_dma_state = true,
                     uint64_t legacy_cycles = 0,
-                    bool has_frame_state = true);
+                    bool has_frame_state = true,
+                    bool has_stop_state = true);
 
     Byte read_register(Address addr);
     void write_register(Address addr, Byte value);
@@ -397,8 +398,11 @@ class Apu {
         return dmc_dma_pending_ && dmc_dma_delay_ == 0;
     }
     [[nodiscard]] Address dmc_dma_address() const {
-        return dmc_.current_address;
+        return dmc_dma_active_ ? dmc_dma_active_address_
+                               : (dmc_dma_pending_ ? dmc_dma_address_ : dmc_.current_address);
     }
+    /// Accept a request at the first eligible read. True means a one-cycle abort.
+    bool start_dmc_dma();
     void complete_dmc_dma(Byte value);
 
     /// Call from frontend with current audio buffer fill ratio (0.0-1.0)
@@ -486,6 +490,16 @@ class Apu {
     Byte dmc_dma_delay_ = 0;
     bool dmc_dma_pending_ = false;
     bool dmc_silence_ = true;
+    // The reader's stop latch changes at the next get, after the byte clock.
+    bool dmc_reader_active_ = false;
+    Byte dmc_disable_delay_ = 0;
+    bool dmc_dma_reload_ = false;
+    Address dmc_dma_address_ = 0xC000;
+    bool dmc_buffer_clock_ = false; // this cycle clocked an empty output-byte buffer
+    // Active transfers finish before the instruction/snapshot boundary.
+    bool dmc_dma_active_ = false;
+    Address dmc_dma_active_address_ = 0xC000;
+    bool dmc_stop_bugs_ = true;
 
     // Dynamic rate control
     double drc_rate_ = 1.0;

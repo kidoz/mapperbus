@@ -43,12 +43,18 @@ void Apu::save_state(StateWriter& writer) const {
     writer.write(static_cast<Byte>(dmc_dma_pending_));
     writer.write(static_cast<Byte>(dmc_silence_));
     writer.write(frame_reset_delay_);
+    writer.write(static_cast<Byte>(dmc_reader_active_));
+    writer.write(dmc_disable_delay_);
+    writer.write(static_cast<Byte>(dmc_dma_reload_));
+    writer.write(dmc_dma_pending_ ? dmc_dma_address_ : dmc_.current_address);
+    writer.write(static_cast<Byte>(dmc_buffer_clock_));
 }
 
 void Apu::load_state(StateReader& reader,
                      bool has_dma_state,
                      uint64_t legacy_cycles,
-                     bool has_frame_state) {
+                     bool has_frame_state,
+                     bool has_stop_state) {
     reader.read(pulse1_);
     reader.read(pulse2_);
     reader.read(triangle_);
@@ -78,7 +84,7 @@ void Apu::load_state(StateReader& reader,
         dmc_silence_ = silence == 1;
         if (pending > 1 || silence > 1 || dmc_dma_delay_ > 3 ||
             (!dmc_dma_pending_ && dmc_dma_delay_ != 0) ||
-            (dmc_dma_pending_ &&
+            (!has_stop_state && dmc_dma_pending_ &&
              (!dmc_.enabled || !dmc_.sample_buffer_empty || dmc_.bytes_remaining == 0)))
             reader.fail();
     }
@@ -86,6 +92,36 @@ void Apu::load_state(StateReader& reader,
     frame_reset_delay_ = has_frame_state ? reader.read<Byte>() : Byte{0};
     if (frame_reset_delay_ > 4)
         reader.fail();
+    dmc_reader_active_ = dmc_.enabled && dmc_.bytes_remaining > 0;
+    dmc_disable_delay_ = 0;
+    dmc_dma_reload_ = dmc_dma_pending_ && dmc_dma_delay_ == 0;
+    dmc_dma_address_ = dmc_.current_address;
+    dmc_buffer_clock_ = false;
+    dmc_dma_active_ = false;
+    if (has_stop_state) {
+        const auto active = reader.read<Byte>();
+        reader.read(dmc_disable_delay_);
+        const auto reload = reader.read<Byte>();
+        reader.read(dmc_dma_address_);
+        const auto clock = reader.read<Byte>();
+        dmc_reader_active_ = active == 1;
+        dmc_dma_reload_ = reload == 1;
+        dmc_buffer_clock_ = clock == 1;
+        if (active > 1 || reload > 1 || clock > 1 || dmc_disable_delay_ > 2 ||
+            (dmc_disable_delay_ != 0 && (!dmc_reader_active_ || !dmc_stop_bugs_ ||
+                                         (dmc_disable_delay_ == 2) != ((cpu_cycles_ & 1U) == 0))) ||
+            (dmc_reader_active_ && dmc_.bytes_remaining == 0 && dmc_disable_delay_ == 0) ||
+            (dmc_.bytes_remaining > 0 && (!dmc_.enabled || !dmc_reader_active_)) ||
+            (!dmc_dma_pending_ && dmc_dma_reload_) ||
+            (dmc_dma_pending_ &&
+             (!dmc_.sample_buffer_empty || dmc_dma_address_ < 0x8000 ||
+              (!dmc_reader_active_ && (!dmc_stop_bugs_ || !dmc_dma_reload_ || dmc_dma_delay_ != 0 ||
+                                       (cpu_cycles_ & 1U) != 0)))) ||
+            (dmc_buffer_clock_ &&
+             (dmc_.bits_remaining != 8 || dmc_.timer + 2U != dmc_.timer_period ||
+              (cpu_cycles_ & 1U) != 0)))
+            reader.fail();
+    }
     if (!valid_pulse(pulse1_)) {
         pulse1_ = {};
         pulse1_.sweep.is_pulse1 = true;
@@ -449,6 +485,12 @@ void Apu::reset() {
     dmc_dma_delay_ = 0;
     dmc_dma_pending_ = false;
     dmc_silence_ = true;
+    dmc_reader_active_ = false;
+    dmc_disable_delay_ = 0;
+    dmc_dma_reload_ = false;
+    dmc_dma_address_ = 0xC000;
+    dmc_buffer_clock_ = false;
+    dmc_dma_active_ = false;
     output_ring_.reset();
     prev_blip_mix_ = 0.0f;
     prev_blip_mix_r_ = 0.0f;
@@ -461,6 +503,17 @@ void Apu::reset() {
 }
 
 void Apu::set_region(Region region) {
+    const bool stop_bugs = region == Region::NTSC || region == Region::Multi;
+    if (dmc_stop_bugs_ && !stop_bugs) {
+        dmc_disable_delay_ = 0;
+        dmc_reader_active_ = dmc_.enabled && dmc_.bytes_remaining > 0;
+        if (!dmc_reader_active_) {
+            dmc_dma_pending_ = false;
+            dmc_dma_reload_ = false;
+            dmc_dma_delay_ = 0;
+        }
+    }
+    dmc_stop_bugs_ = stop_bugs;
     switch (region) {
     case Region::PAL:
         noise_period_table_ = &kNoisePeriodPal;
@@ -529,22 +582,54 @@ void Apu::set_expansion_audio(ExpansionAudioSource source) {
     expansion_audio_ = std::move(source);
 }
 
-void Apu::complete_dmc_dma(Byte value) {
-    if (!dmc_dma_pending_ || dmc_.bytes_remaining == 0)
-        return;
+bool Apu::start_dmc_dma() {
+    const bool aborted = dmc_stop_bugs_ && !dmc_reader_active_;
+    dmc_dma_active_address_ = dmc_dma_address_;
+    dmc_dma_active_ = !aborted;
     dmc_dma_pending_ = false;
     dmc_dma_delay_ = 0;
+    dmc_dma_reload_ = false;
+    return aborted;
+}
+
+void Apu::complete_dmc_dma(Byte value) {
+    if (!dmc_dma_active_) {
+        if (!dmc_dma_pending_ || start_dmc_dma())
+            return;
+    }
+    dmc_dma_active_ = false;
     dmc_.sample_buffer = value;
     dmc_.sample_buffer_empty = false;
-    dmc_.current_address =
-        static_cast<Address>(dmc_.current_address == 0xFFFF ? 0x8000 : dmc_.current_address + 1);
+    // On this get, the byte clock saw an empty buffer before the bus read.
+    // The arriving byte can feed the shifter immediately. The overlapping
+    // reload request retains the same address (late 2A03G / 2A03H behavior).
+    if (dmc_stop_bugs_ && dmc_buffer_clock_) {
+        dmc_.shift_register = value;
+        dmc_silence_ = false;
+        dmc_.sample_buffer_empty = true;
+        if (dmc_reader_active_ && !dmc_dma_pending_) {
+            dmc_dma_pending_ = true;
+            dmc_dma_reload_ = true;
+            dmc_dma_address_ = dmc_dma_active_address_;
+            dmc_dma_delay_ = 0;
+        }
+    }
+    if (dmc_.bytes_remaining == 0)
+        return;
+    dmc_.current_address = static_cast<Address>(
+        dmc_dma_active_address_ == 0xFFFF ? 0x8000 : dmc_dma_active_address_ + 1);
     --dmc_.bytes_remaining;
     if (dmc_.bytes_remaining == 0) {
         if (dmc_.loop_flag) {
             dmc_.current_address = dmc_.sample_address;
             dmc_.bytes_remaining = dmc_.sample_length;
-        } else if (dmc_.irq_enabled) {
-            dmc_.irq_pending = true;
+        } else {
+            if (dmc_stop_bugs_)
+                dmc_disable_delay_ = 2; // implicit stop settles on the next get
+            else
+                dmc_reader_active_ = false;
+            if (dmc_.irq_enabled)
+                dmc_.irq_pending = true;
         }
     }
 }
@@ -594,27 +679,43 @@ void Apu::step(uint32_t cpu_cycles) {
         triangle_.clock_timer();
         noise_.clock_timer();
 
+        // An aborted halt is a pulse: a CPU write can suppress it, not defer it.
+        if (dmc_stop_bugs_ && dmc_dma_ready() && !dmc_reader_active_) {
+            dmc_dma_pending_ = false;
+            dmc_dma_reload_ = false;
+        }
         if (dmc_dma_delay_ > 0)
             --dmc_dma_delay_;
+        dmc_buffer_clock_ = false;
         // The output unit runs independently of the reader enable. DMC timer
         // edges stay on get phases even while playback is stopped or silent.
         if (dma_get_cycle()) {
             if (dmc_.timer <= 1) {
                 dmc_.timer = static_cast<uint16_t>(dmc_.timer_period - 2);
+                const bool buffer_clock = dmc_.bits_remaining <= 1;
+                dmc_buffer_clock_ = buffer_clock && dmc_.sample_buffer_empty;
                 clock_dmc();
                 mix_dirty_ = true;
-                if (dmc_.sample_buffer_empty && dmc_.bytes_remaining > 0 && !dmc_dma_pending_) {
+                if (buffer_clock && dmc_.sample_buffer_empty && dmc_reader_active_ &&
+                    !dmc_dma_pending_ && !dmc_dma_active_) {
                     dmc_dma_pending_ = true; // reload halt on the following put
+                    dmc_dma_reload_ = true;
+                    dmc_dma_address_ = dmc_.current_address;
                     dmc_dma_delay_ = 0;
                 }
             } else {
                 dmc_.timer -= 2;
             }
         }
+        if (dmc_disable_delay_ > 0) {
+            --dmc_disable_delay_;
+            if (dmc_disable_delay_ == 0)
+                dmc_reader_active_ = false;
+        }
         // An isolated APU can synthesize audio without a CPU. Emulator does
         // not install this convenience callback: its bus arbitrates each fetch.
-        if (dmc_dma_ready() && memory_reader_)
-            complete_dmc_dma(memory_reader_(dmc_.current_address));
+        if (dmc_dma_ready() && memory_reader_ && dma_get_cycle() && !start_dmc_dma())
+            complete_dmc_dma(memory_reader_(dmc_dma_address()));
         ++cpu_cycles_;
 
         ++frame_counter_cycles_;
@@ -1083,6 +1184,8 @@ void Apu::write_register(Address addr, Byte value) {
         noise_.envelope.start = true;
         break;
     case 0x4010:
+        // A CPU rate write cannot share the bus cycle with a DMC fetch.
+        dmc_buffer_clock_ = false;
         dmc_.irq_enabled = (value & 0x80) != 0;
         dmc_.loop_flag = (value & 0x40) != 0;
         dmc_.timer_period = (*dmc_rate_table_)[value & 0x0F];
@@ -1115,13 +1218,28 @@ void Apu::write_register(Address addr, Byte value) {
         dmc_.irq_pending = false;
         if (!dmc_.enabled) {
             dmc_.bytes_remaining = 0;
-            dmc_dma_pending_ = false;
-            dmc_dma_delay_ = 0;
+            if (dmc_stop_bugs_) {
+                if (dmc_reader_active_)
+                    dmc_disable_delay_ = dma_get_cycle() ? 1 : 2; // next get after this write
+                if (!dmc_dma_reload_) {
+                    dmc_dma_pending_ = false;
+                    dmc_dma_delay_ = 0;
+                }
+            } else {
+                dmc_reader_active_ = false;
+                dmc_dma_pending_ = false;
+                dmc_dma_reload_ = false;
+                dmc_dma_delay_ = 0;
+            }
         } else if (dmc_.bytes_remaining == 0) {
+            dmc_reader_active_ = true;
+            dmc_disable_delay_ = 0;
             dmc_.current_address = dmc_.sample_address;
             dmc_.bytes_remaining = dmc_.sample_length;
             if (dmc_.sample_buffer_empty && !dmc_dma_pending_) {
                 dmc_dma_pending_ = true;
+                dmc_dma_reload_ = false;
+                dmc_dma_address_ = dmc_.current_address;
                 // This write follows its bus clock. Halt on the get in the
                 // second following APU cycle (third/fourth following CPU cycle).
                 dmc_dma_delay_ = dma_get_cycle() ? 2 : 3;

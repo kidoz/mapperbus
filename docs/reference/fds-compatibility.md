@@ -195,8 +195,10 @@ shows `$67FF` / `$6E25`; both captured values match in MapperBus.
   [research and capture probe](fds-audio-research.md) for the evidence and limits.
 - Audio reset transients, analog filtering/DAC nonlinearity, and rapid
   pause/resume behavior need further hardware work.
-- DMC stop/abort and duplicate-fetch bugs, internal register/controller bus
-  conflicts, and PAL repeated-read behavior remain unverified. Reset-cycle bus activity,
+- NTSC DMC stop/abort and duplicate-fetch timing pass the two targeted
+  AccuracyCoin diagnostics; see [DMA timing](dma-timing.md). PAL/clone stop
+  quirks, internal register/controller bus conflicts, and PAL repeated-read
+  behavior remain unverified. Reset-cycle bus activity,
   analog DRAM decay, 2C33 test mode, and mechanical disk effects are not modeled.
 - CRC coverage includes the public BIOS-dumper write/readback flows, independent
   fixed vectors, and injected CRC faults described above. Physical-drive fault
@@ -256,8 +258,8 @@ or a comparison with recordings from hardware.
   original audio probe. Separate asset runs passed all ten public-diagnostic/CRC
   cases and six licensed raw/ZIP/7z workflows. Leak detection was
   disabled because this macOS runtime does not support it.
-- Both public Blargg OAM/DMC timing diagnostics passed in regular and sanitizer
-  builds; [DMA timing](dma-timing.md) records the source pins and accuracy limits.
+- Both public Blargg OAM/DMC timing diagnostics and the targeted AccuracyCoin
+  explicit/implicit stop checks passed in regular and sanitizer builds; [DMA timing](dma-timing.md) records the source pins and accuracy limits.
 - The FDS static analyzer, changed-file formatting and documentation-link checks
   passed. The headless CLI ran Metroid for 1200 frames with the new audio model.
   Source BIOS and disk SHA-256 values were unchanged.

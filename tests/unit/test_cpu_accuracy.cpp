@@ -56,6 +56,32 @@ struct DmaMachine {
         cpu.reset();
     }
 
+    DmcChannel dmc_channel() const {
+        StateWriter writer;
+        apu.save_state(writer);
+        constexpr auto kOffset =
+            2 * sizeof(PulseChannel) + sizeof(TriangleChannel) + sizeof(NoiseChannel);
+        DmcChannel channel;
+        std::memcpy(&channel, writer.data().data() + kOffset, sizeof(channel));
+        return channel;
+    }
+
+    std::vector<Byte> device_state() const {
+        StateWriter writer;
+        ppu.save_state(writer);
+        apu.save_state(writer);
+        bus.save_state(writer);
+        return writer.take();
+    }
+
+    void restore_devices(std::span<const Byte> state) {
+        StateReader reader(state);
+        ppu.load_state(reader);
+        apu.load_state(reader);
+        bus.load_state(reader);
+        REQUIRE(reader.ok());
+    }
+
     void start_dmc() {
         bus.write(0x4010, 0x8F); // IRQ after the single byte is fetched
         bus.write(0x4012, 0);
@@ -106,7 +132,11 @@ struct DmaMachine {
         constexpr auto kOffset =
             2 * sizeof(PulseChannel) + sizeof(TriangleChannel) + sizeof(NoiseChannel);
         std::memcpy(state.data() + kOffset, &channel, sizeof(channel));
-        state[state.size() - 3] = static_cast<Byte>(pending);
+        state[state.size() - 9] = static_cast<Byte>(pending);
+        state[state.size() - 6] = static_cast<Byte>(channel.enabled);
+        state[state.size() - 4] = static_cast<Byte>(pending);
+        std::memcpy(state.data() + state.size() - 3, &channel.current_address, sizeof(Address));
+        state.back() = 0;
         StateReader reader(state);
         apu.load_state(reader);
         REQUIRE(reader.ok());
@@ -294,7 +324,7 @@ TEST_CASE("Accepted IRQ survives snapshots with I set and rejects invalid interr
                                          {ppu_end - 1, Byte{1}},
                                          {ppu_end - 2, Byte{2}},
                                          {ppu_end - 3, Byte{2}},
-                                         {apu_end - 1, Byte{5}},
+                                         {apu_end - 7, Byte{5}},
                                          {bus_end - 1, Byte{1}},
                                          {bus_end - 2, Byte{2}},
                                          {bus_end - 3, Byte{2}}}) {
@@ -445,11 +475,16 @@ TEST_CASE("Pending DMC loads survive snapshots and reject corrupt scheduling sta
         StateWriter apu_state;
         Apu{}.save_state(apu_state);
         const auto dma_end = 43 + prefix.data().size() + apu_state.data().size();
-        for (const auto [back, value] : {std::pair{12U, Byte{0}},
-                                         {4U, Byte{4}},
-                                         {3U, Byte{2}},
-                                         {2U, Byte{2}},
-                                         {1U, Byte{5}}}) {
+        for (const auto [back, value] : {std::pair{18U, Byte{0}},
+                                         {10U, Byte{4}},
+                                         {9U, Byte{2}},
+                                         {8U, Byte{2}},
+                                         {7U, Byte{5}},
+                                         {6U, Byte{0}},
+                                         {5U, Byte{3}},
+                                         {4U, Byte{2}},
+                                         {2U, Byte{0}},
+                                         {1U, Byte{2}}}) {
             auto corrupt = before;
             corrupt[dma_end - back] = value;
             CHECK_FALSE(emulator.load_state(corrupt));
@@ -731,5 +766,227 @@ TEST_CASE("Invalid CPU PPU divider phases reject snapshots with rollback", "[cpu
             CHECK(emulator.region() == Region::PAL);
             CHECK(emulator.save_state() == before);
         }
+    }
+}
+
+TEST_CASE("Explicit DMC stops latch on the next get and abort exactly one read cycle",
+          "[cpu][dma][dmc-stop]") {
+    for (const auto region : {Region::NTSC, Region::PAL, Region::Dendy}) {
+        for (const bool stop_after_get : {false, true}) {
+            DmaMachine machine({0xEA});
+            machine.apu.set_region(region);
+            machine.ppu.set_region(region);
+            machine.bus.set_region(region);
+            const bool abort = region == Region::NTSC;
+            DmcChannel channel;
+            channel.enabled = true;
+            channel.bytes_remaining = 2;
+            channel.timer_period = 54;
+            channel.timer = 2;
+            channel.bits_remaining = 1;
+            channel.sample_buffer_empty = false;
+            channel.sample_buffer = 0xD5;
+            machine.seed_channel(channel);
+            machine.bus.clock_cpu_bus(0, stop_after_get ? 2 : 3);
+            machine.bus.write(0x4015, 0);
+            machine.bus.clock_cpu_bus(0, stop_after_get ? 2 : 1);
+            REQUIRE(machine.apu.dmc_dma_ready() == abort);
+            Controller controller;
+            controller.set_button_state(0, Button::A, true);
+            controller.set_button_state(0, Button::Select, true);
+            controller.write(1);
+            controller.write(0);
+            machine.bus.connect_controller(&controller);
+            const auto cycles = machine.apu.cpu_cycles();
+            CHECK(machine.bus.run_dmc_dma(0x4016) == (abort ? 1 : 0));
+            CHECK(machine.apu.cpu_cycles() == cycles + (abort ? 1U : 0U));
+            CHECK((machine.bus.read(0x4016) & 1U) ==
+                  (abort ? 0U : 1U)); // one repeated read consumed A
+            CHECK((machine.bus.read(0x4016) & 1U) == (abort ? 1U : 0U)); // Select remains after B
+            CHECK(machine.dmc_channel().bytes_remaining == 0);
+            CHECK(machine.dmc_channel().sample_buffer_empty); // no sample fetch
+            CHECK(machine.bus.run_dmc_dma(0) == 0);
+        }
+    }
+}
+
+TEST_CASE("Implicit DMC aborts expire on writes and overlap OAM without stealing a byte",
+          "[cpu][dma][dmc-stop][state]") {
+    DmaMachine machine({0xEA});
+    DmcChannel channel;
+    channel.enabled = true;
+    channel.bytes_remaining = 1;
+    channel.timer_period = 54;
+    channel.timer = 4; // fetch on get 3, byte clock on get 5
+    channel.bits_remaining = 1;
+    machine.seed_channel(channel, true);
+    REQUIRE(machine.bus.run_dmc_dma(0) == 4);
+    machine.bus.clock_cpu_bus(0, 2);
+    REQUIRE(machine.apu.dmc_dma_ready());
+    const auto before = machine.device_state();
+    CHECK(machine.dmc_channel().shift_register == 0xD5);
+    SECTION("aborted halt survives a device snapshot") {
+        CHECK(machine.bus.run_dmc_dma(0) == 1);
+        const auto after = machine.device_state();
+        machine.restore_devices(before);
+        CHECK(machine.bus.run_dmc_dma(0) == 1);
+        CHECK(machine.device_state() == after);
+    }
+    SECTION("write suppresses the pulse instead of postponing it") {
+        machine.bus.begin_cpu_cycle(0x0001);
+        machine.bus.write_cpu(0x0001, 0x5A);
+        machine.bus.end_cpu_cycle();
+        CHECK(machine.bus.run_dmc_dma(0) == 0);
+        CHECK(machine.bus.read(1) == 0x5A);
+    }
+    SECTION("aborted DMA overlaps the OAM halt") {
+        CHECK(machine.bus.run_oam_dma(2, 0, false) == 513);
+        CHECK_FALSE(machine.apu.dmc_dma_ready());
+    }
+    CHECK(machine.dmc_channel().bytes_remaining == 0);
+    CHECK(machine.dmc_channel().current_address == 0xC001);
+}
+
+TEST_CASE("Late NTSC DMC completion queues a duplicate address and plays both bytes",
+          "[cpu][dma][dmc-stop][region]") {
+    for (const auto region : {Region::NTSC, Region::PAL, Region::Dendy}) {
+        DmaMachine machine({0xEA});
+        machine.apu.set_region(region);
+        machine.ppu.set_region(region);
+        machine.bus.set_region(region);
+        DmcChannel channel;
+        channel.enabled = true;
+        channel.bytes_remaining = 1;
+        channel.timer_period = 54;
+        channel.timer = 2; // output byte clock coincides with the DMA get
+        channel.bits_remaining = 1;
+        machine.seed_channel(channel, true);
+        CHECK(machine.bus.run_dmc_dma(0) == (region == Region::NTSC ? 8 : 4));
+        const auto after = machine.dmc_channel();
+        CHECK(after.bytes_remaining == 0);
+        CHECK(after.current_address == 0xC001);
+        CHECK(after.sample_buffer == 0xD5); // $C001 is zero; the duplicate read used $C000
+        CHECK_FALSE(after.sample_buffer_empty);
+        if (region == Region::NTSC) {
+            CHECK(after.shift_register == 0xD5); // first byte is already playing
+            machine.bus.clock_cpu_bus(0, 8 * 54);
+            CHECK(machine.dmc_channel().shift_register == 0xD5); // second byte follows
+            CHECK(machine.dmc_channel().sample_buffer_empty);
+        }
+        CHECK_FALSE(machine.apu.dmc_dma_ready());
+    }
+}
+
+TEST_CASE("Queued duplicate DMC requests retain their address across device snapshots",
+          "[cpu][dma][dmc-stop][state]") {
+    DmaMachine machine({0xEA});
+    DmcChannel channel;
+    channel.enabled = true;
+    channel.bytes_remaining = 1;
+    channel.timer_period = 54;
+    channel.timer = 2;
+    channel.bits_remaining = 1;
+    machine.seed_channel(channel, true);
+    REQUIRE_FALSE(machine.apu.start_dmc_dma());
+    machine.bus.clock_cpu_bus(0, 3); // halt, dummy, alignment
+    machine.bus.begin_cpu_cycle(0xC000);
+    machine.apu.complete_dmc_dma(machine.bus.read(0xC000));
+    machine.bus.end_cpu_cycle();
+    REQUIRE(machine.apu.dmc_dma_ready());
+    REQUIRE(machine.apu.dmc_dma_address() == 0xC000);
+    const auto before = machine.device_state();
+    CHECK(machine.bus.run_dmc_dma(0) == 4);
+    const auto after = machine.device_state();
+    machine.restore_devices(before);
+    CHECK(machine.apu.dmc_dma_address() == 0xC000);
+    CHECK(machine.bus.run_dmc_dma(0) == 4);
+    CHECK(machine.device_state() == after);
+}
+
+TEST_CASE("Malformed DMC stop latches reject machine snapshots with rollback",
+          "[cpu][dma][dmc-stop][state]") {
+    DmaMachine fixture({0xEA});
+    Emulator emulator;
+    if (fixture.cartridge)
+        REQUIRE(emulator.load_cartridge(std::move(*fixture.cartridge), {}));
+    else
+        FAIL("DMC fixture did not produce a cartridge");
+    emulator.reset();
+    const auto before = emulator.save_state();
+    StateWriter cpu, ppu, apu;
+    emulator.cpu().save_state(cpu);
+    emulator.ppu().save_state(ppu);
+    Apu{}.save_state(apu);
+    const auto end = 43 + cpu.data().size() + ppu.data().size() + apu.data().size();
+    for (const auto [back, value] : {std::pair{6U, Byte{2}},
+                                     {5U, Byte{3}},
+                                     {5U, Byte{1}},
+                                     {4U, Byte{2}},
+                                     {4U, Byte{1}},
+                                     {1U, Byte{2}},
+                                     {1U, Byte{1}}}) {
+        auto corrupt = before;
+        corrupt[end - back] = value;
+        CHECK_FALSE(emulator.load_state(corrupt));
+        CHECK(emulator.save_state() == before);
+    }
+}
+
+TEST_CASE("Machine snapshots replay a delayed explicit DMC stop", "[cpu][dma][dmc-stop][state]") {
+    DmaMachine fixture({0xA9, 0x10, 0x8D, 0x15, 0x40, 0xA9, 0, 0x8D, 0x15, 0x40, 0xEA, 0xEA});
+    Emulator emulator;
+    if (fixture.cartridge)
+        REQUIRE(emulator.load_cartridge(std::move(*fixture.cartridge), {}));
+    else
+        FAIL("DMC fixture did not produce a cartridge");
+    emulator.reset();
+    for (int instruction = 0; instruction < 4; ++instruction)
+        emulator.step_instruction();
+    const auto before = emulator.save_state();
+    for (int instruction = 0; instruction < 2; ++instruction)
+        emulator.step_instruction();
+    const auto after = emulator.save_state();
+    REQUIRE(emulator.load_state(before));
+    CHECK(emulator.save_state() == before);
+    for (int instruction = 0; instruction < 2; ++instruction)
+        emulator.step_instruction();
+    CHECK(emulator.save_state() == after);
+}
+
+TEST_CASE("DMC rate writes after an empty byte clock retain valid snapshots",
+          "[cpu][dma][dmc-stop][state]") {
+    DmaMachine machine({0xEA});
+    DmcChannel channel;
+    channel.timer_period = 54;
+    channel.bits_remaining = 1;
+    machine.seed_channel(channel);
+    machine.bus.clock_cpu_bus(0, 2);
+    machine.bus.write(0x4010, 0); // new period, previous timer remains running
+    const auto before = machine.device_state();
+    machine.restore_devices(before);
+    CHECK(machine.device_state() == before);
+}
+
+TEST_CASE("Cancelling a regional DMC reload leaves restorable request state",
+          "[cpu][dma][dmc-stop][state][region]") {
+    for (const auto region : {Region::NTSC, Region::PAL, Region::Dendy}) {
+        DmaMachine machine({0xEA});
+        machine.apu.set_region(region);
+        machine.ppu.set_region(region);
+        machine.bus.set_region(region);
+        DmcChannel channel;
+        channel.enabled = true;
+        channel.bytes_remaining = 1;
+        channel.timer_period = 54;
+        channel.bits_remaining = 1;
+        channel.sample_buffer_empty = false;
+        machine.seed_channel(channel);
+        machine.bus.clock_cpu_bus(0, 2);
+        REQUIRE(machine.apu.dmc_dma_ready());
+        machine.bus.write(0x4015, 0);
+        CHECK(machine.apu.dmc_dma_ready() == (region == Region::NTSC));
+        const auto before = machine.device_state();
+        machine.restore_devices(before);
+        CHECK(machine.device_state() == before);
     }
 }

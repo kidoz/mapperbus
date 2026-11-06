@@ -118,7 +118,7 @@ uint32_t MemoryBus::run_oam_dma(Byte page, Address halt_address, bool odd_alignm
 }
 
 uint32_t MemoryBus::run_dma(Address halt_address, std::optional<Byte> page, bool odd_alignment) {
-    enum class DmcPhase { Idle, Halt, Dummy, Get };
+    enum class DmcPhase { Idle, Halt, Abort, Dummy, Get };
     DmcPhase dmc = DmcPhase::Idle;
     bool oam_halt = page.has_value();
     bool oam_byte_ready = false;
@@ -132,7 +132,7 @@ uint32_t MemoryBus::run_dma(Address halt_address, std::optional<Byte> page, bool
         if (apu_ != nullptr) {
             get_cycle = apu_->dma_get_cycle();
             if (dmc == DmcPhase::Idle && apu_->dmc_dma_ready())
-                dmc = DmcPhase::Halt;
+                dmc = apu_->start_dmc_dma() ? DmcPhase::Abort : DmcPhase::Halt;
         }
         const auto phase = dmc;
         if (apu_ != nullptr && phase == DmcPhase::Get && get_cycle) {
@@ -163,14 +163,16 @@ uint32_t MemoryBus::run_dma(Address halt_address, std::optional<Byte> page, bool
         end_cpu_cycle();
         // Halt/dummy setup overlaps OAM accesses. Only the DMC get steals a
         // transfer cycle; OAM then realigns before its next source read.
-        if (phase == DmcPhase::Halt)
+        if (phase == DmcPhase::Abort)
+            dmc = DmcPhase::Idle;
+        else if (phase == DmcPhase::Halt)
             dmc = DmcPhase::Dummy;
         else if (phase == DmcPhase::Dummy)
             dmc = DmcPhase::Get;
         oam_halt = false;
         get_cycle = !get_cycle;
         ++cycles;
-    } while (page || dmc != DmcPhase::Idle);
+    } while (page || dmc != DmcPhase::Idle || (apu_ != nullptr && apu_->dmc_dma_ready()));
     return cycles;
 }
 

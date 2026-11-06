@@ -93,8 +93,9 @@ The diagnostic captures validate a deterministic NTSC alignment. They do not
 certify every CPU/PPU power-on phase, subcycle analog propagation, PAL's fractional
 PPU cadence, reset bus activity, or every PPU register race. The renderer retains
 its existing approximation of fetches and mapper A12 edges. Simultaneous `$4015`
-read/IRQ-flag assertion needs separate validation. DMC stop/abort and
-internal-register conflicts retain the limits in [DMA timing](dma-timing.md).
+read/IRQ-flag assertion needs separate validation. The implemented NTSC DMC stop
+races and the remaining internal-register conflict limits are described in
+[DMA timing](dma-timing.md).
 The ten separate [PPU diagnostics](ppu-timing.md) cover the implemented vblank
 read races and odd-frame timing for that alignment.
 

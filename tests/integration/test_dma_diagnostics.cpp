@@ -1,3 +1,4 @@
+#include <array>
 #include <catch2/catch_test_macros.hpp>
 #include <cstdlib>
 #include <filesystem>
@@ -54,5 +55,74 @@ TEST_CASE("Public Blargg OAM and DMC DMA timing diagnostics", "[cpu][dma][diagno
         REQUIRE(done);
         CHECK(emulator.read_cpu(0x6000) == 0);
         CHECK(output.contains("Passed"));
+    }
+}
+
+TEST_CASE("AccuracyCoin explicit and implicit DMC DMA abort diagnostics",
+          "[cpu][dma][diagnostic][external]") {
+    const char* root = std::getenv("MAPPERBUS_DMC_STOP_DIAGNOSTICS");
+    if (root == nullptr || *root == '\0')
+        SKIP("Set MAPPERBUS_DMC_STOP_DIAGNOSTICS to the pinned AccuracyCoin directory");
+    // 100thCoin/AccuracyCoin at 66e8711292d432cf009b2831f3ea1a055d75c9ba.
+    const auto path = std::filesystem::path(root) / "AccuracyCoin.nes";
+    auto bytes = read_binary_file_capped(path.string(), kMaxRomBytes, "DMC stop diagnostic");
+    REQUIRE(bytes);
+    REQUIRE(sha256_hex(rom_sha256(*bytes)) ==
+            "9332c3735dd7dea2f4711e670d6478d8b0085edeacdd4f9f300fb04a8bbe3f88");
+    register_builtin_mappers();
+    Emulator emulator;
+    REQUIRE(emulator.load_cartridge(path.string()));
+    REQUIRE(emulator.region() == Region::NTSC);
+    emulator.reset();
+    // Run the unmodified ROM through its own boot and controller menu. $EC is
+    // its documented boot progress byte; $14/$16 are page/cursor indices.
+    while (emulator.read_cpu(0xEC) != 10 && emulator.cpu().cycles() < 3000000)
+        emulator.step_instruction();
+    REQUIRE(emulator.read_cpu(0xEC) == 10);
+    REQUIRE(emulator.read_cpu(0x12) == 1); // ROM's DMA/open-bus synchronization pretest
+    const auto advance = [&](uint64_t cycles) {
+        const auto end = emulator.cpu().cycles() + cycles;
+        while (emulator.cpu().cycles() < end)
+            emulator.step_instruction();
+    };
+    const auto press = [&](Button button) {
+        emulator.controller().set_button_state(0, button, true);
+        advance(180000);
+        emulator.controller().set_button_state(0, button, false);
+        advance(180000);
+    };
+    for (int page = 0; page < 12; ++page)
+        press(Button::Right);
+    REQUIRE(emulator.read_cpu(0x14) == 12);
+    REQUIRE(emulator.read_cpu(0x16) == 0xFF);
+    for (int row = 0; row < 9; ++row)
+        press(Button::Down);
+    REQUIRE(emulator.read_cpu(0x16) == 8);
+    const auto run_test = [&](Address result, Byte expected) {
+        press(Button::A);
+        const auto end = emulator.cpu().cycles() + 8000000;
+        while ((emulator.read_cpu(result) == 0 || emulator.read_cpu(result) == 3) &&
+               emulator.cpu().cycles() < end)
+            emulator.step_instruction();
+        CAPTURE(result, expected, emulator.read_cpu(result));
+        REQUIRE(emulator.read_cpu(result) == expected);
+    };
+    run_test(0x479, 1); // Explicit DMA Abort: ordinary PASS
+    constexpr std::array<Byte, 16> kExplicit = {4, 4, 4, 4, 4, 4, 3, 4, 1, 1, 0, 0, 0, 0, 0, 0};
+    for (std::size_t index = 0; index < kExplicit.size(); ++index) {
+        CAPTURE(index);
+        CHECK(emulator.read_cpu(static_cast<Address>(0x50 + index)) == kExplicit[index]);
+    }
+    press(Button::Down);
+    REQUIRE(emulator.read_cpu(0x16) == 9);
+    run_test(0x478, 5); // Implicit DMA Abort: late-2A03G/2A03H alternate PASS
+    constexpr std::array<Byte, 16> kImplicit = {0, 0, 0, 0, 0, 0, 0, 0, 4, 4, 1, 1, 0, 0, 0, 0};
+    constexpr std::array<Byte, 16> kWrite = {0, 0, 0, 0, 0, 0, 0, 0, 4, 4, 1, 0, 0, 0, 0, 0};
+    constexpr std::array<Byte, 16> kLoop = {0, 0, 0, 0, 0, 0, 0, 0, 4, 4, 4, 4, 4, 4, 4, 4};
+    for (std::size_t index = 0; index < kImplicit.size(); ++index) {
+        CAPTURE(index);
+        CHECK(emulator.read_cpu(static_cast<Address>(0x500 + index)) == kImplicit[index]);
+        CHECK(emulator.read_cpu(static_cast<Address>(0x520 + index)) == kWrite[index]);
+        CHECK(emulator.read_cpu(static_cast<Address>(0x540 + index)) == kLoop[index]);
     }
 }

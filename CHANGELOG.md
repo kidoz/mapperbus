@@ -9,6 +9,9 @@ Versioning.
 
 ### Added
 
+- Targeted hash-pinned AccuracyCoin explicit/implicit DMC abort diagnostics,
+  with synthetic stop, duplicate-read, regional, and snapshot regressions.
+
 - Ten optional hash-pinned NTSC PPU diagnostics, with synthetic race, frame-length,
   region, and snapshot regressions around the skipped dot.
 - CPU interrupt regressions for I-flag latency, branch polling, NMI takeover of
@@ -29,6 +32,9 @@ Versioning.
 - Shared FDS BIOS configuration and CLI `--fds-bios` / `--frames` options.
 
 ### Fixed
+
+- NTSC DMC stop-latch timing, one-cycle aborted DMA suppressed by CPU writes,
+  and the late-2A03G/2A03H duplicate fetch when a load meets the byte clock.
 
 - PAL CPU/PPU scheduling now advances 16 dots every five CPU cycles, including
   OAM/DMC DMA, with an integer divider phase around register accesses.
@@ -60,9 +66,10 @@ Versioning.
 
 ### Changed
 
-- Save-state version 11 preserves the fractional CPU/PPU clock phase alongside
-  frame parity, skipped-dot decisions, interrupt, DMA, and FDS state. Versions
-  4–10 remain readable; legacy PAL states start with a fresh divider phase.
+- Save-state version 12 preserves DMC stop latches and queued reload addresses,
+  alongside the regional CPU/PPU clock phase, frame parity, interrupt, DMA, and
+  FDS state. Versions 4–11 remain readable with reconstructed missing history;
+  legacy PAL states start with a fresh divider phase.
 
 ## [0.2.0] - 2026-11-04
 

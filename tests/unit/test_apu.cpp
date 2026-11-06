@@ -344,7 +344,7 @@ TEST_CASE("Legacy inactive DMC state imports a valid free-running timer rate",
         StateWriter writer;
         apu.save_state(writer);
         auto legacy = writer.take();
-        legacy.resize(legacy.size() - 12);
+        legacy.resize(legacy.size() - 18);
         constexpr auto kOffset =
             2 * sizeof(PulseChannel) + sizeof(TriangleChannel) + sizeof(NoiseChannel);
         DmcChannel old_reset; // pre-v8: rate zero, no output bits
@@ -352,7 +352,7 @@ TEST_CASE("Legacy inactive DMC state imports a valid free-running timer rate",
         old_reset.bits_remaining = 0;
         std::memcpy(legacy.data() + kOffset, &old_reset, sizeof(old_reset));
         StateReader reader(legacy);
-        apu.load_state(reader, false, 0, false);
+        apu.load_state(reader, false, 0, false, false);
         REQUIRE(reader.ok());
         apu.step(860);
         StateWriter restored;
@@ -542,4 +542,19 @@ TEST_CASE("Ring overflow drops oldest, not newest", "[apu][accuracy]") {
         }
     }
     REQUIRE(tail_varies);
+}
+
+TEST_CASE("Standalone DMC synthesis keeps stop-latch snapshots valid", "[apu][dma][state]") {
+    for (const uint32_t cycles : {3U, 4U, 5U, 6U}) {
+        Apu apu;
+        apu.set_memory_reader([](Address) -> Byte { return 0xF0; });
+        apu.write_register(0x4010, 0x0F);
+        apu.write_register(0x4015, 0x10);
+        apu.step(cycles);
+        StateWriter writer;
+        apu.save_state(writer);
+        StateReader reader(writer.data());
+        apu.load_state(reader);
+        CHECK(reader.ok());
+    }
 }

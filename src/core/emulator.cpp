@@ -14,11 +14,11 @@ namespace mapperbus::core {
 namespace {
 // "MBST" — MapperBus STate. Bump kStateVersion on any layout change.
 constexpr std::array<Byte, 4> kStateMagic = {'M', 'B', 'S', 'T'};
-// v11 adds the CPU/PPU clock remainder. v10 added PPU frame parity and the
-// retained dot-skip decision. v9 added interrupt decisions/detectors and
-// PPU/APU race state. v8 added DMC
+// v12 adds DMC stop latches and queued reload state. v11 added the CPU/PPU
+// clock remainder. v10 added PPU frame parity and the retained dot-skip decision.
+// v9 added interrupt decisions/detectors and PPU/APU race state. v8 added DMC
 // requests/cadence; v7 the FDS watchdog; v6 audio latches; v5 drive state; v4 SHA-256.
-constexpr std::uint32_t kStateVersion = 11;
+constexpr std::uint32_t kStateVersion = 12;
 
 [[nodiscard]] std::string battery_path_for(const std::string& rom_path) {
     return std::filesystem::path(rom_path).replace_extension(".sav").string();
@@ -40,8 +40,9 @@ constexpr std::uint32_t kStateVersion = 11;
         return std::nullopt;
     }
     const auto version = reader.read<std::uint32_t>();
-    if (version != kStateVersion && version != 10 && version != 9 && version != 8 && version != 7 &&
-        version != 6 && version != 5 && version != 4 && !(version == 3 && allow_legacy)) {
+    if (version != kStateVersion && version != 11 && version != 10 && version != 9 &&
+        version != 8 && version != 7 && version != 6 && version != 5 && version != 4 &&
+        !(version == 3 && allow_legacy)) {
         logger::warn("Save-state rejected: unsupported version");
         return std::nullopt;
     }
@@ -358,7 +359,7 @@ bool Emulator::restore_state(std::span<const Byte> data, bool allow_legacy) {
 
     cpu_.load_state(reader, version >= 9);
     ppu_.load_state(reader, version >= 9, version >= 10, cpu_.cycles());
-    apu_.load_state(reader, version >= 8, cpu_.cycles(), version >= 9);
+    apu_.load_state(reader, version >= 8, cpu_.cycles(), version >= 9, version >= 12);
     if (version >= 8 && apu_.cpu_cycles() != cpu_.cycles())
         reader.fail();
     bus_.load_state(reader, version >= 9, version >= 11);
