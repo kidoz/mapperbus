@@ -122,9 +122,9 @@ TEST_CASE("Old snapshots reconstruct parity from their unshortened frame clock",
         StateWriter writer;
         ppu.save_state(writer);
         auto legacy = writer.take();
-        legacy.resize(legacy.size() - 2);
+        legacy.resize(legacy.size() - 3);
         StateReader reader(legacy);
-        ppu.load_state(reader, true, false, odd ? 341 * 262 : 0);
+        ppu.load_state(reader, true, false, odd ? 341 * 262 : 0, false);
         REQUIRE(reader.ok());
         ppu.write_register(1, 8);
         ppu.step_dots(341 * 262 - (odd ? 1 : 0));
@@ -330,7 +330,7 @@ TEST_CASE("PPU OAM DMA writes through oam_addr", "[ppu][oam]") {
     ppu.write_register(0x03, 0x01);
     REQUIRE(ppu.read_register(0x04) == 0xBB);
     ppu.write_register(0x03, 0x02);
-    REQUIRE(ppu.read_register(0x04) == 0xCC);
+    REQUIRE(ppu.read_register(0x04) == 0xC0); // attribute bits 2-4 are unimplemented
     ppu.write_register(0x03, 0x03);
     REQUIRE(ppu.read_register(0x04) == 0xDD);
 }
@@ -420,4 +420,43 @@ TEST_CASE("Dendy PPU starts VBlank at scanline 291, not 241", "[ppu][region][den
     ppu.step(33100 - 29000);
     REQUIRE(ppu.frame_ready());
     REQUIRE((ppu.read_register(0x02) & 0x80) != 0);
+}
+
+TEST_CASE("PPU I/O latch is separate from its VRAM read buffer", "[ppu][bus]") {
+    Ppu ppu;
+    ppu.write_register(6, 0x20);
+    ppu.write_register(6, 0);
+    ppu.write_register(7, 0x7F);
+    ppu.write_register(6, 0x20);
+    ppu.write_register(6, 0);
+    CHECK(ppu.read_register(7) == 0);
+    ppu.write_register(2, 0xA5); // even a read-only port loads the latch
+    CHECK(ppu.read_register(0) == 0xA5);
+    CHECK((ppu.read_register(2) & 0x1FU) == 5); // not the read buffer's $1F
+    CHECK(ppu.read_register(5) == 5);
+    CHECK(ppu.read_register(7) == 0x7F);
+    CHECK(ppu.read_register(6) == 0x7F);
+    StateWriter writer;
+    ppu.save_state(writer);
+    ppu.write_register(0, 0);
+    StateReader reader(writer.data());
+    ppu.load_state(reader);
+    REQUIRE(reader.ok());
+    CHECK(ppu.read_register(0) == 0x7F);
+}
+
+TEST_CASE("Palette reads merge latch high bits and apply the greyscale mask", "[ppu][bus]") {
+    Ppu ppu;
+    ppu.write_register(6, 0x3F);
+    ppu.write_register(6, 0);
+    ppu.write_register(7, 0x2F);
+    ppu.write_register(6, 0x3F);
+    ppu.write_register(6, 0);
+    ppu.write_register(2, 0xC0);
+    CHECK(ppu.read_register(7) == 0xEF);
+    ppu.write_register(1, 1);
+    ppu.write_register(6, 0x3F);
+    ppu.write_register(6, 0);
+    ppu.write_register(2, 0x80);
+    CHECK(ppu.read_register(7) == 0xA0);
 }

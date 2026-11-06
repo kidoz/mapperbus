@@ -21,9 +21,14 @@ void MemoryBus::save_state(StateWriter& writer) const {
     writer.write(static_cast<Byte>(nmi_line_));
     writer.write(static_cast<Byte>(nmi_pending_));
     writer.write(ppu_clock_phase_);
+    writer.write(controller_oe_);
+    writer.write(static_cast<Byte>(controller_strobe_request_));
 }
 
-void MemoryBus::load_state(StateReader& reader, bool has_interrupt_state, bool has_clock_phase) {
+void MemoryBus::load_state(StateReader& reader,
+                           bool has_interrupt_state,
+                           bool has_clock_phase,
+                           bool has_io_state) {
     reader.read_array(ram_);
     reader.read(open_bus_);
     reader.read(dma_cycles_);
@@ -44,12 +49,62 @@ void MemoryBus::load_state(StateReader& reader, bool has_interrupt_state, bool h
     if ((region_ == Region::PAL && ppu_clock_phase_ >= kPalTiming.ppu_clock_divider) ||
         (region_ != Region::PAL && ppu_clock_phase_ != 0))
         reader.fail();
+    controller_oe_ = has_io_state ? reader.read<Byte>() : Byte{0};
+    const auto strobe = has_io_state ? reader.read<Byte>() : Byte{0};
+    controller_strobe_request_ = strobe == 1;
+    if (controller_oe_ > 2 || strobe > 1 || (!ntsc_io() && controller_oe_ != 0))
+        reader.fail();
+    io_access_ = false;
+    controller_sample_cycle_ = false;
     irq_sampled_ = poll_irq();
+}
+
+void MemoryBus::restore_legacy_controller() {
+    controller_oe_ = 0;
+    controller_strobe_request_ = controller_ != nullptr && controller_->strobed();
+}
+
+void MemoryBus::set_controller_oe(Byte port) {
+    if (controller_oe_ != port && controller_oe_ != 0 && controller_ != nullptr)
+        controller_->clock(controller_oe_ - 1);
+    controller_oe_ = port;
+}
+
+Byte MemoryBus::read_cpu(Address addr) {
+    return read_cycle(addr, addr, false);
+}
+
+Byte MemoryBus::read_cycle(Address addr, Address cpu_address, bool dma) {
+    io_access_ = true;
+    const bool split_decode = dma && ntsc_io();
+    const auto internal =
+        split_decode ? static_cast<Address>((cpu_address & 0xFFE0U) | (addr & 0x1FU)) : addr;
+    const bool apu_enabled = (internal & 0xFFE0U) == 0x4000;
+    const bool joypad = apu_enabled && (internal == 0x4016 || internal == 0x4017);
+    set_controller_oe(ntsc_io() && joypad ? static_cast<Byte>(internal - 0x4015) : Byte{0});
+    // External memory still sees the DMA address, even when the internal APU
+    // decoder selects a register. Its $4015 read never drives external open bus.
+    Byte external = open_bus_;
+    if (addr < 0x4000 || addr >= 0x4018)
+        external = (this->*(read_map_[static_cast<uint32_t>(addr) >> 10U]))(addr);
+    if (internal == 0x4015 && apu_enabled) {
+        open_bus_ = external;
+        return static_cast<Byte>((external & 0x20U) |
+                                 (apu_ != nullptr ? apu_->read_register(0x4015) : Byte{0}));
+    }
+    if (joypad && controller_ != nullptr) {
+        const auto player = internal - 0x4016;
+        const auto bit = ntsc_io() ? controller_->peek(player) : controller_->read(player);
+        external = static_cast<Byte>((external & 0xE0U) | bit);
+    }
+    open_bus_ = external;
+    return external;
 }
 
 Byte MemoryBus::read(Address addr) {
     Byte value = (this->*(read_map_[addr >> 10]))(addr);
-    open_bus_ = value;
+    if (addr != 0x4015)
+        open_bus_ = value;
     return value;
 }
 
@@ -59,7 +114,13 @@ void MemoryBus::write(Address addr, Byte value) {
 }
 
 void MemoryBus::write_cpu(Address addr, Byte value, bool consecutive) {
+    io_access_ = true;
+    set_controller_oe(0);
     open_bus_ = value;
+    if (addr == 0x4016 && ntsc_io()) {
+        controller_strobe_request_ = (value & 1U) != 0;
+        return;
+    }
     if (addr >= 0x6000 && cartridge_ != nullptr)
         cartridge_->write_prg_cpu(addr, value, consecutive);
     else if (addr != 0x4014)
@@ -74,6 +135,8 @@ void MemoryBus::clock_cpu_bus(Address addr, uint32_t cycles) {
 }
 
 void MemoryBus::begin_cpu_cycle(Address addr) {
+    io_access_ = false;
+    controller_sample_cycle_ = apu_ == nullptr || apu_->dma_get_cycle();
     // phi1 detector outputs reflect the previous cycle's phi2 pin levels.
     irq_sampled_ = poll_irq();
     const bool nmi = ppu_ != nullptr && ppu_->nmi_line();
@@ -93,6 +156,10 @@ void MemoryBus::begin_cpu_cycle(Address addr) {
 }
 
 void MemoryBus::end_cpu_cycle() {
+    if (!io_access_)
+        set_controller_oe(0);
+    if (controller_sample_cycle_ && controller_ != nullptr)
+        controller_->write(static_cast<Byte>(controller_strobe_request_));
     const auto& timing = timing_for_region(region_);
     clock_ppu(timing.cpu_clock_divider - timing.cpu_access_master_clock);
 }
@@ -138,11 +205,11 @@ uint32_t MemoryBus::run_dma(Address halt_address, std::optional<Byte> page, bool
         if (apu_ != nullptr && phase == DmcPhase::Get && get_cycle) {
             const Address address = apu_->dmc_dma_address();
             begin_cpu_cycle(address);
-            apu_->complete_dmc_dma(read(address));
+            apu_->complete_dmc_dma(read_cycle(address, halt_address, true));
             dmc = DmcPhase::Idle;
         } else if (page && !oam_halt && oam_byte_ready && !get_cycle) {
             begin_cpu_cycle(0x2004);
-            ppu_->write_oam_dma(oam_byte);
+            write_cpu(0x2004, oam_byte);
             oam_byte_ready = false;
             ++offset;
             if (offset == 256)
@@ -151,14 +218,14 @@ uint32_t MemoryBus::run_dma(Address halt_address, std::optional<Byte> page, bool
             const auto address = static_cast<Address>((static_cast<uint32_t>(*page) << 8U) |
                                                       static_cast<uint32_t>(offset));
             begin_cpu_cycle(address);
-            oam_byte = read(address);
+            oam_byte = read_cycle(address, halt_address, true);
             oam_byte_ready = true;
         } else {
             begin_cpu_cycle(halt_address);
             // PAL performs the initial halted read too; repeated dummy/alignment
             // reads remain suppressed pending separate 2A07 validation.
             if (region_ != Region::PAL || cycles == 0)
-                (void)read(halt_address);
+                (void)read_cpu(halt_address);
         }
         end_cpu_cycle();
         // Halt/dummy setup overlaps OAM accesses. Only the DMC get steals a
@@ -214,7 +281,8 @@ Byte MemoryBus::read_apu_io(Address addr) {
             return open_bus_;
         }
         if (addr == 0x4015)
-            return apu_ != nullptr ? apu_->read_register(addr) : 0;
+            return static_cast<Byte>((open_bus_ & 0x20U) |
+                                     (apu_ != nullptr ? apu_->read_register(addr) : Byte{0}));
         return open_bus_; // other APU registers, including $4014, are write-only
     }
     // $4020-$409F: FDS disk drive ($4030-$4033) and audio ($4040-$4092)
@@ -271,6 +339,7 @@ void MemoryBus::write_apu_io(Address addr, Byte value) {
             return;
         }
         if (addr == 0x4016) {
+            controller_strobe_request_ = (value & 1U) != 0;
             if (controller_) {
                 controller_->write(value);
             }

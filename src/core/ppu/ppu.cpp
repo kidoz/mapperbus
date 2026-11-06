@@ -34,12 +34,14 @@ void Ppu::save_state(StateWriter& writer) const {
     writer.write(static_cast<Byte>(suppress_vblank_));
     writer.write(static_cast<Byte>(odd_frame_));
     writer.write(static_cast<Byte>(skip_dot_));
+    writer.write(io_latch_);
 }
 
 void Ppu::load_state(StateReader& reader,
                      bool has_interrupt_state,
                      bool has_frame_parity,
-                     uint64_t legacy_cpu_cycles) {
+                     uint64_t legacy_cpu_cycles,
+                     bool has_io_state) {
     reader.read(scanline_);
     reader.read(cycle_);
     reader.read(frame_ready_);
@@ -68,6 +70,7 @@ void Ppu::load_state(StateReader& reader,
         reader.fail();
     const auto odd = has_frame_parity ? reader.read<Byte>() : Byte{0};
     const auto skip = has_frame_parity ? reader.read<Byte>() : Byte{0};
+    io_latch_ = has_io_state ? reader.read<Byte>() : Byte{0};
     const auto full_frame = static_cast<uint64_t>(timing_->scanlines_per_frame) * 341U;
     // Older versions never skipped dots. Their elapsed CPU clocks therefore
     // recover parity exactly when CPU/PPU have kept their original alignment.
@@ -151,6 +154,7 @@ void Ppu::reset() {
     ppustatus_ = 0;
     oam_addr_ = 0;
     read_buffer_ = 0;
+    io_latch_ = 0;
     nmi_pending_ = false;
     suppress_vblank_ = false;
     odd_frame_ = false;
@@ -323,7 +327,7 @@ Byte Ppu::read_register(uint8_t reg) {
     reg &= 0x07;
     switch (reg) {
     case 0x02: { // PPUSTATUS
-        Byte value = static_cast<Byte>((ppustatus_ & 0xE0) | (read_buffer_ & 0x1F));
+        Byte value = static_cast<Byte>((ppustatus_ & 0xE0U) | (io_latch_ & 0x1FU));
         // A status read one dot before vblank suppresses its flag and NMI.
         if (std::cmp_equal(scanline_, timing_->vblank_scanline) && cycle_ == 0)
             suppress_vblank_ = true;
@@ -335,30 +339,35 @@ Byte Ppu::read_register(uint8_t reg) {
         if (scanline_ == timing_->vblank_scanline && cycle_ < 7) {
             nmi_pending_ = false;
         }
+        io_latch_ = value;
         return value;
     }
-    case 0x04: // OAMDATA
-        return oam_[oam_addr_];
+    case 0x04: // OAMDATA: attribute bits 2-4 are not implemented in OAM.
+        io_latch_ = static_cast<Byte>(oam_[oam_addr_] & ((oam_addr_ & 3U) == 2 ? 0xE3U : 0xFFU));
+        return io_latch_;
     case 0x07: { // PPUDATA
         Byte value = read_vram(reg_v_);
         Byte result = 0;
         if ((reg_v_ & 0x3FFF) >= 0x3F00) {
-            result = value;
+            result = static_cast<Byte>((io_latch_ & 0xC0U) |
+                                       (value & ((ppumask_ & 1U) != 0 ? 0x30U : 0x3FU)));
             read_buffer_ = read_vram(static_cast<Address>(reg_v_ - 0x1000));
         } else {
             result = read_buffer_;
             read_buffer_ = value;
         }
         reg_v_ = (reg_v_ + ((ppuctrl_ & 0x04) != 0 ? 32 : 1)) & 0x7FFF;
+        io_latch_ = result;
         return result;
     }
     default:
         break;
     }
-    return 0;
+    return io_latch_;
 }
 
 void Ppu::write_register(uint8_t reg, Byte value) {
+    io_latch_ = value;
     reg &= 0x07;
     switch (reg) {
     case 0x00: { // PPUCTRL: only a rising NMI-enable edge can retrigger in vblank.
@@ -424,6 +433,7 @@ bool Ppu::consume_nmi() {
 }
 
 void Ppu::write_oam_dma(Byte value) {
+    io_latch_ = value;
     oam_[oam_addr_++] = value;
 }
 

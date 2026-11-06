@@ -58,6 +58,48 @@ Dendy retain their previous cancellation behavior. NESdev marks 2A07 behavior
 unknown and reports different timing on affected clones; the NTSC tables do not
 establish those hardware contracts.
 
+## NTSC register decode and controller clocks
+
+DMA keeps the halted 6502 address separate from the address driven to external
+memory. APU register selection uses bits 15–5 of the former and bits 4–0 of the
+latter. Consequently, an OAM transfer from page `$40` cannot read APU registers
+unless the halted CPU address is in `$4000–$401F`. When enabled, the registers
+also appear at DMA addresses with matching low five bits, including RAM and ROM.
+These rules follow the [hardware investigator's register-read notes](https://www.nesdev.org/wiki/User:Fiskbit#APU_register_reads)
+and the [DMA register-conflict reference](https://www.nesdev.org/wiki/DMA#Register_conflicts).
+
+- `$4015` returns internal status with bit 5 from external open bus. Reading it
+  acknowledges the APU frame IRQ without replacing the external data latch.
+- Controller reads drive the modeled NES bits 0–4 while preserving external
+  bits 5–7. A DMA alias can clock either controller, independently of the port
+  on which the CPU was halted.
+- OAM puts drive their transferred byte onto external open bus and the PPU data
+  port. APU status read into OAM is observable on the subsequent put even though
+  the internal read itself did not drive the external bus.
+
+The selected NTSC controller model is NES/AV Famicom. Each port has a separate
+output-enable line. Contiguous reads keep it asserted and return the same bit;
+releasing it clocks the controller once. A DMC sample get normally breaks the
+sequence, but an alias of that same controller can keep the line asserted. An
+aborted one-cycle DMA followed by the CPU's resumed read therefore clocks once
+when that continuous read ends.
+
+The controller strobe request is sampled at the get-to-put boundary. This
+preserves the documented difference between the two possible one-cycle RMW
+strobe pulses. While effectively strobed, live buttons reload the shift register;
+a connected standard controller shifts in ones after the eighth bit.
+
+The bus owns line history and pending strobe requests; `Controller::peek` and
+`clock` separate sampling from the clock edge. Timed CPU/DMA reads use this path.
+Untimed debugger reads retain their immediate read side effects and do not
+change the timed output-enable history. PAL/Dendy retain their previous per-read
+controller clocking and DMA register behavior. RF Famicom/Twin Famicom/Titler
+half-cycle gating is not selectable in the current core.
+
+The APU activation diagnostic also requires the separate
+[PPU I/O latch](ppu-timing.md#ppu-io-bus). Its unmodified test executes a prepared
+instruction through PPU open bus; the runner does not bypass its prerequisites.
+
 ## Snapshots
 
 Version 8 introduced eleven bytes in the APU section: a 64-bit CPU cycle count,
@@ -66,7 +108,18 @@ with the CPU's count. Invalid flags, delays, pending-buffer combinations, or
 inconsistent counts reject the snapshot and restore the previous machine.
 Version 9 adds interrupt and frame-reset state; its layout is described in the
 [interrupt reference](interrupt-timing.md#snapshots).
-Version 12 appends six bytes to the APU section:
+Version 13 appends two bytes to the bus section: asserted controller port
+(0, 1, or 2) and pending strobe request (0 or 1). It also appends the PPU I/O
+latch to the PPU section. Non-NTSC states require an idle output-enable field.
+The controller's stored strobe flag is range-checked. Invalid fields reject with
+machine rollback. A held read and a not-yet-sampled strobe survive restoration.
+
+Versions 4–12 remain readable. Their missing controller line history starts
+idle because the old reader already shifted on every access. The pending strobe
+request adopts the restored effective strobe. The missing PPU I/O latch starts
+at zero. Exact new I/O history requires version 13.
+
+Version 12 introduced six bytes in the APU section:
 
 | Field | Size |
 |---|---|
@@ -154,12 +207,42 @@ Unset directories skip their optional test cases. Selecting a directory requires
 its pinned files. Passing these two tests does not certify the full AccuracyCoin
 suite, all CPU revisions, or every DMC enable/disable sequence.
 
+### AccuracyCoin register and controller diagnostics
+
+`MAPPERBUS_DMA_CONFLICT_DIAGNOSTICS` selects the same pinned ROM described above,
+using a separate optional case in `dma-diagnostics`. The unmodified controller
+menu runs these six tests and requires these exact results:
+
+| Test | Result |
+|---|---|
+| DMA + $4015 Read | 1: PASS |
+| DMA + $4016 Read | 5: NES/AV Famicom |
+| DMC DMA Bus Conflicts | 1: selected NES bus behavior |
+| APU Register Activation | 9: controllers clocked during aliased OAM reads |
+| Controller Strobing | 1: PASS |
+| Controller Clocking | 5: NES/AV Famicom |
+
+All six pass, including the ROM's internal prerequisites. Before this change,
+only DMA + $4015 passed; the other five failed. Synthetic regressions cover
+independent ports, continuous reads, both strobe phases, open-bus isolation,
+aliased OAM activation/IRQ acknowledgement, cross-controller DMC reads,
+post-eight-bit ones, PPU latch behavior, and device/machine snapshot replay.
+
+```sh
+MAPPERBUS_DMA_CONFLICT_DIAGNOSTICS="$PWD/tmp/dmc-stop/AccuracyCoin" \
+MAPPERBUS_DMC_STOP_DIAGNOSTICS="$PWD/tmp/dmc-stop/AccuracyCoin" \
+MAPPERBUS_CPU_DMA_DIAGNOSTICS="$PWD/tmp/dmc-timing" \
+  meson test -C buildDir dma-diagnostics --print-errorlogs
+```
+
 ## Remaining limits
 
-PAL repeated-read addresses, internal `$4000–$401F` register conflicts,
-joypad output-enable edge behavior, and adjacent PPUDATA read quirks are not certified. The public timing
-passes do not establish those contracts. The separate interrupt diagnostics
-cover the implemented IRQ/NMI polling contracts. Reset bus
-cycles and analog power-on alignment are outside the current model.
+These tests verify CPU-visible conflict values and OAM transfers. They do not
+measure the DMC sample latch's audio payload under electrical contention. PAL
+repeated-read addresses and register conflicts, RF Famicom clock gating, CPU
+revision/profile selection, and adjacent PPUDATA read quirks remain outside this
+coverage. Passing the eight selected AccuracyCoin tests does not certify the
+whole ROM. Reset bus cycles and analog power-on alignment remain outside the
+current model.
 
 [Reference index](README.md) · [FDS checks](fds-compatibility.md)

@@ -64,7 +64,7 @@ void Cpu::reset() {
 Byte Cpu::read(Address addr) const {
     dma_stall_cycles_ += bus_.run_dmc_dma(addr);
     clock_bus(addr);
-    const Byte value = bus_.read(addr);
+    const Byte value = bus_.read_cpu(addr);
     bus_.end_cpu_cycle();
     return value;
 }

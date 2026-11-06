@@ -24,7 +24,8 @@ class Ppu {
     void load_state(StateReader& reader,
                     bool has_interrupt_state = true,
                     bool has_frame_parity = true,
-                    uint64_t legacy_cpu_cycles = 0);
+                    uint64_t legacy_cpu_cycles = 0,
+                    bool has_io_state = true);
 
     bool frame_ready() const {
         return frame_ready_;
@@ -112,6 +113,7 @@ class Ppu {
     Byte ppustatus_ = 0;
     Byte oam_addr_ = 0;
     Byte read_buffer_ = 0;
+    Byte io_latch_ = 0;
     bool nmi_pending_ = false;
     bool suppress_vblank_ = false;
     bool odd_frame_ = false;

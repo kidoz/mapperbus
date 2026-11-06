@@ -76,9 +76,28 @@ explains why the visible register write and rendering/skip timing cannot be
 treated as the same instant. The pinned even/odd diagnostic checks the model's
 decision boundary for the selected CPU/PPU alignment.
 
+## PPU I/O bus
+
+The CPU-facing PPU data latch is separate from the buffered VRAM read. Writes to
+any PPU port, including read-only ports, fill it. Write-only register reads echo
+it, PPUSTATUS preserves its low five bits, and readable ports update it. Palette
+reads retain its upper two bits and apply the greyscale mask; OAM attribute reads
+return zero for unimplemented bits 2–4. These are digital latch rules from the
+[PPU register reference](https://www.nesdev.org/wiki/PPU_registers#MMIO_registers),
+without analog decay or revision-specific register restrictions.
+
+The latch is needed by the unmodified AccuracyCoin APU register-activation test,
+which executes an instruction through prepared PPU open bus. It does not change
+the per-pixel renderer, scroll rules, or mapper A12 approximation.
+
 ## Snapshots
 
-Version 11 appends one byte to the bus section: elapsed master clocks since the
+Version 13 appends the PPU I/O latch byte. Older snapshots initialize the
+missing latch to zero rather than guessing unavailable bus history. Exact I/O
+replay requires version 13; see [DMA/controller snapshots](dma-timing.md#snapshots)
+for the two accompanying bus fields.
+
+Version 11 introduced one byte to the bus section: elapsed master clocks since the
 last PPU dot. PAL accepts remainders 0–4; NTSC/Dendy accept zero, as snapshots are
 taken between complete CPU cycles. Other values reject the entire snapshot with
 rollback. Restoring the region precedes validating its clock remainder.

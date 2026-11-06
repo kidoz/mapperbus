@@ -9,6 +9,9 @@ Versioning.
 
 ### Added
 
+- Six pinned AccuracyCoin DMA register/controller checks with synthetic
+  decoder, continuous-read, strobe-phase, and snapshot regressions.
+
 - Targeted hash-pinned AccuracyCoin explicit/implicit DMC abort diagnostics,
   with synthetic stop, duplicate-read, regional, and snapshot regressions.
 
@@ -32,6 +35,11 @@ Versioning.
 - Shared FDS BIOS configuration and CLI `--fds-bios` / `--frames` options.
 
 ### Fixed
+
+- NTSC APU register activation during DMA, `$4015` external-bus isolation,
+  controller read-enable edges, and strobe sampling for NES/AV Famicom timing.
+- Standard controllers shift in ones after eight bits. PPU I/O now uses its own
+  latch, with palette read high bits and OAM attribute read masking.
 
 - NTSC DMC stop-latch timing, one-cycle aborted DMA suppressed by CPU writes,
   and the late-2A03G/2A03H duplicate fetch when a load meets the byte clock.
@@ -66,10 +74,11 @@ Versioning.
 
 ### Changed
 
-- Save-state version 12 preserves DMC stop latches and queued reload addresses,
-  alongside the regional CPU/PPU clock phase, frame parity, interrupt, DMA, and
-  FDS state. Versions 4–11 remain readable with reconstructed missing history;
-  legacy PAL states start with a fresh divider phase.
+- Save-state version 13 preserves controller line/strobe history and the PPU
+  I/O latch, alongside DMC stop latches, regional clocks, interrupts, and FDS
+  state. Versions 4–12 remain readable with reconstructed missing history;
+  pre-v13 I/O latches start at zero and pre-v11 PAL states start with a fresh
+  divider phase.
 
 ## [0.2.0] - 2026-11-04
 

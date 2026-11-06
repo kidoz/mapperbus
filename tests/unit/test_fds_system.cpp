@@ -369,13 +369,13 @@ TEST_CASE("OAM DMA halt reads establish open bus and RMW uses only the final pag
         REQUIRE(machine.cpu.step() == 2);
         REQUIRE(machine.cpu.step() == 517);
         for (unsigned index = 0; index < 256; ++index)
-            CHECK(oam_byte(machine, static_cast<Byte>(index)) == 0xEA);
+            CHECK(oam_byte(machine, static_cast<Byte>(index)) == ((index & 3U) == 2 ? 0xE2 : 0xEA));
     }
     SECTION("INC writes $40 then $41, followed by one DMA") {
         WatchdogCpu machine({0xEE, 0x14, 0x40, 0xEA});
         REQUIRE(machine.cpu.step() == 519);
         for (unsigned index = 0; index < 256; ++index)
-            CHECK(oam_byte(machine, static_cast<Byte>(index)) == 0xEA);
+            CHECK(oam_byte(machine, static_cast<Byte>(index)) == ((index & 3U) == 2 ? 0xE2 : 0xEA));
     }
 }
 

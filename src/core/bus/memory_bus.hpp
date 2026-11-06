@@ -21,6 +21,8 @@ class MemoryBus {
     MemoryBus();
 
     Byte read(Address addr);
+    /// Timed CPU access, with controller output-enable edges.
+    Byte read_cpu(Address addr);
     void write(Address addr, Byte value);
     /// CPU writes latch $4014; Cpu runs its DMA after the instruction's last
     /// write, at the next read cycle. Other writes have their normal effects.
@@ -42,12 +44,15 @@ class MemoryBus {
     }
     void reset_clock() {
         ppu_clock_phase_ = 0;
+        set_controller_oe(0);
     }
 
     void save_state(StateWriter& writer) const;
     void load_state(StateReader& reader,
                     bool has_interrupt_state = true,
-                    bool has_clock_phase = true);
+                    bool has_clock_phase = true,
+                    bool has_io_state = true);
+    void restore_legacy_controller();
     /// Detector outputs for the current CPU cycle: IRQ level and latched NMI edge.
     [[nodiscard]] Byte interrupt_sample() const {
         return static_cast<Byte>((irq_sampled_ ? 1U : 0U) | (nmi_pending_ ? 2U : 0U));
@@ -73,7 +78,9 @@ class MemoryBus {
         update_mappings();
     }
     void connect_controller(Controller* controller) {
+        set_controller_oe(0);
         controller_ = controller;
+        restore_legacy_controller();
         update_mappings();
     }
     void connect_fds(Fds* fds) {
@@ -85,6 +92,11 @@ class MemoryBus {
     uint32_t run_dma(Address halt_address, std::optional<Byte> page, bool odd_alignment);
     void update_mappings();
     void clock_ppu(unsigned master_clocks);
+    Byte read_cycle(Address addr, Address cpu_address, bool dma);
+    void set_controller_oe(Byte port);
+    [[nodiscard]] bool ntsc_io() const {
+        return region_ == Region::NTSC || region_ == Region::Multi;
+    }
 
     using ReadFunc = Byte (MemoryBus::*)(Address);
     using WriteFunc = void (MemoryBus::*)(Address, Byte);
@@ -110,6 +122,10 @@ class MemoryBus {
     uint32_t dma_cycles_ = 0;
     Region region_ = Region::NTSC;
     Byte ppu_clock_phase_ = 0; // elapsed master clocks since the last PPU dot
+    Byte controller_oe_ = 0;   // 0: neither, 1/2: continuous read of that port
+    bool controller_strobe_request_ = false;
+    bool controller_sample_cycle_ = false; // transient, sample at the get-to-put boundary
+    bool io_access_ = false;               // transient, current cycle performed a bus access
     bool irq_sampled_ = false;
     bool nmi_line_ = false;
     bool nmi_pending_ = false;

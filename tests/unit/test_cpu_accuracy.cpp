@@ -320,14 +320,14 @@ TEST_CASE("Accepted IRQ survives snapshots with I set and rejects invalid interr
     const auto apu_end = ppu_end + apu.data().size();
     const auto bus_end = apu_end + bus.data().size();
     for (const auto [offset, invalid] : {std::pair{cpu_end - 1, Byte{3}},
-                                         {ppu_end - 1, Byte{2}},
-                                         {ppu_end - 1, Byte{1}},
                                          {ppu_end - 2, Byte{2}},
+                                         {ppu_end - 2, Byte{1}},
                                          {ppu_end - 3, Byte{2}},
+                                         {ppu_end - 4, Byte{2}},
                                          {apu_end - 7, Byte{5}},
-                                         {bus_end - 1, Byte{1}},
-                                         {bus_end - 2, Byte{2}},
-                                         {bus_end - 3, Byte{2}}}) {
+                                         {bus_end - 3, Byte{1}},
+                                         {bus_end - 4, Byte{2}},
+                                         {bus_end - 5, Byte{2}}}) {
         auto corrupt = before;
         corrupt[offset] = invalid;
         CHECK_FALSE(emulator.load_state(corrupt));
@@ -384,7 +384,7 @@ TEST_CASE("DMC halt waits through CPU writes and realigns its get", "[cpu][dma]"
     }
 }
 
-TEST_CASE("DMC and OAM overlap setup and preserve every OAM byte", "[cpu][dma]") {
+TEST_CASE("DMC and OAM overlap setup and preserve every implemented OAM bit", "[cpu][dma]") {
     for (const auto [reload, cost] : {std::pair{9U, 515U}, {509U, 514U}, {511U, 516U}}) {
         CAPTURE(reload, cost);
         DmaMachine machine({0xEA});
@@ -398,7 +398,8 @@ TEST_CASE("DMC and OAM overlap setup and preserve every OAM byte", "[cpu][dma]")
         CHECK((machine.bus.read(0x4015) & 0x90U) == 0x80);
         for (unsigned i = 0; i < 256; ++i) {
             machine.bus.write(0x2003, static_cast<Byte>(i));
-            CHECK(machine.bus.read(0x2004) == static_cast<Byte>(i ^ 0x5AU));
+            const auto mask = (i & 3U) == 2 ? 0xE3U : 0xFFU;
+            CHECK(machine.bus.read(0x2004) == static_cast<Byte>((i ^ 0x5AU) & mask));
         }
     }
 }
@@ -750,7 +751,7 @@ TEST_CASE("Invalid CPU PPU divider phases reject snapshots with rollback", "[cpu
         Apu{}.save_state(apu);
         MemoryBus{}.save_state(bus);
         const auto phase_offset =
-            43 + cpu.data().size() + ppu.data().size() + apu.data().size() + bus.data().size() - 1;
+            43 + cpu.data().size() + ppu.data().size() + apu.data().size() + bus.data().size() - 3;
         const auto before = emulator.save_state();
         for (const Byte invalid :
              {Byte{5}, Byte{255}, static_cast<Byte>(region == Region::PAL ? 6U : 1U)}) {
@@ -800,9 +801,18 @@ TEST_CASE("Explicit DMC stops latch on the next get and abort exactly one read c
             const auto cycles = machine.apu.cpu_cycles();
             CHECK(machine.bus.run_dmc_dma(0x4016) == (abort ? 1 : 0));
             CHECK(machine.apu.cpu_cycles() == cycles + (abort ? 1U : 0U));
-            CHECK((machine.bus.read(0x4016) & 1U) ==
-                  (abort ? 0U : 1U)); // one repeated read consumed A
-            CHECK((machine.bus.read(0x4016) & 1U) == (abort ? 1U : 0U)); // Select remains after B
+            const auto read_cycle = [&](Address address) {
+                machine.bus.begin_cpu_cycle(address);
+                const auto value = machine.bus.read_cpu(address);
+                machine.bus.end_cpu_cycle();
+                return value;
+            };
+            // NES /OE stays asserted across an aborted halt and its resumed read.
+            CHECK((read_cycle(0x4016) & 1U) == 1);
+            (void)read_cycle(0);
+            CHECK((read_cycle(0x4016) & 1U) == 0);
+            (void)read_cycle(0);
+            CHECK(controller.peek(0) == 1); // Select follows the two completed reads
             CHECK(machine.dmc_channel().bytes_remaining == 0);
             CHECK(machine.dmc_channel().sample_buffer_empty); // no sample fetch
             CHECK(machine.bus.run_dmc_dma(0) == 0);
@@ -989,4 +999,96 @@ TEST_CASE("Cancelling a regional DMC reload leaves restorable request state",
         machine.restore_devices(before);
         CHECK(machine.device_state() == before);
     }
+}
+
+TEST_CASE("DMC partial decoding can clock the other controller", "[cpu][dma][controller]") {
+    DmaMachine machine({0xEA});
+    Controller pads;
+    pads.set_button_state(0, Button::A, true);
+    pads.set_button_state(1, Button::A, true);
+    machine.bus.connect_controller(&pads);
+    machine.bus.write(0x4016, 1);
+    machine.bus.write(0x4016, 0);
+    DmcChannel channel;
+    channel.enabled = true;
+    channel.bytes_remaining = 1;
+    channel.current_address = 0xC017;
+    channel.timer = 100;
+    machine.seed_channel(channel, true);
+    REQUIRE(machine.bus.run_dmc_dma(0x4016) == 4);
+    machine.bus.begin_cpu_cycle(0x4016);
+    CHECK((machine.bus.read_cpu(0x4016) & 1U) == 0); // player 1 B, after its halted A read
+    machine.bus.end_cpu_cycle();
+    CHECK(pads.peek(1) == 0); // the aliased $4017 read clocked player 2's A
+}
+
+TEST_CASE("Machine snapshots preserve a controller read across an instruction boundary",
+          "[cpu][controller][state]") {
+    DmaMachine fixture({0xA9, 1,    0x8D, 0x16, 0x40, 0xA9, 0,    0x8D, 0x16, 0x40,
+                        0xAD, 0x16, 0x40, 0x8D, 0,    0,    0xAD, 0x16, 0x40, 0x8D,
+                        1,    0,    0xAD, 0x16, 0x40, 0x8D, 2,    0});
+    Emulator emulator;
+    if (fixture.cartridge)
+        REQUIRE(emulator.load_cartridge(std::move(*fixture.cartridge), {}));
+    else
+        FAIL("Controller fixture did not produce a cartridge");
+    emulator.reset();
+    emulator.controller().set_button_state(0, Button::A, true);
+    emulator.controller().set_button_state(0, Button::Select, true);
+    for (int instruction = 0; instruction < 5; ++instruction)
+        emulator.step_instruction();
+    const auto before = emulator.save_state();
+    for (int instruction = 0; instruction < 5; ++instruction)
+        emulator.step_instruction();
+    const auto after = emulator.save_state();
+    CHECK((emulator.read_cpu(0) & 1U) == 1);
+    CHECK((emulator.read_cpu(1) & 1U) == 0);
+    CHECK((emulator.read_cpu(2) & 1U) == 1);
+    REQUIRE(emulator.load_state(before));
+    for (int instruction = 0; instruction < 5; ++instruction)
+        emulator.step_instruction();
+    CHECK(emulator.save_state() == after);
+}
+
+TEST_CASE("Invalid controller line states reject snapshots with rollback",
+          "[cpu][controller][state]") {
+    Emulator emulator;
+    emulator.reset();
+    const auto before = emulator.save_state();
+    StateWriter cpu, ppu, apu, bus, controller;
+    emulator.cpu().save_state(cpu);
+    emulator.ppu().save_state(ppu);
+    Apu{}.save_state(apu);
+    MemoryBus{}.save_state(bus);
+    Controller{}.save_state(controller);
+    const auto end =
+        43 + cpu.data().size() + ppu.data().size() + apu.data().size() + bus.data().size();
+    for (const auto [offset, value] : {std::pair{end - 1, Byte{2}},
+                                       {end - 2, Byte{3}},
+                                       {end + controller.data().size() - 1, Byte{2}}}) {
+        auto corrupt = before;
+        corrupt[offset] = value;
+        CHECK_FALSE(emulator.load_state(corrupt));
+        CHECK(emulator.save_state() == before);
+    }
+}
+
+TEST_CASE("Version 12 imports reconstruct the controller strobe request",
+          "[cpu][controller][state]") {
+    DmaMachine fixture({0xA9, 1, 0x8D, 0x16, 0x40, 0xEA});
+    Emulator emulator;
+    if (fixture.cartridge)
+        REQUIRE(emulator.load_cartridge(std::move(*fixture.cartridge), {}));
+    else
+        FAIL("Controller fixture did not produce a cartridge");
+    emulator.reset();
+    emulator.step_instruction();
+    emulator.step_instruction();
+    REQUIRE(emulator.controller().strobed());
+    const auto original = emulator.save_state();
+    const auto legacy = mapperbus::tests::legacy_state(emulator, 12);
+    REQUIRE(emulator.load_state(legacy));
+    CHECK(emulator.save_state() == original);
+    emulator.step_instruction();
+    CHECK(emulator.controller().strobed());
 }

@@ -25,6 +25,11 @@ class Controller {
   public:
     void set_button_state(int player, Button button, bool pressed);
     Byte read(int player);
+    [[nodiscard]] Byte peek(int player) const;
+    void clock(int player);
+    [[nodiscard]] bool strobed() const {
+        return strobe_;
+    }
     void write(Byte value);
 
     void save_state(StateWriter& writer) const;

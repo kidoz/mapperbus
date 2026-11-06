@@ -117,7 +117,12 @@ TEST_CASE("Legacy sibling import is read-only and never masks a corrupt centrali
     auto& session = fixture.session;
     REQUIRE(session.open_rom(fixture.rom.string()));
     REQUIRE(session.step_frame() == TickResult::FrameAdvanced);
-    const auto snapshot = session.emulator().save_state();
+    auto snapshot = session.emulator().save_state();
+    core::StateWriter cpu, ppu;
+    session.emulator().cpu().save_state(cpu);
+    session.emulator().ppu().save_state(ppu);
+    // Legacy files cannot recover the PPU I/O latch introduced in version 13.
+    snapshot[43 + cpu.data().size() + ppu.data().size() - 1] = 0;
     auto legacy = mapperbus::tests::legacy_state(session.emulator(), 7);
     legacy.erase(legacy.end() - 16384 - 27, legacy.end() - 16384);
     legacy.erase(legacy.begin() + 11, legacy.begin() + 43);

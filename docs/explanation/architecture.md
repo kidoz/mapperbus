@@ -90,12 +90,15 @@ audio settings. Keeping these separate means a UI preference does not become
 part of cartridge hardware state.
 
 Snapshots are taken between instructions, after any OAM DMA. CPU bus-cycle and
-active-DMA bookkeeping is transient. Version 12 preserves DMC reader-stop
+active-DMA bookkeeping is transient. Version 13 preserves controller line and
+strobe-request history plus the PPU I/O latch; older states import with idle
+lines, the restored effective strobe, and a zero PPU I/O latch. Version 12 added
+DMC reader-stop
 latches and queued reloads; [DMA timing](../reference/dma-timing.md) describes
 those fields and legacy reconstruction. Version 11 added the CPU/PPU clock
 remainder, alongside frame parity and skipped-dot decisions added in version 10,
 interrupt/source state added in version 9, and APU phase/DMC fields added in
-version 8. Versions 4–11 remain readable; PAL snapshots predating version 11
+version 8. Versions 4–12 remain readable; PAL snapshots predating version 11
 resume with a fresh fractional phase at their retained PPU position. Exact replay across fractional
 clock phases requires version 11. See [PPU timing](../reference/ppu-timing.md).
 

@@ -5,6 +5,7 @@
 #include "core/apu/apu.hpp"
 #include "core/bus/memory_bus.hpp"
 #include "core/cartridge/cartridge.hpp"
+#include "core/input/controller.hpp"
 #include "core/mappers/mapper_registry.hpp"
 #include "core/ppu/ppu.hpp"
 #include "core/state/state.hpp"
@@ -111,6 +112,50 @@ TEST_CASE("Write-only APU registers preserve CPU open bus", "[bus][bus-side-effe
 }
 
 namespace {
+struct IoMachine {
+    Apu apu;
+    Ppu ppu;
+    Controller pads;
+    MemoryBus bus;
+
+    IoMachine() {
+        bus.connect_apu(&apu);
+        bus.connect_ppu(&ppu);
+        bus.connect_controller(&pads);
+    }
+    Byte read(Address address) {
+        bus.begin_cpu_cycle(address);
+        const auto value = bus.read_cpu(address);
+        bus.end_cpu_cycle();
+        return value;
+    }
+    void write(Address address, Byte value) {
+        bus.begin_cpu_cycle(address);
+        bus.write_cpu(address, value);
+        bus.end_cpu_cycle();
+    }
+    void latch() {
+        bus.write(0x4016, 1);
+        bus.write(0x4016, 0);
+    }
+    std::vector<Byte> save() const {
+        StateWriter writer;
+        ppu.save_state(writer);
+        apu.save_state(writer);
+        bus.save_state(writer);
+        pads.save_state(writer);
+        return writer.take();
+    }
+    void restore(std::span<const Byte> state) {
+        StateReader reader(state);
+        ppu.load_state(reader);
+        apu.load_state(reader);
+        bus.load_state(reader);
+        pads.load_state(reader);
+        REQUIRE(reader.ok());
+    }
+};
+
 uint32_t ppu_dot_position(const Ppu& ppu) {
     StateWriter writer;
     ppu.save_state(writer);
@@ -236,4 +281,123 @@ TEST_CASE("Region changes reset the divider while reapplying a region preserves 
     bus.set_region(Region::PAL);
     bus.clock_cpu_bus(0);
     CHECK(ppu_dot_position(ppu) == before + 6); // fresh PAL phase
+}
+
+TEST_CASE("Standard controller shifts ones and reloads live buttons while strobed",
+          "[bus][controller]") {
+    Controller pads;
+    for (const int player : {0, 1}) {
+        pads.set_button_state(player, Button::A, true);
+        pads.set_button_state(player, Button::Select, true);
+    }
+    pads.write(1);
+    pads.write(0);
+    for (const int player : {0, 1}) {
+        for (unsigned index = 0; index < 8; ++index)
+            CHECK(pads.read(player) == (index == 0 || index == 2 ? 1 : 0));
+        for (int index = 0; index < 16; ++index)
+            CHECK(pads.read(player) == 1);
+    }
+    pads.write(1);
+    pads.set_button_state(0, Button::A, false);
+    pads.set_button_state(0, Button::B, true);
+    for (int index = 0; index < 12; ++index)
+        CHECK(pads.read(0) == 0);
+    pads.write(0);
+    CHECK(pads.read(0) == 0);
+    CHECK(pads.read(0) == 1);
+    CHECK(pads.read(0) == 1);
+}
+
+TEST_CASE("NES controller reads clock once per continuous output enable", "[bus][controller]") {
+    IoMachine machine;
+    machine.pads.set_button_state(0, Button::A, true);
+    machine.pads.set_button_state(0, Button::Select, true);
+    machine.pads.set_button_state(1, Button::B, true);
+    machine.latch();
+    CHECK((machine.read(0x4016) & 1U) == 1);
+    CHECK((machine.read(0x4016) & 1U) == 1); // same /OE assertion, same bit
+    CHECK((machine.read(0x4017) & 1U) == 0); // releases player 1
+    CHECK((machine.read(0x4016) & 1U) == 0); // B
+    CHECK((machine.read(0x4017) & 1U) == 1); // player 2's B
+    (void)machine.read(0);
+    CHECK((machine.read(0x4016) & 1U) == 1); // Select
+}
+
+TEST_CASE("Controller strobe samples one-cycle pulses at the get-to-put boundary",
+          "[bus][controller]") {
+    for (const bool starts_on_get : {false, true}) {
+        IoMachine machine;
+        machine.latch();
+        for (int index = 0; index < 8; ++index)
+            (void)machine.pads.read(0);
+        REQUIRE(machine.pads.peek(0) == 1);
+        if (starts_on_get)
+            (void)machine.read(0);
+        machine.write(0x4016, 1);
+        machine.write(0x4016, 0);
+        (void)machine.read(0);
+        CHECK(machine.pads.peek(0) == (starts_on_get ? 0 : 1));
+    }
+}
+
+TEST_CASE("Controller read enables and pending strobes survive device snapshots",
+          "[bus][controller][state]") {
+    IoMachine machine;
+    machine.pads.set_button_state(0, Button::A, true);
+    machine.latch();
+    SECTION("a continuous read resumes without shifting twice") {
+        REQUIRE((machine.read(0x4016) & 1U) == 1);
+        const auto state = machine.save();
+        CHECK((machine.read(0x4016) & 1U) == 1);
+        (void)machine.read(0);
+        CHECK((machine.read(0x4016) & 1U) == 0);
+        const auto after = machine.save();
+        machine.restore(state);
+        CHECK((machine.read(0x4016) & 1U) == 1);
+        (void)machine.read(0);
+        CHECK((machine.read(0x4016) & 1U) == 0);
+        CHECK(machine.save() == after);
+    }
+    SECTION("a pending strobe is applied on the next get") {
+        machine.write(0x4016, 1); // initial put: request is not latched yet
+        REQUIRE_FALSE(machine.pads.strobed());
+        const auto state = machine.save();
+        (void)machine.read(0);
+        CHECK(machine.pads.strobed());
+        const auto after = machine.save();
+        machine.restore(state);
+        REQUIRE_FALSE(machine.pads.strobed());
+        (void)machine.read(0);
+        CHECK(machine.pads.strobed());
+        CHECK(machine.save() == after);
+    }
+}
+
+TEST_CASE("APU status returns internal data without driving external open bus", "[bus][apu]") {
+    IoMachine machine;
+    machine.bus.write(0, 0xA5);
+    CHECK(machine.read(0x4015) == 0x20);
+    CHECK(machine.bus.open_bus() == 0xA5);
+    CHECK(machine.bus.read(0x4015) == 0x20); // untimed status access has the same bus isolation
+    CHECK(machine.bus.open_bus() == 0xA5);
+    CHECK(machine.read(0x4000) == 0xA5);
+}
+
+TEST_CASE("OAM DMA activates APU registers only through the halted CPU address",
+          "[bus][dma][apu]") {
+    for (const Address halted : {Address{0x0200}, Address{0x4000}}) {
+        IoMachine machine;
+        machine.apu.step(29900);
+        REQUIRE(machine.apu.irq_pending());
+        machine.bus.write(0x0200, 0x50);
+        machine.pads.set_button_state(0, Button::A, true);
+        machine.latch();
+        REQUIRE(machine.bus.run_oam_dma(0x40, halted, false) >= 513);
+        machine.bus.write(0x2003, 0x15);
+        CHECK(machine.bus.read(0x2004) == (halted == 0x4000 ? 0x40 : 0x50));
+        CHECK(machine.apu.irq_pending() == (halted != 0x4000));
+        machine.bus.write(0x2003, 0x35);
+        CHECK(machine.bus.read(0x2004) == (halted == 0x4000 ? 0 : 0x50));
+    }
 }
