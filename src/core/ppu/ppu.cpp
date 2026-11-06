@@ -279,11 +279,11 @@ Byte Ppu::read_register(uint8_t reg) {
         // Clear VBlank flag and reset w.
         ppustatus_ &= ~0x80;
         write_latch_ = false;
-        // Note: on real hardware, reading $2002 only suppresses NMI during
-        // the exact dot when VBlank starts (a 1-cycle race condition).
-        // In our sequential model that race cannot occur, so we must NOT
-        // clear nmi_pending_ here — doing so would silently eat NMIs
-        // whenever the game polls $2002 near VBlank.
+        // Model the vblank/NMI sampling race in the instruction-stepped bus.
+        // Outside this short window an already latched NMI must survive reads.
+        if (scanline_ == timing_->vblank_scanline && cycle_ < 7) {
+            nmi_pending_ = false;
+        }
         return value;
     }
     case 0x04: // OAMDATA
@@ -310,14 +310,16 @@ Byte Ppu::read_register(uint8_t reg) {
 void Ppu::write_register(uint8_t reg, Byte value) {
     reg &= 0x07;
     switch (reg) {
-    case 0x00: // PPUCTRL
+    case 0x00: { // PPUCTRL: only a rising NMI-enable edge can retrigger in vblank.
+        const bool nmi_was_enabled = (ppuctrl_ & 0x80) != 0;
         ppuctrl_ = value;
         // t: ...GH.. ........ = d: ......GH
         reg_t_ = (reg_t_ & ~0x0C00) | ((static_cast<uint16_t>(value) & 0x03) << 10);
-        if ((ppuctrl_ & 0x80) != 0 && (ppustatus_ & 0x80) != 0) {
+        if (!nmi_was_enabled && (ppuctrl_ & 0x80) != 0 && (ppustatus_ & 0x80) != 0) {
             nmi_pending_ = true;
         }
         break;
+    }
     case 0x01: // PPUMASK
         ppumask_ = value;
         pending_ppumask_render_ = value;
@@ -363,6 +365,13 @@ void Ppu::write_register(uint8_t reg, Byte value) {
 }
 
 bool Ppu::consume_nmi() {
+    // The CPU samples the edge after a short propagation/synchronization
+    // delay. This lets a concurrent $2002 poll observe and suppress vblank;
+    // immediate instruction-boundary delivery would starve such polling loops
+    // whenever their NMI handler also reads $2002 (e.g. an FDS program reload).
+    if (scanline_ == timing_->vblank_scanline && cycle_ < 7) {
+        return false;
+    }
     bool pending = nmi_pending_;
     nmi_pending_ = false;
     return pending;

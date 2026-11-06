@@ -3,6 +3,7 @@
 #include "core/binary_file.hpp"
 #include "core/cartridge/rom_crc32.hpp"
 #include "core/cartridge/rom_database.hpp"
+#include "core/fds/fds_mapper.hpp"
 #include "core/mappers/mapper_registry.hpp"
 #include "core/state/state.hpp"
 
@@ -75,6 +76,20 @@ Result<Cartridge> Cartridge::from_data(std::span<const Byte> rom_data, std::stri
             cartridge.header_.region = *filename_region;
         }
     }
+    return cartridge;
+}
+
+Result<Cartridge> Cartridge::from_fds_bios(std::span<const Byte> bios, const Fds& drive) {
+    if (bios.size() != FdsMapper::kBiosBytes) {
+        return std::unexpected("FDS BIOS must contain exactly 8192 bytes");
+    }
+    INesHeader header{};
+    header.mapper_number = 20;
+    header.prg_rom_size = bios.size();
+    header.region = Region::NTSC;
+    header.mirror_mode = MirrorMode::Vertical;
+    Cartridge cartridge(header, std::make_unique<FdsMapper>(bios, drive));
+    cartridge.content_hash_ = rom_sha256(bios);
     return cartridge;
 }
 

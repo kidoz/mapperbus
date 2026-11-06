@@ -14,8 +14,8 @@ namespace mapperbus::core {
 namespace {
 // "MBST" — MapperBus STate. Bump kStateVersion on any layout change.
 constexpr std::array<Byte, 4> kStateMagic = {'M', 'B', 'S', 'T'};
-// v4 adds media SHA-256. v3 added VRC7 audio_halted_; v2 expanded audio state.
-constexpr std::uint32_t kStateVersion = 4;
+// v5 adds FDS transfer/CRC/mirroring state. v4 added media SHA-256.
+constexpr std::uint32_t kStateVersion = 5;
 
 [[nodiscard]] std::string battery_path_for(const std::string& rom_path) {
     return std::filesystem::path(rom_path).replace_extension(".sav").string();
@@ -37,7 +37,7 @@ constexpr std::uint32_t kStateVersion = 4;
         return std::nullopt;
     }
     const auto version = reader.read<std::uint32_t>();
-    if (version != kStateVersion && !(version == 3 && allow_legacy)) {
+    if (version != kStateVersion && version != 4 && !(version == 3 && allow_legacy)) {
         logger::warn("Save-state rejected: unsupported version");
         return std::nullopt;
     }
@@ -51,7 +51,7 @@ constexpr std::uint32_t kStateVersion = 4;
         logger::warn("Save-state rejected: invalid region");
         return std::nullopt;
     }
-    if (version == kStateVersion) {
+    if (version >= 4) {
         Sha256Digest hash{};
         reader.read_array(hash);
         if (!reader.ok() || hash != expected_hash) {
@@ -73,6 +73,8 @@ Emulator::Emulator(const AudioSettings& audio_settings) : cpu_(bus_), apu_(audio
 
 Emulator::~Emulator() {
     flush_battery_ram();
+    if (auto saved = flush_disk_changes(); !saved)
+        logger::error("{}", saved.error());
 }
 
 void Emulator::wire_apu() {
@@ -106,8 +108,13 @@ Result<void> Emulator::load_cartridge(const std::string& path) {
 }
 
 Result<void> Emulator::load_cartridge(Cartridge cartridge, const std::string& battery_path) {
-    // Persist the outgoing cartridge's battery RAM before replacing it.
+    // Commit only after parsing the replacement and persisting outgoing media.
+    if (auto saved = flush_disk_changes(); !saved)
+        return saved;
     flush_battery_ram();
+    fds_.unload();
+    disk_hash_ = {};
+    disk_changes_path_.clear();
     cartridge_ = std::make_unique<Cartridge>(std::move(cartridge));
     bus_.connect_cartridge(cartridge_.get());
     ppu_.connect_cartridge(cartridge_.get());
@@ -160,6 +167,76 @@ Result<void> Emulator::load_disk(const std::string& path) {
     return {};
 }
 
+Result<void> Emulator::load_fds(std::span<const Byte> bios,
+                                std::span<const Byte> disk,
+                                const std::string& changes_path) {
+    auto cartridge = Cartridge::from_fds_bios(bios, fds_);
+    if (!cartridge)
+        return std::unexpected(cartridge.error());
+    Fds candidate;
+    if (!candidate.load_disk(disk))
+        return std::unexpected("Invalid FDS disk image");
+    const auto identity = rom_sha256(candidate.disk_image());
+    if (auto saved = flush_disk_changes(); !saved)
+        return saved;
+    if (!changes_path.empty()) {
+        std::error_code error;
+        const bool exists = std::filesystem::exists(changes_path, error);
+        if (error)
+            return std::unexpected("Cannot access FDS disk save: " + error.message());
+        if (exists) {
+            auto saved = read_binary_file_capped(
+                changes_path, Fds::kMaxDiskImageBytes + 72, "FDS disk save");
+            if (!saved)
+                return std::unexpected(saved.error());
+            // MBFD v1, immutable source identity, payload digest, raw .fds sides.
+            if (saved->size() < 72 || (*saved)[0] != 'M' || (*saved)[1] != 'B' ||
+                (*saved)[2] != 'F' || (*saved)[3] != 'D' || (*saved)[4] != 1 || (*saved)[5] != 0 ||
+                (*saved)[6] != 0 || (*saved)[7] != 0 ||
+                !std::equal(identity.begin(), identity.end(), saved->begin() + 8)) {
+                return std::unexpected("FDS disk save does not match this disk or format version");
+            }
+            const auto payload = std::span<const Byte>(*saved).subspan(72);
+            const auto digest = rom_sha256(payload);
+            if (!std::equal(digest.begin(), digest.end(), saved->begin() + 40) ||
+                !candidate.apply_disk_changes(payload)) {
+                return std::unexpected("FDS disk save is corrupt or has invalid geometry");
+            }
+        }
+    }
+    auto loaded = load_cartridge(std::move(*cartridge), {});
+    if (!loaded)
+        return loaded;
+    fds_ = std::move(candidate);
+    fds_.set_write_protected(false);
+    disk_hash_ = identity;
+    disk_changes_path_ = changes_path;
+    return {};
+}
+
+Result<void> Emulator::flush_disk_changes() {
+    fds_.synchronize_disk();
+    if (!is_fds() || !fds_.dirty() || disk_changes_path_.empty())
+        return {};
+    std::vector<Byte> data{'M', 'B', 'F', 'D', 1, 0, 0, 0};
+    data.insert(data.end(), disk_hash_.begin(), disk_hash_.end());
+    const auto payload = fds_.disk_image();
+    const auto digest = rom_sha256(payload);
+    data.insert(data.end(), digest.begin(), digest.end());
+    data.insert(data.end(), payload.begin(), payload.end());
+    auto result = write_binary_file_atomic(disk_changes_path_, data, "FDS disk save");
+    if (result)
+        fds_.mark_clean();
+    return result;
+}
+
+Result<void> Emulator::export_disk(const std::string& path) {
+    fds_.synchronize_disk();
+    if (!is_fds())
+        return std::unexpected("No FDS game is loaded");
+    return write_binary_file_atomic(path, fds_.disk_image(), "FDS disk image");
+}
+
 void Emulator::flush_battery_ram() {
     // Persist battery-backed RAM of the currently loaded cartridge, if any.
     if (cartridge_ && cartridge_->has_battery() && !battery_save_path_.empty()) {
@@ -173,6 +250,11 @@ void Emulator::flush_battery_ram() {
 void Emulator::unload_cartridge() {
     // Persist battery-backed RAM before tearing the cartridge down.
     flush_battery_ram();
+    if (auto saved = flush_disk_changes(); !saved)
+        logger::error("{}", saved.error());
+    fds_.unload();
+    disk_hash_ = {};
+    disk_changes_path_.clear();
     battery_save_path_.clear();
 
     cartridge_.reset();
@@ -233,6 +315,7 @@ bool Emulator::step_instruction() {
         cpu_.add_stall_cycles(dmc_stall);
         ppu_.step(dmc_stall);
         apu_.step(dmc_stall);
+        fds_.step(dmc_stall);
         clock_expansion_audio(dmc_stall);
     }
 
@@ -289,7 +372,7 @@ bool Emulator::restore_state(std::span<const Byte> data, bool allow_legacy) {
     const auto version = reader.read<std::uint32_t>();
     (void)reader.read<std::uint16_t>();
     (void)reader.read<Region>();
-    if (version == kStateVersion) {
+    if (version >= 4) {
         Sha256Digest hash{};
         reader.read_array(hash);
     }
@@ -303,7 +386,7 @@ bool Emulator::restore_state(std::span<const Byte> data, bool allow_legacy) {
     apu_.load_state(reader);
     bus_.load_state(reader);
     controller_.load_state(reader);
-    fds_.load_state(reader);
+    fds_.load_state(reader, version >= 5);
     if (cartridge_) {
         cartridge_->load_state(reader);
     }

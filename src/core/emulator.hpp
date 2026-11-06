@@ -46,6 +46,16 @@ class Emulator {
     /// Mounts a Famicom Disk System `.fds` image into the disk drive.
     [[nodiscard]] Result<void> load_disk(const std::string& path);
 
+    /// Boots an FDS RAM adapter. Invalid inputs leave the current machine intact.
+    [[nodiscard]] Result<void> load_fds(std::span<const Byte> bios,
+                                        std::span<const Byte> disk,
+                                        const std::string& changes_path = {});
+    [[nodiscard]] Result<void> flush_disk_changes();
+    [[nodiscard]] Result<void> export_disk(const std::string& path);
+    [[nodiscard]] bool is_fds() const {
+        return cartridge_ && cartridge_->header().mapper_number == 20;
+    }
+
     [[nodiscard]] Fds& fds() {
         return fds_;
     }
@@ -147,6 +157,7 @@ class Emulator {
     [[nodiscard]] bool restore_state(std::span<const Byte> data, bool allow_legacy = false);
 
     std::string battery_save_path_;
+    std::string disk_changes_path_;
     Sha256Digest disk_hash_{};
     Region region_ = Region::NTSC;
     MemoryBus bus_;

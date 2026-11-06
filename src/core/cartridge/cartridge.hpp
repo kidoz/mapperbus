@@ -10,6 +10,7 @@
 
 namespace mapperbus::core {
 
+class Fds;
 class StateWriter;
 class StateReader;
 
@@ -22,6 +23,9 @@ class Cartridge {
     [[nodiscard]] static Result<Cartridge> from_file(const std::string& path);
     [[nodiscard]] static Result<Cartridge> from_data(std::span<const Byte> rom_data,
                                                      std::string_view filename = {});
+
+    [[nodiscard]] static Result<Cartridge> from_fds_bios(std::span<const Byte> bios,
+                                                         const Fds& drive);
 
     Cartridge(Cartridge&&) = default;
     Cartridge& operator=(Cartridge&&) = default;

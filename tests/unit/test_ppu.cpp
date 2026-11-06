@@ -138,6 +138,47 @@ TEST_CASE("PPUSTATUS read clears VBlank flag and nmi state", "[ppu][status]") {
     REQUIRE((ppu.read_register(0x02) & 0x80) == 0); // cleared on subsequent read
 }
 
+TEST_CASE("PPUCTRL only retriggers vblank NMI on an enable edge", "[ppu][nmi]") {
+    Ppu ppu;
+    ppu.reset();
+    ppu.write_register(0x00, 0x80);
+    ppu.step(28000);
+    REQUIRE(ppu.consume_nmi());
+    REQUIRE_FALSE(ppu.consume_nmi());
+
+    // An NMI handler may update the pattern table or nametable selection.
+    // Keeping NMI enabled must not recursively interrupt the handler.
+    ppu.write_register(0x00, 0x90);
+    REQUIRE_FALSE(ppu.consume_nmi());
+    ppu.write_register(0x00, 0x80);
+    REQUIRE_FALSE(ppu.consume_nmi());
+
+    ppu.write_register(0x00, 0x00);
+    ppu.write_register(0x00, 0x80);
+    REQUIRE(ppu.consume_nmi());
+    (void)ppu.read_register(0x02);
+    ppu.write_register(0x00, 0x00);
+    ppu.write_register(0x00, 0x80);
+    REQUIRE_FALSE(ppu.consume_nmi());
+}
+
+TEST_CASE("PPUSTATUS can suppress an NMI at the vblank sampling boundary", "[ppu][nmi]") {
+    Ppu ppu;
+    ppu.reset();
+    ppu.write_register(0x00, 0x80);
+    ppu.step(27394); // scanline 241, dot 1
+    REQUIRE_FALSE(ppu.consume_nmi());
+    REQUIRE((ppu.read_register(0x02) & 0x80) != 0);
+    ppu.step(2);
+    REQUIRE_FALSE(ppu.consume_nmi());
+
+    ppu.reset();
+    ppu.write_register(0x00, 0x80);
+    ppu.step(27396); // the edge has now reached CPU sampling
+    (void)ppu.read_register(0x02);
+    REQUIRE(ppu.consume_nmi());
+}
+
 TEST_CASE("PPU OAM DMA writes through oam_addr", "[ppu][oam]") {
     Ppu ppu;
     ppu.reset();

@@ -1,6 +1,7 @@
 #include "core/fds/fds.hpp"
 
 #include <algorithm>
+#include <string_view>
 
 #include "core/state/state.hpp"
 
@@ -11,7 +12,7 @@ namespace {
 // every 149 CPU cycles (1.789773 MHz / (96400 / 8)).
 constexpr int32_t kBytePeriod = 149;
 // Small spin-up delay before the first byte after the head starts.
-constexpr int32_t kStartupDelay = 200;
+constexpr int32_t kStartupDelay = 50000;
 } // namespace
 
 void Fds::save_state(StateWriter& writer) const {
@@ -76,14 +77,24 @@ void Fds::save_state(StateWriter& writer) const {
     writer.write(mod_env_speed_);
     writer.write(mod_env_increase_);
     writer.write(mod_env_timer_);
+    writer.write(horizontal_mirroring_);
+    writer.write(crc_enabled_);
+    writer.write(read_gap_);
+    writer.write(crc_accumulator_);
+    writer.write(byte_phase_);
+    writer.write(insertion_delay_);
+    writer.write_bytes(disk_stream_);
 }
 
-void Fds::load_state(StateReader& reader) {
+void Fds::load_state(StateReader& reader, bool extended) {
+    std::vector<Byte> saved_stream;
     reader.read(loaded_);
     reader.read(num_sides_);
     reader.read(current_side_);
     reader.read(write_protected_);
+    const auto previous_disk = disk_data_;
     reader.read_bytes(disk_data_, kMaxDiskImageBytes);
+    dirty_ = dirty_ || disk_data_ != previous_disk;
 
     reader.read(irq_reload_);
     reader.read(irq_timer_);
@@ -135,6 +146,26 @@ void Fds::load_state(StateReader& reader) {
     reader.read(mod_env_speed_);
     reader.read(mod_env_increase_);
     reader.read(mod_env_timer_);
+    if (extended) {
+        reader.read(horizontal_mirroring_);
+        reader.read(crc_enabled_);
+        reader.read(read_gap_);
+        reader.read(crc_accumulator_);
+        reader.read(byte_phase_);
+        reader.read(insertion_delay_);
+        reader.read_bytes(saved_stream, kMaxStreamBytes);
+        if (insertion_delay_ < 0 || insertion_delay_ > 1000000)
+            reader.fail();
+        if (byte_phase_ > 2)
+            reader.fail();
+    } else {
+        horizontal_mirroring_ = false;
+        crc_enabled_ = false;
+        read_gap_ = true;
+        crc_accumulator_ = 0;
+        byte_phase_ = 0;
+        insertion_delay_ = 0;
+    }
 
     const bool valid_transfer_delay = transfer_delay_ >= 0;
     const bool valid_audio = wave_position_ < wavetable_.size() && wave_frequency_ <= 0x0FFF &&
@@ -154,6 +185,10 @@ void Fds::load_state(StateReader& reader) {
     // leave step_transfer an out-of-range index. Inconsistent but fully read
     // geometry is repaired, matching the previous success-path contract.
     sanitize_disk_geometry();
+    if (extended && current_side_ >= 0 && !saved_stream.empty()) {
+        disk_stream_ = std::move(saved_stream);
+        disk_position_ = std::min(disk_position_, static_cast<uint32_t>(disk_stream_.size()));
+    }
 }
 
 void Fds::sanitize_disk_geometry() {
@@ -171,8 +206,13 @@ void Fds::sanitize_disk_geometry() {
     }
     if (current_side_ < 0) {
         transfer_active_ = false;
+        disk_stream_.clear();
     }
-    disk_position_ = std::min(disk_position_, static_cast<uint32_t>(kSideSize));
+    if (current_side_ >= 0 && !rebuild_disk_stream()) {
+        current_side_ = -1;
+        transfer_active_ = false;
+    }
+    disk_position_ = std::min(disk_position_, static_cast<uint32_t>(disk_stream_.size()));
 }
 
 void Fds::reset_audio() {
@@ -213,6 +253,11 @@ void Fds::reset_drive() {
     irq_timer_repeat_ = false;
     disk_io_enabled_ = false;
     sound_io_enabled_ = false;
+    horizontal_mirroring_ = false;
+    crc_enabled_ = false;
+    read_gap_ = true;
+    crc_accumulator_ = 0;
+    byte_phase_ = 0;
     motor_on_ = false;
     transfer_reset_ = false;
     read_mode_ = true;
@@ -236,6 +281,14 @@ void Fds::reset() {
 }
 
 bool Fds::load_disk(std::span<const Byte> image) {
+    Fds candidate;
+    if (!candidate.load_disk_image(image))
+        return false;
+    *this = std::move(candidate);
+    return true;
+}
+
+bool Fds::load_disk_image(std::span<const Byte> image) {
     // 16-byte fwNES header plus the capped payload. Reject before any copy.
     if (image.size() > kMaxDiskImageBytes + 16) {
         return false;
@@ -247,35 +300,84 @@ bool Fds::load_disk(std::span<const Byte> image) {
         payload[3] == 0x1A) {
         payload = payload.subspan(16);
     }
-    if (payload.empty() || payload.size() > kMaxDiskImageBytes) {
+    if (payload.empty() || payload.size() > kMaxDiskImageBytes || payload.size() % kSideSize != 0) {
         return false;
     }
 
-    // Pad up to a whole number of sides so slightly-truncated dumps still load.
+    // Whole sides are required; never manufacture missing file bytes.
     const int sides = static_cast<int>((payload.size() + kSideSize - 1) / kSideSize);
     disk_data_.assign(payload.begin(), payload.end());
     disk_data_.resize(static_cast<std::size_t>(sides) * kSideSize, 0);
     num_sides_ = sides;
     write_protected_ = true;
     loaded_ = true;
+    dirty_ = false;
+    for (int side = 0; side < num_sides_; ++side) {
+        current_side_ = side;
+        if (!rebuild_disk_stream()) {
+            unload();
+            return false;
+        }
+    }
+    current_side_ = -1;
     insert_side(0);
+    if (current_side_ < 0) {
+        unload();
+        return false;
+    }
     return true;
 }
 
+bool Fds::apply_disk_changes(std::span<const Byte> image) {
+    if (!loaded_ || image.size() != disk_data_.size())
+        return false;
+    Fds candidate;
+    if (!candidate.load_disk(image))
+        return false;
+    disk_data_ = std::move(candidate.disk_data_);
+    if (current_side_ >= 0)
+        (void)rebuild_disk_stream();
+    dirty_ = false;
+    return true;
+}
+
+void Fds::unload() {
+    loaded_ = false;
+    disk_data_.clear();
+    num_sides_ = 0;
+    current_side_ = -1;
+    disk_stream_.clear();
+    dirty_ = false;
+    reset();
+}
+
 void Fds::insert_side(int side) {
+    synchronize_disk();
     if (side < 0 || side >= num_sides_) {
+        eject();
+        return;
+    }
+    insertion_delay_ = current_side_ >= 0 && current_side_ != side ? 1000000 : 0;
+    current_side_ = side;
+    if (!rebuild_disk_stream()) {
         current_side_ = -1;
         transfer_active_ = false;
         return;
     }
-    current_side_ = side;
     disk_position_ = 0;
-    transfer_active_ = false;
+    transfer_delay_ = kStartupDelay;
+    read_gap_ = true;
+    crc_accumulator_ = 0;
+    byte_phase_ = 0;
+    transfer_active_ = motor_on_ && !transfer_reset_ && disk_io_enabled_;
     end_of_disk_ = false;
     byte_transfer_flag_ = false;
 }
 
 void Fds::eject() {
+    synchronize_disk();
+    disk_stream_.clear();
+    insertion_delay_ = 0;
     current_side_ = -1;
     transfer_active_ = false;
     end_of_disk_ = false;
@@ -283,11 +385,17 @@ void Fds::eject() {
 
 void Fds::step(uint32_t cpu_cycles) {
     step_timer(cpu_cycles);
-    step_transfer(cpu_cycles);
+    if (insertion_delay_ > 0) {
+        const auto elapsed = std::min(cpu_cycles, static_cast<uint32_t>(insertion_delay_));
+        insertion_delay_ -= static_cast<int32_t>(elapsed);
+        cpu_cycles -= elapsed;
+    }
+    if (insertion_delay_ == 0)
+        step_transfer(cpu_cycles);
 }
 
 void Fds::step_timer(uint32_t cpu_cycles) {
-    if (!irq_timer_enabled_ || !disk_io_enabled_ || irq_reload_ == 0) {
+    if (!irq_timer_enabled_ || !disk_io_enabled_) {
         return;
     }
     for (uint32_t i = 0; i < cpu_cycles; ++i) {
@@ -308,33 +416,207 @@ void Fds::step_timer(uint32_t cpu_cycles) {
     }
 }
 
-void Fds::step_transfer(uint32_t cpu_cycles) {
-    if (!transfer_active_ || current_side_ < 0) {
+uint16_t Fds::update_crc(uint16_t crc, Byte value) {
+    auto bits = static_cast<uint32_t>(crc) ^ value;
+    for (int bit = 0; bit < 8; ++bit) {
+        bits = (bits >> 1U) ^ ((bits & 1U) != 0 ? 0x8408U : 0U);
+    }
+    return static_cast<uint16_t>(bits);
+}
+
+bool Fds::rebuild_disk_stream() {
+    disk_stream_.clear();
+    if (current_side_ < 0 || current_side_ >= num_sides_)
+        return false;
+    const auto side_offset = static_cast<std::size_t>(current_side_) * kSideSize;
+    const auto side = std::span<const Byte>(disk_data_).subspan(side_offset, kSideSize);
+    constexpr std::string_view kSignature = "*NINTENDO-HVC*";
+    if (side[0] != 1 || !std::equal(kSignature.begin(), kSignature.end(), side.begin() + 1))
+        return false;
+    const auto append = [&](Byte value) { disk_stream_.push_back(value); };
+    for (std::size_t gap = 0; gap < 3537; ++gap)
+        append(0);
+    std::size_t offset = 0;
+    std::size_t file_size = 0;
+    Byte expected = 1;
+    int files_read = 0;
+    while (offset < side.size()) {
+        const Byte block = side[offset];
+        if (block != expected) {
+            // Padding and erased remainder of the disk are not file blocks.
+            if (expected == 3 && block != 3)
+                break;
+            return false;
+        }
+        std::size_t size = 0;
+        if (block == 1) {
+            size = 56;
+            expected = 2;
+        } else if (block == 2) {
+            size = 2;
+            expected = 3;
+        } else if (block == 3) {
+            if (side.size() - offset < 16)
+                return false;
+            file_size = static_cast<std::size_t>(side[offset + 13]) |
+                        (static_cast<std::size_t>(side[offset + 14]) << 8U);
+            size = 16;
+            expected = 4;
+        } else if (block == 4) {
+            size = file_size + 1;
+            expected = 3;
+            ++files_read;
+        } else
+            return false;
+        if (size > side.size() - offset || disk_stream_.size() + size + 125 > kMaxStreamBytes)
+            return false;
+        append(0x80);
+        uint16_t crc = update_crc(0, 0x80);
+        for (std::size_t index = 0; index < size; ++index) {
+            const Byte value = side[offset + index];
+            append(value);
+            crc = update_crc(crc, value);
+        }
+        append(static_cast<Byte>(crc));
+        append(static_cast<Byte>(static_cast<uint32_t>(crc) >> 8U));
+        for (int gap = 0; gap < 122; ++gap)
+            append(0);
+        offset += size;
+    }
+    if (expected == 4 || files_read < static_cast<int>(side[57]))
+        return false;
+    while (disk_stream_.size() < 84000)
+        append(0);
+    return true;
+}
+
+void Fds::synchronize_disk() {
+    if (current_side_ < 0 || disk_stream_.empty())
+        return;
+    // Firmware can change gap lengths while rewriting a block. Decode the
+    // physical sync markers instead of mapping writes to old byte positions.
+    auto rewritten = disk_data_;
+    const auto side_start = static_cast<std::size_t>(current_side_) * kSideSize;
+    std::size_t output = 0;
+    std::size_t position = 0;
+    std::size_t file_size = 0;
+    Byte expected = 1;
+    while (position < disk_stream_.size()) {
+        while (position < disk_stream_.size() && disk_stream_[position] == 0)
+            ++position;
+        if (position == disk_stream_.size())
+            break;
+        if (disk_stream_[position] != 0x80)
+            return;
+        ++position;
+        if (position >= disk_stream_.size())
+            return;
+        const Byte block = disk_stream_[position];
+        if (block != expected)
+            return;
+        std::size_t size = 0;
+        if (block == 1) {
+            size = 56;
+            expected = 2;
+        } else if (block == 2) {
+            size = 2;
+            expected = 3;
+        } else if (block == 3) {
+            if (disk_stream_.size() - position < 16)
+                return;
+            file_size = disk_stream_[position + 13] |
+                        (static_cast<std::size_t>(disk_stream_[position + 14]) << 8U);
+            size = 16;
+            expected = 4;
+        } else if (block == 4) {
+            size = file_size + 1;
+            expected = 3;
+        }
+        if (size == 0 || size > kSideSize - output || size + 2 > disk_stream_.size() - position)
+            return;
+        std::copy_n(disk_stream_.begin() + static_cast<std::ptrdiff_t>(position),
+                    size,
+                    rewritten.begin() + static_cast<std::ptrdiff_t>(side_start + output));
+        output += size;
+        position += size + 2;
+    }
+    if (expected != 3)
+        return;
+    if (rewritten != disk_data_) {
+        disk_data_ = std::move(rewritten);
+        dirty_ = true;
+    }
+}
+
+void Fds::update_irq() {
+    irq_line_ = timer_irq_flag_ || (irq_on_transfer_ && byte_transfer_flag_);
+}
+
+void Fds::transfer_byte() {
+    if (disk_position_ >= disk_stream_.size()) {
+        end_of_disk_ = true;
+        // Keep transfer flags clocking so software can detect a truncated file.
+        if (crc_enabled_) {
+            read_data_ = 0;
+            byte_transfer_flag_ = true;
+        }
+        update_irq();
         return;
     }
+    const auto position = disk_position_++;
+    Byte value = disk_stream_[position];
+    if (read_mode_) {
+        if (!crc_enabled_) {
+            read_gap_ = true;
+            crc_accumulator_ = 0;
+            return;
+        }
+        if (read_gap_) {
+            if (value == 0x80) {
+                read_gap_ = false;
+                crc_accumulator_ = update_crc(0, value);
+                crc_error_ = false;
+            }
+            return;
+        }
+        crc_accumulator_ = update_crc(crc_accumulator_, value);
+        // BIOS selects CRC transfer after consuming the first CRC byte.
+        // Checking the residue here also works when writes move block boundaries.
+        if (crc_control_)
+            crc_error_ = crc_accumulator_ != 0;
+        read_data_ = value;
+    } else {
+        if (!crc_enabled_) {
+            crc_accumulator_ = 0;
+            // With CRC disabled the writer records zero bits (the inter-block
+            // gap). Erase previous sync marks before writing a new boundary.
+            if (!write_protected_)
+                disk_stream_[position] = 0;
+            return;
+        }
+        if (crc_control_) {
+            value = static_cast<Byte>(crc_accumulator_);
+            crc_accumulator_ = static_cast<uint16_t>(static_cast<uint32_t>(crc_accumulator_) >> 8U);
+        } else {
+            value = write_data_;
+            crc_accumulator_ = update_crc(crc_accumulator_, value);
+        }
+        if (!write_protected_) {
+            disk_stream_[position] = value;
+        }
+    }
+    byte_transfer_flag_ = true;
+    update_irq();
+}
+
+void Fds::step_transfer(uint32_t cpu_cycles) {
+    if (!transfer_active_ || current_side_ < 0 || !disk_io_enabled_)
+        return;
     transfer_delay_ -= static_cast<int32_t>(cpu_cycles);
     while (transfer_delay_ <= 0) {
-        if (disk_position_ >= kSideSize) {
-            end_of_disk_ = true;
-            transfer_active_ = false;
-            break;
-        }
-        const std::size_t offset =
-            static_cast<std::size_t>(current_side_) * kSideSize + disk_position_;
-        if (read_mode_) {
-            read_data_ = disk_data_[offset];
-        } else if (!write_protected_) {
-            // Write mode: the byte staged via $4024 is committed to the disk
-            // surface as the head passes it. A protected disk keeps its data
-            // (the head still advances and flags/IRQs behave as usual).
-            disk_data_[offset] = write_data_;
-        }
-        byte_transfer_flag_ = true;
-        if (irq_on_transfer_) {
-            irq_line_ = true;
-        }
-        ++disk_position_;
-        transfer_delay_ += kBytePeriod;
+        transfer_byte();
+        byte_phase_ = static_cast<Byte>((byte_phase_ + 1) % 3);
+        transfer_delay_ += kBytePeriod + (byte_phase_ == 0 ? 1 : 0);
     }
 }
 
@@ -343,7 +625,8 @@ Byte Fds::read_drive_register(Address reg) {
     case 0x30: { // Disk status: clears the timer IRQ on read
         Byte status = 0;
         status |= timer_irq_flag_ ? 0x01 : 0x00;
-        status |= byte_transfer_flag_ ? 0x02 : 0x00;
+        status |= byte_transfer_flag_ ? 0x80 : 0x00;
+        status |= horizontal_mirroring_ ? 0x08 : 0x00;
         status |= crc_error_ ? 0x10 : 0x00;
         status |= end_of_disk_ ? 0x40 : 0x00;
         timer_irq_flag_ = false;
@@ -353,16 +636,16 @@ Byte Fds::read_drive_register(Address reg) {
     case 0x31: { // Read data: clears the byte-transfer flag
         const Byte value = read_data_;
         byte_transfer_flag_ = false;
-        irq_line_ = timer_irq_flag_;
+        update_irq();
         return value;
     }
     case 0x32: { // Drive status
-        const bool inserted = current_side_ >= 0;
-        const bool ready = inserted && motor_on_ && disk_io_enabled_;
+        const bool inserted = current_side_ >= 0 && insertion_delay_ == 0;
+        const bool ready = inserted && motor_on_ && !transfer_reset_ && disk_io_enabled_;
         Byte status = 0;
-        status |= inserted ? 0x00 : 0x01;         // bit0: 1 = no disk
-        status |= ready ? 0x00 : 0x02;            // bit1: 1 = not ready
-        status |= write_protected_ ? 0x04 : 0x00; // bit2: 1 = write protected
+        status |= inserted ? 0x00 : 0x01;                      // bit0: 1 = no disk
+        status |= ready ? 0x00 : 0x02;                         // bit1: 1 = not ready
+        status |= !inserted || write_protected_ ? 0x04 : 0x00; // bit2: not writable
         return status;
     }
     case 0x33: // External connector: bit7 = battery present/good
@@ -373,6 +656,8 @@ Byte Fds::read_drive_register(Address reg) {
 }
 
 void Fds::write_drive_register(Address reg, Byte value) {
+    if (reg != 0x23 && !disk_io_enabled_)
+        return;
     switch (reg) {
     case 0x20: // IRQ reload low
         irq_reload_ = static_cast<uint16_t>((irq_reload_ & 0xFF00) | value);
@@ -396,7 +681,13 @@ void Fds::write_drive_register(Address reg, Byte value) {
         if (!disk_io_enabled_) {
             irq_timer_enabled_ = false;
             timer_irq_flag_ = false;
-            irq_line_ = irq_on_transfer_ && byte_transfer_flag_;
+            byte_transfer_flag_ = false;
+            transfer_active_ = false;
+            motor_on_ = false;
+            transfer_reset_ = true;
+            read_mode_ = true;
+            horizontal_mirroring_ = false;
+            update_irq();
         }
         break;
     case 0x24: // Write data register
@@ -404,25 +695,32 @@ void Fds::write_drive_register(Address reg, Byte value) {
         byte_transfer_flag_ = false;
         irq_line_ = timer_irq_flag_;
         break;
-    case 0x25: { // Drive control
-        motor_on_ = (value & 0x01) != 0;
-        transfer_reset_ = (value & 0x02) != 0;
+    case 0x25: { // See NESdev FDS Control: scan, motor stop, read, mirror, CRC.
+        if (!read_mode_ && ((value & 0x04) != 0 || (value & 0x40) == 0 || (value & 0x03) != 1))
+            synchronize_disk();
+        horizontal_mirroring_ = (value & 0x08) != 0;
+        motor_on_ = (value & 0x02) == 0;
+        transfer_reset_ = (value & 0x01) == 0;
         read_mode_ = (value & 0x04) != 0;
         crc_control_ = (value & 0x10) != 0;
-        const bool start = (value & 0x40) != 0;
+        crc_enabled_ = (value & 0x40) != 0;
         irq_on_transfer_ = (value & 0x80) != 0;
-
+        if (!crc_enabled_) {
+            crc_accumulator_ = 0;
+            read_gap_ = true;
+            crc_error_ = false;
+            byte_transfer_flag_ = false;
+        }
         if (transfer_reset_ || !motor_on_) {
             transfer_active_ = false;
-            if (transfer_reset_) {
-                disk_position_ = 0;
-                end_of_disk_ = false;
-            }
-        } else if (start && !transfer_active_) {
-            transfer_active_ = true;
+            disk_position_ = 0;
             transfer_delay_ = kStartupDelay;
+            end_of_disk_ = false;
+            read_gap_ = true;
+        } else if (!transfer_active_ && current_side_ >= 0) {
+            transfer_active_ = true;
         }
-        irq_line_ = timer_irq_flag_ || (irq_on_transfer_ && byte_transfer_flag_);
+        update_irq();
         break;
     }
     default: // $4026 external connector and any unmapped register: ignored
@@ -489,7 +787,7 @@ void Fds::write(Address addr, Byte value) {
         break;
 
     case 0x83: // $4083: Wave frequency high + flags
-        wave_frequency_ = (wave_frequency_ & 0x00FF) | (static_cast<uint16_t>(value & 0x0F) << 8);
+        wave_frequency_ = (wave_frequency_ & 0x00FF) | (static_cast<uint16_t>(value & 0x0F) << 8U);
         env_halt_ = (value & 0x40) != 0;
         sound_enabled_ = (value & 0x80) == 0;
         if (!sound_enabled_) {
@@ -520,7 +818,7 @@ void Fds::write(Address addr, Byte value) {
         break;
 
     case 0x87: // $4087: Modulation frequency high
-        mod_frequency_ = (mod_frequency_ & 0x00FF) | (static_cast<uint16_t>(value & 0x0F) << 8);
+        mod_frequency_ = (mod_frequency_ & 0x00FF) | (static_cast<uint16_t>(value & 0x0F) << 8U);
         mod_enabled_ = (value & 0x80) == 0;
         if (!mod_enabled_) {
             mod_accumulator_ = 0;

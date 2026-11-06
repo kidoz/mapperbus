@@ -5,6 +5,7 @@
 #include <cstring>
 #include <vector>
 
+#include "../support/fds_image.hpp"
 #include "core/fds/fds.hpp"
 #include "core/state/state.hpp"
 
@@ -12,20 +13,32 @@ using namespace mapperbus::core;
 
 namespace {
 
-// Builds a synthetic FDS image of `sides` sides. Byte i of each side is a
-// deterministic pattern so transfers can be checked against expected values.
-[[nodiscard]] std::vector<Byte> make_fds_image(int sides, bool with_header) {
-    std::vector<Byte> image;
-    if (with_header) {
-        image.insert(image.end(), {'F', 'D', 'S', 0x1A});
-        image.resize(16, 0); // remaining header bytes
+using mapperbus::tests::make_fds_image;
+
+Byte next_byte(Fds& fds) {
+    for (int cycle = 0; cycle < 700000; ++cycle) {
+        fds.step(1);
+        if ((fds.read(0x4030) & 0x80) != 0)
+            return fds.read(0x4031);
     }
-    for (int s = 0; s < sides; ++s) {
-        for (std::size_t i = 0; i < Fds::kSideSize; ++i) {
-            image.push_back(static_cast<Byte>((i + static_cast<std::size_t>(s) * 7) & 0xFF));
-        }
+    FAIL("Timed out waiting for an FDS byte");
+    return 0;
+}
+
+void next_block(Fds& fds) {
+    fds.write(0x4025, 0x25);
+    fds.write(0x4025, 0x65);
+}
+
+void seek_file_payload(Fds& fds) {
+    fds.write(0x4023, 1);
+    fds.write(0x4025, 0x65);
+    for (const int size : {56, 2, 16}) {
+        for (int index = 0; index < size + 2; ++index)
+            (void)next_byte(fds);
+        next_block(fds);
     }
-    return image;
+    REQUIRE(next_byte(fds) == 4);
 }
 
 } // namespace
@@ -90,16 +103,9 @@ TEST_CASE("FDS streams disk bytes in order", "[fds][transfer]") {
     fds.write(0x4023, 0x01);               // enable disk I/O
     fds.write(0x4025, 0x01 | 0x04 | 0x40); // motor on + read mode + start
 
-    // Spin-up, then the first byte appears.
-    fds.step(200);
-    REQUIRE((fds.read(0x4030) & 0x02) != 0); // byte-transfer flag set
-    REQUIRE(fds.read(0x4031) == 0x00);       // side 0, byte 0
-
-    // Subsequent bytes arrive one per byte-period.
-    fds.step(149);
-    REQUIRE(fds.read(0x4031) == 0x01);
-    fds.step(149);
-    REQUIRE(fds.read(0x4031) == 0x02);
+    REQUIRE(next_byte(fds) == 1);
+    REQUIRE(next_byte(fds) == '*');
+    REQUIRE(next_byte(fds) == 'N');
 }
 
 TEST_CASE("FDS transfer can raise an IRQ per byte", "[fds][transfer][irq]") {
@@ -108,7 +114,8 @@ TEST_CASE("FDS transfer can raise an IRQ per byte", "[fds][transfer][irq]") {
     fds.write(0x4023, 0x01);
     fds.write(0x4025, 0x01 | 0x04 | 0x40 | 0x80); // + IRQ on byte transfer
 
-    fds.step(200);
+    for (int cycle = 0; cycle < 700000 && !fds.irq_pending(); ++cycle)
+        fds.step(1);
     REQUIRE(fds.irq_pending());
     fds.read(0x4031); // reading the data clears the transfer IRQ
     REQUIRE_FALSE(fds.irq_pending());
@@ -124,6 +131,7 @@ TEST_CASE("FDS drive status reflects the inserted disk", "[fds]") {
 
     fds.eject();
     REQUIRE((fds.read(0x4032) & 0x01) != 0);
+    REQUIRE((fds.read(0x4032) & 0x04) != 0);
     REQUIRE(fds.current_side() == -1);
 }
 
@@ -132,7 +140,8 @@ TEST_CASE("FDS state serializes drive + disk position", "[fds][state]") {
     REQUIRE(fds.load_disk(make_fds_image(1, false)));
     fds.write(0x4023, 0x01);
     fds.write(0x4025, 0x01 | 0x04 | 0x40);
-    fds.step(200 + 149 * 3); // advance a few bytes in
+    (void)next_byte(fds);
+    (void)next_byte(fds);
 
     StateWriter writer;
     fds.save_state(writer);
@@ -150,50 +159,59 @@ TEST_CASE("FDS state serializes drive + disk position", "[fds][state]") {
     REQUIRE(restored.read(0x4031) == fds.read(0x4031));
 }
 
-TEST_CASE("FDS write mode stores staged bytes on the disk surface", "[fds][transfer]") {
+TEST_CASE("FDS write mode stores file bytes and marks the disk dirty", "[fds][transfer]") {
     Fds fds;
-    REQUIRE(fds.load_disk(make_fds_image(1, false)));
+    REQUIRE(fds.load_disk(make_fds_image()));
     fds.set_write_protected(false);
-    fds.write(0x4023, 0x01);        // enable disk I/O
-    fds.write(0x4025, 0x01 | 0x40); // motor on + start (write mode: bit2 clear)
-
-    // The staged $4024 byte is committed when the head passes: first byte
-    // after the spin-up delay, then one per byte period.
+    seek_file_payload(fds);
+    fds.write(0x4025, 0x61);
     fds.write(0x4024, 0xDE);
-    fds.step(200);
+    (void)next_byte(fds);
     fds.write(0x4024, 0xAD);
-    fds.step(149);
-    fds.write(0x4024, 0xBE);
-    fds.step(149);
-
-    // Rewind to the start of the side and read the bytes back.
+    (void)next_byte(fds);
+    fds.synchronize_disk();
+    CHECK(fds.disk_image()[75] == 0xDE);
+    CHECK(fds.disk_image()[76] == 0xAD);
+    CHECK(fds.dirty());
     fds.insert_side(0);
-    fds.write(0x4025, 0x01 | 0x04 | 0x40); // motor on + read mode + start
-    fds.step(200);
-    REQUIRE(fds.read(0x4031) == 0xDE);
-    fds.step(149);
-    REQUIRE(fds.read(0x4031) == 0xAD);
-    fds.step(149);
-    REQUIRE(fds.read(0x4031) == 0xBE);
+    seek_file_payload(fds);
+    CHECK(next_byte(fds) == 0xDE);
+    CHECK(next_byte(fds) == 0xAD);
 }
 
 TEST_CASE("FDS write mode honors the write-protect tab", "[fds][transfer]") {
     Fds fds;
-    REQUIRE(fds.load_disk(make_fds_image(1, false))); // loads write-protected
-    fds.write(0x4023, 0x01);
-    fds.write(0x4025, 0x01 | 0x40); // write mode attempt
+    REQUIRE(fds.load_disk(make_fds_image()));
+    seek_file_payload(fds);
+    fds.write(0x4025, 0x61);
     fds.write(0x4024, 0xFF);
-    fds.step(200);
-    fds.write(0x4024, 0xFF);
-    fds.step(149);
+    (void)next_byte(fds);
+    CHECK(fds.disk_image()[75] == 0);
+    CHECK_FALSE(fds.dirty());
+}
 
-    // The disk surface is untouched: the original pattern reads back.
-    fds.insert_side(0);
-    fds.write(0x4025, 0x01 | 0x04 | 0x40);
-    fds.step(200);
-    REQUIRE(fds.read(0x4031) == 0x00);
-    fds.step(149);
-    REQUIRE(fds.read(0x4031) == 0x01);
+TEST_CASE("FDS generated block CRC verifies and gaps are skipped", "[fds][transfer]") {
+    Fds fds;
+    REQUIRE(fds.load_disk(make_fds_image()));
+    fds.write(0x4023, 1);
+    fds.write(0x4025, 0x65);
+    for (int index = 0; index < 58; ++index)
+        (void)next_byte(fds);
+    CHECK((fds.read(0x4030) & 0x10) == 0);
+    next_block(fds);
+    CHECK(next_byte(fds) == 2);
+    CHECK(next_byte(fds) == 1);
+}
+
+TEST_CASE("FDS mirroring and disk I/O write gating follow $4023/$4025", "[fds]") {
+    Fds fds;
+    fds.write(0x4025, 0x08);
+    CHECK(fds.mirror_mode() == MirrorMode::Vertical);
+    fds.write(0x4023, 1);
+    fds.write(0x4025, 0x08);
+    CHECK(fds.mirror_mode() == MirrorMode::Horizontal);
+    fds.write(0x4023, 0);
+    CHECK(fds.mirror_mode() == MirrorMode::Vertical);
 }
 
 TEST_CASE("FDS load_state clamps inconsistent disk geometry", "[fds][state]") {
@@ -233,7 +251,7 @@ TEST_CASE("FDS load_state clamps inconsistent disk geometry", "[fds][state]") {
         // the disk buffer.
         restored.write(0x4023, 0x01);
         restored.write(0x4025, 0x01 | 0x04 | 0x40);
-        restored.step(1000);
+        restored.step(50001);
         REQUIRE((restored.read(0x4030) & 0x40) != 0);
     }
 
@@ -364,4 +382,51 @@ TEST_CASE("FDS envelope halt freezes the ramp", "[fds][audio]") {
     const float late = fds_peak(fds, 20000);
     REQUIRE(early > 0.0f);
     REQUIRE(late > 0.9f * early); // gain unchanged while halted
+}
+
+TEST_CASE("FDS rewrites erase old sync markers when gap lengths change", "[fds][transfer][state]") {
+    Fds fds;
+    REQUIRE(fds.load_disk(make_fds_image()));
+    fds.set_write_protected(false);
+    fds.write(0x4023, 1);
+    fds.write(0x4025, 0x65);
+    for (int index = 0; index < 58; ++index)
+        (void)next_byte(fds);
+    // Rewrite block 2 with a gap three bytes longer than the original track.
+    fds.write(0x4025, 0x21);
+    fds.step(18667); // 125 byte periods at 149 1/3 CPU cycles each
+    fds.write(0x4024, 0x80);
+    fds.write(0x4025, 0x61);
+    (void)next_byte(fds);
+    fds.write(0x4024, 2);
+    (void)next_byte(fds);
+    StateWriter writer;
+    fds.save_state(writer);
+    Fds restored;
+    StateReader reader(writer.data());
+    restored.load_state(reader);
+    REQUIRE(reader.ok());
+    for (auto* drive : {&fds, &restored}) {
+        drive->write(0x4024, 0); // hide the existing file by changing declared count
+        (void)next_byte(*drive);
+        drive->write(0x4025, 0x71);
+        (void)next_byte(*drive);
+        (void)next_byte(*drive);
+        drive->write(0x4025, 0x25);
+        REQUIRE(drive->disk_image()[56] == 2);
+        REQUIRE(drive->disk_image()[57] == 0);
+        REQUIRE(drive->disk_image()[58] == 3); // hidden file preserved
+        REQUIRE(drive->dirty());
+        drive->insert_side(0);
+        drive->write(0x4025, 0x65);
+        for (int index = 0; index < 58; ++index)
+            (void)next_byte(*drive);
+        next_block(*drive);
+        REQUIRE(next_byte(*drive) == 2);
+        REQUIRE(next_byte(*drive) == 0);
+    }
+    StateWriter a, b;
+    fds.save_state(a);
+    restored.save_state(b);
+    CHECK(a.data() == b.data());
 }

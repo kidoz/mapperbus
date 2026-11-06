@@ -38,16 +38,37 @@ class Fds {
     void write(Address addr, Byte value);
 
     void save_state(StateWriter& writer) const;
-    void load_state(StateReader& reader);
+    void load_state(StateReader& reader, bool extended = true);
 
     /// Mounts a `.fds` image (optionally prefixed with the 16-byte "FDS\x1a"
     /// fwNES header). Returns false when the image is empty or larger than
-    /// `kMaxDiskImageBytes` (plus the optional header). A short payload is
-    /// padded up to a whole number of 65500-byte sides. Side 0 is inserted
+    /// `kMaxDiskImageBytes` (plus the optional header), or has incomplete sides
+    /// or malformed file blocks. Side 0 is inserted
     /// on success.
     [[nodiscard]] bool load_disk(std::span<const Byte> image);
     void insert_side(int side);
     void eject();
+    [[nodiscard]] MirrorMode mirror_mode() const {
+        return horizontal_mirroring_ ? MirrorMode::Horizontal : MirrorMode::Vertical;
+    }
+    [[nodiscard]] bool write_protected() const {
+        return write_protected_;
+    }
+    [[nodiscard]] bool disk_active() const {
+        return transfer_active_;
+    }
+    [[nodiscard]] bool dirty() const {
+        return dirty_;
+    }
+    void mark_clean() {
+        dirty_ = false;
+    }
+    void synchronize_disk();
+    [[nodiscard]] std::span<const Byte> disk_image() const {
+        return disk_data_;
+    }
+    [[nodiscard]] bool apply_disk_changes(std::span<const Byte> image);
+    void unload();
 
     /// Sets the write-protect tab state. Images load write-protected (the
     /// safe default for a mounted disk); clear this to allow write-mode
@@ -86,8 +107,22 @@ class Fds {
     /// reader has already failed, so a truncated blob cannot leave an index
     /// that `step_transfer` would apply.
     void sanitize_disk_geometry();
+    bool rebuild_disk_stream();
+    bool load_disk_image(std::span<const Byte> image);
+    void transfer_byte();
+    void update_irq();
+    static uint16_t update_crc(uint16_t crc, Byte value);
 
     bool loaded_ = false;
+    bool dirty_ = false;
+    bool horizontal_mirroring_ = false;
+    bool crc_enabled_ = false;
+    bool read_gap_ = true;
+    uint16_t crc_accumulator_ = 0;
+    Byte byte_phase_ = 0;
+    int32_t insertion_delay_ = 0;
+    std::vector<Byte> disk_stream_;
+    static constexpr std::size_t kMaxStreamBytes = 256 * 1024;
 
     // --- Disk image ---
     std::vector<Byte> disk_data_; // all sides concatenated, kSideSize each
@@ -113,7 +148,7 @@ class Fds {
     bool irq_on_transfer_ = false;
 
     // --- Transfer engine ---
-    uint32_t disk_position_ = 0; // byte offset within the inserted side
+    uint32_t disk_position_ = 0; // byte offset in the reconstructed physical track
     int32_t transfer_delay_ = 0; // CPU cycles until the next byte
     Byte read_data_ = 0;         // latched byte presented at $4031
     Byte write_data_ = 0;        // byte staged via $4024

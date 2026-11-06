@@ -87,6 +87,12 @@ test_fds = executable('test-fds',
 )
 test('fds', test_fds)
 
+test_fds_system = executable('test-fds-system',
+    'unit/test_fds_system.cpp',
+    dependencies : [mapperbus_core_dep, catch2_dep],
+)
+test('fds-system', test_fds_system)
+
 test_mmc5_vrc7 = executable('test-mmc5-vrc7',
     'unit/test_mmc5_vrc7.cpp',
     dependencies : [mapperbus_core_dep, catch2_dep],

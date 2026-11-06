@@ -6,6 +6,7 @@
 #include <fstream>
 #include <vector>
 
+#include "../support/fds_image.hpp"
 #include "../support/test_rom.hpp"
 #include "core/emulator.hpp"
 #include "core/mappers/mapper_registry.hpp"
@@ -72,7 +73,7 @@ TEST_CASE("State identity rejects a different ROM with the same mapper", "[state
 
 TEST_CASE("Disk media identity rejects snapshots from another disk", "[state][identity][fds]") {
     const auto path = std::filesystem::temp_directory_path() / "mapperbus-identity-disk.fds";
-    std::vector<Byte> image(Fds::kSideSize, 0);
+    auto image = mapperbus::tests::make_fds_image();
     const auto write = [&] {
         std::ofstream file(path, std::ios::binary);
         file.write(reinterpret_cast<const char*>(image.data()),
@@ -83,14 +84,14 @@ TEST_CASE("Disk media identity rejects snapshots from another disk", "[state][id
     Emulator source;
     REQUIRE(source.load_disk(path.string()));
     const auto state = source.save_state();
-    image[100] = 1;
+    image[100] ^= 1;
     write();
     Emulator target;
     REQUIRE(target.load_disk(path.string()));
     const auto before = target.save_state();
     REQUIRE_FALSE(target.load_state(state));
     REQUIRE(target.save_state() == before);
-    image[100] = 0;
+    image[100] ^= 1;
     write();
     REQUIRE(target.load_disk(path.string()));
     REQUIRE(target.load_state(state));
@@ -105,7 +106,15 @@ TEST_CASE("Version 3 states require explicit legacy import", "[state][identity]"
     emulator.reset();
     emulator.step_frame();
     const auto original = emulator.save_state();
+    auto version4 = original;
+    version4.erase(version4.end() - 16384 - 18, version4.end() - 16384);
+    const std::uint32_t version4_number = 4;
+    std::memcpy(version4.data() + 4, &version4_number, sizeof(version4_number));
+    REQUIRE(emulator.load_state(version4));
+    REQUIRE(emulator.save_state() == original);
     auto legacy = original;
+    // V5 adds ten drive bytes and an empty stream length before NROM's two 8 KiB RAMs.
+    legacy.erase(legacy.end() - 16384 - 18, legacy.end() - 16384);
     legacy.erase(legacy.begin() + 11, legacy.begin() + 43);
     const std::uint32_t version = 3;
     std::memcpy(legacy.data() + 4, &version, sizeof(version));
