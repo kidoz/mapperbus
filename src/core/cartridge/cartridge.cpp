@@ -25,32 +25,10 @@ Result<Cartridge> Cartridge::from_file(const std::string& path) {
         return std::unexpected(data.error());
     }
 
-    auto result = from_data(*data);
-    if (!result) {
-        return result;
-    }
-
-    // Region detection fallback chain (NES 2.0 byte 12 already applied in parse_ines_header):
-    // 1. CRC32 hash database lookup (highest confidence for iNES 1.0)
-    // 2. Filename region tags
-    // 3. Default NTSC (already set)
-    if (!result->header().is_nes2) {
-        uint32_t crc = rom_crc32(*data);
-        auto db_region = lookup_region_by_crc32(crc);
-        if (db_region) {
-            result->header_.region = *db_region;
-        } else {
-            auto filename_region = detect_region_from_filename(path);
-            if (filename_region) {
-                result->header_.region = *filename_region;
-            }
-        }
-    }
-
-    return result;
+    return from_data(*data, path);
 }
 
-Result<Cartridge> Cartridge::from_data(std::span<const Byte> rom_data) {
+Result<Cartridge> Cartridge::from_data(std::span<const Byte> rom_data, std::string_view filename) {
     if (rom_data.size() > kMaxRomBytes) {
         return std::unexpected("ROM data exceeds maximum size");
     }
@@ -89,6 +67,14 @@ Result<Cartridge> Cartridge::from_data(std::span<const Byte> rom_data) {
 
     Cartridge cartridge(header, std::move(*mapper_result));
     cartridge.content_hash_ = rom_sha256(rom_data);
+    // Header wins, then content database, then the logical ROM filename.
+    if (!header.is_nes2) {
+        if (auto region = lookup_region_by_crc32(rom_crc32(rom_data))) {
+            cartridge.header_.region = *region;
+        } else if (auto filename_region = detect_region_from_filename(std::string(filename))) {
+            cartridge.header_.region = *filename_region;
+        }
+    }
     return cartridge;
 }
 

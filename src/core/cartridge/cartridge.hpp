@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <string>
+#include <string_view>
 
 #include "core/cartridge/ines_header.hpp"
 #include "core/cartridge/rom_sha256.hpp"
@@ -19,7 +20,8 @@ inline constexpr std::size_t kMaxRomBytes = 16 * 1024 * 1024;
 class Cartridge {
   public:
     [[nodiscard]] static Result<Cartridge> from_file(const std::string& path);
-    [[nodiscard]] static Result<Cartridge> from_data(std::span<const Byte> rom_data);
+    [[nodiscard]] static Result<Cartridge> from_data(std::span<const Byte> rom_data,
+                                                     std::string_view filename = {});
 
     Cartridge(Cartridge&&) = default;
     Cartridge& operator=(Cartridge&&) = default;

@@ -102,9 +102,13 @@ Result<void> Emulator::load_cartridge(const std::string& path) {
     if (!result) {
         return std::unexpected(result.error());
     }
+    return load_cartridge(std::move(*result), battery_path_for(path));
+}
+
+Result<void> Emulator::load_cartridge(Cartridge cartridge, const std::string& battery_path) {
     // Persist the outgoing cartridge's battery RAM before replacing it.
     flush_battery_ram();
-    cartridge_ = std::make_unique<Cartridge>(std::move(*result));
+    cartridge_ = std::make_unique<Cartridge>(std::move(cartridge));
     bus_.connect_cartridge(cartridge_.get());
     ppu_.connect_cartridge(cartridge_.get());
 
@@ -124,11 +128,11 @@ Result<void> Emulator::load_cartridge(const std::string& path) {
     ppu_.set_region(region_);
     apu_.set_region(region_);
 
-    rom_path_ = path;
+    battery_save_path_ = battery_path;
 
-    // Auto-load a sibling .sav for battery-backed carts (best effort).
-    if (cartridge_->has_battery()) {
-        const std::string sav = battery_path_for(rom_path_);
+    // Auto-load the configured .sav for battery-backed carts (best effort).
+    if (cartridge_->has_battery() && !battery_save_path_.empty()) {
+        const std::string& sav = battery_save_path_;
         if (std::filesystem::exists(sav)) {
             auto loaded = load_battery_ram(sav);
             if (!loaded) {
@@ -158,8 +162,8 @@ Result<void> Emulator::load_disk(const std::string& path) {
 
 void Emulator::flush_battery_ram() {
     // Persist battery-backed RAM of the currently loaded cartridge, if any.
-    if (cartridge_ && cartridge_->has_battery() && !rom_path_.empty()) {
-        auto saved = save_battery_ram(battery_path_for(rom_path_));
+    if (cartridge_ && cartridge_->has_battery() && !battery_save_path_.empty()) {
+        auto saved = save_battery_ram(battery_save_path_);
         if (!saved) {
             logger::warn("Failed to write battery save: {}", saved.error());
         }
@@ -169,7 +173,7 @@ void Emulator::flush_battery_ram() {
 void Emulator::unload_cartridge() {
     // Persist battery-backed RAM before tearing the cartridge down.
     flush_battery_ram();
-    rom_path_.clear();
+    battery_save_path_.clear();
 
     cartridge_.reset();
     bus_.connect_cartridge(nullptr);

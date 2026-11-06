@@ -26,8 +26,11 @@ class Emulator {
     ~Emulator();
 
     [[nodiscard]] Result<void> load_cartridge(const std::string& path);
+    /// Installs an already parsed cartridge with an explicit battery-save path.
+    /// An empty path disables automatic battery persistence.
+    [[nodiscard]] Result<void> load_cartridge(Cartridge cartridge, const std::string& battery_path);
     void unload_cartridge();
-    /// Persists the loaded cartridge's battery-backed PRG-RAM to its sibling
+    /// Persists the loaded cartridge's battery-backed PRG-RAM to its configured
     /// .sav file. No-op when no battery-backed cartridge is loaded. Called
     /// automatically on cartridge switches, unload, and emulator teardown.
     void flush_battery_ram();
@@ -143,7 +146,7 @@ class Emulator {
     /// machine may be partially updated; `load_state` rolls that back.
     [[nodiscard]] bool restore_state(std::span<const Byte> data, bool allow_legacy = false);
 
-    std::string rom_path_;
+    std::string battery_save_path_;
     Sha256Digest disk_hash_{};
     Region region_ = Region::NTSC;
     MemoryBus bus_;
