@@ -14,6 +14,12 @@ struct SessionSnapshot {
     bool running = false;
     bool paused = false;
     bool has_cartridge = false;
+    bool is_fds = false;
+    int disk_side = -1;
+    int disk_side_count = 0;
+    bool disk_active = false;
+    bool disk_write_protected = false;
+    bool disk_dirty = false;
     std::string rom_path;
     std::string rom_member;
     std::optional<std::uint16_t> mapper_number;

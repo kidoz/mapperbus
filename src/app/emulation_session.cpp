@@ -65,7 +65,7 @@ core::Result<void> EmulationSession::open_rom(const std::string& rom_path,
         }
     }
 
-    auto result = load_rom_source(emulator_, rom_path, member);
+    auto result = load_rom_source(emulator_, rom_path, member, fds_bios_path_);
     if (!result) {
         return std::unexpected(result.error());
     }
@@ -79,9 +79,45 @@ core::Result<void> EmulationSession::open_rom(const std::string& rom_path,
     rom_loaded_ = true;
     current_rom_path_ = rom_path;
     current_rom_member_ = std::move(*result);
+    disk_save_frames_ = 0;
+    disk_save_error_.clear();
     set_state_storage(state_storage_);
     reset_audio_fill_ratio_history();
     return {};
+}
+
+core::Result<void> EmulationSession::insert_disk_side(int side) {
+    if (!emulator_.is_fds())
+        return std::unexpected("No FDS game is loaded");
+    if (side < 0 || side >= emulator_.fds().side_count())
+        return std::unexpected("Invalid disk side");
+    if (auto saved = flush_disk_changes(); !saved)
+        return saved;
+    emulator_.fds().insert_side(side);
+    return {};
+}
+core::Result<void> EmulationSession::eject_disk() {
+    if (!emulator_.is_fds())
+        return std::unexpected("No FDS game is loaded");
+    if (auto saved = flush_disk_changes(); !saved)
+        return saved;
+    emulator_.fds().eject();
+    return {};
+}
+core::Result<void> EmulationSession::set_disk_write_protected(bool protected_disk) {
+    if (!emulator_.is_fds())
+        return std::unexpected("No FDS game is loaded");
+    emulator_.fds().set_write_protected(protected_disk);
+    return {};
+}
+core::Result<void> EmulationSession::export_disk(const std::string& path) {
+    return emulator_.export_disk(path);
+}
+
+core::Result<void> EmulationSession::flush_disk_changes() {
+    auto result = emulator_.flush_disk_changes();
+    disk_save_error_ = result ? std::string{} : result.error();
+    return result;
 }
 
 void EmulationSession::close_rom() {
@@ -89,6 +125,10 @@ void EmulationSession::close_rom() {
         return;
     }
 
+    if (auto saved = flush_disk_changes(); !saved) {
+        core::logger::error("{}", saved.error());
+        return;
+    }
     emulator_.unload_cartridge();
     turbo_input_.reset();
     rom_loaded_ = false;
@@ -125,6 +165,14 @@ TickResult EmulationSession::tick() {
 
     sync_input();
     emulator_.step_frame();
+    if (++disk_save_frames_ >= 120) {
+        disk_save_frames_ = 0;
+        if (!emulator_.fds().disk_active()) {
+            auto saved = flush_disk_changes();
+            if (!saved)
+                core::logger::error("{}", saved.error());
+        }
+    }
     submit_current_frame();
     return TickResult::FrameAdvanced;
 }
@@ -255,7 +303,7 @@ core::Result<std::string> EmulationSession::state_load_path_for_slot(int slot) c
         return std::unexpected("Cannot access save-state file: " + primary + ": " +
                                error.message());
     }
-    if (!current_rom_member_.empty()) {
+    if (!current_rom_member_.empty() || emulator_.is_fds()) {
         return primary;
     }
     auto legacy = legacy_state_path(current_rom_path_, slot).string();
@@ -279,6 +327,8 @@ core::Result<void> EmulationSession::save_state(int slot) {
     if (auto directory = ensure_state_directory(state_directory_); !directory) {
         return directory;
     }
+    if (auto saved = flush_disk_changes(); !saved)
+        return saved;
     return emulator_.save_state_to_file(state_path_for_slot(slot));
 }
 

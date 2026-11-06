@@ -304,6 +304,10 @@ void apply_setting(MapperBusConfiguration& configuration,
         configuration.frontend.region = parse_region_preference(value);
         return;
     }
+    if (full_key == "fds.bios_path") {
+        configuration.fds_bios_path = value;
+        return;
+    }
     if (full_key.starts_with("recent.rom_")) {
         const std::string suffix(full_key.substr(std::strlen("recent.rom_")));
         const auto slot = parse_int_value(suffix);
@@ -742,6 +746,8 @@ core::Result<void> save_mapperbus_configuration_to_file(const MapperBusConfigura
     file << "drc_target_fill_ratio=" << configuration.audio.drc_target_fill_ratio << '\n';
     file << "drc_deadzone=" << configuration.audio.drc_deadzone << '\n';
     file << "drc_rate_adjustment=" << configuration.audio.drc_rate_adjustment << "\n\n";
+
+    file << "[fds]\nbios_path=" << quote_config_value(configuration.fds_bios_path) << "\n\n";
 
     if (!configuration.recent_roms.empty()) {
         file << "[recent]\n";

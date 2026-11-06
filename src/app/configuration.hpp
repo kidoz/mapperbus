@@ -56,6 +56,7 @@ struct RecentRomEntry {
 
 struct MapperBusConfiguration {
     int version = kMapperBusConfigurationVersion;
+    std::string fds_bios_path;
     core::AudioSettings audio;
     MapperBusInputConfiguration input;
     MapperBusFrontendConfiguration frontend;

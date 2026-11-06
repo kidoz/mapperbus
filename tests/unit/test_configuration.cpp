@@ -472,3 +472,14 @@ TEST_CASE("Recent archive members round-trip and deduplicate independently",
     CHECK(loaded.recent_roms.front().archive_member == "folder/two#;\n.nes");
     std::filesystem::remove_all(root);
 }
+
+namespace mapperbus::app {
+TEST_CASE("FDS BIOS configuration round trips quoted paths", "[app][configuration][fds]") {
+    const auto path = temporary_config_path();
+    MapperBusConfiguration config;
+    config.fds_bios_path = "/bios = #;[x] \"disk\".bin";
+    REQUIRE(save_mapperbus_configuration_to_file(config, path));
+    CHECK(load_mapperbus_configuration_from_file(path).fds_bios_path == config.fds_bios_path);
+    std::filesystem::remove_all(path.parent_path());
+}
+} // namespace mapperbus::app

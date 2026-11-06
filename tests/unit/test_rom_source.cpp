@@ -11,6 +11,7 @@
 #include <string>
 #include <vector>
 
+#include "../support/fds_image.hpp"
 #include "app/emulation_session.hpp"
 #include "app/rom_source.hpp"
 #include "core/binary_file.hpp"
@@ -319,4 +320,52 @@ TEST_CASE("Archived battery saves are isolated by ROM content", "[app][archive]"
     CHECK_FALSE(std::filesystem::exists(fixture.root / "first.nes"));
 }
 
+} // namespace mapperbus::app
+
+namespace mapperbus::app {
+TEST_CASE("FDS archive sources share disk identity, BIOS validation, and side controls",
+          "[app][archive][fds]") {
+    ArchiveFixture fixture;
+    TestDataHome data_home(fixture.root);
+    const auto disk = mapperbus::tests::make_fds_image(2);
+    const auto bios = fixture.root / "bios.bin";
+    const auto raw = fixture.root / "game.fds";
+    REQUIRE(
+        core::write_binary_file_atomic(bios.string(), mapperbus::tests::make_fds_bios(), "BIOS"));
+    REQUIRE(core::write_binary_file_atomic(raw.string(), disk, "disk"));
+    EmulationSession session(std::make_unique<platform::NullVideo>(),
+                             std::make_unique<platform::NullAudio>(),
+                             std::make_unique<platform::NullInput>());
+    CHECK_FALSE(session.insert_disk_side(0));
+    CHECK_FALSE(session.open_rom(raw.string()));
+    session.set_fds_bios_path(bios.string());
+    REQUIRE(session.open_rom(raw.string()));
+    const auto identity = session.emulator().content_hash();
+    REQUIRE(session.insert_disk_side(1));
+    CHECK(session.emulator().fds().current_side() == 1);
+    REQUIRE(session.eject_disk());
+    CHECK(session.emulator().fds().current_side() == -1);
+    REQUIRE(session.insert_disk_side(0));
+    CHECK_FALSE(session.insert_disk_side(2));
+    REQUIRE(session.set_disk_write_protected(true));
+    CHECK(session.emulator().fds().write_protected());
+    StateStorageSettings settings;
+    settings.directory = fixture.root / "states";
+    session.set_state_storage(settings);
+    REQUIRE(session.save_state());
+    for (bool seven_zip : {false, true}) {
+        const auto path = fixture.root / (seven_zip ? "game.7z" : "game.zip");
+        write_archive(path, {{"Game.FDS", mapperbus::tests::make_fds_image(2, true)}}, seven_zip);
+        REQUIRE(session.open_rom(path.string()));
+        CHECK(session.current_rom_member() == "Game.FDS");
+        CHECK(session.emulator().content_hash() == identity);
+        REQUIRE(session.load_state());
+    }
+    const auto before = session.emulator().save_state();
+    session.set_fds_bios_path((fixture.root / "missing.bin").string());
+    CHECK_FALSE(session.open_rom(raw.string()));
+    CHECK(session.emulator().save_state() == before);
+    session.close_rom();
+    CHECK_FALSE(session.emulator().fds().is_loaded());
+}
 } // namespace mapperbus::app

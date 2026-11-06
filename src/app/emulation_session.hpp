@@ -37,6 +37,17 @@ class EmulationSession {
     core::Result<void> open_rom(const std::string& rom_path, std::string_view member = {});
     core::Result<void> load_rom(const std::string& rom_path);
     void close_rom();
+    [[nodiscard]] core::Result<void> flush_disk_changes();
+    [[nodiscard]] const std::string& disk_save_error() const {
+        return disk_save_error_;
+    }
+    void set_fds_bios_path(std::string path) {
+        fds_bios_path_ = std::move(path);
+    }
+    [[nodiscard]] core::Result<void> insert_disk_side(int side);
+    [[nodiscard]] core::Result<void> eject_disk();
+    [[nodiscard]] core::Result<void> set_disk_write_protected(bool protected_disk);
+    [[nodiscard]] core::Result<void> export_disk(const std::string& path);
 
     TickResult tick();
     TickResult step_frame();
@@ -135,6 +146,9 @@ class EmulationSession {
     bool rom_loaded_ = false;
     std::string current_rom_path_;
     std::string current_rom_member_;
+    std::string fds_bios_path_;
+    std::string disk_save_error_;
+    int disk_save_frames_ = 0;
     StateStorageSettings state_storage_;
     std::filesystem::path state_directory_;
     std::vector<float> audio_staging_;

@@ -9,6 +9,7 @@
 #include <utility>
 
 #include "app/state_storage.hpp"
+#include "core/binary_file.hpp"
 
 namespace mapperbus::app {
 namespace {
@@ -102,9 +103,10 @@ core::Result<ArchiveContents> scan_archive(const std::string& path, std::string_
             return std::unexpected("ROM archive contents exceed maximum size (256 MiB)");
         }
         declared_bytes += static_cast<std::uintmax_t>(declared_size);
-        const bool candidate =
-            archive_entry_filetype(entry) == AE_IFREG && archive_entry_hardlink(entry) == nullptr &&
-            archive_entry_symlink(entry) == nullptr && lower_extension(name) == ".nes";
+        const bool candidate = archive_entry_filetype(entry) == AE_IFREG &&
+                               archive_entry_hardlink(entry) == nullptr &&
+                               archive_entry_symlink(entry) == nullptr &&
+                               (lower_extension(name) == ".nes" || lower_extension(name) == ".fds");
         if (candidate) {
             if (!names.insert(name).second) {
                 return std::unexpected("ROM archive contains duplicate member names: " + name);
@@ -158,14 +160,46 @@ core::Result<std::vector<std::string>> list_archive_roms(const std::string& path
     return std::move(contents->members);
 }
 
+namespace {
+core::Result<void> load_fds_source(core::Emulator& emulator,
+                                   std::span<const core::Byte> disk,
+                                   const std::string& bios_path) {
+    const auto bios_file = bios_path.empty() ? mapperbus_data_directory() / "bios" / "disksys.rom"
+                                             : std::filesystem::path(bios_path);
+    auto bios = core::read_binary_file_capped(bios_file.string(), 8192, "FDS BIOS");
+    if (!bios)
+        return std::unexpected(
+            bios.error() +
+            "; choose an 8 KiB BIOS in File > Famicom Disk System or use --fds-bios PATH");
+    auto payload = disk;
+    if (disk.size() >= 16 && disk[0] == 'F' && disk[1] == 'D' && disk[2] == 'S' && disk[3] == 0x1A)
+        payload = disk.subspan(16);
+    const auto directory = mapperbus_data_directory() / "fds";
+    if (auto created = ensure_state_directory(directory); !created)
+        return created;
+    const auto save_path = directory / (core::sha256_hex(core::rom_sha256(payload)) + ".fds-save");
+    return emulator.load_fds(*bios, disk, save_path.string());
+}
+} // namespace
+
 core::Result<std::string> load_rom_source(core::Emulator& emulator,
                                           const std::string& path,
-                                          std::string_view member) {
+                                          std::string_view member,
+                                          const std::string& fds_bios_path) {
     if (!is_rom_archive(path)) {
         if (!member.empty()) {
             return std::unexpected("A ROM member can only be selected in a .zip or .7z archive");
         }
-        auto loaded = emulator.load_cartridge(path);
+        core::Result<void> loaded;
+        if (lower_extension(path) == ".fds") {
+            auto disk = core::read_binary_file_capped(
+                path, core::Fds::kMaxDiskImageBytes + 16, "FDS disk image");
+            if (!disk)
+                return std::unexpected(disk.error());
+            loaded = load_fds_source(emulator, *disk, fds_bios_path);
+        } else {
+            loaded = emulator.load_cartridge(path);
+        }
         if (!loaded) {
             return std::unexpected(loaded.error());
         }
@@ -178,7 +212,7 @@ core::Result<std::string> load_rom_source(core::Emulator& emulator,
             return std::unexpected(members.error());
         }
         if (members->empty()) {
-            return std::unexpected("ROM archive contains no .nes files");
+            return std::unexpected("ROM archive contains no .nes or .fds files");
         }
         if (members->size() != 1) {
             std::string message = "ROM archive contains multiple ROMs; select one with --entry:";
@@ -195,6 +229,12 @@ core::Result<std::string> load_rom_source(core::Emulator& emulator,
     }
     if (!contents->found) {
         return std::unexpected("ROM archive member not found: " + selected);
+    }
+    if (lower_extension(selected) == ".fds") {
+        auto loaded = load_fds_source(emulator, contents->data, fds_bios_path);
+        if (!loaded)
+            return std::unexpected(loaded.error());
+        return selected;
     }
     auto cartridge = core::Cartridge::from_data(contents->data, selected);
     if (!cartridge) {
