@@ -107,6 +107,9 @@ TEST_CASE("Version 3 states require explicit legacy import", "[state][identity]"
     emulator.reset();
     emulator.step_frame();
     const auto original = emulator.save_state();
+    const auto version9 = mapperbus::tests::legacy_state(emulator, 9);
+    REQUIRE(emulator.load_state(version9));
+    REQUIRE(emulator.save_state() == original);
     const auto version8 = mapperbus::tests::legacy_state(emulator, 8);
     REQUIRE(emulator.load_state(version8));
     REQUIRE(emulator.save_state() == original);
@@ -464,7 +467,7 @@ TEST_CASE("PPU save-state rejects a sprite count above the hardware limit", "[st
     REQUIRE(blob.size() >= sizeof(int));
 
     int accepted = 8;
-    std::memcpy(blob.data() + blob.size() - 1 - sizeof(accepted), &accepted, sizeof(accepted));
+    std::memcpy(blob.data() + blob.size() - 3 - sizeof(accepted), &accepted, sizeof(accepted));
     {
         Ppu restored;
         StateReader reader(blob);
@@ -474,7 +477,7 @@ TEST_CASE("PPU save-state rejects a sprite count above the hardware limit", "[st
     }
 
     int rejected = 64;
-    std::memcpy(blob.data() + blob.size() - 1 - sizeof(rejected), &rejected, sizeof(rejected));
+    std::memcpy(blob.data() + blob.size() - 3 - sizeof(rejected), &rejected, sizeof(rejected));
     Ppu restored;
     StateReader reader(blob);
     restored.load_state(reader);

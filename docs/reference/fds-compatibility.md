@@ -246,11 +246,13 @@ or a comparison with recordings from hardware.
   artifacts confirmed SMB2 world 1-1 and Metroid gameplay/save/reloaded-file screens.
 - All ten public-diagnostic/CRC cases passed, including fast/slow disk writes,
   write protection and retry, either CRC-byte fault, and mid-write replay.
-- The regular build passed 32 suite executables, including GUI close recovery
+- All ten public NTSC [PPU timing diagnostics](ppu-timing.md) passed, including
+  vblank flag reads, NMI enable/disable races and odd-frame clock timing.
+- The regular build passed 33 suite executables, including GUI close recovery
   and the optional public DMA diagnostics.
   Its optional image/diagnostic cases were skipped in the asset-free run and
   passed in separate explicit asset runs.
-- The GUI-disabled ASan/UBSan build passed 29 suite executables, including the
+- The GUI-disabled ASan/UBSan build passed 30 suite executables, including the
   original audio probe. Separate asset runs passed all ten public-diagnostic/CRC
   cases and six licensed raw/ZIP/7z workflows. Leak detection was
   disabled because this macOS runtime does not support it.

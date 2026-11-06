@@ -42,7 +42,7 @@ resolves the older conflicting descriptions of reset delay.
 
 ## Snapshots
 
-Version 9 adds five bytes to version 8:
+Version 9 introduced five bytes in addition to version 8:
 
 | Section | Extension |
 |---|---|
@@ -59,6 +59,8 @@ detector state, source delays and DMC requests persist across it.
 Versions 4–8 remain readable. Missing sampling history is reconstructed from
 restored source state, so exact pending-interrupt replay requires version 9.
 Version 3 retains the explicit legacy-import policy.
+Version 10 additionally preserves PPU frame parity and a retained skipped-dot
+decision; see [PPU timing](ppu-timing.md#snapshots).
 
 ## Validation
 
@@ -91,5 +93,7 @@ PPU cadence, reset bus activity, or every PPU register race. The renderer retain
 its existing approximation of fetches and mapper A12 edges. Simultaneous `$4015`
 read/IRQ-flag assertion needs separate validation. DMC stop/abort and
 internal-register conflicts retain the limits in [DMA timing](dma-timing.md).
+The ten separate [PPU diagnostics](ppu-timing.md) cover the implemented vblank
+read races and odd-frame timing for that alignment.
 
 [Reference index](README.md) · [FDS checks](fds-compatibility.md)

@@ -175,6 +175,13 @@ test_interrupt_diagnostics = executable('test-interrupt-diagnostics',
 test('interrupt-diagnostics', test_interrupt_diagnostics,
     args : ['--allow-running-no-tests'], timeout : 120)
 
+test_ppu_diagnostics = executable('test-ppu-diagnostics',
+    'integration/test_ppu_diagnostics.cpp',
+    dependencies : [mapperbus_core_dep, catch2_dep],
+)
+test('ppu-diagnostics', test_ppu_diagnostics,
+    args : ['--allow-running-no-tests'], timeout : 240)
+
 test_mapper_timing = executable('test-mapper-timing',
     'unit/test_mapper_timing.cpp',
     dependencies : [mapperbus_core_dep, catch2_dep],

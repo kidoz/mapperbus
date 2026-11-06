@@ -42,9 +42,10 @@ struct RegionTiming {
     int vblank_scanline;
     int pre_render_scanline;
     long frame_duration_ns; // nanoseconds per frame
+    bool odd_frame_skip = false;
 };
 
-inline constexpr RegionTiming kNtscTiming = {262, 241, 261, 16'639'267};
+inline constexpr RegionTiming kNtscTiming = {262, 241, 261, 16'639'267, true};
 inline constexpr RegionTiming kPalTiming = {312, 241, 311, 19'997'200};
 inline constexpr RegionTiming kDendyTiming = {312, 291, 311, 20'000'000};
 

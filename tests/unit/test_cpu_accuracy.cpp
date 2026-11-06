@@ -165,6 +165,24 @@ TEST_CASE("NMI sampling distinguishes penultimate and final instruction cycles",
     }
 }
 
+TEST_CASE("Machine snapshots replay across a shortened odd frame", "[cpu][ppu][state]") {
+    DmaMachine fixture({0xA9, 8, 0x8D, 1, 0x20, 0x4C, 5, 0x80});
+    Emulator emulator;
+    if (fixture.cartridge)
+        REQUIRE(emulator.load_cartridge(std::move(*fixture.cartridge), {}));
+    else
+        FAIL("PPU fixture did not produce a cartridge");
+    emulator.reset();
+    emulator.step_frame();
+    emulator.step_frame();
+    const auto before = emulator.save_state();
+    emulator.step_frame();
+    const auto after = emulator.save_state();
+    REQUIRE(emulator.load_state(before));
+    emulator.step_frame();
+    CHECK(emulator.save_state() == after);
+}
+
 TEST_CASE("Branches poll NMI before the operand and again on page crossing",
           "[cpu][interrupt][nmi]") {
     SECTION("taken same-page branch defers an edge arriving after the first poll") {
@@ -272,6 +290,9 @@ TEST_CASE("Accepted IRQ survives snapshots with I set and rejects invalid interr
     const auto bus_end = apu_end + bus.data().size();
     for (const auto [offset, invalid] : {std::pair{cpu_end - 1, Byte{3}},
                                          {ppu_end - 1, Byte{2}},
+                                         {ppu_end - 1, Byte{1}},
+                                         {ppu_end - 2, Byte{2}},
+                                         {ppu_end - 3, Byte{2}},
                                          {apu_end - 1, Byte{5}},
                                          {bus_end - 1, Byte{2}},
                                          {bus_end - 2, Byte{2}}}) {

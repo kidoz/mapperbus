@@ -9,6 +9,8 @@ Versioning.
 
 ### Added
 
+- Ten optional hash-pinned NTSC PPU diagnostics, with synthetic race, frame-length,
+  region, and snapshot regressions around the skipped dot.
 - CPU interrupt regressions for I-flag latency, branch polling, NMI takeover of
   IRQ/BRK, interrupts during DMA, and five optional hash-pinned Blargg diagnostics.
 - CPU/DMC/OAM timing regressions, including optional hash-pinned public Blargg
@@ -28,6 +30,8 @@ Versioning.
 
 ### Fixed
 
+- Omit one dot on rendered odd NTSC frames, retaining the pre-render skip
+  decision through late PPUMASK writes. PAL/Dendy retain full-length frames.
 - Poll IRQ/NMI detector outputs at instruction-specific cycles, retain accepted
   interrupts through source acknowledgements and I-flag changes, and latch NMI
   during DMA. Clock the PPU around CPU accesses and delay APU frame-counter resets.
@@ -53,9 +57,9 @@ Versioning.
 
 ### Changed
 
-- Save-state version 9 adds interrupt decisions, NMI detector state, vblank
-  suppression, and delayed APU resets alongside DMA and FDS state. Versions 4–8
-  remain readable with reconstructed sampling state.
+- Save-state version 10 preserves PPU frame parity and the retained skipped-dot
+  decision alongside interrupt, DMA, and FDS state. Versions 4–9 remain readable
+  with reconstructed timing history.
 
 ## [0.2.0] - 2026-11-04
 

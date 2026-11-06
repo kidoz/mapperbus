@@ -3,6 +3,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include "core/bus/memory_bus.hpp"
 #include "core/cartridge/cartridge.hpp"
 #include "core/mappers/mapper_registry.hpp"
 #include "core/ppu/ppu.hpp"
@@ -13,12 +14,123 @@ using namespace mapperbus::core;
 
 namespace {
 
+std::pair<uint16_t, uint16_t> ppu_position(const Ppu& ppu) {
+    StateWriter writer;
+    ppu.save_state(writer);
+    StateReader reader(writer.data());
+    const auto line = reader.read<uint16_t>();
+    const auto dot = reader.read<uint16_t>();
+    return {line, dot};
+}
+
 // PPUSTATUS read resets the write latch, per hardware.
 void reset_latch(Ppu& ppu) {
     (void)ppu.read_register(0x02);
 }
 
 } // namespace
+
+TEST_CASE("Only rendered odd NTSC frames omit a dot", "[ppu][timing]") {
+    for (const auto region : {Region::NTSC, Region::PAL, Region::Dendy}) {
+        for (const Byte mask : {0, 0x08, 0x10, 0x18}) {
+            CAPTURE(region, mask);
+            Ppu ppu;
+            ppu.set_region(region);
+            ppu.reset();
+            ppu.write_register(1, mask);
+            const auto full =
+                static_cast<uint32_t>(timing_for_region(region).scanlines_per_frame) * 341;
+            ppu.step_dots(full);
+            REQUIRE(ppu_position(ppu) == std::pair<uint16_t, uint16_t>{0, 0});
+            const bool skip = region == Region::NTSC && mask != 0;
+            ppu.step_dots(full - (skip ? 1U : 0U));
+            CHECK(ppu_position(ppu) == std::pair<uint16_t, uint16_t>{0, 0});
+        }
+    }
+}
+
+TEST_CASE("Frame parity continues while rendering is disabled", "[ppu][timing]") {
+    Ppu ppu;
+    ppu.reset();
+    ppu.step_dots(341 * 262);
+    ppu.write_register(1, 0x08);
+    ppu.step_dots(341 * 262 - 1);
+    CHECK(ppu_position(ppu) == std::pair<uint16_t, uint16_t>{0, 0});
+    ppu.reset();
+    ppu.write_register(1, 8);
+    ppu.step_dots(341 * 262); // reset restores a full first frame
+    CHECK(ppu_position(ppu) == std::pair<uint16_t, uint16_t>{0, 0});
+}
+
+TEST_CASE("PPUSTATUS suppression and CPU NMI latching agree around vblank", "[ppu][timing][nmi]") {
+    for (const Address address : {0x2002, 0x200A, 0x3FFA}) {
+        for (int dot = -2; dot <= 4; ++dot) {
+            CAPTURE(address, dot);
+            Ppu ppu;
+            ppu.reset();
+            ppu.write_register(0, 0x80);
+            MemoryBus bus;
+            bus.connect_ppu(&ppu);
+            bus.reset_interrupts();
+            ppu.step_dots(static_cast<uint32_t>(241 * 341 + dot - 2));
+            bus.begin_cpu_cycle(address);
+            const auto status = bus.read(address);
+            bus.end_cpu_cycle();
+            CHECK(((status & 0x80U) != 0) == (dot >= 1));
+            bus.clock_cpu_bus(0, 2);
+            const bool expected_nmi = dot < 0 || dot >= 3;
+            CHECK(((bus.interrupt_sample() & 2U) != 0) == expected_nmi);
+            CHECK(((ppu.read_register(2) & 0x80U) != 0) == (dot < 0));
+        }
+    }
+}
+
+TEST_CASE("Odd-frame skip decisions survive snapshots and ignore later mask writes",
+          "[ppu][timing][state]") {
+    for (const uint32_t dot : {337U, 338U, 339U}) {
+        CAPTURE(dot);
+        Ppu ppu;
+        ppu.reset();
+        ppu.step_dots(341 * 262); // parity toggles on the fully disabled frame
+        ppu.write_register(1, 0x08);
+        ppu.step_dots(261 * 341 + dot);
+        StateWriter writer;
+        ppu.save_state(writer);
+        ppu.write_register(1, 0); // at 338 or 339 the decision is already retained
+        ppu.step_dots(340 - dot);
+        const bool skipped = dot >= 338;
+        CHECK(ppu_position(ppu) == (skipped ? std::pair<uint16_t, uint16_t>{0, 0}
+                                            : std::pair<uint16_t, uint16_t>{261, 340}));
+        StateWriter expected;
+        ppu.save_state(expected);
+        StateReader reader(writer.data());
+        ppu.load_state(reader);
+        REQUIRE(reader.ok());
+        ppu.write_register(1, 0);
+        ppu.step_dots(340 - dot);
+        StateWriter replay;
+        ppu.save_state(replay);
+        CHECK(replay.data() == expected.data());
+    }
+}
+
+TEST_CASE("Old snapshots reconstruct parity from their unshortened frame clock",
+          "[ppu][timing][state]") {
+    for (const bool odd : {false, true}) {
+        Ppu ppu;
+        ppu.reset();
+        StateWriter writer;
+        ppu.save_state(writer);
+        auto legacy = writer.take();
+        legacy.resize(legacy.size() - 2);
+        StateReader reader(legacy);
+        ppu.load_state(reader, true, false, odd ? 341 * 262 : 0);
+        REQUIRE(reader.ok());
+        ppu.write_register(1, 8);
+        ppu.step_dots(341 * 262 - (odd ? 1 : 0));
+        CHECK(ppu_position(ppu) == std::pair<uint16_t, uint16_t>{0, 0});
+    }
+}
 
 TEST_CASE("PPU $2005 / $2006 updates reg_t and fine_x correctly", "[ppu][loopy]") {
     Ppu ppu;

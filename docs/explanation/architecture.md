@@ -87,10 +87,11 @@ audio settings. Keeping these separate means a UI preference does not become
 part of cartridge hardware state.
 
 Snapshots are taken between instructions, after any OAM DMA. CPU bus-cycle and
-active-DMA bookkeeping is transient. Version 9 preserves accepted interrupts, NMI
-detector state, vblank suppression and delayed frame-counter resets, alongside
-the APU phase/DMC fields added in version 8. Earlier snapshots reconstruct the
-missing fields; they cannot reproduce their original sampling history exactly.
+active-DMA bookkeeping is transient. Version 10 preserves PPU frame parity and
+the retained skipped-dot decision, alongside interrupt/source state added in
+version 9 and APU phase/DMC fields added in version 8. Earlier snapshots
+reconstruct missing history; exact replay across frame-length decisions requires
+version 10. See [PPU timing](../reference/ppu-timing.md).
 
 The core implements snapshot and battery operations. The session assigns save
 slot filenames. The application configuration layer reads and writes

@@ -32,9 +32,14 @@ void Ppu::save_state(StateWriter& writer) const {
     writer.write_array(visible_sprites_);
     writer.write(visible_sprite_count_);
     writer.write(static_cast<Byte>(suppress_vblank_));
+    writer.write(static_cast<Byte>(odd_frame_));
+    writer.write(static_cast<Byte>(skip_dot_));
 }
 
-void Ppu::load_state(StateReader& reader, bool has_interrupt_state) {
+void Ppu::load_state(StateReader& reader,
+                     bool has_interrupt_state,
+                     bool has_frame_parity,
+                     uint64_t legacy_cpu_cycles) {
     reader.read(scanline_);
     reader.read(cycle_);
     reader.read(frame_ready_);
@@ -60,6 +65,19 @@ void Ppu::load_state(StateReader& reader, bool has_interrupt_state) {
     const auto suppress = has_interrupt_state ? reader.read<Byte>() : Byte{0};
     suppress_vblank_ = suppress == 1;
     if (suppress > 1)
+        reader.fail();
+    const auto odd = has_frame_parity ? reader.read<Byte>() : Byte{0};
+    const auto skip = has_frame_parity ? reader.read<Byte>() : Byte{0};
+    const auto full_frame = static_cast<uint64_t>(timing_->scanlines_per_frame) * 341U;
+    // Older versions never skipped dots. Their elapsed CPU clocks therefore
+    // recover parity exactly when CPU/PPU have kept their original alignment.
+    const auto old_frames = (legacy_cpu_cycles % (2 * full_frame)) * 3 / full_frame;
+    odd_frame_ = has_frame_parity ? odd == 1 : (old_frames & 1U) != 0;
+    skip_dot_ = skip == 1;
+    if (odd > 1 || skip > 1 ||
+        (skip_dot_ && (!odd_frame_ || !timing_->odd_frame_skip ||
+                       !std::cmp_equal(scanline_, timing_->pre_render_scanline) || cycle_ < 338 ||
+                       cycle_ > 339)))
         reader.fail();
     // evaluate_sprites never stores more than the 8 hardware sprites. A blob
     // can, and render_pixel indexes the array with this count before the next
@@ -98,10 +116,8 @@ void Ppu::load_state(StateReader& reader, bool has_interrupt_state) {
 
 namespace {
 
-// Hardware takes roughly 4 PPU dots to apply rendering enable/disable changes.
-// This core currently batches PPU stepping until after a full CPU instruction,
-// so the delay also compensates for the write otherwise taking effect at the
-// beginning of the CPU instruction instead of on its write cycle.
+// Existing renderer delay retained for the Battletoads rendering-toggle model.
+// Frame-length timing uses its own raw-mask gate, independently of this delay.
 constexpr uint8_t kPpumaskRenderDelayDots = 16;
 
 [[nodiscard]] std::uint16_t advance_coarse_x(std::uint16_t v) {
@@ -117,6 +133,8 @@ constexpr uint8_t kPpumaskRenderDelayDots = 16;
 } // namespace
 
 void Ppu::set_region(Region region) {
+    if (timing_ != &timing_for_region(region))
+        skip_dot_ = false;
     timing_ = &timing_for_region(region);
 }
 
@@ -135,6 +153,8 @@ void Ppu::reset() {
     read_buffer_ = 0;
     nmi_pending_ = false;
     suppress_vblank_ = false;
+    odd_frame_ = false;
+    skip_dot_ = false;
     reg_v_ = 0;
     reg_t_ = 0;
     fine_x_ = 0;
@@ -208,11 +228,24 @@ void Ppu::step(uint32_t cpu_cycles) {
 
 void Ppu::step_dots(uint32_t ppu_dots) {
     for (uint32_t i = 0; i < ppu_dots; ++i) {
-        ++cycle_;
+        if (skip_dot_ && cycle_ == 339) {
+            // Replace the final pre-render dot with the first visible-line idle dot.
+            cycle_ = 0;
+            scanline_ = 0;
+            odd_frame_ = !odd_frame_;
+            skip_dot_ = false;
+        } else {
+            ++cycle_;
+        }
 
         bool visible_line = scanline_ < 240;
         bool pre_render = scanline_ == timing_->pre_render_scanline;
         bool rendering = rendering_enabled();
+
+        // The frame-length gate is independent of the renderer's delayed mask.
+        // Latch before dot 339 so later writes cannot change this frame's length.
+        if (pre_render && cycle_ == 338)
+            skip_dot_ = timing_->odd_frame_skip && odd_frame_ && (ppumask_ & 0x18U) != 0;
 
         if (visible_line && cycle_ >= 1 && cycle_ <= 256) {
             render_pixel();
@@ -275,6 +308,8 @@ void Ppu::step_dots(uint32_t ppu_dots) {
             ++scanline_;
             if (scanline_ >= timing_->scanlines_per_frame) {
                 scanline_ = 0;
+                odd_frame_ = !odd_frame_;
+                skip_dot_ = false;
             }
         }
 

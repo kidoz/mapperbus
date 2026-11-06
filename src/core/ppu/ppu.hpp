@@ -21,7 +21,10 @@ class Ppu {
     void step_dots(uint32_t ppu_dots);
 
     void save_state(StateWriter& writer) const;
-    void load_state(StateReader& reader, bool has_interrupt_state = true);
+    void load_state(StateReader& reader,
+                    bool has_interrupt_state = true,
+                    bool has_frame_parity = true,
+                    uint64_t legacy_cpu_cycles = 0);
 
     bool frame_ready() const {
         return frame_ready_;
@@ -111,6 +114,8 @@ class Ppu {
     Byte read_buffer_ = 0;
     bool nmi_pending_ = false;
     bool suppress_vblank_ = false;
+    bool odd_frame_ = false;
+    bool skip_dot_ = false;
 
     // Loopy internal registers — pure model per Mesen2/FCEUX/NESDev wiki.
     //
