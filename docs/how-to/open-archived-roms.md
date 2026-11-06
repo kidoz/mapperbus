@@ -1,0 +1,67 @@
+# Open archived ROMs
+
+MapperBus can load `.nes` ROMs directly from `.zip` and `.7z` archives through
+libarchive. Install the dependency using the [build guide](build-and-install.md).
+The examples below run from the repository root after building.
+
+## Open an archive
+
+In the NodalKit GUI, use **Open ROM** or drop an archive onto the window. If
+several `.nes` members exist, choose one in the **Open Archived ROM** dialog.
+Recent games remember both the archive and the chosen member.
+
+For an archive containing exactly one ROM, pass its path to SDL3 or the CLI:
+
+```sh
+./buildDir/src/app/mapperbus-sdl3 "/path/to/game.zip"
+./buildDir/src/frontends/cli/mapperbus-cli "/path/to/game.7z"
+```
+
+The CLI runs 60 frames and exits. If an archive contains several ROMs, it prints
+their member names and requires an exact, case-sensitive selection:
+
+```sh
+./buildDir/src/frontends/cli/mapperbus-cli "/path/to/collection.zip" --entry "folder/Game (E).nes"
+./buildDir/src/app/mapperbus-sdl3 --entry "folder/Game (E).nes" "/path/to/collection.zip"
+```
+
+Archive extensions and member `.nes` extensions are case-insensitive. Region
+detection uses the selected ROM's header, CRC database, then member filename.
+Renaming the outer archive does not change the ROM's content identity.
+
+## Find saves
+
+Save states use the existing content-identified storage. Portable mode places
+the state root beside the archive. Archived ROMs never import legacy sibling
+`.state` files from beside the archive.
+
+Battery saves for archived cartridges use `battery/<ROM-SHA256>.sav` under:
+
+- macOS: `~/Library/Application Support/MapperBus/`
+- Linux: `$XDG_DATA_HOME/mapperbus/`, or `~/.local/share/mapperbus/`
+- Windows: `%APPDATA%/MapperBus/`
+
+Raw ROMs continue using sibling `.sav` files. Moving a raw ROM's existing battery
+save into this content-based location is a manual operation. See
+[Save and restore a game](save-and-restore.md).
+
+## Supported scope and limits
+
+Only ZIP and 7z containers with regular `.nes` members are exposed. Directories,
+links, and other file types are ignored. Nested archives, encrypted archives,
+and duplicate ROM member names are rejected or are not ROM candidates. FDS
+launching is separate from cartridge archive support.
+
+The archive file and total declared member sizes are each limited to 256 MiB;
+there may be at most 1024 entries. Member names are limited to 4096 bytes each
+and 1 MiB combined. Selected ROM output is limited to 16 MiB, both before and
+during decompression. Corrupt selected data and archive read errors abort the
+load, preserving the previous game. These checks bound application buffers;
+libarchive also allocates decoder memory internally, especially for solid 7z
+archives. The GUI reads archives synchronously, so large solid archives can
+delay the chooser or open action.
+
+Entries are read into memory and never extracted to disk. Battery and state
+paths are computed independently of archive member paths.
+
+[How-to guides](README.md)

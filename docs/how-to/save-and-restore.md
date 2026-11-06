@@ -64,6 +64,10 @@ New version-4 snapshots validate the media SHA-256 before changing the machine.
 The legacy sibling import also accepts version 3; those files contain no hash,
 so use them only with their original ROM. Older versions remain unsupported.
 
+For archived ROMs, legacy sibling import is disabled because an archive can
+contain several games. Content-identified state files work across raw and
+archived copies of the same bytes.
+
 ## Keep battery-backed progress
 
 For cartridges with battery-backed RAM, MapperBus automatically tries to load
@@ -83,3 +87,8 @@ or unrelated-ROM compatibility is not guaranteed.
 Implementation: [EmulationSession](../../src/app/emulation_session.cpp) names
 state files; [Emulator](../../src/core/emulator.cpp) handles snapshots and
 battery-backed RAM.
+
+Archived cartridges store battery RAM under the MapperBus application data
+folder as `battery/<ROM-SHA256>.sav`. Different games in one archive have
+independent saves. Raw files retain their sibling `.sav` behavior. See
+[Open archived ROMs](open-archived-roms.md) for locations and selection.

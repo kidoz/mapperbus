@@ -16,6 +16,7 @@ These documents follow Diátaxis: choose a path based on what you need now.
 
 - [Run your first game](tutorials/first-game.md)
 - [Configure controllers, scaling, and audio](how-to/configure-sdl3.md)
+- [Open archived ROMs](how-to/open-archived-roms.md)
 - [Save and restore a game](how-to/save-and-restore.md)
 - [Run tests and diagnostics](how-to/test-and-diagnose.md)
 - [Build options and executable paths](reference/build-options.md)

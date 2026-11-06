@@ -32,7 +32,7 @@ and understanding the design.
 ## Quick start
 
 From the repository root, with a C++23 compiler and standard library, Meson,
-and Ninja installed:
+Ninja, and [archive build dependencies](docs/how-to/build-and-install.md#prepare-dependencies) installed:
 
 ```sh
 meson setup buildDir
@@ -51,6 +51,7 @@ for dependencies, platform details, and reconfiguring an existing build.
 - [Cartridge mappers](docs/reference/compatibility.md) including MMC1, MMC2, MMC3,
   MMC5, VRC6, VRC7, Namco 163, and Sunsoft 5B, with expansion audio.
 - NTSC, PAL, and Dendy region detection and overrides.
+- [ZIP and 7z ROM loading](docs/how-to/open-archived-roms.md) through libarchive.
 - CPU and GPU xBRZ and FSR 1 upscaling, using Metal or Vulkan where available.
 - BLEP resampling, selectable audio filters, dynamic rate control, dithering,
   and pseudo-stereo output.

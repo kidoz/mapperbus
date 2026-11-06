@@ -23,7 +23,8 @@ shadercross path. It is evaluated when the SDL3 backend is enabled.
 
 | Component | Dependency selection |
 |---|---|
-| Core and application libraries | C++23 compiler and standard library; no frontend toolkit |
+| Core library | C++23 compiler and standard library; no external dependencies |
+| Application library and all frontends | libarchive ≥ 3.6.0, installed dependency or pinned 3.8.9-1 Meson wrap fallback (zlib/liblzma required) |
 | SDL3 frontend | SDL3 ≥ 3.4.0, installed dependency or Meson wrap fallback |
 | NodalKit GUI | Installed NodalKit ≥ 0.3.4 or bundled 0.3.4 fallback; bundled build requires Meson ≥ 1.11 |
 | GUI audio and gamepads | SDL3 dependency probe in the GUI build, independent of `enable_sdl3` |

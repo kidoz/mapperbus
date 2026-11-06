@@ -161,6 +161,9 @@ in both graphical frontends. See [turbo behavior](commands-and-controls.md#defau
 
 `[recent]` stores up to five `rom_0`…`rom_4` path entries and matching
 `opened_0`…`opened_4` Unix timestamps, newest first. Paths are quoted when saved.
+Optional quoted `member_0`…`member_4` values identify a selected ROM inside a
+ZIP or 7z archive. Missing values mean raw media or automatic archive selection.
+Deduplication uses both the normalized filesystem path and the exact member name.
 Opening an existing entry moves it to the front. Removing a recent entry does
 not delete ROM or save files.
 

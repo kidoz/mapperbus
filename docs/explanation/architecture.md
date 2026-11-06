@@ -20,7 +20,9 @@ because they transform output without changing emulation.
 flowchart TD
     SDL[SDL3 entry point] --> App[App and EmulationSession]
     GUI[NodalKit GUI controller] --> App
-    CLI[Headless CLI] --> Core[Emulator core]
+    CLI[Headless CLI] --> Loader[ROM source loader / libarchive]
+    App --> Loader
+    Loader --> Core[Emulator core]
     App --> Core
     App --> Interfaces[Platform interfaces]
     SDL --> Backends[Concrete host backends]
@@ -28,8 +30,12 @@ flowchart TD
     Backends -. implements .-> Interfaces
 ```
 
-The core does not depend on the frontend layers. The CLI can therefore link
-directly to it, while the interactive applications share session behavior.
+The core does not depend on the frontend layers or libarchive. All frontends
+link the application library for ROM source loading; the CLI still advances the
+core directly without initializing a session or host backends. The loader reads
+ZIP and 7z members into bounded memory and passes a parsed cartridge and explicit
+battery-save path to the core. Member names provide region hints and display
+labels, while ROM content supplies identity. No archive entries are extracted.
 
 ## A session bridges machine and presentation
 
