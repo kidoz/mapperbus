@@ -111,6 +111,12 @@ test_configuration = executable('test-configuration',
 )
 test('configuration', test_configuration)
 
+test_rom_source = executable('test-rom-source',
+    'unit/test_rom_source.cpp',
+    dependencies : [mapperbus_app_dep, catch2_dep],
+)
+test('rom-source', test_rom_source)
+
 test_state_storage = executable('test-state-storage',
     'unit/test_state_storage.cpp',
     dependencies : [mapperbus_app_dep, catch2_dep],

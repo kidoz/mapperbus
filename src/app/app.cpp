@@ -13,13 +13,13 @@ App::App(std::unique_ptr<platform::VideoBackend> video,
 
 App::~App() = default;
 
-core::Result<void> App::initialize(const std::string& rom_path) {
+core::Result<void> App::initialize(const std::string& rom_path, std::string_view member) {
     auto result = session_.initialize();
     if (!result) {
         return result;
     }
 
-    return session_.load_rom(rom_path);
+    return session_.open_rom(rom_path, member);
 }
 
 void App::run(const std::function<void(EmulationSession&)>& after_tick) {

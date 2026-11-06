@@ -119,6 +119,8 @@ int main(int argc, char* argv[]) {
             "Runtime scaler hotkeys: 0/1 native, 2-6 scale factor, F9 cycle scaler mode");
         mapperbus::core::logger::info(
             "Save-state: F5 save, F7 load; Ctrl+1..9/0 selects slots 1..10 (Shift+Fx: slot 2)");
+        mapperbus::core::logger::info(
+            "  --entry NAME          ROM member inside a .zip or .7z archive");
         mapperbus::core::logger::info("  --state-dir PATH      absolute save-state root override");
         mapperbus::core::logger::info(
             "  --portable-states     store states beside the ROM collection");
@@ -132,6 +134,7 @@ int main(int argc, char* argv[]) {
     bool use_fsr = false;
     const char* region_override = nullptr;
     const char* rom_path = nullptr;
+    std::string_view rom_member;
     auto mapperbus_config = mapperbus::app::load_mapperbus_configuration();
     auto state_storage = mapperbus_config.save_states;
     mapperbus::core::AudioSettings audio_settings = mapperbus_config.audio;
@@ -212,6 +215,8 @@ int main(int argc, char* argv[]) {
         } else if (std::strcmp(argv[i], "--portable-states") == 0) {
             state_storage.mode = mapperbus::app::StateStorageMode::Portable;
             state_storage.directory.clear();
+        } else if (std::strcmp(argv[i], "--entry") == 0 && i + 1 < argc) {
+            rom_member = argv[++i];
         } else if (std::strcmp(argv[i], "--region") == 0 && i + 1 < argc) {
             region_override = argv[++i];
         } else {
@@ -258,7 +263,7 @@ int main(int argc, char* argv[]) {
     mapperbus::app::App app(std::move(video), std::move(audio), std::move(input), audio_settings);
     app.session().set_turbo_period(mapperbus_config.input.turbo_period_frames);
     app.session().set_state_storage(state_storage);
-    auto result = app.initialize(rom_path);
+    auto result = app.initialize(rom_path, rom_member);
     if (!result) {
         mapperbus::core::logger::error("{}", result.error());
         return EXIT_FAILURE;

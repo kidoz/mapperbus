@@ -48,7 +48,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build pkg-config libsdl2-dev g++-14 \
+          sudo apt-get install -y ninja-build pkg-config libarchive-dev zlib1g-dev liblzma-dev libsdl2-dev g++-14 \
             libx11-dev libxext-dev libxrandr-dev libxinerama-dev \
             libxcursor-dev libxi-dev libwayland-dev libxkbcommon-dev \
             libdecor-0-dev libdbus-1-dev libibus-1.0-dev libpulse-dev \
@@ -59,7 +59,8 @@ jobs:
 
       - name: Install macOS dependencies
         if: runner.os == 'macOS'
-        run: brew install ninja pkg-config
+        run: |
+          brew install ninja pkg-config xz
 
       - uses: actions/setup-python@v5
         with:
@@ -86,7 +87,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build pkg-config clang-format-18 \
+          sudo apt-get install -y ninja-build pkg-config libarchive-dev clang-format-18 \
             clang-19 clang-tidy-19 g++-14 libsdl2-dev libx11-dev libwayland-dev \
             libxkbcommon-dev libdecor-0-dev libdbus-1-dev libasound2-dev \
             libudev-dev libusb-1.0-0-dev libpipewire-0.3-dev
@@ -124,7 +125,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build pkg-config clang-19 g++-14 \
+          sudo apt-get install -y ninja-build pkg-config libarchive-dev clang-19 g++-14 \
             libsdl2-dev libx11-dev \
             libwayland-dev libxkbcommon-dev libdecor-0-dev libdbus-1-dev \
             libasound2-dev libudev-dev libusb-1.0-0-dev libpipewire-0.3-dev

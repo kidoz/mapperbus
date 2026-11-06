@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <filesystem>
 
+#include "app/rom_source.hpp"
 #include "core/logger.hpp"
 
 namespace mapperbus::app {
@@ -55,7 +56,8 @@ core::Result<void> EmulationSession::load_rom(const std::string& rom_path) {
     return open_rom(rom_path);
 }
 
-core::Result<void> EmulationSession::open_rom(const std::string& rom_path) {
+core::Result<void> EmulationSession::open_rom(const std::string& rom_path,
+                                              std::string_view member) {
     if (!initialized_) {
         auto init_result = initialize();
         if (!init_result) {
@@ -63,9 +65,9 @@ core::Result<void> EmulationSession::open_rom(const std::string& rom_path) {
         }
     }
 
-    auto result = emulator_.load_cartridge(rom_path);
+    auto result = load_rom_source(emulator_, rom_path, member);
     if (!result) {
-        return result;
+        return std::unexpected(result.error());
     }
 
     emulator_.reset();
@@ -76,6 +78,7 @@ core::Result<void> EmulationSession::open_rom(const std::string& rom_path) {
     running_ = true;
     rom_loaded_ = true;
     current_rom_path_ = rom_path;
+    current_rom_member_ = std::move(*result);
     set_state_storage(state_storage_);
     reset_audio_fill_ratio_history();
     return {};
@@ -92,6 +95,7 @@ void EmulationSession::close_rom() {
     running_ = false;
     paused_ = false;
     current_rom_path_.clear();
+    current_rom_member_.clear();
     state_directory_.clear();
     reset_audio_fill_ratio_history();
 }
@@ -250,6 +254,9 @@ core::Result<std::string> EmulationSession::state_load_path_for_slot(int slot) c
     if (error) {
         return std::unexpected("Cannot access save-state file: " + primary + ": " +
                                error.message());
+    }
+    if (!current_rom_member_.empty()) {
+        return primary;
     }
     auto legacy = legacy_state_path(current_rom_path_, slot).string();
     if (std::filesystem::exists(legacy, error)) {

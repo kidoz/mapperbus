@@ -1,11 +1,18 @@
+libarchive_dep = dependency('libarchive',
+    version : '>=3.6.0',
+    fallback : ['libarchive', 'libarchive_dep'],
+    default_options : ['default_library=static', 'werror=false', 'progs=[]',
+                       'tests=disabled', 'zlib=enabled', 'lzma=enabled'],
+)
+
 mapperbus_app_lib = static_library('mapperbus-app',
-    files('app.cpp', 'configuration.cpp', 'emulation_session.cpp', 'session_actions.cpp', 'state_storage.cpp'),
-    dependencies : [mapperbus_core_dep],
+    files('app.cpp', 'configuration.cpp', 'emulation_session.cpp', 'session_actions.cpp', 'state_storage.cpp', 'rom_source.cpp'),
+    dependencies : [mapperbus_core_dep, libarchive_dep],
 )
 
 mapperbus_app_dep = declare_dependency(
     link_with : mapperbus_app_lib,
-    dependencies : [mapperbus_core_dep],
+    dependencies : [mapperbus_core_dep, libarchive_dep],
     include_directories : mapperbus_inc,
 )
 

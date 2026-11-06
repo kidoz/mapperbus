@@ -15,6 +15,7 @@ struct SessionSnapshot {
     bool paused = false;
     bool has_cartridge = false;
     std::string rom_path;
+    std::string rom_member;
     std::optional<std::uint16_t> mapper_number;
     core::Region region = core::Region::NTSC;
     core::AudioSettings audio_settings{};
@@ -24,7 +25,7 @@ class SessionActions {
   public:
     explicit SessionActions(EmulationSession& session);
 
-    core::Result<void> open_rom(const std::string& rom_path);
+    core::Result<void> open_rom(const std::string& rom_path, std::string_view member = {});
     void close_rom();
     void pause();
     void resume();

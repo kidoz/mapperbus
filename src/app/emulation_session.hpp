@@ -3,6 +3,7 @@
 #include <array>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "app/state_storage.hpp"
@@ -33,7 +34,7 @@ class EmulationSession {
     ~EmulationSession();
 
     core::Result<void> initialize();
-    core::Result<void> open_rom(const std::string& rom_path);
+    core::Result<void> open_rom(const std::string& rom_path, std::string_view member = {});
     core::Result<void> load_rom(const std::string& rom_path);
     void close_rom();
 
@@ -93,6 +94,9 @@ class EmulationSession {
     [[nodiscard]] const std::string& current_rom_path() const {
         return current_rom_path_;
     }
+    [[nodiscard]] const std::string& current_rom_member() const {
+        return current_rom_member_;
+    }
     [[nodiscard]] int audio_queued_samples() const;
     [[nodiscard]] int audio_low_watermark_samples() const;
     [[nodiscard]] int audio_high_watermark_samples() const;
@@ -130,6 +134,7 @@ class EmulationSession {
     bool paused_ = false;
     bool rom_loaded_ = false;
     std::string current_rom_path_;
+    std::string current_rom_member_;
     StateStorageSettings state_storage_;
     std::filesystem::path state_directory_;
     std::vector<float> audio_staging_;

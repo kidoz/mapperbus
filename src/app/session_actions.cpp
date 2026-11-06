@@ -4,8 +4,8 @@ namespace mapperbus::app {
 
 SessionActions::SessionActions(EmulationSession& session) : session_(session) {}
 
-core::Result<void> SessionActions::open_rom(const std::string& rom_path) {
-    return session_.open_rom(rom_path);
+core::Result<void> SessionActions::open_rom(const std::string& rom_path, std::string_view member) {
+    return session_.open_rom(rom_path, member);
 }
 
 void SessionActions::close_rom() {
@@ -87,6 +87,7 @@ SessionSnapshot SessionActions::snapshot() const {
         .paused = session_.paused(),
         .has_cartridge = session_.has_cartridge(),
         .rom_path = session_.current_rom_path(),
+        .rom_member = session_.current_rom_member(),
         .mapper_number = session_.emulator().mapper_number(),
         .region = session_.emulator().region(),
         .audio_settings = session_.audio_settings(),

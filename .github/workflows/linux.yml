@@ -33,6 +33,7 @@ jobs:
             sdl: 'false'
             gui: 'false'
             shaders: disabled
+            force_fallback: '--force-fallback-for=libarchive'
     name: ${{ matrix.name }}
     env:
       CC: ${{ matrix.cc }}
@@ -42,7 +43,7 @@ jobs:
     steps:
       - name: Install build dependencies
         run: >-
-          pacman -Syu --noconfirm --needed git clang meson ninja pkgconf sdl3
+          pacman -Syu --noconfirm --needed git clang meson ninja pkgconf libarchive sdl3
           wayland wayland-protocols libxkbcommon freetype2 fontconfig harfbuzz glib2
           glslang vulkan-headers vulkan-icd-loader vulkan-swrast mesa
           desktop-file-utils
@@ -52,7 +53,7 @@ jobs:
           meson setup build -Denable_sdl3=${{ matrix.sdl }}
           -Denable_nodalkit_gui=${{ matrix.gui }}
           -Dvulkan_shaders=${{ matrix.shaders }}
-          -Db_lto=false
+          -Db_lto=false ${{ matrix.force_fallback }}
       - name: Build
         run: meson compile -C build
       - name: Test
