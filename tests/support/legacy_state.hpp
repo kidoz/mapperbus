@@ -7,7 +7,7 @@
 
 namespace mapperbus::tests {
 
-/// Derive v13/v12/v11/v10/v9/v8/v7 fixtures by removing newer component extensions. FDS v4-v6
+/// Derive v14/v13/v12/v11/v10/v9/v8/v7 fixtures by removing newer component extensions. FDS v4-v6
 /// conversions can then remove their older tail extensions independently.
 inline std::vector<core::Byte> legacy_state(const core::Emulator& emulator, uint32_t version) {
     auto blob = emulator.save_state();
@@ -25,7 +25,8 @@ inline std::vector<core::Byte> legacy_state(const core::Emulator& emulator, uint
         blob.erase(blob.begin() + static_cast<std::ptrdiff_t>(end - count),
                    blob.begin() + static_cast<std::ptrdiff_t>(end));
     };
-    erase(bus_end, version < 13 ? (version < 11 ? (version < 9 ? 6 : 4) : 3) : 1);
+    const std::size_t old_bus_tail = version < 9 ? 5 : version < 11 ? 3 : version < 13 ? 2 : 0;
+    erase(bus_end, old_bus_tail + (version < 14 ? 1 : 0) + 1);
     if (version < 12)
         erase(apu_end, version < 9 ? (version < 8 ? 18 : 7) : 6);
     if (version < 13)

@@ -370,6 +370,96 @@ TEST_CASE("RF Famicom clocks each consecutive read on both ports", "[bus][contro
     }
 }
 
+TEST_CASE("RF Famicom controller data pins preserve only the documented floating bits",
+          "[bus][controller]") {
+    for (const auto wiring : {ControllerWiring::Nes, ControllerWiring::RfFamicom}) {
+        for (const auto timing : {ControllerTiming::NesAvFamicom, ControllerTiming::RfFamicom}) {
+            IoMachine machine;
+            machine.bus.set_controller_wiring(wiring);
+            machine.bus.set_controller_timing(timing);
+            machine.bus.write(0x4016, 1);
+            for (const bool pressed : {false, true}) {
+                for (int player = 0; player < 2; ++player) {
+                    machine.pads.set_button_state(player, Button::A, pressed);
+                    const Address address = static_cast<Address>(0x4016 + player);
+                    const Byte floating =
+                        wiring == ControllerWiring::RfFamicom && player == 0 ? 0xF8 : 0xE0;
+                    for (unsigned value = 0; value <= 255; ++value) {
+                        const auto expected =
+                            static_cast<Byte>((value & floating) | (pressed ? 1U : 0U));
+                        machine.bus.write(0, static_cast<Byte>(value));
+                        CHECK(machine.read(address) == expected);
+                        CHECK(machine.bus.open_bus() == expected);
+                        machine.bus.write(0, static_cast<Byte>(value));
+                        CHECK(machine.bus.read(address) == expected);
+                        CHECK(machine.bus.open_bus() == expected);
+                    }
+                }
+            }
+        }
+    }
+    MemoryBus disconnected;
+    disconnected.set_controller_wiring(ControllerWiring::RfFamicom);
+    disconnected.write(0, 0xFF);
+    CHECK(disconnected.read(0x4016) == 0xF8);
+    CHECK(disconnected.read(0x4017) == 0xE0);
+}
+
+TEST_CASE("RF Famicom built-in controller two has six buttons and still shifts in ones",
+          "[bus][controller]") {
+    for (const auto timing : {ControllerTiming::NesAvFamicom, ControllerTiming::RfFamicom}) {
+        IoMachine machine;
+        machine.bus.set_controller_timing(timing);
+        for (const int player : {0, 1})
+            for (const auto button : {Button::A,
+                                      Button::B,
+                                      Button::Select,
+                                      Button::Start,
+                                      Button::Up,
+                                      Button::Down,
+                                      Button::Left,
+                                      Button::Right})
+                machine.pads.set_button_state(player, button, true);
+        for (const auto wiring : {ControllerWiring::RfFamicom, ControllerWiring::Nes}) {
+            machine.bus.set_controller_wiring(wiring);
+            machine.latch();
+            const Byte report = wiring == ControllerWiring::RfFamicom ? 0xF3 : 0xFF;
+            for (unsigned bit = 0; bit < 12; ++bit) {
+                CHECK((machine.read(0x4016) & 1U) == 1);
+                CHECK((machine.read(0x4017) & 1U) == (bit < 8 ? ((report >> bit) & 1U) : 1U));
+                (void)machine.read(0);
+            }
+        }
+    }
+}
+
+TEST_CASE("RF button masking survives host updates and snapshots while strobed",
+          "[bus][controller][state]") {
+    IoMachine machine;
+    machine.bus.set_controller_wiring(ControllerWiring::RfFamicom);
+    machine.bus.set_controller_timing(ControllerTiming::RfFamicom);
+    machine.bus.write(0x4016, 1);
+    machine.pads.set_button_state(1, Button::A, true);
+    machine.pads.set_button_state(1, Button::Select, true);
+    machine.pads.set_button_state(1, Button::Start, true);
+    machine.pads.set_button_state(1, Button::Up, true);
+    const auto before = machine.save();
+    const auto release_and_read = [&] {
+        machine.write(0x4016, 0);
+        (void)machine.read(0);
+        REQUIRE_FALSE(machine.pads.strobed());
+        for (const Byte expected : {Byte{1}, Byte{0}, Byte{0}, Byte{0}, Byte{1}})
+            CHECK((machine.read(0x4017) & 1U) == expected);
+    };
+    release_and_read();
+    const auto after = machine.save();
+    machine.bus.set_controller_wiring(ControllerWiring::Nes);
+    machine.restore(before);
+    CHECK(machine.bus.controller_wiring() == ControllerWiring::RfFamicom);
+    release_and_read();
+    CHECK(machine.save() == after);
+}
+
 TEST_CASE("Controller timing changes release a held NES read exactly once", "[bus][controller]") {
     IoMachine machine;
     machine.pads.set_button_state(0, Button::A, true);

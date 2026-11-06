@@ -149,6 +149,12 @@ class Emulator {
     [[nodiscard]] ControllerTiming controller_timing() const {
         return bus_.controller_timing();
     }
+    void set_controller_wiring(ControllerWiring wiring) {
+        bus_.set_controller_wiring(wiring);
+    }
+    [[nodiscard]] ControllerWiring controller_wiring() const {
+        return bus_.controller_wiring();
+    }
 
     void set_region(Region region) {
         region_ = region;

@@ -9,8 +9,8 @@ Executable paths below assume a build directory named `buildDir`.
 ```
 
 Fresh-install defaults are listed below. Saved audio, gamepad settings, and
-controller timing are loaded first; command-line options override the corresponding values for this
-process. Scaling and region use their own startup defaults.
+controller hardware preferences are loaded first. Command-line options override
+the corresponding values for this process. Scaling and region use their own startup defaults.
 
 | Option | Value | Default / behavior |
 |---|---|---|
@@ -22,6 +22,7 @@ process. Scaling and region use their own startup defaults.
 | `--resampling MODE` | `blip`, `cubic` | `blip` |
 | `--filter-mode MODE` | `accurate`, `enhanced`, `unfiltered` | `accurate` |
 | `--filter-profile P` | `nes`, `famicom` | `nes` |
+| `--controller-wiring W` | `nes`, `rf-famicom` | Saved preference, fresh default NES |
 | `--controller-timing T` | `nes-av-famicom`, `rf-famicom` | Saved preference, fresh default NES/AV Famicom |
 | `--region R` | `ntsc`, `pal`, `dendy` | Automatic detection when omitted |
 | `--stereo` | Flag | Enable pseudo-stereo; fresh default is mono |
@@ -120,12 +121,14 @@ Source: [SDL3 input](../../src/frontends/sdl3/sdl3_input.cpp).
 ## Headless CLI
 
 ```text
-./buildDir/src/frontends/cli/mapperbus-cli <rom-file|archive> [--entry NAME] [--fds-bios PATH] [--frames N] [--controller-timing T]
+./buildDir/src/frontends/cli/mapperbus-cli <rom-file|archive> [--entry NAME] [--fds-bios PATH] [--frames N] [--controller-timing T] [--controller-wiring W]
 ```
 
 Loads NES/FDS media, resets the emulator, executes 60 frames by default, and
 exits. `--frames` accepts 1–1000000. `--controller-timing` accepts
 `nes-av-famicom` or `rf-famicom` and overrides the shared preference for this run.
+`--controller-wiring` accepts `nes` or `rf-famicom` independently of timing.
+Select `rf-famicom` for both options to use RF Famicom timing and wiring.
 The CLI reads the shared FDS BIOS path;
 `--fds-bios` overrides it. It presents no video, audio device, or interactive
 input. Invalid arguments and load/save failures return failure.

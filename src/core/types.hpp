@@ -43,6 +43,12 @@ enum class ControllerTiming : std::uint8_t {
     RfFamicom,
 };
 
+/// Controller data pins and built-in pad buttons, separate from clock timing.
+enum class ControllerWiring : std::uint8_t {
+    Nes,
+    RfFamicom,
+};
+
 struct RegionTiming {
     int scanlines_per_frame;
     int vblank_scanline;

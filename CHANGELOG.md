@@ -35,6 +35,8 @@ Versioning.
 - Shared FDS BIOS configuration and CLI `--fds-bios` / `--frames` options.
 - Selectable NES/AV Famicom or original RF Famicom controller timing, with
   shared configuration, CLI/SDL3 overrides, and GUI hardware settings.
+- Selectable RF Famicom controller-port wiring, including floating data bits and
+  the six-button second controller, with shared settings and frontend overrides.
 
 ### Fixed
 
@@ -76,10 +78,11 @@ Versioning.
 
 ### Changed
 
-- Save-state version 14 preserves the controller timing selection, controller
+- Save-state version 15 preserves controller wiring and timing selections,
   line/strobe history, and PPU I/O latch, alongside DMC stop latches, regional
-  clocks, interrupts, and FDS state. Versions 4–13 remain readable with reconstructed missing history;
-  pre-v14 states select NES/AV Famicom controller timing;
+  clocks, interrupts, and FDS state. Versions 4–14 remain readable with
+  reconstructed missing history;
+  pre-v15 states select NES wiring; pre-v14 states select NES/AV Famicom timing;
   pre-v13 I/O latches start at zero and pre-v11 PAL states start with a fresh
   divider phase.
 

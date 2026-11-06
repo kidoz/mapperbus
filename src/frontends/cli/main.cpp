@@ -15,11 +15,12 @@ int main(int argc, char* argv[]) {
     const auto configuration = mapperbus::app::load_mapperbus_configuration();
     auto bios = configuration.fds_bios_path;
     auto controller_timing = configuration.input.controller_timing;
+    auto controller_wiring = configuration.input.controller_wiring;
     int frames = 60;
     for (int index = 1; index < argc; ++index) {
         const std::string_view argument(argv[index]);
         if ((argument == "--entry" || argument == "--fds-bios" || argument == "--frames" ||
-             argument == "--controller-timing") &&
+             argument == "--controller-timing" || argument == "--controller-wiring") &&
             index + 1 < argc) {
             const std::string_view value(argv[++index]);
             if (argument == "--entry")
@@ -34,6 +35,14 @@ int main(int argc, char* argv[]) {
                     return EXIT_FAILURE;
                 }
                 controller_timing = *timing;
+            } else if (argument == "--controller-wiring") {
+                const auto wiring = mapperbus::app::parse_controller_wiring(value);
+                if (!wiring) {
+                    mapperbus::core::logger::error(
+                        "--controller-wiring requires nes or rf-famicom");
+                    return EXIT_FAILURE;
+                }
+                controller_wiring = *wiring;
             } else {
                 const auto parsed =
                     std::from_chars(value.data(), value.data() + value.size(), frames);
@@ -54,12 +63,14 @@ int main(int argc, char* argv[]) {
     if (path.empty()) {
         mapperbus::core::logger::error("Usage: mapperbus-cli <rom-file|archive> [--entry NAME] "
                                        "[--fds-bios PATH] [--frames N] "
-                                       "[--controller-timing nes-av-famicom|rf-famicom]");
+                                       "[--controller-timing nes-av-famicom|rf-famicom] "
+                                       "[--controller-wiring nes|rf-famicom]");
         return EXIT_FAILURE;
     }
     mapperbus::core::register_builtin_mappers();
     mapperbus::core::Emulator emulator;
     emulator.set_controller_timing(controller_timing);
+    emulator.set_controller_wiring(controller_wiring);
     auto result = mapperbus::app::load_rom_source(emulator, path, member, bios);
     if (!result) {
         mapperbus::core::logger::error("{}", result.error());

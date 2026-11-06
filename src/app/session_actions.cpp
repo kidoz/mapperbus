@@ -97,6 +97,7 @@ SessionSnapshot SessionActions::snapshot() const {
         .mapper_number = session_.emulator().mapper_number(),
         .region = session_.emulator().region(),
         .controller_timing = session_.emulator().controller_timing(),
+        .controller_wiring = session_.emulator().controller_wiring(),
         .audio_settings = session_.audio_settings(),
     };
 }

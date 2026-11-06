@@ -71,7 +71,8 @@ and the [DMA register-conflict reference](https://www.nesdev.org/wiki/DMA#Regist
 - `$4015` returns internal status with bit 5 from external open bus. Reading it
   acknowledges the APU frame IRQ without replacing the external data latch.
 - Controller reads drive the modeled NES bits 0–4 while preserving external
-  bits 5–7. A DMA alias can clock either controller, independently of the port
+  bits 5–7 by default; RF wiring additionally preserves `$4016` bits 3–4.
+  A DMA alias can clock either controller, independently of the port
   on which the CPU was halted.
 - OAM puts drive their transferred byte onto external open bus and the PPU data
   port. APU status read into OAM is observable on the subsequent put even though
@@ -98,7 +99,7 @@ controller clocking and DMA register behavior.
 Select `rf-famicom` for the original RF Famicom's half-cycle output-enable gate:
 each CPU/DMA read releases the line before the next cycle, clocking once per
 read, including consecutive reads and aborted halts. This selects controller
-timing only: it retains the modeled NES data-pin wiring, NTSC APU decoder, and
+timing only: it retains the selected data-pin wiring, NTSC APU decoder, and
 late-2A03 stop behavior. It is not a full RF console or CPU-revision profile.
 Changing the timing releases any held NES read once; reapplying it has no effect.
 
@@ -107,7 +108,34 @@ exposes Settings → General → Hardware → Controller timing; CLI and SDL3 ac
 `--controller-timing` with the same tokens. Changes apply immediately to both
 ports. The setting is retained through reset. Snapshots restore their own timing
 without rewriting the saved preference; opening another game in the GUI applies
-the preference again. PAL/Dendy execution ignores this NTSC wiring selection.
+the preference again. PAL/Dendy execution ignores this NTSC timing selection.
+
+### Controller data wiring
+
+The separate `ControllerWiring` choice models the connected built-in pads and
+unattached accessory inputs. NES is the default. RF Famicom wiring follows
+[NESdev's port input table](https://www.nesdev.org/wiki/Controller_port_registers)
+and [standard-controller report](https://www.nesdev.org/wiki/Standard_controller):
+
+| Read | NES floating mask | RF floating mask | RF driven inputs |
+|---|---|---|---|
+| `$4016` | `$E0` | `$F8` | D0 pad 1; D1 unattached expansion = 0; D2 idle microphone = 0 |
+| `$4017` | `$E0` | `$E0` | D0 pad 2; unattached D1–D4 = 0 |
+
+Normal, untimed, and aliased DMA reads merge only floating bits from the external
+bus. The built-in RF pad 2 latches zero for Select/Start; its other six buttons
+and post-eight-bit ones remain normal. Host buttons remain stored, allowing a
+switch back to NES without losing input. A report already being shifted remains
+latched until the next strobe. Host updates while strobed and pending strobe
+requests obey the same masking on the high-to-low transition. Changing wiring
+does not release or re-clock the current output-enable line.
+
+`[input] controller_wiring=nes|rf-famicom` is shared by all frontends. The GUI
+adds Controller wiring beside Controller timing in General → Hardware; CLI and
+SDL3 accept `--controller-wiring`. Set both choices to `rf-famicom` for RF input
+hardware. Wiring is independent of CPU revision and region, while the RF timing
+choice affects NTSC only. Microphone activity, microphone audio mixing, expansion
+controllers and other accessories remain separate work.
 
 The APU activation diagnostic also requires the separate
 [PPU I/O latch](ppu-timing.md#ppu-io-bus). Its unmodified test executes a prepared
@@ -115,9 +143,16 @@ instruction through PPU open bus; the runner does not bypass its prerequisites.
 
 ## Snapshots
 
+Version 15 appends one controller-wiring byte to the bus section (0: NES, 1: RF
+Famicom), after the timing byte. Unknown values reject with full machine rollback.
+Versions 3–14 restore NES wiring while retaining any version-14 timing choice;
+this preserves the behavior of previous timing-only states. The controller's
+serialized button/report layout stays unchanged. Active wiring and timing restore
+from snapshots without changing the saved startup preferences.
+
 Version 14 appends one controller-timing byte to the bus section (0: NES/AV
-Famicom, 1: RF Famicom). RF snapshots require idle output-enable at the completed
-CPU-cycle boundary. Invalid timing values or held RF lines reject with full
+Famicom, 1: RF Famicom). Snapshots using RF timing require idle output-enable
+at the completed CPU-cycle boundary. Invalid timing values or held RF lines reject with full
 rollback. Versions 3–13 have no timing choice and restore NES/AV Famicom; version
 3 still requires explicit legacy import.
 
@@ -230,20 +265,22 @@ suite, all CPU revisions, or every DMC enable/disable sequence.
 
 `MAPPERBUS_DMA_CONFLICT_DIAGNOSTICS` selects the same pinned ROM described above,
 using a separate optional case in `dma-diagnostics`. The unmodified controller
-menu runs these six tests in each timing mode and requires these exact results:
+menu runs these six tests for every timing/wiring combination. The expected
+results are:
 
-| Test | NES/AV timing | RF timing |
-|---|---|---|
-| DMA + $4015 Read | 1 | 1 |
-| DMA + $4016 Read | 5 | 9 |
-| DMC DMA Bus Conflicts | 1 | 1 |
-| APU Register Activation | 9 | 9 |
-| Controller Strobing | 1 | 1 |
-| Controller Clocking | 5 | 9 |
+| Test | Expected result |
+|---|---|
+| DMA + $4015 Read | 1 |
+| DMA + $4016 Read | 5 with NES/AV timing; 9 with RF timing |
+| DMC DMA Bus Conflicts | 1 with NES wiring; 9 with RF wiring |
+| APU Register Activation | 9 |
+| Controller Strobing | 1 |
+| Controller Clocking | 5 with NES/AV timing; 9 with RF timing |
 
-Both modes pass, including the ROM's internal prerequisites. The bus-conflict
-result stays 1 because changing controller timing does not change data-pin
-wiring. Synthetic regressions cover
+All four combinations pass, including the ROM's internal prerequisites. Wiring
+and clocking are tested independently. Synthetic regressions additionally check
+all 256 external bus values on both ports, six-button pad 2 reports, host updates
+while strobed, legacy timing-only imports, corrupt wiring rollback, and
 independent ports, continuous reads, both strobe phases, open-bus isolation,
 aliased OAM activation/IRQ acknowledgement, cross-controller DMC reads,
 post-eight-bit ones, PPU latch behavior, and device/machine snapshot replay.
@@ -259,9 +296,9 @@ MAPPERBUS_CPU_DMA_DIAGNOSTICS="$PWD/tmp/dmc-timing" \
 
 These tests verify CPU-visible conflict values and OAM transfers. They do not
 measure the DMC sample latch's audio payload under electrical contention. PAL
-repeated-read addresses and register conflicts, full RF Famicom electrical
-wiring, CPU revision selection, and adjacent PPUDATA read quirks remain outside this
-coverage. Passing the eight selected AccuracyCoin tests does not certify the
+repeated-read addresses and register conflicts, microphone and expansion
+accessory behavior, CPU revision selection, and adjacent PPUDATA read quirks
+remain outside this coverage. Passing the eight selected AccuracyCoin tests does not certify the
 whole ROM. Reset bus cycles and analog power-on alignment remain outside the
 current model.
 

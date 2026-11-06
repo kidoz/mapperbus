@@ -20,6 +20,7 @@ inline constexpr int kMapperBusConfigurationVersion = 1;
 
 struct MapperBusInputConfiguration {
     core::ControllerTiming controller_timing = core::ControllerTiming::NesAvFamicom;
+    core::ControllerWiring controller_wiring = core::ControllerWiring::Nes;
     std::array<int, platform::kInputActionCount> keyboard_bindings{};
     platform::GamepadInputConfig gamepad;
     /// Player two starts with unbound keyboard controls and gamepad index 1.
@@ -94,6 +95,8 @@ void clear_recent_roms(MapperBusConfiguration& configuration);
 [[nodiscard]] std::string controller_button_name(platform::InputAction button);
 [[nodiscard]] std::optional<core::ControllerTiming> parse_controller_timing(std::string_view value);
 [[nodiscard]] const char* controller_timing_token(core::ControllerTiming timing);
+[[nodiscard]] std::optional<core::ControllerWiring> parse_controller_wiring(std::string_view value);
+[[nodiscard]] const char* controller_wiring_token(core::ControllerWiring wiring);
 [[nodiscard]] inline std::string controller_button_name(core::Button button) {
     return controller_button_name(platform::input_action(button));
 }

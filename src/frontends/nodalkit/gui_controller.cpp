@@ -1045,6 +1045,7 @@ MapperBusGuiController::MapperBusGuiController(nk::Application& app, nk::Window&
     session_->set_state_storage(configuration_.save_states);
     session_->set_fds_bios_path(configuration_.fds_bios_path);
     session_->set_controller_timing(configuration_.input.controller_timing);
+    session_->set_controller_wiring(configuration_.input.controller_wiring);
     if (replaced_reserved_binding) {
         save_configuration_state();
     }
@@ -1744,6 +1745,7 @@ void MapperBusGuiController::attempt_open(std::string rom_path, std::string memb
     save_configuration_state();
     detected_region_ = actions_->snapshot().region;
     actions_->set_controller_timing(configuration_.input.controller_timing);
+    actions_->set_controller_wiring(configuration_.input.controller_wiring);
     apply_region_preference();
     refresh_settings_dialog_sections();
     actions_->step_frame();
@@ -2620,6 +2622,22 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
         input_test_label_.reset();
         auto hardware_group = SettingsGroup::create("Hardware");
         hardware_group->set_horizontal_size_policy(nk::SizePolicy::Expanding);
+        auto wiring_combo = nk::ComboBox::create();
+        wiring_combo->set_items({"NES", "Original RF Famicom"});
+        wiring_combo->set_selected_index(
+            actions_->snapshot().controller_wiring == core::ControllerWiring::RfFamicom ? 1 : 0);
+        wiring_combo->ensure_accessible().set_name("Controller wiring");
+        (void)wiring_combo->on_selection_changed().connect([this](int index) {
+            configuration_.input.controller_wiring =
+                index == 1 ? core::ControllerWiring::RfFamicom : core::ControllerWiring::Nes;
+            actions_->set_controller_wiring(configuration_.input.controller_wiring);
+            save_configuration_state();
+            set_message(index == 1 ? "Controller wiring set to original RF Famicom."
+                                   : "Controller wiring set to NES.");
+            refresh_ui();
+        });
+        hardware_group->add(
+            pref_row("Controller wiring", wiring_combo, "RF pad 2 has no Start or Select."));
         auto timing_combo = nk::ComboBox::create();
         timing_combo->set_items({"NES / AV Famicom", "Original RF Famicom"});
         timing_combo->set_selected_index(

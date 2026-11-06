@@ -63,7 +63,8 @@ struct AccuracyCoinMachine {
     Emulator emulator;
 
     explicit AccuracyCoinMachine(const std::filesystem::path& path,
-                                 ControllerTiming timing = ControllerTiming::NesAvFamicom) {
+                                 ControllerTiming timing = ControllerTiming::NesAvFamicom,
+                                 ControllerWiring wiring = ControllerWiring::Nes) {
         // 100thCoin/AccuracyCoin at 66e8711292d432cf009b2831f3ea1a055d75c9ba.
         auto bytes = read_binary_file_capped(path.string(), kMaxRomBytes, "DMA diagnostic");
         REQUIRE(bytes);
@@ -73,6 +74,7 @@ struct AccuracyCoinMachine {
         REQUIRE(emulator.load_cartridge(path.string()));
         REQUIRE(emulator.region() == Region::NTSC);
         emulator.set_controller_timing(timing);
+        emulator.set_controller_wiring(wiring);
         emulator.reset();
         // The original ROM's documented boot progress and DMA/open-bus pretest.
         while (emulator.read_cpu(0xEC) != 10 && emulator.cpu().cycles() < 3000000)
@@ -154,35 +156,44 @@ TEST_CASE("AccuracyCoin NTSC DMA register conflicts and controller read edges",
     if (root == nullptr || *root == '\0')
         SKIP("Set MAPPERBUS_DMA_CONFLICT_DIAGNOSTICS to the pinned AccuracyCoin directory");
     for (const auto timing : {ControllerTiming::NesAvFamicom, ControllerTiming::RfFamicom}) {
-        CAPTURE(timing);
-        AccuracyCoinMachine fixture(std::filesystem::path(root) / "AccuracyCoin.nes", timing);
-        const Byte controller_pass = timing == ControllerTiming::RfFamicom ? 9 : 5;
-        struct Diagnostic {
-            Byte page;
-            Byte row;
-            Address result;
-            Byte expected;
-        };
-        for (const auto& test : std::array{
-                 Diagnostic{.page = 12, .row = 4, .result = 0x45D, .expected = 1}, // DMA + $4015
-                 Diagnostic{.page = 12,
-                            .row = 5,
-                            .result = 0x45E,
-                            .expected = controller_pass}, // DMA + $4016
-                 Diagnostic{
-                     .page = 12, .row = 6, .result = 0x46B, .expected = 1}, // DMC bus conflicts
-                 Diagnostic{.page = 13,
-                            .row = 6,
-                            .result = 0x45C,
-                            .expected = 9}, // APU activation, pad clocks
-                 Diagnostic{
-                     .page = 13, .row = 7, .result = 0x45F, .expected = 1}, // Controller strobing
-                 Diagnostic{.page = 13, .row = 8, .result = 0x47A, .expected = controller_pass}
-                 // Controller clocking
-             }) {
-            CAPTURE(test.page, test.row);
-            fixture.select(test.page, test.row);
-            fixture.run_test(test.result, test.expected);
+        for (const auto wiring : {ControllerWiring::Nes, ControllerWiring::RfFamicom}) {
+            CAPTURE(timing, wiring);
+            AccuracyCoinMachine fixture(
+                std::filesystem::path(root) / "AccuracyCoin.nes", timing, wiring);
+            const Byte bus_pass = wiring == ControllerWiring::RfFamicom ? 9 : 1;
+            const Byte controller_pass = timing == ControllerTiming::RfFamicom ? 9 : 5;
+            struct Diagnostic {
+                Byte page;
+                Byte row;
+                Address result;
+                Byte expected;
+            };
+            for (const auto& test : std::array{
+                     Diagnostic{
+                         .page = 12, .row = 4, .result = 0x45D, .expected = 1}, // DMA + $4015
+                     Diagnostic{.page = 12,
+                                .row = 5,
+                                .result = 0x45E,
+                                .expected = controller_pass}, // DMA + $4016
+                     Diagnostic{.page = 12,
+                                .row = 6,
+                                .result = 0x46B,
+                                .expected = bus_pass}, // DMC bus conflicts
+                     Diagnostic{.page = 13,
+                                .row = 6,
+                                .result = 0x45C,
+                                .expected = 9}, // APU activation, pad clocks
+                     Diagnostic{.page = 13,
+                                .row = 7,
+                                .result = 0x45F,
+                                .expected = 1}, // Controller strobing
+                     Diagnostic{.page = 13, .row = 8, .result = 0x47A, .expected = controller_pass}
+                     // Controller clocking
+                 }) {
+                CAPTURE(test.page, test.row);
+                fixture.select(test.page, test.row);
+                fixture.run_test(test.result, test.expected);
+            }
         }
     }
 }

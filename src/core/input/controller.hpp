@@ -30,7 +30,9 @@ class Controller {
     [[nodiscard]] bool strobed() const {
         return strobe_;
     }
-    void write(Byte value);
+    /// Optional parallel-input mask for controller 2. Already shifted reports
+    /// stay latched until the next strobe.
+    void write(Byte value, Byte player2_mask = 0xFF);
 
     void save_state(StateWriter& writer) const;
     void load_state(StateReader& reader);

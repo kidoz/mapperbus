@@ -54,13 +54,18 @@ class MemoryBus {
     [[nodiscard]] ControllerTiming controller_timing() const {
         return controller_timing_;
     }
+    void set_controller_wiring(ControllerWiring wiring);
+    [[nodiscard]] ControllerWiring controller_wiring() const {
+        return controller_wiring_;
+    }
 
     void save_state(StateWriter& writer) const;
     void load_state(StateReader& reader,
                     bool has_interrupt_state = true,
                     bool has_clock_phase = true,
                     bool has_io_state = true,
-                    bool has_controller_timing = true);
+                    bool has_controller_timing = true,
+                    bool has_controller_wiring = true);
     void restore_legacy_controller();
     /// Detector outputs for the current CPU cycle: IRQ level and latched NMI edge.
     [[nodiscard]] Byte interrupt_sample() const {
@@ -103,6 +108,8 @@ class MemoryBus {
     void clock_ppu(unsigned master_clocks);
     Byte read_cycle(Address addr, Address cpu_address, bool dma);
     void set_controller_oe(Byte port);
+    Byte read_controller(int player, Byte external, bool timed);
+    void write_controller_strobe(Byte value);
     [[nodiscard]] bool ntsc_io() const {
         return region_ == Region::NTSC || region_ == Region::Multi;
     }
@@ -131,6 +138,7 @@ class MemoryBus {
     uint32_t dma_cycles_ = 0;
     Region region_ = Region::NTSC;
     ControllerTiming controller_timing_ = ControllerTiming::NesAvFamicom;
+    ControllerWiring controller_wiring_ = ControllerWiring::Nes;
     Byte ppu_clock_phase_ = 0; // elapsed master clocks since the last PPU dot
     Byte controller_oe_ = 0;   // 0: neither, 1/2: continuous read of that port
     bool controller_strobe_request_ = false;

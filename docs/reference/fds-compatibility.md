@@ -198,8 +198,9 @@ shows `$67FF` / `$6E25`; both captured values match in MapperBus.
 - NTSC DMC stop/abort and duplicate-fetch timing pass the two targeted
   AccuracyCoin diagnostics; see [DMA timing](dma-timing.md). PAL/clone stop
   quirks and PAL register/repeated-read behavior remain unverified. The selected
-  NES/AV Famicom and RF Famicom controller timing modes each pass six additional
-  targeted checks. Full RF electrical wiring and DMC sample capture remain outside
+  All four combinations of NES/AV or RF timing and NES or RF data wiring pass six
+  additional targeted checks each. RF built-in controller 2 omits Start/Select.
+  Microphone/accessory behavior and electrical DMC sample capture remain outside
   that coverage. Reset-cycle bus activity,
   analog DRAM decay, 2C33 test mode, and mechanical disk effects are not modeled.
 - CRC coverage includes the public BIOS-dumper write/readback flows, independent
@@ -259,11 +260,11 @@ or a comparison with recordings from hardware.
 - The GUI-disabled ASan/UBSan build passed 30 suite executables, including the
   original audio probe. Separate asset runs passed all ten public-diagnostic/CRC
   cases and eight licensed workflows: six raw/ZIP/7z cases with NES/AV timing
-  plus raw SMB2 and Metroid flows with RF timing. Leak detection was
+  plus raw SMB2 and Metroid flows with RF timing and wiring. Leak detection was
   disabled because this macOS runtime does not support it.
 - Both public Blargg OAM/DMC timing diagnostics and eight selected AccuracyCoin
-  stop/register/controller checks (the six register/controller checks in both
-  timing modes) passed in regular and sanitizer builds;
+  stop/register/controller checks (the six register/controller checks across all four
+  timing/wiring combinations) passed in regular and sanitizer builds;
   [DMA timing](dma-timing.md) records the source pins and accuracy limits.
 - The FDS static analyzer, changed-file formatting and documentation-link checks
   passed. The headless CLI ran Metroid for 1200 frames with the new audio model.

@@ -24,13 +24,15 @@ void MemoryBus::save_state(StateWriter& writer) const {
     writer.write(controller_oe_);
     writer.write(static_cast<Byte>(controller_strobe_request_));
     writer.write(controller_timing_);
+    writer.write(controller_wiring_);
 }
 
 void MemoryBus::load_state(StateReader& reader,
                            bool has_interrupt_state,
                            bool has_clock_phase,
                            bool has_io_state,
-                           bool has_controller_timing) {
+                           bool has_controller_timing,
+                           bool has_controller_wiring) {
     reader.read_array(ram_);
     reader.read(open_bus_);
     reader.read(dma_cycles_);
@@ -56,7 +58,10 @@ void MemoryBus::load_state(StateReader& reader,
     controller_strobe_request_ = strobe == 1;
     controller_timing_ =
         has_controller_timing ? reader.read<ControllerTiming>() : ControllerTiming::NesAvFamicom;
-    if (controller_timing_ > ControllerTiming::RfFamicom || controller_oe_ > 2 || strobe > 1 ||
+    controller_wiring_ =
+        has_controller_wiring ? reader.read<ControllerWiring>() : ControllerWiring::Nes;
+    if (controller_wiring_ > ControllerWiring::RfFamicom ||
+        controller_timing_ > ControllerTiming::RfFamicom || controller_oe_ > 2 || strobe > 1 ||
         ((!ntsc_io() || controller_timing_ == ControllerTiming::RfFamicom) && controller_oe_ != 0))
         reader.fail();
     io_access_ = false;
@@ -73,6 +78,32 @@ void MemoryBus::set_controller_oe(Byte port) {
     if (controller_oe_ != port && controller_oe_ != 0 && controller_ != nullptr)
         controller_->clock(controller_oe_ - 1);
     controller_oe_ = port;
+}
+
+void MemoryBus::set_controller_wiring(ControllerWiring wiring) {
+    if (controller_wiring_ == wiring)
+        return;
+    controller_wiring_ = wiring;
+    if (controller_ != nullptr && controller_->strobed())
+        write_controller_strobe(1);
+}
+
+void MemoryBus::write_controller_strobe(Byte value) {
+    if (controller_ != nullptr)
+        controller_->write(value, controller_wiring_ == ControllerWiring::RfFamicom ? 0xF3 : 0xFF);
+}
+
+Byte MemoryBus::read_controller(int player, Byte external, bool timed) {
+    if (controller_ == nullptr && controller_wiring_ == ControllerWiring::Nes)
+        return external;
+    const auto bit = controller_ == nullptr ? Byte{0}
+                     : timed && ntsc_io()   ? controller_->peek(player)
+                                            : controller_->read(player);
+    // RF $4016 D3/D4 float; D1 is an unattached expansion input and D2
+    // is an idle microphone. $4017's low five bits are all driven.
+    const Byte floating =
+        controller_wiring_ == ControllerWiring::RfFamicom && player == 0 ? 0xF8 : 0xE0;
+    return static_cast<Byte>((external & floating) | bit);
 }
 
 Byte MemoryBus::read_cpu(Address addr) {
@@ -97,11 +128,8 @@ Byte MemoryBus::read_cycle(Address addr, Address cpu_address, bool dma) {
         return static_cast<Byte>((external & 0x20U) |
                                  (apu_ != nullptr ? apu_->read_register(0x4015) : Byte{0}));
     }
-    if (joypad && controller_ != nullptr) {
-        const auto player = internal - 0x4016;
-        const auto bit = ntsc_io() ? controller_->peek(player) : controller_->read(player);
-        external = static_cast<Byte>((external & 0xE0U) | bit);
-    }
+    if (joypad)
+        external = read_controller(internal - 0x4016, external, true);
     open_bus_ = external;
     return external;
 }
@@ -165,8 +193,8 @@ void MemoryBus::end_cpu_cycle() {
     // release the line and clock the shift register once per read.
     if (!io_access_ || controller_timing_ == ControllerTiming::RfFamicom)
         set_controller_oe(0);
-    if (controller_sample_cycle_ && controller_ != nullptr)
-        controller_->write(static_cast<Byte>(controller_strobe_request_));
+    if (controller_sample_cycle_)
+        write_controller_strobe(static_cast<Byte>(controller_strobe_request_));
     const auto& timing = timing_for_region(region_);
     clock_ppu(timing.cpu_clock_divider - timing.cpu_access_master_clock);
 }
@@ -282,10 +310,7 @@ Byte MemoryBus::read_ppu(Address addr) {
 Byte MemoryBus::read_apu_io(Address addr) {
     if (addr < 0x4018) {
         if (addr == 0x4016 || addr == 0x4017) {
-            if (controller_) {
-                return static_cast<Byte>((open_bus_ & 0xE0) | controller_->read(addr - 0x4016));
-            }
-            return open_bus_;
+            return read_controller(addr - 0x4016, open_bus_, false);
         }
         if (addr == 0x4015)
             return static_cast<Byte>((open_bus_ & 0x20U) |
@@ -347,9 +372,7 @@ void MemoryBus::write_apu_io(Address addr, Byte value) {
         }
         if (addr == 0x4016) {
             controller_strobe_request_ = (value & 1U) != 0;
-            if (controller_) {
-                controller_->write(value);
-            }
+            write_controller_strobe(value);
             return;
         }
         if (apu_) {

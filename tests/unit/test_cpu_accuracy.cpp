@@ -325,9 +325,9 @@ TEST_CASE("Accepted IRQ survives snapshots with I set and rejects invalid interr
                                          {ppu_end - 3, Byte{2}},
                                          {ppu_end - 4, Byte{2}},
                                          {apu_end - 7, Byte{5}},
-                                         {bus_end - 4, Byte{1}},
-                                         {bus_end - 5, Byte{2}},
-                                         {bus_end - 6, Byte{2}}}) {
+                                         {bus_end - 5, Byte{1}},
+                                         {bus_end - 6, Byte{2}},
+                                         {bus_end - 7, Byte{2}}}) {
         auto corrupt = before;
         corrupt[offset] = invalid;
         CHECK_FALSE(emulator.load_state(corrupt));
@@ -751,7 +751,7 @@ TEST_CASE("Invalid CPU PPU divider phases reject snapshots with rollback", "[cpu
         Apu{}.save_state(apu);
         MemoryBus{}.save_state(bus);
         const auto phase_offset =
-            43 + cpu.data().size() + ppu.data().size() + apu.data().size() + bus.data().size() - 4;
+            43 + cpu.data().size() + ppu.data().size() + apu.data().size() + bus.data().size() - 5;
         const auto before = emulator.save_state();
         for (const Byte invalid :
              {Byte{5}, Byte{255}, static_cast<Byte>(region == Region::PAL ? 6U : 1U)}) {
@@ -1065,7 +1065,8 @@ TEST_CASE("Invalid controller line states reject snapshots with rollback",
         43 + cpu.data().size() + ppu.data().size() + apu.data().size() + bus.data().size();
     for (const auto [offset, value] : {std::pair{end - 1, Byte{2}},
                                        {end - 2, Byte{2}},
-                                       {end - 3, Byte{3}},
+                                       {end - 3, Byte{2}},
+                                       {end - 4, Byte{3}},
                                        {end + controller.data().size() - 1, Byte{2}}}) {
         auto corrupt = before;
         corrupt[offset] = value;

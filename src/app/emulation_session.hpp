@@ -60,6 +60,9 @@ class EmulationSession {
     void set_controller_timing(core::ControllerTiming timing) {
         emulator_.set_controller_timing(timing);
     }
+    void set_controller_wiring(core::ControllerWiring wiring) {
+        emulator_.set_controller_wiring(wiring);
+    }
     void set_turbo_period(int frames) {
         turbo_input_.set_period(frames);
     }

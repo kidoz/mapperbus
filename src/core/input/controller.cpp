@@ -54,12 +54,17 @@ void Controller::clock(int player) {
         static_cast<Byte>((static_cast<unsigned>(shift_register_[player]) >> 1U) | 0x80U);
 }
 
-void Controller::write(Byte value) {
-    strobe_ = (value & 0x01U) != 0;
-    if (strobe_) {
+void Controller::write(Byte value, Byte player2_mask) {
+    const bool next_strobe = (value & 0x01U) != 0;
+    if (next_strobe) {
         shift_register_[0] = button_state_[0];
-        shift_register_[1] = button_state_[1];
+        shift_register_[1] = static_cast<Byte>(button_state_[1] & player2_mask);
+    } else if (strobe_) {
+        // Host button updates while strobed reload the raw parallel inputs.
+        // Apply disconnected-button wiring before entering serial mode.
+        shift_register_[1] &= player2_mask;
     }
+    strobe_ = next_strobe;
 }
 
 } // namespace mapperbus::core

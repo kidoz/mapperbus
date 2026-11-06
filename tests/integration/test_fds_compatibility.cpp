@@ -243,6 +243,9 @@ void check_smb2(SourceKind kind, ControllerTiming timing = ControllerTiming::Nes
     MediaSources sources(media);
     Emulator emulator;
     emulator.set_controller_timing(timing);
+    emulator.set_controller_wiring(timing == ControllerTiming::RfFamicom
+                                       ? ControllerWiring::RfFamicom
+                                       : ControllerWiring::Nes);
     sources.open(emulator, kind);
     const auto identity = emulator.content_hash();
     emulator.reset();
@@ -274,6 +277,9 @@ void check_metroid(SourceKind kind, ControllerTiming timing = ControllerTiming::
     MediaSources sources(media);
     Emulator emulator;
     emulator.set_controller_timing(timing);
+    emulator.set_controller_wiring(timing == ControllerTiming::RfFamicom
+                                       ? ControllerWiring::RfFamicom
+                                       : ControllerWiring::Nes);
     sources.open(emulator, kind);
     const auto identity = emulator.content_hash();
     emulator.reset();
@@ -331,6 +337,7 @@ void check_metroid(SourceKind kind, ControllerTiming timing = ControllerTiming::
     }
     Emulator fresh;
     fresh.set_controller_timing(timing);
+    fresh.set_controller_wiring(emulator.controller_wiring());
     const auto other = kind == SourceKind::Raw   ? SourceKind::Zip
                        : kind == SourceKind::Zip ? SourceKind::SevenZip
                                                  : SourceKind::Raw;

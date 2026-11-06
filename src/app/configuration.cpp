@@ -316,6 +316,13 @@ void apply_setting(MapperBusConfiguration& configuration,
             timing.value_or(core::ControllerTiming::NesAvFamicom);
         return;
     }
+    if (full_key == "input.controller_wiring") {
+        const auto wiring = parse_controller_wiring(value);
+        if (!wiring)
+            core::logger::warn("Invalid controller wiring '{}'; using NES", value);
+        configuration.input.controller_wiring = wiring.value_or(core::ControllerWiring::Nes);
+        return;
+    }
     if (full_key.starts_with("recent.rom_")) {
         const std::string suffix(full_key.substr(std::strlen("recent.rom_")));
         const auto slot = parse_int_value(suffix);
@@ -573,6 +580,18 @@ const char* controller_timing_token(core::ControllerTiming timing) {
     return timing == core::ControllerTiming::RfFamicom ? "rf-famicom" : "nes-av-famicom";
 }
 
+std::optional<core::ControllerWiring> parse_controller_wiring(std::string_view value) {
+    if (value == "nes")
+        return core::ControllerWiring::Nes;
+    if (value == "rf-famicom")
+        return core::ControllerWiring::RfFamicom;
+    return std::nullopt;
+}
+
+const char* controller_wiring_token(core::ControllerWiring wiring) {
+    return wiring == core::ControllerWiring::RfFamicom ? "rf-famicom" : "nes";
+}
+
 MapperBusInputConfiguration::MapperBusInputConfiguration() {
     player2_gamepad.gamepad_index = 1;
     for (const auto button : platform::input_actions()) {
@@ -755,6 +774,8 @@ core::Result<void> save_mapperbus_configuration_to_file(const MapperBusConfigura
 
     file << "[input]\n";
     file << "controller_timing=" << controller_timing_token(configuration.input.controller_timing)
+         << '\n';
+    file << "controller_wiring=" << controller_wiring_token(configuration.input.controller_wiring)
          << "\n\n";
 
     file << "[audio]\n";

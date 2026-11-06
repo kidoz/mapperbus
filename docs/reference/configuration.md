@@ -31,8 +31,9 @@ When `mapperbus.conf` is absent, the loader can read a sibling legacy
   numeric settings with bounds are clamped.
 - Saving writes recognized settings through a sibling temporary file followed
   by rename. Unknown settings and comments are not preserved.
-- GUI settings and per-game slot selections can be saved. The SDL3 frontend reads supported settings and
-  applies process-local command-line overrides. The headless CLI reads the FDS BIOS path and controller timing.
+- GUI settings and per-game slot selections can be saved. The SDL3 frontend
+  reads supported settings and applies process-local command-line overrides.
+  The headless CLI reads the FDS BIOS path and controller hardware preferences.
 
 ## Format identity
 
@@ -71,6 +72,26 @@ Snapshots restore the timing saved with the machine; versions before 14 select
 NES/AV Famicom. Loading a snapshot does not overwrite the preference in the
 configuration file. A new GUI ROM open reapplies the saved preference. Reset
 retains the active machine selection. See [DMA timing](dma-timing.md).
+
+## Controller wiring
+
+`[input] controller_wiring` accepts `nes` (default) or `rf-famicom`. Missing or
+invalid values select NES. It is independent of `controller_timing`; choose
+`rf-famicom` for both to use the modeled RF Famicom input hardware.
+
+All frontends apply this preference. CLI and SDL3 accept `--controller-wiring`
+with the same tokens, without changing the saved configuration. The GUI exposes
+Settings → General → Hardware → Controller wiring and saves explicit choices.
+RF wiring models the built-in second controller without Start/Select and the
+unattached controller-port inputs. Microphone activity and expansion accessories
+are not implemented. Existing host bindings are retained for switching back to
+NES. Data-pin changes take effect immediately; a latched button report changes
+on the next strobe. Reset retains the selection.
+
+Snapshot version 15 stores wiring independently of timing. Older snapshots load
+NES wiring, including version 14 snapshots that selected RF timing. Loading a
+snapshot changes the active selection without rewriting the configuration;
+a new GUI ROM open reapplies both preferences.
 
 ## Famicom Disk System
 
