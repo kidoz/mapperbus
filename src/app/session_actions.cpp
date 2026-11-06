@@ -96,6 +96,7 @@ SessionSnapshot SessionActions::snapshot() const {
         .rom_member = session_.current_rom_member(),
         .mapper_number = session_.emulator().mapper_number(),
         .region = session_.emulator().region(),
+        .controller_timing = session_.emulator().controller_timing(),
         .audio_settings = session_.audio_settings(),
     };
 }

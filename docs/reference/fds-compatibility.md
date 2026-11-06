@@ -198,9 +198,9 @@ shows `$67FF` / `$6E25`; both captured values match in MapperBus.
 - NTSC DMC stop/abort and duplicate-fetch timing pass the two targeted
   AccuracyCoin diagnostics; see [DMA timing](dma-timing.md). PAL/clone stop
   quirks and PAL register/repeated-read behavior remain unverified. The selected
-  NES/AV Famicom decoder and controller clocks pass six additional targeted
-  checks, with RF Famicom gating and electrical DMC sample capture outside that
-  coverage. Reset-cycle bus activity,
+  NES/AV Famicom and RF Famicom controller timing modes each pass six additional
+  targeted checks. Full RF electrical wiring and DMC sample capture remain outside
+  that coverage. Reset-cycle bus activity,
   analog DRAM decay, 2C33 test mode, and mechanical disk effects are not modeled.
 - CRC coverage includes the public BIOS-dumper write/readback flows, independent
   fixed vectors, and injected CRC faults described above. Physical-drive fault
@@ -258,10 +258,13 @@ or a comparison with recordings from hardware.
   passed in separate explicit asset runs.
 - The GUI-disabled ASan/UBSan build passed 30 suite executables, including the
   original audio probe. Separate asset runs passed all ten public-diagnostic/CRC
-  cases and six licensed raw/ZIP/7z workflows. Leak detection was
+  cases and eight licensed workflows: six raw/ZIP/7z cases with NES/AV timing
+  plus raw SMB2 and Metroid flows with RF timing. Leak detection was
   disabled because this macOS runtime does not support it.
 - Both public Blargg OAM/DMC timing diagnostics and eight selected AccuracyCoin
-  stop/register/controller checks passed in regular and sanitizer builds; [DMA timing](dma-timing.md) records the source pins and accuracy limits.
+  stop/register/controller checks (the six register/controller checks in both
+  timing modes) passed in regular and sanitizer builds;
+  [DMA timing](dma-timing.md) records the source pins and accuracy limits.
 - The FDS static analyzer, changed-file formatting and documentation-link checks
   passed. The headless CLI ran Metroid for 1200 frames with the new audio model.
   Source BIOS and disk SHA-256 values were unchanged.
@@ -315,11 +318,12 @@ MAPPERBUS_FDS_TEST_OUTPUT="$PWD/tmp/fds-compatibility" \
 meson test -C buildDir fds-compatibility --print-errorlogs
 ```
 
-`MAPPERBUS_FDS_TEST_OUTPUT` is optional. It writes PPM frames into the selected
-directory. The tests skip when `MAPPERBUS_FDS_TEST_ASSETS` is unset; inspect the
+`MAPPERBUS_FDS_TEST_OUTPUT` is optional. Game captures go into `nes-av-famicom/`
+and `rf-famicom/` subdirectories. The tests skip when `MAPPERBUS_FDS_TEST_ASSETS` is unset; inspect the
 test log to distinguish that from an actual licensed-image run. With the asset
 directory set, missing files or mismatched hashes fail. The suite has a
-720-second timeout for all six workflows, including sanitizer builds.
+720-second base timeout for all eight workflows. Use `--timeout-multiplier=2`
+for ASan/UBSan runs.
 
 For one image only, run the executable with a Catch2 filter:
 

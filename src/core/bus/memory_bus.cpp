@@ -23,12 +23,14 @@ void MemoryBus::save_state(StateWriter& writer) const {
     writer.write(ppu_clock_phase_);
     writer.write(controller_oe_);
     writer.write(static_cast<Byte>(controller_strobe_request_));
+    writer.write(controller_timing_);
 }
 
 void MemoryBus::load_state(StateReader& reader,
                            bool has_interrupt_state,
                            bool has_clock_phase,
-                           bool has_io_state) {
+                           bool has_io_state,
+                           bool has_controller_timing) {
     reader.read_array(ram_);
     reader.read(open_bus_);
     reader.read(dma_cycles_);
@@ -52,7 +54,10 @@ void MemoryBus::load_state(StateReader& reader,
     controller_oe_ = has_io_state ? reader.read<Byte>() : Byte{0};
     const auto strobe = has_io_state ? reader.read<Byte>() : Byte{0};
     controller_strobe_request_ = strobe == 1;
-    if (controller_oe_ > 2 || strobe > 1 || (!ntsc_io() && controller_oe_ != 0))
+    controller_timing_ =
+        has_controller_timing ? reader.read<ControllerTiming>() : ControllerTiming::NesAvFamicom;
+    if (controller_timing_ > ControllerTiming::RfFamicom || controller_oe_ > 2 || strobe > 1 ||
+        ((!ntsc_io() || controller_timing_ == ControllerTiming::RfFamicom) && controller_oe_ != 0))
         reader.fail();
     io_access_ = false;
     controller_sample_cycle_ = false;
@@ -156,7 +161,9 @@ void MemoryBus::begin_cpu_cycle(Address addr) {
 }
 
 void MemoryBus::end_cpu_cycle() {
-    if (!io_access_)
+    // RF Famicom gates /OE to half a CPU cycle, so even adjacent reads
+    // release the line and clock the shift register once per read.
+    if (!io_access_ || controller_timing_ == ControllerTiming::RfFamicom)
         set_controller_oe(0);
     if (controller_sample_cycle_ && controller_ != nullptr)
         controller_->write(static_cast<Byte>(controller_strobe_request_));

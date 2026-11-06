@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <map>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -18,6 +19,7 @@ namespace mapperbus::app {
 inline constexpr int kMapperBusConfigurationVersion = 1;
 
 struct MapperBusInputConfiguration {
+    core::ControllerTiming controller_timing = core::ControllerTiming::NesAvFamicom;
     std::array<int, platform::kInputActionCount> keyboard_bindings{};
     platform::GamepadInputConfig gamepad;
     /// Player two starts with unbound keyboard controls and gamepad index 1.
@@ -90,6 +92,8 @@ void remove_recent_rom(MapperBusConfiguration& configuration,
 void clear_recent_roms(MapperBusConfiguration& configuration);
 
 [[nodiscard]] std::string controller_button_name(platform::InputAction button);
+[[nodiscard]] std::optional<core::ControllerTiming> parse_controller_timing(std::string_view value);
+[[nodiscard]] const char* controller_timing_token(core::ControllerTiming timing);
 [[nodiscard]] inline std::string controller_button_name(core::Button button) {
     return controller_button_name(platform::input_action(button));
 }

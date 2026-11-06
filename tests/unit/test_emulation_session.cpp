@@ -332,6 +332,11 @@ TEST_CASE("SessionActions exposes GUI-friendly transport and snapshot state", "[
 
     actions.set_region(core::Region::PAL);
     REQUIRE(actions.snapshot().region == core::Region::PAL);
+    actions.set_controller_timing(core::ControllerTiming::RfFamicom);
+    REQUIRE(actions.snapshot().controller_timing == core::ControllerTiming::RfFamicom);
+    actions.reset();
+    actions.power_cycle();
+    REQUIRE(actions.snapshot().controller_timing == core::ControllerTiming::RfFamicom);
 
     actions.close_rom();
     REQUIRE_FALSE(actions.snapshot().has_cartridge);

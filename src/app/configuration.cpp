@@ -308,6 +308,14 @@ void apply_setting(MapperBusConfiguration& configuration,
         configuration.fds_bios_path = value;
         return;
     }
+    if (full_key == "input.controller_timing") {
+        const auto timing = parse_controller_timing(value);
+        if (!timing)
+            core::logger::warn("Invalid controller timing '{}'; using NES/AV Famicom", value);
+        configuration.input.controller_timing =
+            timing.value_or(core::ControllerTiming::NesAvFamicom);
+        return;
+    }
     if (full_key.starts_with("recent.rom_")) {
         const std::string suffix(full_key.substr(std::strlen("recent.rom_")));
         const auto slot = parse_int_value(suffix);
@@ -553,6 +561,18 @@ void apply_setting(MapperBusConfiguration& configuration,
 
 } // namespace
 
+std::optional<core::ControllerTiming> parse_controller_timing(std::string_view value) {
+    if (value == "nes-av-famicom")
+        return core::ControllerTiming::NesAvFamicom;
+    if (value == "rf-famicom")
+        return core::ControllerTiming::RfFamicom;
+    return std::nullopt;
+}
+
+const char* controller_timing_token(core::ControllerTiming timing) {
+    return timing == core::ControllerTiming::RfFamicom ? "rf-famicom" : "nes-av-famicom";
+}
+
 MapperBusInputConfiguration::MapperBusInputConfiguration() {
     player2_gamepad.gamepad_index = 1;
     for (const auto button : platform::input_actions()) {
@@ -732,6 +752,10 @@ core::Result<void> save_mapperbus_configuration_to_file(const MapperBusConfigura
     file << "audio_muted=" << (configuration.frontend.audio_muted ? "true" : "false") << '\n';
     file << "audio_volume=" << configuration.frontend.audio_volume_percent << '\n';
     file << "region=" << region_preference_token(configuration.frontend.region) << "\n\n";
+
+    file << "[input]\n";
+    file << "controller_timing=" << controller_timing_token(configuration.input.controller_timing)
+         << "\n\n";
 
     file << "[audio]\n";
     file << "sample_rate=" << configuration.audio.sample_rate << '\n';

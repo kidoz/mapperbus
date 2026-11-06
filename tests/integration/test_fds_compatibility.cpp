@@ -219,7 +219,11 @@ void artifact(const Emulator& emulator, const char* name, SourceKind kind) {
     const auto* output = std::getenv("MAPPERBUS_FDS_TEST_OUTPUT");
     if (output == nullptr || *output == '\0')
         return;
-    std::filesystem::create_directories(output);
+    const auto directory =
+        std::filesystem::path(output) / (emulator.controller_timing() == ControllerTiming::RfFamicom
+                                             ? "rf-famicom"
+                                             : "nes-av-famicom");
+    std::filesystem::create_directories(directory);
     const std::string header = "P6\n256 240\n255\n";
     std::vector<Byte> bytes(header.begin(), header.end());
     for (auto pixel : emulator.frame_buffer().pixels) {
@@ -228,16 +232,17 @@ void artifact(const Emulator& emulator, const char* name, SourceKind kind) {
         bytes.push_back(static_cast<Byte>(pixel));
     }
     REQUIRE(write_binary_file_atomic(
-        (std::filesystem::path(output) / (std::string(source_name(kind)) + "-" + name)).string(),
+        (directory / (std::string(source_name(kind)) + "-" + name)).string(),
         bytes,
         "FDS compatibility frame"));
 }
-void check_smb2(SourceKind kind) {
+void check_smb2(SourceKind kind, ControllerTiming timing = ControllerTiming::NesAvFamicom) {
     INFO(source_name(kind));
     const auto media = assets("Super Mario Brothers 2 (Japan).fds",
                               "ff8afb9ae6b705b4e51dbcb193dcebadf4c049800a71003d3a45052648e52eda");
     MediaSources sources(media);
     Emulator emulator;
+    emulator.set_controller_timing(timing);
     sources.open(emulator, kind);
     const auto identity = emulator.content_hash();
     emulator.reset();
@@ -262,12 +267,13 @@ void check_smb2(SourceKind kind) {
     sources.verify_sources_unchanged();
 }
 
-void check_metroid(SourceKind kind) {
+void check_metroid(SourceKind kind, ControllerTiming timing = ControllerTiming::NesAvFamicom) {
     INFO(source_name(kind));
     const auto media = assets("Metroid (Japan) (Rev 3).fds",
                               "6a4fa984a12e26b394998b17a924aee2033e0313d8c70dcfc6dc48cbbf809299");
     MediaSources sources(media);
     Emulator emulator;
+    emulator.set_controller_timing(timing);
     sources.open(emulator, kind);
     const auto identity = emulator.content_hash();
     emulator.reset();
@@ -324,6 +330,7 @@ void check_metroid(SourceKind kind) {
         REQUIRE(std::ranges::equal(copy.fds().disk_image(), saved));
     }
     Emulator fresh;
+    fresh.set_controller_timing(timing);
     const auto other = kind == SourceKind::Raw   ? SourceKind::Zip
                        : kind == SourceKind::Zip ? SourceKind::SevenZip
                                                  : SourceKind::Raw;
@@ -369,4 +376,14 @@ TEST_CASE("Archived ZIP Metroid FDS saves and reloads progress across sources",
 TEST_CASE("Archived 7z Metroid FDS saves and reloads progress across sources",
           "[integration][fds][local][archive][7z]") {
     check_metroid(SourceKind::SevenZip);
+}
+
+TEST_CASE("Original RF Famicom SMB2 FDS boots and replays snapshots",
+          "[integration][fds][local][raw][rf-famicom]") {
+    check_smb2(SourceKind::Raw, ControllerTiming::RfFamicom);
+}
+
+TEST_CASE("Original RF Famicom Metroid FDS saves and reloads progress",
+          "[integration][fds][local][raw][rf-famicom]") {
+    check_metroid(SourceKind::Raw, ControllerTiming::RfFamicom);
 }

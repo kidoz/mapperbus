@@ -170,6 +170,41 @@ TEST_CASE("Version 3 states require explicit legacy import", "[state][identity]"
     std::filesystem::remove(rom);
 }
 
+TEST_CASE("Snapshots restore controller timing and legacy states select NES wiring",
+          "[state][controller]") {
+    Emulator emulator;
+    emulator.reset();
+    REQUIRE(emulator.controller_timing() == ControllerTiming::NesAvFamicom);
+    const auto legacy = mapperbus::tests::legacy_state(emulator, 13);
+    emulator.set_controller_timing(ControllerTiming::RfFamicom);
+    const auto rf = emulator.save_state();
+    emulator.step_instruction();
+    const auto after = emulator.save_state();
+    emulator.set_controller_timing(ControllerTiming::NesAvFamicom);
+    REQUIRE(emulator.load_state(rf));
+    CHECK(emulator.controller_timing() == ControllerTiming::RfFamicom);
+    emulator.step_instruction();
+    CHECK(emulator.save_state() == after);
+
+    REQUIRE(emulator.load_state(legacy));
+    CHECK(emulator.controller_timing() == ControllerTiming::NesAvFamicom);
+    REQUIRE(emulator.load_state(rf));
+    StateWriter cpu, ppu, apu, bus;
+    emulator.cpu().save_state(cpu);
+    emulator.ppu().save_state(ppu);
+    Apu{}.save_state(apu);
+    MemoryBus{}.save_state(bus);
+    const auto end =
+        43 + cpu.data().size() + ppu.data().size() + apu.data().size() + bus.data().size();
+    for (const bool invalid_timing : {false, true}) {
+        auto corrupt = rf;
+        // RF snapshots must have idle /OE at an instruction boundary.
+        corrupt[end - (invalid_timing ? 1 : 3)] = invalid_timing ? 255 : 1;
+        CHECK_FALSE(emulator.load_state(corrupt));
+        CHECK(emulator.save_state() == rf);
+    }
+}
+
 TEST_CASE("StateWriter/StateReader round-trips primitives, arrays and byte runs", "[state]") {
     StateWriter writer;
     writer.write<std::uint8_t>(0xAB);

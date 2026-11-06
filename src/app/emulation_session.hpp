@@ -57,6 +57,9 @@ class EmulationSession {
     void request_stop();
     void set_paused(bool paused);
     void set_region(core::Region region);
+    void set_controller_timing(core::ControllerTiming timing) {
+        emulator_.set_controller_timing(timing);
+    }
     void set_turbo_period(int frames) {
         turbo_input_.set_period(frames);
     }

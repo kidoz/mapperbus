@@ -24,6 +24,7 @@ struct SessionSnapshot {
     std::string rom_member;
     std::optional<std::uint16_t> mapper_number;
     core::Region region = core::Region::NTSC;
+    core::ControllerTiming controller_timing = core::ControllerTiming::NesAvFamicom;
     core::AudioSettings audio_settings{};
 };
 
@@ -40,6 +41,9 @@ class SessionActions {
     void power_cycle();
     void stop();
     void set_region(core::Region region);
+    void set_controller_timing(core::ControllerTiming timing) {
+        session_.set_controller_timing(timing);
+    }
     core::Result<void> apply_audio_settings(const core::AudioSettings& settings);
     core::Result<void> set_upscaler(std::unique_ptr<platform::Upscaler> upscaler);
     core::Result<void> save_state(int slot = 0);

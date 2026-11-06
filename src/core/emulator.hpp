@@ -143,6 +143,13 @@ class Emulator {
         return region_;
     }
 
+    void set_controller_timing(ControllerTiming timing) {
+        bus_.set_controller_timing(timing);
+    }
+    [[nodiscard]] ControllerTiming controller_timing() const {
+        return bus_.controller_timing();
+    }
+
     void set_region(Region region) {
         region_ = region;
         ppu_.set_region(region_);

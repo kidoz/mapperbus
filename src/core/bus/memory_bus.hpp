@@ -46,12 +46,21 @@ class MemoryBus {
         ppu_clock_phase_ = 0;
         set_controller_oe(0);
     }
+    void set_controller_timing(ControllerTiming timing) {
+        if (controller_timing_ != timing)
+            set_controller_oe(0);
+        controller_timing_ = timing;
+    }
+    [[nodiscard]] ControllerTiming controller_timing() const {
+        return controller_timing_;
+    }
 
     void save_state(StateWriter& writer) const;
     void load_state(StateReader& reader,
                     bool has_interrupt_state = true,
                     bool has_clock_phase = true,
-                    bool has_io_state = true);
+                    bool has_io_state = true,
+                    bool has_controller_timing = true);
     void restore_legacy_controller();
     /// Detector outputs for the current CPU cycle: IRQ level and latched NMI edge.
     [[nodiscard]] Byte interrupt_sample() const {
@@ -121,6 +130,7 @@ class MemoryBus {
     Byte open_bus_ = 0;
     uint32_t dma_cycles_ = 0;
     Region region_ = Region::NTSC;
+    ControllerTiming controller_timing_ = ControllerTiming::NesAvFamicom;
     Byte ppu_clock_phase_ = 0; // elapsed master clocks since the last PPU dot
     Byte controller_oe_ = 0;   // 0: neither, 1/2: continuous read of that port
     bool controller_strobe_request_ = false;

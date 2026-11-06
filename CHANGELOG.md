@@ -33,6 +33,8 @@ Versioning.
 - FDS BIOS boot with the RAM adapter, raw/archived disk loading, side and
   write-protection controls, persistent disk changes, and disk-image export.
 - Shared FDS BIOS configuration and CLI `--fds-bios` / `--frames` options.
+- Selectable NES/AV Famicom or original RF Famicom controller timing, with
+  shared configuration, CLI/SDL3 overrides, and GUI hardware settings.
 
 ### Fixed
 
@@ -74,9 +76,10 @@ Versioning.
 
 ### Changed
 
-- Save-state version 13 preserves controller line/strobe history and the PPU
-  I/O latch, alongside DMC stop latches, regional clocks, interrupts, and FDS
-  state. Versions 4–12 remain readable with reconstructed missing history;
+- Save-state version 14 preserves the controller timing selection, controller
+  line/strobe history, and PPU I/O latch, alongside DMC stop latches, regional
+  clocks, interrupts, and FDS state. Versions 4–13 remain readable with reconstructed missing history;
+  pre-v14 states select NES/AV Famicom controller timing;
   pre-v13 I/O latches start at zero and pre-v11 PAL states start with a fresh
   divider phase.
 

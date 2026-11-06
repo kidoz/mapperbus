@@ -326,19 +326,62 @@ TEST_CASE("NES controller reads clock once per continuous output enable", "[bus]
 
 TEST_CASE("Controller strobe samples one-cycle pulses at the get-to-put boundary",
           "[bus][controller]") {
-    for (const bool starts_on_get : {false, true}) {
-        IoMachine machine;
-        machine.latch();
-        for (int index = 0; index < 8; ++index)
-            (void)machine.pads.read(0);
-        REQUIRE(machine.pads.peek(0) == 1);
-        if (starts_on_get)
+    for (const auto timing : {ControllerTiming::NesAvFamicom, ControllerTiming::RfFamicom}) {
+        for (const bool starts_on_get : {false, true}) {
+            IoMachine machine;
+            machine.bus.set_controller_timing(timing);
+            machine.latch();
+            for (int index = 0; index < 8; ++index)
+                (void)machine.pads.read(0);
+            REQUIRE(machine.pads.peek(0) == 1);
+            if (starts_on_get)
+                (void)machine.read(0);
+            machine.write(0x4016, 1);
+            machine.write(0x4016, 0);
             (void)machine.read(0);
-        machine.write(0x4016, 1);
-        machine.write(0x4016, 0);
-        (void)machine.read(0);
-        CHECK(machine.pads.peek(0) == (starts_on_get ? 0 : 1));
+            CHECK(machine.pads.peek(0) == (starts_on_get ? 0 : 1));
+        }
     }
+}
+
+TEST_CASE("RF Famicom clocks each consecutive read on both ports", "[bus][controller]") {
+    for (const auto region : {Region::NTSC, Region::Multi, Region::PAL, Region::Dendy}) {
+        IoMachine machine;
+        machine.bus.set_region(region);
+        machine.bus.set_controller_timing(ControllerTiming::RfFamicom);
+        machine.pads.set_button_state(0, Button::A, true);
+        machine.pads.set_button_state(0, Button::Select, true);
+        machine.pads.set_button_state(1, Button::B, true);
+        machine.latch();
+        CHECK((machine.read(0x4016) & 1U) == 1);
+        const auto before = machine.save();
+        CHECK((machine.read(0x4016) & 1U) == 0);
+        CHECK((machine.read(0x4016) & 1U) == 1);
+        CHECK((machine.read(0x4017) & 1U) == 0);
+        CHECK((machine.read(0x4017) & 1U) == 1);
+        const auto after = machine.save();
+        machine.bus.set_controller_timing(ControllerTiming::NesAvFamicom);
+        machine.restore(before);
+        REQUIRE(machine.bus.controller_timing() == ControllerTiming::RfFamicom);
+        for (const Address address :
+             {Address{0x4016}, Address{0x4016}, Address{0x4017}, Address{0x4017}})
+            (void)machine.read(address);
+        CHECK(machine.save() == after);
+    }
+}
+
+TEST_CASE("Controller timing changes release a held NES read exactly once", "[bus][controller]") {
+    IoMachine machine;
+    machine.pads.set_button_state(0, Button::A, true);
+    machine.pads.set_button_state(0, Button::Select, true);
+    machine.latch();
+    CHECK((machine.read(0x4016) & 1U) == 1);
+    machine.bus.set_controller_timing(ControllerTiming::NesAvFamicom);
+    CHECK((machine.read(0x4016) & 1U) == 1);
+    machine.bus.set_controller_timing(ControllerTiming::RfFamicom);
+    CHECK((machine.read(0x4016) & 1U) == 0);
+    machine.bus.set_controller_timing(ControllerTiming::RfFamicom);
+    CHECK((machine.read(0x4016) & 1U) == 1);
 }
 
 TEST_CASE("Controller read enables and pending strobes survive device snapshots",

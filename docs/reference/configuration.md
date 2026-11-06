@@ -32,7 +32,7 @@ When `mapperbus.conf` is absent, the loader can read a sibling legacy
 - Saving writes recognized settings through a sibling temporary file followed
   by rename. Unknown settings and comments are not preserved.
 - GUI settings and per-game slot selections can be saved. The SDL3 frontend reads supported settings and
-  applies process-local command-line overrides. The headless CLI reads the FDS BIOS path.
+  applies process-local command-line overrides. The headless CLI reads the FDS BIOS path and controller timing.
 
 ## Format identity
 
@@ -58,6 +58,19 @@ as GUI presentation settings or as its startup region override.
 
 Use the GUI to choose indexed preferences rather than treating the stored index
 as a literal scale multiplier or pixel density.
+
+## Controller timing
+
+`[input] controller_timing` accepts `nes-av-famicom` (default) or `rf-famicom`.
+Unknown or missing values select the default. All frontends apply this preference;
+CLI and SDL3 accept a process-local `--controller-timing` override. In the GUI,
+Settings → General → Hardware changes it immediately for both ports and saves it.
+It affects NTSC read edges only, independently of region and CPU revision.
+
+Snapshots restore the timing saved with the machine; versions before 14 select
+NES/AV Famicom. Loading a snapshot does not overwrite the preference in the
+configuration file. A new GUI ROM open reapplies the saved preference. Reset
+retains the active machine selection. See [DMA timing](dma-timing.md).
 
 ## Famicom Disk System
 

@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <memory>
+#include <optional>
 #include <string_view>
 
 #include "app/app.hpp"
@@ -102,6 +103,8 @@ int main(int argc, char* argv[]) {
             "  --filter-mode MODE    accurate, enhanced, or unfiltered (default: accurate)");
         mapperbus::core::logger::info(
             "  --region R            ntsc, pal, or dendy (default: auto)");
+        mapperbus::core::logger::info(
+            "  --controller-timing T nes-av-famicom (default) or rf-famicom");
         mapperbus::core::logger::info("  --filter-profile P    nes or famicom (default: nes)");
         mapperbus::core::logger::info("  --stereo              enable pseudo-stereo output");
         mapperbus::core::logger::info("  --dither              enable TPDF dithering");
@@ -140,6 +143,7 @@ int main(int argc, char* argv[]) {
     std::string_view rom_member;
     std::string fds_bios;
     auto mapperbus_config = mapperbus::app::load_mapperbus_configuration();
+    auto controller_timing = mapperbus_config.input.controller_timing;
     auto state_storage = mapperbus_config.save_states;
     fds_bios = mapperbus_config.fds_bios_path;
     mapperbus::core::AudioSettings audio_settings = mapperbus_config.audio;
@@ -224,6 +228,15 @@ int main(int argc, char* argv[]) {
             fds_bios = argv[++i];
         } else if (std::strcmp(argv[i], "--entry") == 0 && i + 1 < argc) {
             rom_member = argv[++i];
+        } else if (std::strcmp(argv[i], "--controller-timing") == 0) {
+            const auto timing =
+                i + 1 < argc ? mapperbus::app::parse_controller_timing(argv[++i]) : std::nullopt;
+            if (!timing) {
+                mapperbus::core::logger::error(
+                    "--controller-timing requires nes-av-famicom or rf-famicom");
+                return EXIT_FAILURE;
+            }
+            controller_timing = *timing;
         } else if (std::strcmp(argv[i], "--region") == 0 && i + 1 < argc) {
             region_override = argv[++i];
         } else {
@@ -271,6 +284,7 @@ int main(int argc, char* argv[]) {
     app.session().set_turbo_period(mapperbus_config.input.turbo_period_frames);
     app.session().set_state_storage(state_storage);
     app.session().set_fds_bios_path(fds_bios);
+    app.session().set_controller_timing(controller_timing);
     auto result = app.initialize(rom_path, rom_member);
     if (!result) {
         mapperbus::core::logger::error("{}", result.error());

@@ -37,6 +37,12 @@ enum class Region : std::uint8_t {
     Multi, // Multiple-region (game self-detects)
 };
 
+/// NTSC controller output-enable wiring, independent of CPU revision and region.
+enum class ControllerTiming : std::uint8_t {
+    NesAvFamicom,
+    RfFamicom,
+};
+
 struct RegionTiming {
     int scanlines_per_frame;
     int vblank_scanline;

@@ -1044,6 +1044,7 @@ MapperBusGuiController::MapperBusGuiController(nk::Application& app, nk::Window&
     session_->set_turbo_period(configuration_.input.turbo_period_frames);
     session_->set_state_storage(configuration_.save_states);
     session_->set_fds_bios_path(configuration_.fds_bios_path);
+    session_->set_controller_timing(configuration_.input.controller_timing);
     if (replaced_reserved_binding) {
         save_configuration_state();
     }
@@ -1742,7 +1743,9 @@ void MapperBusGuiController::attempt_open(std::string rom_path, std::string memb
     touch_recent_rom(configuration_, rom_path, session_->current_rom_member());
     save_configuration_state();
     detected_region_ = actions_->snapshot().region;
+    actions_->set_controller_timing(configuration_.input.controller_timing);
     apply_region_preference();
+    refresh_settings_dialog_sections();
     actions_->step_frame();
     frame_accumulator_ = std::chrono::nanoseconds{0};
     last_tick_time_ = std::chrono::steady_clock::now();
@@ -2117,6 +2120,7 @@ void MapperBusGuiController::load_session_state(int slot) {
         select_state_slot(slot);
         refresh_preview();
         set_message("Loaded state from " + basename_for_display(path.value_or("")) + ".");
+        refresh_settings_dialog_sections();
     } else {
         set_message(result.error());
     }
@@ -2614,6 +2618,26 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
     page->set_horizontal_size_policy(nk::SizePolicy::Expanding);
     if (settings_page_ == SettingsPage::General) {
         input_test_label_.reset();
+        auto hardware_group = SettingsGroup::create("Hardware");
+        hardware_group->set_horizontal_size_policy(nk::SizePolicy::Expanding);
+        auto timing_combo = nk::ComboBox::create();
+        timing_combo->set_items({"NES / AV Famicom", "Original RF Famicom"});
+        timing_combo->set_selected_index(
+            actions_->snapshot().controller_timing == core::ControllerTiming::RfFamicom ? 1 : 0);
+        timing_combo->ensure_accessible().set_name("Controller timing");
+        (void)timing_combo->on_selection_changed().connect([this](int index) {
+            configuration_.input.controller_timing = index == 1
+                                                         ? core::ControllerTiming::RfFamicom
+                                                         : core::ControllerTiming::NesAvFamicom;
+            actions_->set_controller_timing(configuration_.input.controller_timing);
+            save_configuration_state();
+            set_message(index == 1 ? "Controller timing set to original RF Famicom."
+                                   : "Controller timing set to NES / AV Famicom.");
+            refresh_ui();
+        });
+        hardware_group->add(
+            pref_row("Controller timing", timing_combo, "Both controllers in NTSC mode."));
+        page->append(hardware_group);
         auto bios_group = SettingsGroup::create("BIOS");
         bios_group->set_horizontal_size_policy(nk::SizePolicy::Expanding);
         const auto bios_path = configuration_.fds_bios_path.empty()

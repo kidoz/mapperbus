@@ -131,6 +131,31 @@ TEST_CASE("Both input profiles persist independently", "[app][configuration][inp
     std::filesystem::remove_all(path.parent_path());
 }
 
+TEST_CASE("Controller timing configuration has tolerant defaults and strict option tokens",
+          "[app][configuration][input]") {
+    CHECK_FALSE(parse_controller_timing("invalid"));
+    CHECK_FALSE(parse_controller_timing(""));
+    const auto path = temporary_config_path();
+    CHECK(load_mapperbus_configuration_from_file(path).input.controller_timing ==
+          core::ControllerTiming::NesAvFamicom);
+    std::filesystem::create_directories(path.parent_path());
+    for (const auto token : {"nes-av-famicom", "rf-famicom", "invalid"}) {
+        {
+            std::ofstream file(path);
+            file << "[input]\ncontroller_timing=" << token << '\n';
+        }
+        const auto loaded = load_mapperbus_configuration_from_file(path);
+        CHECK(loaded.input.controller_timing ==
+              parse_controller_timing(token).value_or(core::ControllerTiming::NesAvFamicom));
+        REQUIRE(save_mapperbus_configuration_to_file(loaded, path));
+        CHECK(load_mapperbus_configuration_from_file(path).input.controller_timing ==
+              loaded.input.controller_timing);
+        CHECK(parse_controller_timing(controller_timing_token(loaded.input.controller_timing)) ==
+              loaded.input.controller_timing);
+    }
+    std::filesystem::remove_all(path.parent_path());
+}
+
 TEST_CASE("Older input files keep player one settings and independent player two defaults",
           "[app][configuration][input]") {
     const auto path = temporary_config_path();
@@ -250,6 +275,7 @@ TEST_CASE("MapperBus configuration round-trips universal settings", "[app][confi
     configuration.frontend.audio_muted = true;
     configuration.frontend.audio_volume_percent = 40;
     configuration.frontend.region = RegionPreference::Pal;
+    configuration.input.controller_timing = core::ControllerTiming::RfFamicom;
     configuration.input.keyboard_bindings[platform::button_index(core::Button::A)] = 44;
     configuration.input.gamepad.enabled = false;
     configuration.input.gamepad.gamepad_index = 2;
@@ -279,6 +305,7 @@ TEST_CASE("MapperBus configuration round-trips universal settings", "[app][confi
     REQUIRE(loaded.frontend.audio_muted);
     REQUIRE(loaded.frontend.audio_volume_percent == 40);
     REQUIRE(loaded.frontend.region == RegionPreference::Pal);
+    REQUIRE(loaded.input.controller_timing == core::ControllerTiming::RfFamicom);
     REQUIRE(loaded.input.keyboard_bindings[platform::button_index(core::Button::A)] == 44);
     REQUIRE_FALSE(loaded.input.gamepad.enabled);
     REQUIRE(loaded.input.gamepad.gamepad_index == 2);

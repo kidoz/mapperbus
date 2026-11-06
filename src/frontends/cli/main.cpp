@@ -12,18 +12,29 @@
 int main(int argc, char* argv[]) {
     std::string path;
     std::string member;
-    auto bios = mapperbus::app::load_mapperbus_configuration().fds_bios_path;
+    const auto configuration = mapperbus::app::load_mapperbus_configuration();
+    auto bios = configuration.fds_bios_path;
+    auto controller_timing = configuration.input.controller_timing;
     int frames = 60;
     for (int index = 1; index < argc; ++index) {
         const std::string_view argument(argv[index]);
-        if ((argument == "--entry" || argument == "--fds-bios" || argument == "--frames") &&
+        if ((argument == "--entry" || argument == "--fds-bios" || argument == "--frames" ||
+             argument == "--controller-timing") &&
             index + 1 < argc) {
             const std::string_view value(argv[++index]);
             if (argument == "--entry")
                 member = value;
             else if (argument == "--fds-bios")
                 bios = value;
-            else {
+            else if (argument == "--controller-timing") {
+                const auto timing = mapperbus::app::parse_controller_timing(value);
+                if (!timing) {
+                    mapperbus::core::logger::error(
+                        "--controller-timing requires nes-av-famicom or rf-famicom");
+                    return EXIT_FAILURE;
+                }
+                controller_timing = *timing;
+            } else {
                 const auto parsed =
                     std::from_chars(value.data(), value.data() + value.size(), frames);
                 if (parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size() ||
@@ -42,11 +53,13 @@ int main(int argc, char* argv[]) {
     }
     if (path.empty()) {
         mapperbus::core::logger::error("Usage: mapperbus-cli <rom-file|archive> [--entry NAME] "
-                                       "[--fds-bios PATH] [--frames N]");
+                                       "[--fds-bios PATH] [--frames N] "
+                                       "[--controller-timing nes-av-famicom|rf-famicom]");
         return EXIT_FAILURE;
     }
     mapperbus::core::register_builtin_mappers();
     mapperbus::core::Emulator emulator;
+    emulator.set_controller_timing(controller_timing);
     auto result = mapperbus::app::load_rom_source(emulator, path, member, bios);
     if (!result) {
         mapperbus::core::logger::error("{}", result.error());
