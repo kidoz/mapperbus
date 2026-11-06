@@ -64,12 +64,24 @@ Expansion audio follows the same boundary. Mappers can clock their own sound
 hardware and expose an output that the APU mixes. Register routing and IRQ
 polling remain coordinated through the bus and emulator timing.
 
+CPU accesses, including dummy reads and both read-modify-write writes, pass through
+the bus with their side effects. The bus advances FDS disk, timer, and watchdog
+clocks before each CPU/DMA access; the emulator advances PPU/APU and expansion
+audio separately. OAM DMA runs after the instruction's last write. CPU mapper
+writes carry consecutive-cycle information so MMC1 can filter serial writes
+without putting mapper-specific logic in the CPU. DMC request placement and
+interrupt sampling retain the limits described in the
+[FDS compatibility reference](../reference/fds-compatibility.md#remaining-accuracy-limits).
+
 ## Persistence belongs at different boundaries
 
 Machine snapshots serialize emulation state. Battery files persist cartridge
 RAM. User configuration describes host preferences such as input mappings and
 audio settings. Keeping these separate means a UI preference does not become
 part of cartridge hardware state.
+
+Snapshots are taken between instructions, after any OAM DMA. CPU bus-cycle and
+pending-DMA bookkeeping is transient and does not change the snapshot layout.
 
 The core implements snapshot and battery operations. The session assigns save
 slot filenames. The application configuration layer reads and writes

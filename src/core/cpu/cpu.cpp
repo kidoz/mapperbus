@@ -30,6 +30,8 @@ void Cpu::load_state(StateReader& reader) {
     reader.read(status_);
     reader.read(total_cycles_);
     bus_cycles_ = 0;
+    last_write_cycle_ = 0;
+    oam_dma_page_.reset();
 }
 
 void Cpu::reset() {
@@ -41,6 +43,8 @@ void Cpu::reset() {
     total_cycles_ = 0;
     jammed_ = false;
     bus_cycles_ = 0;
+    last_write_cycle_ = 0;
+    oam_dma_page_.reset();
 
     // Read reset vector at $FFFC-$FFFD
     Byte lo = bus_.read(0xFFFC);
@@ -58,26 +62,33 @@ void Cpu::clock_bus(Address addr, uint32_t cycles) const {
     bus_.clock_cpu_bus(addr, cycles);
 }
 
+void Cpu::dummy_read(Address addr, uint32_t cycles) const {
+    for (uint32_t cycle = 0; cycle < cycles; ++cycle)
+        (void)read(addr);
+}
+
 void Cpu::finish_bus_cycles(uint32_t cycles) const {
     assert(bus_cycles_ <= cycles);
     // Implied/accumulator operations and unsupported-opcode NOPs perform
     // their remaining read at the next PC. Other addressing/stack cycles
-    // are observed explicitly below, without adding new I/O side effects.
+    // perform their real bus reads, including memory-mapped I/O side effects.
     if (bus_cycles_ < cycles)
-        clock_bus(pc_, cycles - bus_cycles_);
+        dummy_read(pc_, cycles - bus_cycles_);
 }
 
-Byte Cpu::read_modify(Address addr) const {
+Byte Cpu::read_modify(Address addr) {
     const Byte value = read(addr);
-    clock_bus(addr); // Observe the NMOS old-value write without adding I/O side effects.
+    write(addr, value); // NMOS RMW instructions write the old value before the new one.
     return value;
 }
 
 void Cpu::write(Address addr, Byte value) {
+    const bool consecutive = bus_cycles_ == last_write_cycle_;
     clock_bus(addr);
-    bus_.write(addr, value);
+    bus_.write_cpu(addr, value, consecutive);
+    last_write_cycle_ = bus_cycles_;
     if (addr == 0x4014)
-        bus_.clock_oam_dma(value, pc_, ((total_cycles_ + bus_cycles_) & 1U) != 0);
+        oam_dma_page_ = value;
 }
 
 Byte Cpu::fetch_byte() {
@@ -221,21 +232,23 @@ Cpu::AddressResult Cpu::indirect_indexed(Byte zero_page_addr, bool always_dummy)
     Word base = read_word_zero_page(zero_page_addr);
     Word address = static_cast<Word>(base + y_);
     if (always_dummy || (base & 0xFF00U) != (address & 0xFF00U))
-        clock_bus(static_cast<Address>((base & 0xFF00U) | (address & 0x00FFU)));
+        dummy_read(static_cast<Address>((base & 0xFF00U) | (address & 0x00FFU)));
     return {.address = address, .page_crossed = (base & 0xFF00) != (address & 0xFF00)};
 }
 
 uint32_t Cpu::step() {
     bus_cycles_ = 0;
+    last_write_cycle_ = 0;
+    oam_dma_page_.reset();
     if (jammed_) {
         // KIL halts the CPU until reset: stay parked and only burn cycles.
         total_cycles_ += 2;
-        clock_bus(pc_, 2);
+        dummy_read(pc_, 2);
         return 2;
     }
 
     if (bus_.poll_nmi()) {
-        clock_bus(pc_, 2);
+        dummy_read(pc_, 2);
         service_interrupt(0xFFFA, false);
         finish_bus_cycles(7);
         total_cycles_ += 7;
@@ -243,7 +256,7 @@ uint32_t Cpu::step() {
     }
 
     if (!get_flag(InterruptDisable) && bus_.poll_irq()) {
-        clock_bus(pc_, 2);
+        dummy_read(pc_, 2);
         service_interrupt(0xFFFE, false);
         finish_bus_cycles(7);
         total_cycles_ += 7;
@@ -253,12 +266,12 @@ uint32_t Cpu::step() {
     auto zero_page = [this]() -> Address { return fetch_byte(); };
     auto zero_page_x = [this]() -> Address {
         const auto base = fetch_byte();
-        clock_bus(base);
+        dummy_read(base);
         return static_cast<Byte>(base + x_);
     };
     auto zero_page_y = [this]() -> Address {
         const auto base = fetch_byte();
-        clock_bus(base);
+        dummy_read(base);
         return static_cast<Byte>(base + y_);
     };
     auto absolute = [this]() -> Address { return fetch_word(); };
@@ -266,19 +279,19 @@ uint32_t Cpu::step() {
         Word base = fetch_word();
         Word address = static_cast<Word>(base + x_);
         if (always_dummy || (base & 0xFF00U) != (address & 0xFF00U))
-            clock_bus(static_cast<Address>((base & 0xFF00U) | (address & 0x00FFU)));
+            dummy_read(static_cast<Address>((base & 0xFF00U) | (address & 0x00FFU)));
         return {.address = address, .page_crossed = (base & 0xFF00) != (address & 0xFF00)};
     };
     auto absolute_y = [this](bool always_dummy = false) -> AddressResult {
         Word base = fetch_word();
         Word address = static_cast<Word>(base + y_);
         if (always_dummy || (base & 0xFF00U) != (address & 0xFF00U))
-            clock_bus(static_cast<Address>((base & 0xFF00U) | (address & 0x00FFU)));
+            dummy_read(static_cast<Address>((base & 0xFF00U) | (address & 0x00FFU)));
         return {.address = address, .page_crossed = (base & 0xFF00) != (address & 0xFF00)};
     };
     auto indirect_x = [this]() -> Address {
         Byte base = fetch_byte();
-        clock_bus(base);
+        dummy_read(base);
         Byte ptr = static_cast<Byte>(base + x_);
         return read_word_zero_page(ptr);
     };
@@ -292,10 +305,10 @@ uint32_t Cpu::step() {
             return 2;
         }
         Word previous = pc_;
-        clock_bus(previous);
+        dummy_read(previous);
         pc_ = static_cast<Word>(pc_ + offset);
         if ((previous & 0xFF00U) != (pc_ & 0xFF00U))
-            clock_bus(static_cast<Address>((previous & 0xFF00U) | (pc_ & 0x00FFU)));
+            dummy_read(static_cast<Address>((previous & 0xFF00U) | (pc_ & 0x00FFU)));
         return 2 + 1 + (((previous & 0xFF00) != (pc_ & 0xFF00)) ? 1 : 0);
     };
 
@@ -327,7 +340,7 @@ uint32_t Cpu::step() {
         break;
     }
     case 0x08:
-        clock_bus(pc_);
+        dummy_read(pc_);
         push(static_cast<Byte>(status_ | Break | Unused));
         cycles = 3;
         break;
@@ -341,7 +354,7 @@ uint32_t Cpu::step() {
         cycles = 2;
         break;
     case 0x0C:
-        clock_bus(absolute());
+        dummy_read(absolute());
         cycles = 4;
         break;
     case 0x0D:
@@ -372,7 +385,7 @@ uint32_t Cpu::step() {
     case 0x74:
     case 0xD4:
     case 0xF4:
-        clock_bus(zero_page_x());
+        dummy_read(zero_page_x());
         cycles = 4;
         break;
     case 0x15:
@@ -408,7 +421,7 @@ uint32_t Cpu::step() {
     case 0xDC:
     case 0xFC: {
         auto addr = absolute_x();
-        clock_bus(addr.address);
+        dummy_read(addr.address);
         cycles = 4 + (addr.page_crossed ? 1 : 0);
         break;
     }
@@ -428,7 +441,7 @@ uint32_t Cpu::step() {
     }
     case 0x20: {
         const auto low = fetch_byte();
-        clock_bus(static_cast<Address>(0x0100U | sp_));
+        dummy_read(static_cast<Address>(0x0100U | sp_));
         push_word(pc_);
         const auto high = fetch_byte();
         pc_ = static_cast<Word>((static_cast<uint32_t>(high) << 8U) | low);
@@ -462,8 +475,8 @@ uint32_t Cpu::step() {
         break;
     }
     case 0x28:
-        clock_bus(pc_);
-        clock_bus(static_cast<Address>(0x0100U | sp_));
+        dummy_read(pc_);
+        dummy_read(static_cast<Address>(0x0100U | sp_));
         status_ = static_cast<Byte>((pop() & ~Break) | Unused);
         cycles = 4;
         break;
@@ -547,8 +560,8 @@ uint32_t Cpu::step() {
         break;
     }
     case 0x40:
-        clock_bus(pc_);
-        clock_bus(static_cast<Address>(0x0100U | sp_));
+        dummy_read(pc_);
+        dummy_read(static_cast<Address>(0x0100U | sp_));
         status_ = static_cast<Byte>((pop() & ~Break) | Unused);
         pc_ = pop_word();
         cycles = 6;
@@ -562,7 +575,7 @@ uint32_t Cpu::step() {
     case 0x04:
     case 0x44:
     case 0x64:
-        clock_bus(zero_page());
+        dummy_read(zero_page());
         cycles = 3;
         break;
     case 0x45:
@@ -578,7 +591,7 @@ uint32_t Cpu::step() {
         break;
     }
     case 0x48:
-        clock_bus(pc_);
+        dummy_read(pc_);
         push(a_);
         cycles = 3;
         break;
@@ -658,10 +671,10 @@ uint32_t Cpu::step() {
         break;
     }
     case 0x60: {
-        clock_bus(pc_);
-        clock_bus(static_cast<Address>(0x0100U | sp_));
+        dummy_read(pc_);
+        dummy_read(static_cast<Address>(0x0100U | sp_));
         const auto target = pop_word();
-        clock_bus(target);
+        dummy_read(target);
         pc_ = static_cast<Word>(target + 1);
         cycles = 6;
         break;
@@ -682,8 +695,8 @@ uint32_t Cpu::step() {
         break;
     }
     case 0x68:
-        clock_bus(pc_);
-        clock_bus(static_cast<Address>(0x0100U | sp_));
+        dummy_read(pc_);
+        dummy_read(static_cast<Address>(0x0100U | sp_));
         a_ = pop();
         set_zero_negative(a_);
         cycles = 4;
@@ -1665,6 +1678,10 @@ uint32_t Cpu::step() {
     }
 
     finish_bus_cycles(cycles);
+    if (oam_dma_page_) {
+        cycles += bus_.run_oam_dma(*oam_dma_page_, pc_, ((total_cycles_ + cycles) & 1U) != 0);
+        oam_dma_page_.reset();
+    }
     uint32_t dma_cycles = bus_.take_dma_cycles();
     if (dma_cycles > 0) {
         if ((total_cycles_ + cycles) % 2 != 0) {

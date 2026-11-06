@@ -21,11 +21,15 @@ class MemoryBus {
 
     Byte read(Address addr);
     void write(Address addr, Byte value);
-    /// Address-only observation: no memory/register side effects. CPU owns
-    /// instruction cycles; ordinary read/write remain usable by debuggers.
+    /// CPU writes latch $4014; Cpu runs its DMA after the instruction's last
+    /// write, at the next read cycle. Other writes have their normal effects.
+    void write_cpu(Address addr, Byte value, bool consecutive = false);
+    /// Advance FDS clocks for a CPU/DMA cycle without performing the access.
+    /// Ordinary read/write remain untimed debugger/test operations.
     void clock_cpu_bus(Address addr, uint32_t cycles = 1);
-    void clock_oam_dma(Byte page, Address halt_address, bool odd_alignment);
-    Byte read_dmc(Address addr, Address halt_address);
+    uint32_t run_oam_dma(Byte page, Address halt_address, bool odd_alignment);
+    /// Existing four-cycle fetch model; 2A03 halt reads have real side effects.
+    Byte read_dmc(Address addr, Address halt_address, Region region = Region::NTSC);
 
     void save_state(StateWriter& writer) const;
     void load_state(StateReader& reader);

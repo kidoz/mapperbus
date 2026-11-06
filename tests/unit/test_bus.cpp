@@ -98,3 +98,11 @@ TEST_CASE("MemoryBus RAM read/write", "[bus]") {
         // The +1 alignment cycle is modeled in Cpu::step, this confirms Bus returns base cost
     }
 }
+
+TEST_CASE("Write-only APU registers preserve CPU open bus", "[bus][bus-side-effects]") {
+    MemoryBus bus;
+    for (const Address address : {0x4000, 0x4013, 0x4014}) {
+        bus.write(0, 0x5A);
+        CHECK(bus.read(address) == 0x5A);
+    }
+}

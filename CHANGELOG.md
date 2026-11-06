@@ -24,6 +24,10 @@ Versioning.
 
 ### Fixed
 
+- FDS register acknowledgements on CPU dummy reads and DMA, with per-bus-cycle
+  disk/timer clocks and bytes arriving during OAM/DMC stalls. Restore both NMOS
+  read-modify-write writes, defer OAM DMA to the last page written, and preserve
+  MMC1 consecutive-write filtering and reset handling.
 - Keep the GUI window visible when FDS progress cannot be saved, using the
   toolkit's close-veto policy before its close notification.
 - Resume the audio device when closing a paused game so the next game can

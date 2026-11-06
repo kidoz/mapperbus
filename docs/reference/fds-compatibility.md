@@ -143,13 +143,26 @@ Reading `$4030` acknowledges the watchdog (`D1`) and timer (`D0`), while retaini
 the transfer IRQ (`D7`). Clearing `$4023.D7` acknowledges the watchdog without
 resetting either counter.
 
-CPU execution reports bus addresses for explicit accesses, implied idle cycles,
-index correction, stack/interrupt handling, unofficial NOPs, and read-modify-write
-cycles. The observation of dummy cycles does not add memory-mapped I/O side
-effects. OAM DMA includes source reads, PPU writes, and halt/alignment clocks;
-DMC includes the existing three-stall-plus-one-sample approximation. Host debugger
-reads do not advance these counters. Drive/audio stepping does not clock the
-watchdog a second time.
+CPU execution performs real bus reads for implied idle cycles, index correction,
+stack/interrupt handling, and unofficial NOPs. These reads acknowledge `$4030`
+and consume `$4031` just as explicit reads do. Read-modify-write instructions
+perform both the old-value and new-value writes. MMC1 filters consecutive serial
+data writes while still accepting a reset write.
+
+The bus advances the FDS watchdog, timer, and disk transfer once before each
+CPU/DMA access. This allows bytes arriving during DMA to be read or acknowledged
+on that DMA cycle. OAM DMA starts at the next read after the last `$4014` write,
+uses the last page written by a read-modify-write instruction, and performs real
+halt/alignment and source reads between PPU writes. DMC retains the existing
+three-stall-plus-one-sample approximation; its NTSC/Dendy halt cycles repeat the
+halted read, while PAL retains clock-only stalls pending separate validation.
+Untimed host debugger/test accesses do not advance these clocks. The emulator
+does not step the FDS drive a second time after an instruction or DMA; expansion
+audio is clocked separately.
+
+These contracts follow the [DMA reference](https://www.nesdev.org/wiki/DMA),
+[hardware DMA tests](https://forums.nesdev.org/viewtopic.php?t=14120), and
+[MMC1 register reference](https://www.nesdev.org/wiki/MMC1).
 
 Snapshot version 7 appends the timer, row, IRQ enable, and pending latch. Versions
 4–6 remain readable; their missing watchdog state starts reset and disabled until
@@ -165,8 +178,9 @@ shows `$67FF` / `$6E25`; both captured values match in MapperBus.
 
 ### Remaining accuracy limits
 
-- The instruction-stepped CPU/bus approximates the exact cycle of register access
-  and interrupt sampling. The 21 IRQ results do not certify all cycle-level cases.
+- IRQ/NMI sampling remains at instruction boundaries, and PPU/APU advancement
+  remains instruction-batched. The 21 IRQ results do not certify all cycle-level
+  cases, including the precise interrupt sampling cycle.
 - `$4094` exposes the settled product rather than sequential multiplier partial
   results. `$4095`'s undocumented upper counter and the absolute alignment of
   divider/PWM phases to hardware power-on are not verified.
@@ -176,10 +190,10 @@ shows `$67FF` / `$6E25`; both captured values match in MapperBus.
   [research and capture probe](fds-audio-research.md) for the evidence and limits.
 - Audio reset transients, analog filtering/DAC nonlinearity, and rapid
   pause/resume behavior need further hardware work.
-- Watchdog address accounting does not turn the CPU into a fully cycle-stepped
-  bus. Interrupt sampling, dummy I/O side effects, OAM DMA reads of I/O space,
-  and exact DMC halt placement retain instruction-level approximations. Analog
-  DRAM decay, 2C33 test mode, and mechanical disk effects are not modeled.
+- DMC requests use the next instruction's PC as the halt address at the APU
+  callback. Exact request placement, three/four-cycle arbitration, OAM/DMC overlap,
+  and PAL repeated-read behavior remain unverified. Reset-cycle bus activity,
+  analog DRAM decay, 2C33 test mode, and mechanical disk effects are not modeled.
 - CRC coverage includes the public BIOS-dumper write/readback flows, independent
   fixed vectors, and injected CRC faults described above. Physical-drive fault
   timing, copy-protection circuitry, and torn magnetic writes are not certified.
@@ -322,6 +336,10 @@ legacy-state conversion, invalid audio state, and replay during a table write.
 Watchdog coverage checks every opcode's elapsed clock count, dummy/stack/indexed
 addresses, OAM/DMC cycles, refresh and starvation loops, shared IRQ acknowledgement,
 mask/reset behavior, and malformed-state rollback.
+Bus-side-effect regressions check indexed correction reads, NOPs, RTS and accepted
+IRQ prefetches against `$4030`/`$4031`, bytes arriving during OAM/DMC stalls,
+write-only APU open bus, both RMW writes, and deterministic snapshot replay across
+DMA. MMC1 tests run CPU RMW instructions against its serial and reset ports.
 Wave frequency and envelope tests explicitly enable sound before starting a
 channel. These register contracts are
 based on the [NESdev FDS register reference](https://www.nesdev.org/wiki/Famicom_Disk_System)
@@ -333,7 +351,7 @@ model.
 Run the synthetic coverage without a BIOS or game image:
 
 ```sh
-meson test -C buildDir fds fds-system save-state --print-errorlogs
+meson test -C buildDir bus fds fds-system mappers save-state --print-errorlogs
 ```
 
 [Reference index](README.md) · [FDS setup](../how-to/play-fds-games.md)

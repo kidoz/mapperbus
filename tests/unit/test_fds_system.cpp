@@ -254,7 +254,195 @@ struct WatchdogCpu {
         return {timer, bytes[bytes.size() - 3]};
     }
 };
+
+void arm_disk_irqs(WatchdogCpu& machine, uint32_t advance = 160) {
+    machine.drive.write(0x4023, 0x83);
+    machine.drive.write(0x4025, 0xE5); // read data, byte-transfer IRQ enabled
+    REQUIRE(next_byte(machine.drive) == 1);
+    machine.drive.step(advance);
+    machine.drive.write(0x4020, 1);
+    machine.drive.write(0x4021, 0);
+    machine.drive.write(0x4022, 2);
+    machine.drive.step(3); // one-shot timer expires
+    for (int cycle = 0; cycle < 4096; ++cycle)
+        machine.drive.clock_cpu_cycle(0x6000); // latch the refresh watchdog too
+    REQUIRE(machine.drive.irq_pending());
+}
+
+Byte oam_byte(WatchdogCpu& machine, Byte address) {
+    machine.bus.write(0x2003, address);
+    return machine.bus.read(0x2004);
+}
 } // namespace
+
+TEST_CASE("CPU indexed dummy reads service FDS status and data registers",
+          "[fds][cpu][bus-side-effects]") {
+    for (const bool data : {false, true}) {
+        for (const Byte opcode : {0xBD, 0xB9, 0xB1, 0x9D, 0x99, 0x91}) {
+            CAPTURE(data, opcode);
+            const bool indirect = opcode == 0xB1 || opcode == 0x91;
+            const Byte index = data ? 0x32 : 0x31;
+            WatchdogCpu machine({0xA2,
+                                 index,
+                                 0xA0,
+                                 index,
+                                 opcode,
+                                 static_cast<Byte>(indirect ? 0x10 : 0xFF),
+                                 static_cast<Byte>(indirect ? 0xEA : 0x40)});
+            machine.bus.write(0x10, 0xFF);
+            machine.bus.write(0x11, 0x40);
+            REQUIRE(machine.cpu.step() == 2);
+            REQUIRE(machine.cpu.step() == 2);
+            arm_disk_irqs(machine);
+            // $40FF + X/Y crosses to $4130/$4131. The unadjusted read is
+            // still $4030/$4031, even for stores and indirect-indexed modes.
+            REQUIRE(machine.cpu.step() == (indirect ? 6 : 5));
+            CHECK((machine.drive.read(0x4030) & 0x83U) == (data ? 0x03 : 0x80));
+        }
+    }
+}
+
+TEST_CASE("Unofficial NOP and RTS dummy reads acknowledge FDS registers",
+          "[fds][cpu][bus-side-effects]") {
+    for (const bool data : {false, true}) {
+        const Byte low = data ? 0x31 : 0x30;
+        DYNAMIC_SECTION("register " << int(low)) {
+            SECTION("absolute NOP performs its discarded read") {
+                WatchdogCpu machine({0x0C, low, 0x40});
+                arm_disk_irqs(machine);
+                REQUIRE(machine.cpu.step() == 4);
+                CHECK((machine.drive.read(0x4030) & 0x83U) == (data ? 0x03 : 0x80));
+            }
+            SECTION("RTS reads the popped address before incrementing it") {
+                WatchdogCpu machine({0x60});
+                machine.bus.write(0x01FE, low);
+                machine.bus.write(0x01FF, 0x40);
+                arm_disk_irqs(machine);
+                REQUIRE(machine.cpu.step() == 6);
+                CHECK(machine.cpu.pc() == 0x4001 + low);
+                CHECK((machine.drive.read(0x4030) & 0x83U) == (data ? 0x03 : 0x80));
+            }
+        }
+    }
+}
+
+TEST_CASE("Accepted IRQ prefetch reads retain the FDS register acknowledgement rules",
+          "[fds][cpu][bus-side-effects]") {
+    for (const bool data : {false, true}) {
+        const Byte low = data ? 0x31 : 0x30;
+        WatchdogCpu machine({0x58, 0x4C, low, 0x40}); // CLI; JMP to the interrupted read
+        REQUIRE(machine.cpu.step() == 2);
+        REQUIRE(machine.cpu.step() == 3);
+        arm_disk_irqs(machine);
+        REQUIRE(machine.cpu.step() == 7);
+        CHECK(machine.cpu.pc() == 0x6000); // the IRQ remains accepted after acknowledgement
+        CHECK((machine.drive.read(0x4030) & 0x83U) == (data ? 0x03 : 0x80));
+    }
+}
+
+TEST_CASE("OAM DMA sees FDS bytes arriving during its source reads",
+          "[fds][dma][bus-side-effects]") {
+    WatchdogCpu machine({0xA9, 0x40, 0x8D, 0x14, 0x40, 0xEA});
+    REQUIRE(machine.cpu.step() == 2);
+    arm_disk_irqs(machine, 100);
+    REQUIRE(machine.cpu.step() == 517);
+    CHECK((oam_byte(machine, 0x30) & 0x83U) == 0x83); // $4030 retains the byte flag
+    CHECK(oam_byte(machine, 0x31) == '*'); // next disk byte arrived before the $4031 read
+    CHECK((machine.drive.read(0x4030) & 0x83U) == 0x80); // later bytes assert it again
+}
+
+TEST_CASE("OAM DMA halt reads establish open bus and RMW uses only the final page",
+          "[fds][dma][bus-side-effects]") {
+    SECTION("STA halts on the following opcode read") {
+        WatchdogCpu machine({0xA9, 0x41, 0x8D, 0x14, 0x40, 0xEA});
+        REQUIRE(machine.cpu.step() == 2);
+        REQUIRE(machine.cpu.step() == 517);
+        for (unsigned index = 0; index < 256; ++index)
+            CHECK(oam_byte(machine, static_cast<Byte>(index)) == 0xEA);
+    }
+    SECTION("INC writes $40 then $41, followed by one DMA") {
+        WatchdogCpu machine({0xEE, 0x14, 0x40, 0xEA});
+        REQUIRE(machine.cpu.step() == 519);
+        for (unsigned index = 0; index < 256; ++index)
+            CHECK(oam_byte(machine, static_cast<Byte>(index)) == 0xEA);
+    }
+}
+
+TEST_CASE("DMC halt reads acknowledge FDS registers without duplicating their clocks",
+          "[fds][dma][bus-side-effects]") {
+    for (const bool data : {false, true}) {
+        for (const auto region : {Region::NTSC, Region::PAL}) {
+            CAPTURE(data, region);
+            WatchdogCpu machine({0xEA});
+            arm_disk_irqs(machine);
+            REQUIRE(machine.bus.read_dmc(0xE000, data ? 0x4031 : 0x4030, region) == 0xEA);
+            // PAL keeps its previous clock-only halt model in this change.
+            const unsigned expected = region == Region::PAL ? 0x83 : (data ? 0x03 : 0x80);
+            CHECK((machine.drive.read(0x4030) & 0x83U) == expected);
+            const auto after = machine.counters();
+            machine.cpu.add_stall_cycles(4);
+            CHECK(machine.counters() == after);
+        }
+    }
+}
+
+TEST_CASE("DMC repeated data reads consume a byte arriving between halt cycles",
+          "[fds][dma][bus-side-effects]") {
+    WatchdogCpu machine({0xEA});
+    arm_disk_irqs(machine, 0);
+    machine.drive.step(146); // next byte arrives on halt cycle 1 or 2
+    REQUIRE(machine.bus.read_dmc(0xE000, 0x4031) == 0xEA);
+    CHECK((machine.drive.read(0x4030) & 0x83U) == 0x03);
+    CHECK(machine.drive.read(0x4031) == '*');
+}
+
+TEST_CASE("FDS timer arming excludes cycles before its control write",
+          "[fds][cpu][bus-side-effects]") {
+    WatchdogCpu machine({0xA9, 2, 0x8D, 0x22, 0x40});
+    machine.drive.write(0x4023, 3);
+    machine.drive.write(0x4020, 1);
+    machine.drive.write(0x4021, 0);
+    REQUIRE(machine.cpu.step() == 2);
+    REQUIRE(machine.cpu.step() == 4);
+    CHECK_FALSE(machine.drive.irq_pending());
+    machine.drive.step(3);
+    CHECK(machine.drive.irq_pending());
+}
+
+TEST_CASE("OAM DMA restores full FDS transfer state without double-clocking the drive",
+          "[fds][dma][state][bus-side-effects]") {
+    auto bios = mapperbus::tests::make_fds_bios();
+    constexpr std::array<Byte, 6> kProgram{0xA9, 0x40, 0x8D, 0x14, 0x40, 0xEA};
+    std::ranges::copy(kProgram, bios.begin());
+    Emulator emulator;
+    REQUIRE(emulator.load_fds(bios, mapperbus::tests::make_fds_image()));
+    emulator.reset();
+    emulator.step_instruction(); // LDA #$40
+    emulator.fds().write(0x4023, 3);
+    emulator.fds().write(0x4025, 0xE5);
+    REQUIRE(next_byte(emulator.fds()) == 1);
+    emulator.fds().step(100);
+    const auto before = emulator.save_state();
+    emulator.step_instruction();
+    REQUIRE(emulator.cpu().cycles() == 519);
+    REQUIRE(emulator.read_cpu(0x4031) == 'N'); // four more bytes, not eight
+    const auto expected = emulator.save_state();
+    REQUIRE(emulator.load_state(before));
+    emulator.step_instruction();
+    REQUIRE(emulator.read_cpu(0x4031) == 'N');
+    CHECK(emulator.save_state() == expected);
+}
+
+TEST_CASE("NMOS read-modify-write sends both old and new values to memory-mapped I/O",
+          "[fds][cpu][bus-side-effects]") {
+    WatchdogCpu machine({0xEE, 0x04, 0x20}); // INC OAMDATA
+    machine.bus.write(0x2003, 0);
+    machine.bus.write(0x2004, 0x22);
+    machine.bus.write(0x2003, 0);
+    REQUIRE(machine.cpu.step() == 6);
+    CHECK(oam_byte(machine, 0) == 0x22);
+    CHECK(oam_byte(machine, 1) == 0x23);
+}
 
 TEST_CASE("Every CPU opcode accounts for all elapsed watchdog cycles", "[fds][cpu][watchdog]") {
     for (unsigned opcode = 0; opcode < 256; ++opcode) {

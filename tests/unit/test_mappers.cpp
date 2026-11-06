@@ -2,8 +2,10 @@
 #include <catch2/catch_test_macros.hpp>
 #include <vector>
 
+#include "core/bus/memory_bus.hpp"
 #include "core/cartridge/cartridge.hpp"
 #include "core/cartridge/ines_header.hpp"
+#include "core/cpu/cpu.hpp"
 #include "core/mappers/axrom.hpp"
 #include "core/mappers/cnrom.hpp"
 #include "core/mappers/color_dreams.hpp"
@@ -226,6 +228,60 @@ TEST_CASE("Color Dreams combined PRG+CHR", "[color-dreams]") {
 }
 
 // === MMC1 ===
+
+TEST_CASE("MMC1 CPU RMW writes filter consecutive data but always accept reset",
+          "[mmc1][cpu][bus-side-effects]") {
+    register_builtin_mappers();
+    for (const bool reset : {false, true}) {
+        CAPTURE(reset);
+        constexpr std::size_t kBankSize = 16384;
+        std::vector<Byte> rom(16 + 4 * kBankSize);
+        rom[0] = 'N';
+        rom[1] = 'E';
+        rom[2] = 'S';
+        rom[3] = 0x1A;
+        rom[4] = 4;
+        rom[6] = 0x10;
+        for (unsigned bank = 0; bank < 4; ++bank)
+            std::fill_n(rom.begin() + static_cast<std::ptrdiff_t>(16 + bank * kBankSize),
+                        kBankSize,
+                        static_cast<Byte>(bank));
+        rom[16 + 3 * kBankSize + 0x2000] = reset ? 0x7F : 0;
+        for (const std::size_t offset : {rom.size() - 6, rom.size() - 4, rom.size() - 2}) {
+            rom[offset] = 0;
+            rom[offset + 1] = 2; // run from RAM $0200
+        }
+        auto result = Cartridge::from_data(rom);
+        REQUIRE(result);
+        auto cartridge = std::move(*result);
+        MemoryBus bus;
+        bus.connect_cartridge(&cartridge);
+        Cpu cpu(bus);
+        Address pc = 0x0200;
+        if (reset) {
+            for (const Byte value : {0xEE, 0, 0xE0, 0xA9, 0}) // INC $E000; LDA #0
+                bus.write(pc++, value);
+            for (int index = 0; index < 4; ++index) {
+                bus.write(pc++, 0x8D);
+                bus.write(pc++, 0);
+                bus.write(pc++, 0xE0);
+            }
+        } else {
+            for (int index = 0; index < 5; ++index) {
+                bus.write(pc++, 0xEE);
+                bus.write(pc++, 0);
+                bus.write(pc++, 0xE0);
+            }
+        }
+        cpu.reset();
+        for (int instruction = 0; instruction < (reset ? 6 : 5); ++instruction)
+            cpu.step();
+        // Five INCs should clock five zero bits, not ten alternating bits.
+        // INC $7F -> $80 must reset even though its reset write is consecutive;
+        // four following STA writes must then leave the five-bit latch incomplete.
+        CHECK(bus.read(0x8000) == 0);
+    }
+}
 
 TEST_CASE("MMC1 default fixed last bank", "[mmc1]") {
     std::vector<Byte> prg(256 * 1024, 0);

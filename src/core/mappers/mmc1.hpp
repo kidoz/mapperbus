@@ -18,6 +18,7 @@ class Mmc1 : public Mapper {
 
     Byte read_prg(Address addr) override;
     void write_prg(Address addr, Byte value) override;
+    void write_prg_cpu(Address addr, Byte value, bool consecutive) override;
     bool maps_prg(Address addr) const override;
     Byte read_chr(Address addr) override;
     void write_chr(Address addr, Byte value) override;

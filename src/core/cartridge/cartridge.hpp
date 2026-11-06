@@ -47,6 +47,7 @@ class Cartridge {
 
     [[nodiscard]] Byte read_prg(Address addr);
     void write_prg(Address addr, Byte value);
+    void write_prg_cpu(Address addr, Byte value, bool consecutive);
     [[nodiscard]] bool maps_prg(Address addr) const;
     [[nodiscard]] Byte read_chr(Address addr);
     void write_chr(Address addr, Byte value);

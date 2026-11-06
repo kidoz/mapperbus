@@ -15,6 +15,10 @@ class Mapper {
 
     virtual Byte read_prg(Address addr) = 0;
     virtual void write_prg(Address addr, Byte value) = 0;
+    /// CPU bus context for chips which filter consecutive write cycles.
+    virtual void write_prg_cpu(Address addr, Byte value, bool /*consecutive*/) {
+        write_prg(addr, value);
+    }
     virtual bool maps_prg(Address addr) const {
         return addr >= 0x8000;
     }

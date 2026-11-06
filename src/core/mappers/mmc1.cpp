@@ -38,6 +38,13 @@ Byte Mmc1::read_prg(Address addr) {
     return prg_rom_[offset % prg_rom_.size()];
 }
 
+void Mmc1::write_prg_cpu(Address addr, Byte value, bool consecutive) {
+    // MMC1 filters consecutive serial-data writes, but its reset bit always
+    // works and PRG RAM is not part of the serial port.
+    if (addr < 0x8000 || !consecutive || (value & 0x80U) != 0)
+        write_prg(addr, value);
+}
+
 void Mmc1::write_prg(Address addr, Byte value) {
     if (addr >= 0x6000 && addr < 0x8000) {
         if ((prg_bank_ & 0x10) == 0) {

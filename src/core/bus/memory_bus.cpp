@@ -37,28 +37,52 @@ void MemoryBus::write(Address addr, Byte value) {
     (this->*(write_map_[addr >> 10]))(addr, value);
 }
 
+void MemoryBus::write_cpu(Address addr, Byte value, bool consecutive) {
+    open_bus_ = value;
+    if (addr >= 0x6000 && cartridge_ != nullptr)
+        cartridge_->write_prg_cpu(addr, value, consecutive);
+    else if (addr != 0x4014)
+        (this->*(write_map_[static_cast<uint32_t>(addr) >> 10U]))(addr, value);
+}
+
 void MemoryBus::clock_cpu_bus(Address addr, uint32_t cycles) {
     if (fds_ != nullptr && fds_->is_loaded()) {
-        for (uint32_t cycle = 0; cycle < cycles; ++cycle)
+        for (uint32_t cycle = 0; cycle < cycles; ++cycle) {
             fds_->clock_cpu_cycle(addr);
+            fds_->step(1);
+        }
     }
 }
 
-void MemoryBus::clock_oam_dma(Byte page, Address halt_address, bool odd_alignment) {
-    if (ppu_ == nullptr || fds_ == nullptr || !fds_->is_loaded())
-        return;
-    clock_cpu_bus(halt_address, odd_alignment ? 2 : 1);
+uint32_t MemoryBus::run_oam_dma(Byte page, Address halt_address, bool odd_alignment) {
+    if (ppu_ == nullptr)
+        return 0;
+    const auto read_cycle = [this](Address address) {
+        clock_cpu_bus(address);
+        return read(address);
+    };
+    (void)read_cycle(halt_address);
+    if (odd_alignment)
+        (void)read_cycle(halt_address);
     for (uint16_t offset = 0; offset < 256; ++offset) {
-        clock_cpu_bus(static_cast<Address>((static_cast<uint32_t>(page) << 8U) |
-                                           static_cast<uint32_t>(offset)));
+        const auto value = read_cycle(static_cast<Address>((static_cast<uint32_t>(page) << 8U) |
+                                                           static_cast<uint32_t>(offset)));
         clock_cpu_bus(0x2004);
+        ppu_->write_oam_dma(value);
     }
+    return odd_alignment ? 514 : 513;
 }
 
-Byte MemoryBus::read_dmc(Address addr, Address halt_address) {
+Byte MemoryBus::read_dmc(Address addr, Address halt_address, Region region) {
     // The instruction-stepped DMA model uses three stalled CPU reads and
     // one sample read. Count them here, not again in add_stall_cycles().
-    clock_cpu_bus(halt_address, 3);
+    for (int cycle = 0; cycle < 3; ++cycle) {
+        clock_cpu_bus(halt_address);
+        // The 2A03 repeats the halted read on its no-operation DMA cycles.
+        // Keep the previous PAL model pending separate 2A07 validation.
+        if (region != Region::PAL)
+            (void)read(halt_address);
+    }
     clock_cpu_bus(addr);
     return read(addr);
 }
@@ -100,7 +124,9 @@ Byte MemoryBus::read_apu_io(Address addr) {
             }
             return open_bus_;
         }
-        return apu_ ? apu_->read_register(addr) : 0;
+        if (addr == 0x4015)
+            return apu_ != nullptr ? apu_->read_register(addr) : 0;
+        return open_bus_; // other APU registers, including $4014, are write-only
     }
     // $4020-$409F: FDS disk drive ($4030-$4033) and audio ($4040-$4092)
     if (addr >= 0x4020 && addr <= 0x409F && fds_ && fds_->is_loaded()) {

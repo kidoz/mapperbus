@@ -101,6 +101,10 @@ void Cartridge::write_prg(Address addr, Byte value) {
     mapper_->write_prg(addr, value);
 }
 
+void Cartridge::write_prg_cpu(Address addr, Byte value, bool consecutive) {
+    mapper_->write_prg_cpu(addr, value, consecutive);
+}
+
 bool Cartridge::maps_prg(Address addr) const {
     return mapper_->maps_prg(addr);
 }

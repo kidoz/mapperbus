@@ -85,7 +85,8 @@ void Emulator::wire_apu() {
     bus_.connect_fds(&fds_);
 
     // Wire DMC memory reader to bus
-    apu_.set_memory_reader([this](Address addr) -> Byte { return bus_.read_dmc(addr, cpu_.pc()); });
+    apu_.set_memory_reader(
+        [this](Address addr) -> Byte { return bus_.read_dmc(addr, cpu_.pc(), region_); });
 
     // Wire expansion audio (mapper + FDS) into APU mixer
     apu_.set_expansion_audio([this]() -> float {
@@ -305,7 +306,6 @@ bool Emulator::step_instruction() {
     uint32_t cpu_cycles = cpu_.step();
     ppu_.step(cpu_cycles);
     apu_.step(cpu_cycles);
-    fds_.step(cpu_cycles);
     clock_expansion_audio(cpu_cycles);
 
     // DMC memory reads stall the CPU — advance the CPU cycle counter and the
@@ -316,7 +316,6 @@ bool Emulator::step_instruction() {
         cpu_.add_stall_cycles(dmc_stall);
         ppu_.step(dmc_stall);
         apu_.step(dmc_stall);
-        fds_.step(dmc_stall);
         clock_expansion_audio(dmc_stall);
     }
 
