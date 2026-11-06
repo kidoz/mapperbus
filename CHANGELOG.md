@@ -15,6 +15,9 @@ Versioning.
 
 ### Fixed
 
+- FDS audio phase advancement during wavetable writes, held output samples,
+  volume-latch/envelope timing, fractional modulation pitch, and debug readback
+  at `$4091` and `$4093–$4096` (with documented multiplier/counter approximations).
 - FDS diagnostic boot bypasses that declare an absent final file, modulation-counter
   readback, and wavetable reads while playback is active.
 
@@ -23,8 +26,8 @@ Versioning.
 
 ### Changed
 
-- Save-state version 5 preserves FDS drive, CRC, and physical stream state;
-  version 4 remains readable.
+- Save-state version 6 preserves FDS audio phase and output latches in addition
+  to drive/CRC/physical-stream state; versions 4 and 5 remain readable.
 
 ## [0.2.0] - 2026-11-04
 

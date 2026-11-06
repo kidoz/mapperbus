@@ -38,7 +38,7 @@ class Fds {
     void write(Address addr, Byte value);
 
     void save_state(StateWriter& writer) const;
-    void load_state(StateReader& reader, bool extended = true);
+    void load_state(StateReader& reader, bool extended = true, bool timed_audio = true);
 
     /// Mounts a `.fds` image (optionally prefixed with the 16-byte "FDS\x1a"
     /// fwNES header). Returns false when the image is empty or larger than
@@ -99,6 +99,7 @@ class Fds {
     void reset_audio();
     void hold_audio_reset();
     void clock_envelopes();
+    void update_audio_output();
     void reset_drive();
     [[nodiscard]] Byte read_drive_register(Address reg);
     void write_drive_register(Address reg, Byte value);
@@ -166,7 +167,7 @@ class Fds {
     std::array<Byte, 64> wavetable_{}; // 64 x 6-bit samples
     bool wave_write_enabled_ = false;
     uint16_t wave_frequency_ = 0;   // 12-bit frequency
-    uint32_t wave_accumulator_ = 0; // Phase accumulator
+    uint32_t wave_accumulator_ = 0; // Low 18 bits of the 24-bit phase accumulator
     uint8_t wave_position_ = 0;     // Current sample index (0-63)
     uint8_t volume_envelope_ = 0;   // 6-bit volume (0-63)
     bool volume_enabled_ = true;
@@ -178,13 +179,13 @@ class Fds {
     uint8_t vol_env_speed_ = 0; // 6-bit speed E; period = 8*(E+1)*(master+1)
     bool vol_env_increase_ = false;
     uint32_t vol_env_timer_ = 0;      // CPU-cycle tick counter
-    bool env_halt_ = false;           // $4083 bit 6 freezes both envelopes
+    bool env_halt_ = false;           // $4083 bit 6 resets and holds both timers
     uint8_t master_env_speed_ = 0xE8; // $408A, 0xE8 at power-on
 
     // Modulation unit
     std::array<int8_t, 32> mod_table_{}; // Modulation table
     uint16_t mod_frequency_ = 0;         // 12-bit modulation frequency
-    uint32_t mod_accumulator_ = 0;
+    uint32_t mod_accumulator_ = 0;       // Low 12 bits; mod_position_ holds bits 12-17
     uint8_t mod_position_ = 0;
     int8_t mod_counter_ = 0;
     bool mod_enabled_ = false;
@@ -193,6 +194,13 @@ class Fds {
     uint8_t mod_env_speed_ = 0;
     bool mod_env_increase_ = false;
     uint32_t mod_env_timer_ = 0;
+
+    // v6 audio extension: shared 16-cycle unit tick / 32-cycle PWM phase,
+    // held DAC sample, wave-zero volume latch, and $4087.D6 test control.
+    uint8_t audio_phase_ = 0;
+    Byte wave_sample_ = 0;
+    uint8_t volume_gain_ = 0;
+    bool mod_force_step_ = false;
 };
 
 } // namespace mapperbus::core

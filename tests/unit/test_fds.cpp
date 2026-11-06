@@ -538,11 +538,11 @@ TEST_CASE("FDS CRC status detects a corrupt physical block", "[fds][transfer][cr
     source.save_state(writer);
     for (bool corrupt : {false, true}) {
         auto state = writer.data();
-        // Stream payload follows its size prefix and ends the FDS state.
+        // Stream payload follows its size prefix, before the four v6 audio bytes.
         constexpr std::size_t kTrackSize = 84000;
         constexpr std::size_t kFirstCrc = 3537 + 1 + 56;
         if (corrupt)
-            state[state.size() - kTrackSize + kFirstCrc] ^= 1;
+            state[state.size() - 4 - kTrackSize + kFirstCrc] ^= 1;
         Fds drive;
         StateReader reader(state);
         drive.load_state(reader);
@@ -604,4 +604,258 @@ TEST_CASE("FDS wave RAM reads follow the playback pointer when writes are disabl
         drive.clock_audio();
     CHECK((drive.read(0x4040) & 0x3F) == 23);
     CHECK((drive.read(0x407F) & 0x3F) == 23);
+}
+
+TEST_CASE("FDS wavetable writes hold the sample while phase keeps running", "[fds][audio]") {
+    Fds drive;
+    drive.reset();
+    start_fds_square(drive, 0x0400, 0xA0);
+    for (int cycle = 0; cycle < 32 * 64; ++cycle)
+        drive.clock_audio();
+    const float held = drive.audio_output();
+    REQUIRE(held > 0.1f);
+    drive.write(0x4089, 0x80);
+    drive.write(0x4060, 0); // overwriting the current slot must not change the held sample
+    CHECK(drive.audio_output() == held);
+    for (int cycle = 0; cycle < 33 * 64; ++cycle) {
+        drive.clock_audio();
+        REQUIRE(drive.audio_output() == held);
+    }
+    drive.write(0x4089, 0);
+    CHECK((drive.read(0x4040) & 0x3FU) == 0); // phase advanced from 32 through wrap to 1
+    CHECK(drive.audio_output() == 0.0f);
+}
+
+TEST_CASE("FDS volume changes latch at wave position zero and direct mute is immediate",
+          "[fds][audio]") {
+    Fds drive;
+    drive.reset();
+    start_fds_square(drive, 0x0400, 0xA0);
+    for (int cycle = 0; cycle < 32 * 64; ++cycle)
+        drive.clock_audio();
+    const float full = drive.audio_output();
+    REQUIRE(full > 0.1f);
+    drive.write(0x4080, 0x90);                 // gain 16, pending until position zero
+    CHECK((drive.read(0x4090) & 0x3FU) == 16); // register changes immediately
+    CHECK(drive.audio_output() == full);
+    for (int cycle = 0; cycle < 64 * 64; ++cycle)
+        drive.clock_audio();
+    CHECK(drive.audio_output() == full * 0.5f);
+    drive.write(0x4080, 0x80);
+    CHECK(drive.audio_output() == 0.0f);
+}
+
+TEST_CASE("FDS wave and modulation debug reads expose their 16-cycle accumulators",
+          "[fds][audio]") {
+    Fds drive;
+    drive.reset();
+    start_fds_square(drive, 0x0400, 0xA0);
+    drive.write(0x4086, 0x20);
+    drive.write(0x4087, 0);
+    for (int cycle = 0; cycle < 15; ++cycle)
+        drive.clock_audio();
+    CHECK(drive.read(0x4091) == 0);
+    CHECK(drive.read(0x4093) == 0);
+    drive.clock_audio();
+    CHECK(drive.read(0x4091) == 16); // (0x400 * 64) >> 12
+    CHECK(drive.read(0x4093) == 1);  // 0x20 >> 5
+    drive.write(0x4083, 0x84);
+    CHECK(drive.read(0x4091) == 0);
+    drive.write(0x4087, 0x80);
+    CHECK(drive.read(0x4093) == 0);
+}
+
+TEST_CASE("FDS modulation retains pitch fractions below one legacy frequency unit",
+          "[fds][audio]") {
+    Fds drive;
+    drive.reset();
+    start_fds_square(drive, 1, 0xA0);
+    drive.write(0x4084, 0xBE); // gain 62
+    drive.write(0x4085, 50);   // rounded multiplier wraps to 1: wave pitch = 1
+    drive.write(0x4087, 0x80);
+    for (int cycle = 0; cycle < 65536; ++cycle)
+        drive.clock_audio();
+    CHECK(drive.read(0x4091) == 1);      // 4096 ticks retain all low bits
+    CHECK((drive.read(0x4094)) == 0xC1); // settled (50 * 62) bits 4..11
+}
+
+TEST_CASE("FDS modulation increment readback decodes all eight entries", "[fds][audio]") {
+    constexpr std::array<Byte, 8> kIncrements = {0, 1, 2, 4, 12, 12, 14, 15};
+    for (Byte entry = 0; entry < 8; ++entry) {
+        Fds drive;
+        drive.reset();
+        drive.write(0x4023, 2);
+        drive.write(0x4087, 0x80);
+        for (int index = 0; index < 32; ++index)
+            drive.write(0x4088, entry);
+        CHECK((drive.read(0x4095) & 0x0FU) == kIncrements[entry]);
+    }
+}
+
+TEST_CASE("FDS DAC status applies 32-cycle PWM without pulsing the audio mixer", "[fds][audio]") {
+    Fds drive;
+    drive.reset();
+    start_fds_square(drive, 0, 0x90);
+    drive.write(0x4089, 0x80);
+    drive.write(0x4040, 63);
+    drive.write(0x4089, 0);
+    int on = 0;
+    for (int cycle = 0; cycle < 32; ++cycle) {
+        drive.clock_audio();
+        const auto value = drive.read(0x4096);
+        REQUIRE((value & 0xC0U) == 0x40);
+        if ((value & 0x3FU) != 0) {
+            CHECK((value & 0x3FU) == 63);
+            ++on;
+        }
+        CHECK(drive.audio_output() == 0.075f);
+    }
+    CHECK(on == 16);
+}
+
+TEST_CASE("FDS envelope halt restarts both timers and wave halt accelerates them", "[fds][audio]") {
+    Fds drive;
+    drive.reset();
+    start_fds_square(drive, 0x400, 0xA0);
+    drive.write(0x408A, 1); // period 16 CPU clocks at speed zero
+    drive.write(0x4080, 0); // decrease volume
+    drive.write(0x4084, 0x90);
+    drive.write(0x4084, 0); // decrease mod gain
+    for (int cycle = 0; cycle < 12; ++cycle)
+        drive.clock_audio();
+    drive.write(0x4083, 0x44); // freeze and restart both timers
+    for (int cycle = 0; cycle < 32; ++cycle)
+        drive.clock_audio();
+    drive.write(0x4083, 4);
+    for (int cycle = 0; cycle < 15; ++cycle)
+        drive.clock_audio();
+    CHECK((drive.read(0x4090) & 0x3FU) == 32);
+    CHECK((drive.read(0x4092) & 0x3FU) == 16);
+    drive.clock_audio();
+    CHECK((drive.read(0x4090) & 0x3FU) == 31);
+    CHECK((drive.read(0x4092) & 0x3FU) == 15);
+    drive.write(0x4083, 0x84); // fourfold envelope rate while wave halted
+    for (int cycle = 0; cycle < 4; ++cycle)
+        drive.clock_audio();
+    CHECK((drive.read(0x4090) & 0x3FU) == 30);
+    CHECK((drive.read(0x4092) & 0x3FU) == 14);
+}
+
+TEST_CASE("FDS audio state restores a held sample, pending gain, and tick phase",
+          "[fds][audio][state]") {
+    Fds source;
+    source.reset();
+    start_fds_square(source, 0x0400, 0xA0);
+    for (int cycle = 0; cycle < 32 * 64 + 7; ++cycle)
+        source.clock_audio();
+    source.write(0x4080, 0x90); // pending gain, current output remains full volume
+    source.write(0x4089, 0x80);
+    source.write(0x4060, 0);
+    StateWriter writer;
+    source.save_state(writer);
+    Fds restored;
+    StateReader reader(writer.data());
+    restored.load_state(reader);
+    REQUIRE(reader.ok());
+    REQUIRE(restored.audio_output() > 0.1f);
+    for (int cycle = 0; cycle < 10000; ++cycle) {
+        if (cycle == 123) {
+            source.write(0x4089, 0);
+            restored.write(0x4089, 0);
+        }
+        source.clock_audio();
+        restored.clock_audio();
+        REQUIRE(restored.audio_output() == source.audio_output());
+        for (Address address = 0x4090; address <= 0x4097; ++address)
+            REQUIRE(restored.read(address) == source.read(address));
+    }
+    StateWriter copy, expected;
+    restored.save_state(copy);
+    source.save_state(expected);
+    CHECK(copy.data() == expected.data());
+}
+
+TEST_CASE("FDS rejects invalid audio latch and phase state", "[fds][audio][state]") {
+    Fds source;
+    source.reset();
+    StateWriter writer;
+    source.save_state(writer);
+    constexpr std::array<Byte, 4> kInvalid = {32, 64, 33, 2};
+    for (std::size_t index = 0; index < kInvalid.size(); ++index) {
+        auto blob = writer.data();
+        blob[blob.size() - 4 + index] = kInvalid[index];
+        Fds restored;
+        StateReader reader(blob);
+        restored.load_state(reader);
+        REQUIRE_FALSE(reader.ok());
+        restored.clock_audio();
+        CHECK(restored.audio_output() == 0.0f);
+    }
+}
+
+TEST_CASE("FDS modulation test control steps twice per table entry and halt clears ghost bit",
+          "[fds][audio]") {
+    Fds drive;
+    drive.reset();
+    start_fds_square(drive, 0x0400, 0xA0);
+    drive.write(0x4087, 0x80);
+    for (int index = 0; index < 32; ++index)
+        drive.write(0x4088, index == 0 ? 1 : 2);
+    drive.write(0x4087, 0x40); // force a carry on every 16-cycle unit tick
+    for (int cycle = 0; cycle < 16; ++cycle)
+        drive.clock_audio();
+    CHECK(drive.read(0x4097) == 1);
+    CHECK((drive.read(0x4095) & 0x0FU) == 1); // second half of entry zero
+    drive.write(0x4087, 0xC0);                // clear ghost bit, retain address zero
+    drive.write(0x4087, 0x40);
+    for (int cycle = 0; cycle < 16; ++cycle)
+        drive.clock_audio();
+    CHECK(drive.read(0x4097) == 2);
+    CHECK((drive.read(0x4095) & 0x0FU) == 1);
+    for (int cycle = 0; cycle < 16; ++cycle)
+        drive.clock_audio();
+    CHECK(drive.read(0x4097) == 3);
+    CHECK((drive.read(0x4095) & 0x0FU) == 2);
+    drive.write(0x4083, 0x84); // wave halt stops mod accumulator too
+    for (int cycle = 0; cycle < 64; ++cycle)
+        drive.clock_audio();
+    CHECK(drive.read(0x4097) == 3);
+}
+
+TEST_CASE("FDS imports legacy audio phase into the wider accumulators", "[fds][audio][state]") {
+    Fds source;
+    source.reset();
+    start_fds_square(source, 0x0400, 0xA0);
+    source.write(0x4086, 0x20);
+    source.write(0x4087, 0);
+    for (int cycle = 0; cycle < 80; ++cycle)
+        source.clock_audio();
+    StateWriter writer;
+    source.save_state(writer);
+    auto legacy = writer.data();
+    legacy.resize(legacy.size() - 4); // v5 had no phase or DAC/gain latches
+    // Frozen v3-v5 offsets for an empty drive: 47 drive bytes + 64 wave bytes,
+    // write flag + frequency precede the wave fraction; mod fraction is at 158.
+    constexpr std::size_t kWaveFraction = 114;
+    constexpr std::size_t kModFraction = 158;
+    std::uint32_t wave = 0, mod = 0;
+    std::memcpy(&wave, legacy.data() + kWaveFraction, sizeof(wave));
+    std::memcpy(&mod, legacy.data() + kModFraction, sizeof(mod));
+    wave >>= 2U;
+    mod <<= 4U;
+    std::memcpy(legacy.data() + kWaveFraction, &wave, sizeof(wave));
+    std::memcpy(legacy.data() + kModFraction, &mod, sizeof(mod));
+    Fds restored;
+    StateReader reader(legacy);
+    restored.load_state(reader, true, false);
+    REQUIRE(reader.ok());
+    CHECK(reader.remaining() == 0);
+    CHECK(restored.read(0x4091) == source.read(0x4091));
+    CHECK(restored.read(0x4093) == source.read(0x4093));
+    for (int cycle = 0; cycle < 1000; ++cycle) {
+        source.clock_audio();
+        restored.clock_audio();
+        REQUIRE(restored.read(0x4091) == source.read(0x4091));
+        REQUIRE(restored.read(0x4093) == source.read(0x4093));
+    }
 }

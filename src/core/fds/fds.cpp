@@ -84,9 +84,13 @@ void Fds::save_state(StateWriter& writer) const {
     writer.write(byte_phase_);
     writer.write(insertion_delay_);
     writer.write_bytes(disk_stream_);
+    writer.write(audio_phase_);
+    writer.write(wave_sample_);
+    writer.write(volume_gain_);
+    writer.write<Byte>(mod_force_step_ ? 1 : 0);
 }
 
-void Fds::load_state(StateReader& reader, bool extended) {
+void Fds::load_state(StateReader& reader, bool extended, bool timed_audio) {
     std::vector<Byte> saved_stream;
     reader.read(loaded_);
     reader.read(num_sides_);
@@ -167,8 +171,30 @@ void Fds::load_state(StateReader& reader, bool extended) {
         insertion_delay_ = 0;
     }
 
+    if (timed_audio) {
+        reader.read(audio_phase_);
+        reader.read(wave_sample_);
+        reader.read(volume_gain_);
+        const auto force_step = reader.read<Byte>();
+        if (force_step > 1)
+            reader.fail();
+        mod_force_step_ = force_step == 1;
+    } else {
+        // v3-v5 stored a 16-bit fraction per unit and had no output latches.
+        if (wave_accumulator_ > 0xFFFF || mod_accumulator_ > 0xFFFF)
+            reader.fail();
+        wave_accumulator_ = (wave_accumulator_ & 0xFFFFU) << 2U;
+        mod_accumulator_ = (mod_accumulator_ & 0xFFFFU) >> 4U;
+        audio_phase_ = 0;
+        wave_sample_ = wavetable_[wave_position_ & 0x3FU] & 0x3FU;
+        volume_gain_ = std::min<uint8_t>(volume_envelope_, 32);
+        mod_force_step_ = false;
+    }
+
     const bool valid_transfer_delay = transfer_delay_ >= 0;
     const bool valid_audio = wave_position_ < wavetable_.size() && wave_frequency_ <= 0x0FFF &&
+                             wave_accumulator_ < 0x40000 && mod_accumulator_ < 0x1000 &&
+                             audio_phase_ < 32 && wave_sample_ <= 63 && volume_gain_ <= 32 &&
                              volume_envelope_ <= 0x3F && master_volume_ <= 0x03 &&
                              vol_env_speed_ <= 0x3F && mod_position_ < mod_table_.size() * 2 &&
                              mod_frequency_ <= 0x0FFF && mod_counter_ >= -64 &&
@@ -242,6 +268,10 @@ void Fds::reset_audio() {
     mod_env_speed_ = 0;
     mod_env_increase_ = false;
     mod_env_timer_ = 0;
+    audio_phase_ = 0;
+    wave_sample_ = 0;
+    volume_gain_ = 0;
+    mod_force_step_ = false;
 }
 
 void Fds::reset_drive() {
@@ -750,9 +780,32 @@ Byte Fds::read(Address addr) {
         return volume_envelope_ | 0x40;
     }
 
+    if (addr == 0x91) { // $4091: bits 12-19 of the 24-bit wave accumulator
+        return static_cast<Byte>((wave_accumulator_ >> 12U) |
+                                 (static_cast<uint32_t>(wave_position_) << 6U));
+    }
+
     // $4092: Modulation envelope output
     if (addr == 0x92) {
         return mod_depth_ | 0x40;
+    }
+
+    if (addr == 0x93) { // $4093: bits 5-11 of the mod accumulator
+        return static_cast<Byte>((mod_accumulator_ >> 5U) & 0x7FU);
+    }
+    if (addr == 0x94) {
+        // Settled product only; the internal sequential multiplier's partial
+        // results and their exact CPU-cycle alignment are not modeled.
+        const auto product = static_cast<uint32_t>(static_cast<int>(mod_counter_) * mod_depth_);
+        return static_cast<Byte>(product >> 4U);
+    }
+    if (addr == 0x95) {
+        // The upper nibble is an undocumented counter; return zero for it.
+        static constexpr std::array<Byte, 8> kIncrement = {0, 1, 2, 4, 12, 12, 14, 15};
+        return kIncrement[static_cast<Byte>(mod_table_[mod_position_ >> 1U]) & 7U];
+    }
+    if (addr == 0x96) { // $4096: PWM-gated DAC value, unlike the averaged mixer
+        return static_cast<Byte>(0x40U | (audio_phase_ < volume_gain_ ? wave_sample_ : 0U));
     }
 
     if (addr == 0x97) { // $4097: signed modulation counter, exposed as seven bits
@@ -799,6 +852,10 @@ void Fds::write(Address addr, Byte value) {
     case 0x83: // $4083: Wave frequency high + flags
         wave_frequency_ = (wave_frequency_ & 0x00FF) | (static_cast<uint16_t>(value & 0x0F) << 8U);
         env_halt_ = (value & 0x40) != 0;
+        if (env_halt_) {
+            vol_env_timer_ = 0;
+            mod_env_timer_ = 0;
+        }
         sound_enabled_ = (value & 0x80) == 0;
         if (!sound_enabled_) {
             // Halting the wave unit resets its phase to sample 0.
@@ -830,8 +887,10 @@ void Fds::write(Address addr, Byte value) {
     case 0x87: // $4087: Modulation frequency high
         mod_frequency_ = (mod_frequency_ & 0x00FF) | (static_cast<uint16_t>(value & 0x0F) << 8U);
         mod_enabled_ = (value & 0x80) == 0;
+        mod_force_step_ = (value & 0x40U) != 0;
         if (!mod_enabled_) {
             mod_accumulator_ = 0;
+            mod_position_ &= 0x3EU; // reset the ghost address bit, retain table address
         }
         break;
 
@@ -856,20 +915,22 @@ void Fds::write(Address addr, Byte value) {
     default:
         break;
     }
+    update_audio_output();
 }
 
 void Fds::clock_envelopes() {
-    // $4083 bit 6 freezes both envelope timers. Each envelope also stops
-    // while its own register's bit 7 selects direct-gain mode. Envelopes are
-    // not gated by the wave unit or the wave-write mode.
+    // $4083 bit 6 holds both timers at zero. Wave halt accelerates envelopes
+    // fourfold; wave-write mode does not affect their rate.
     if (env_halt_)
         return;
 
     const uint32_t master = static_cast<uint32_t>(master_env_speed_) + 1;
+    const uint32_t clocks = sound_enabled_ ? 1 : 4;
 
     if (!envelope_disabled_) {
         const uint32_t period = 8 * (static_cast<uint32_t>(vol_env_speed_) + 1) * master;
-        if (++vol_env_timer_ >= period) {
+        vol_env_timer_ += clocks;
+        if (vol_env_timer_ >= period) {
             vol_env_timer_ = 0;
             if (vol_env_increase_) {
                 if (volume_envelope_ < 32)
@@ -882,7 +943,8 @@ void Fds::clock_envelopes() {
 
     if (!mod_env_disabled_) {
         const uint32_t period = 8 * (static_cast<uint32_t>(mod_env_speed_) + 1) * master;
-        if (++mod_env_timer_ >= period) {
+        mod_env_timer_ += clocks;
+        if (mod_env_timer_ >= period) {
             mod_env_timer_ = 0;
             if (mod_env_increase_) {
                 if (mod_depth_ < 32)
@@ -901,6 +963,16 @@ void Fds::hold_audio_reset() {
     wave_accumulator_ = 0;
     wave_position_ = 0;
     mod_counter_ = 0;
+    audio_phase_ = 0;
+    wave_sample_ = 0;
+    volume_gain_ = 0;
+}
+
+void Fds::update_audio_output() {
+    if (wave_position_ == 0 || (envelope_disabled_ && volume_envelope_ == 0))
+        volume_gain_ = std::min<uint8_t>(volume_envelope_, 32);
+    if (!wave_write_enabled_)
+        wave_sample_ = wavetable_[wave_position_] & 0x3FU;
 }
 
 void Fds::clock_audio() {
@@ -910,12 +982,18 @@ void Fds::clock_audio() {
     }
     clock_envelopes();
 
-    // The mod unit runs independently of the wave unit; only $4087 bit 7
-    // halts it.
-    if (mod_enabled_ && mod_frequency_ > 0) {
+    audio_phase_ = (audio_phase_ + 1U) & 0x1FU;
+    if ((audio_phase_ & 0x0FU) != 0) {
+        update_audio_output();
+        return;
+    }
+
+    // Both accumulators tick every 16 CPU clocks. Wave halt also stops the
+    // modulation accumulator, but a halted mod unit still biases wave pitch.
+    if (sound_enabled_ && mod_enabled_) {
         mod_accumulator_ += mod_frequency_;
-        if (mod_accumulator_ >= 0x10000) {
-            mod_accumulator_ &= 0xFFFF;
+        if (mod_accumulator_ >= 0x1000 || mod_force_step_) {
+            mod_accumulator_ &= 0xFFFU;
             // 3-bit table entries decode to counter deltas; entry 4 resets.
             static constexpr int8_t kModDelta[8] = {0, 1, 2, 4, 0, -4, -2, -1};
             uint8_t entry = static_cast<uint8_t>(mod_table_[mod_position_ >> 1]) & 0x07;
@@ -934,49 +1012,31 @@ void Fds::clock_audio() {
         }
     }
 
-    if (!sound_enabled_ || wave_write_enabled_ || wave_frequency_ == 0)
+    if (!sound_enabled_) {
+        update_audio_output();
         return;
-
-    // Hardware pitch modulation (NESdev FDS audio): the offset is relative
-    // to the wave frequency, with exact truncation/rounding steps. The
-    // counter biases pitch even while the mod unit is halted ($4085 detune).
-    int temp = mod_counter_ * (mod_depth_ & 0x3F);
-    int remainder = temp & 0xF;
-    temp >>= 4;
-    if (remainder > 0 && (temp & 0x80) == 0) {
-        temp += (mod_counter_ < 0) ? -1 : 2;
     }
-    while (temp >= 192)
-        temp -= 256;
-    while (temp < -64)
-        temp += 256;
-    temp = wave_frequency_ * temp;
-    remainder = temp & 0x3F;
-    temp >>= 6;
-    if (remainder >= 32)
-        ++temp;
 
-    int freq = wave_frequency_ + temp;
-    if (freq <= 0)
-        return;
-
-    // Advance wave accumulator
-    wave_accumulator_ += static_cast<uint32_t>(freq);
-    if (wave_accumulator_ >= 0x10000) {
-        wave_accumulator_ &= 0xFFFF;
-        wave_position_ = (wave_position_ + 1) & 0x3F;
-    }
+    // Keep the full 20-bit product (Loopy's hardware-derived formula).
+    // In particular, do not round away its six fractional pitch bits.
+    auto product = static_cast<uint32_t>(static_cast<int>(mod_counter_) * mod_depth_);
+    if ((product & 0x0FU) != 0 && (product & 0x800U) == 0)
+        product += 0x20U;
+    const auto multiplier = ((product + 0x400U) >> 4U) & 0xFFU;
+    const auto pitch = static_cast<uint32_t>(wave_frequency_) * multiplier;
+    wave_accumulator_ += pitch;
+    wave_position_ = static_cast<Byte>((wave_position_ + (wave_accumulator_ >> 18U)) & 0x3FU);
+    wave_accumulator_ &= 0x3FFFFU;
+    update_audio_output();
 }
 
 float Fds::audio_output() const {
     if (!sound_io_enabled_)
         return 0.0f;
-    // The DAC holds the current sample while the wave unit is halted or the
-    // table is open for writes; gating to 0 here would pop on every table
-    // swap (same failure mode as the triangle DAC).
-    uint8_t sample = wavetable_[wave_position_] & 0x3F; // 6-bit sample (0-63)
-    // Gains 33-63 are clamped to 32 by the DAC.
-    uint8_t vol = std::min<uint8_t>(volume_envelope_ & 0x3F, 32);
+    // Average the ultrasonic 32-cycle PWM for mixing. $4096 still exposes
+    // its instantaneous gate. Wave writes hold the sample, not its phase.
+    uint8_t sample = wave_sample_;
+    uint8_t vol = volume_gain_;
 
     // Master volume attenuation: 2 / (2 + m)
     static constexpr float kVolumeScale[] = {1.0f, 2.0f / 3.0f, 0.5f, 0.4f};

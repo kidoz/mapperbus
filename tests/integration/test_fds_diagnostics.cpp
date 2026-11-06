@@ -138,12 +138,38 @@ TEST_CASE("Public FDS audio viewer plays, resets, and reads the modulation count
     frames(emulator, 600);
     REQUIRE(emulator.read_cpu(0x14) == 0x83);
     REQUIRE((emulator.fds().read(0x4097) & 0x7FU) == 0);
+    // Upstream DoNothing copies $4090-$4097 into eight raw hex tiles at
+    // nametable row 12, column 12 using the BIOS PrepareVRAMString routine.
+    // Inspect the program's CPU-driven reads, not just direct host reads.
+    constexpr auto kRegisterTiles = 12 * 32 + 12;
+    const auto& tiles = emulator.ppu().vram();
+    REQUIRE(tiles[kRegisterTiles + 2] == 0x7F);         // mod gain 63 + open-bus bit 6
+    REQUIRE(tiles[kRegisterTiles + 3] == 0);            // halted mod accumulator
+    REQUIRE(tiles[kRegisterTiles + 4] == 0);            // zero counter * gain
+    REQUIRE((tiles[kRegisterTiles + 5] & 0x0FU) == 12); // reset entry's increment code
+    REQUIRE(tiles[kRegisterTiles + 6] == 0x40);         // muted PWM output
     press(emulator, Button::Up);
     REQUIRE((emulator.fds().read(0x4097) & 0x7FU) == 0x7F);
+    REQUIRE(tiles[kRegisterTiles + 4] == 0xFC); // settled (-1 * 63) >> 4
     press(emulator, Button::Up);
     REQUIRE((emulator.fds().read(0x4097) & 0x7FU) == 0x7E);
+    REQUIRE(tiles[kRegisterTiles + 4] == 0xF8); // settled (-2 * 63) >> 4
     press(emulator, Button::A);
     REQUIRE(frames(emulator, 20) > 0.001f);
+    bool saw_wave_phase = false, saw_mod_phase = false;
+    for (int frame = 0; frame < 32; ++frame) {
+        frames(emulator, 1);
+        saw_wave_phase |= tiles[kRegisterTiles + 1] != 0;
+        saw_mod_phase |= tiles[kRegisterTiles + 3] != 0;
+    }
+    REQUIRE(saw_wave_phase);
+    REQUIRE(saw_mod_phase);
+    const auto playing = emulator.save_state();
+    frames(emulator, 8);
+    const auto replay = emulator.save_state();
+    REQUIRE(emulator.load_state(playing));
+    frames(emulator, 8);
+    REQUIRE(emulator.save_state() == replay);
     artifact(emulator, "audio-playing.ppm");
     press(emulator, Button::B);
     REQUIRE(emulator.read_cpu(0x14) == 0x81);

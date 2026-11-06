@@ -14,8 +14,8 @@ namespace mapperbus::core {
 namespace {
 // "MBST" — MapperBus STate. Bump kStateVersion on any layout change.
 constexpr std::array<Byte, 4> kStateMagic = {'M', 'B', 'S', 'T'};
-// v5 adds FDS transfer/CRC/mirroring state. v4 added media SHA-256.
-constexpr std::uint32_t kStateVersion = 5;
+// v6 adds FDS audio phase/output latches. v5 added drive state; v4 media SHA-256.
+constexpr std::uint32_t kStateVersion = 6;
 
 [[nodiscard]] std::string battery_path_for(const std::string& rom_path) {
     return std::filesystem::path(rom_path).replace_extension(".sav").string();
@@ -37,7 +37,8 @@ constexpr std::uint32_t kStateVersion = 5;
         return std::nullopt;
     }
     const auto version = reader.read<std::uint32_t>();
-    if (version != kStateVersion && version != 4 && !(version == 3 && allow_legacy)) {
+    if (version != kStateVersion && version != 5 && version != 4 &&
+        !(version == 3 && allow_legacy)) {
         logger::warn("Save-state rejected: unsupported version");
         return std::nullopt;
     }
@@ -386,7 +387,7 @@ bool Emulator::restore_state(std::span<const Byte> data, bool allow_legacy) {
     apu_.load_state(reader);
     bus_.load_state(reader);
     controller_.load_state(reader);
-    fds_.load_state(reader, version >= 5);
+    fds_.load_state(reader, version >= 5, version >= 6);
     if (cartridge_) {
         cartridge_->load_state(reader);
     }

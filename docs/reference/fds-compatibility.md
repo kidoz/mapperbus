@@ -14,7 +14,7 @@ The programs are fetched separately; they are not vendored into MapperBus.
 | Sour FDS IRQ tests | v7, original archive image | All 21 internal checks report `O` (success) |
 | TakuikaNinja FDS Mirroring Test | v1.1 | All three failure counters are zero; screen displays three passes |
 | TakuikaNinja FDS 4023 Test | v1.0 | I/O toggles work; the program observes disk removal/reinsertion while disk writes are disabled |
-| TakuikaNinja FDS Audio Registers | v1.2 | Play/reset/resume controls and repeated modulation-counter decrements work |
+| TakuikaNinja FDS Audio Registers | v1.2 | Play/reset/resume, CPU-driven debug-register reads, accumulator activity, and snapshot replay work |
 
 The I/O and audio programs are interactive viewers. Their results above describe
 specific automated interactions, not a claim that every displayed register matches
@@ -55,15 +55,50 @@ to bypass the BIOS license screen via NMI. The loader accepts complete physical
 blocks without requiring the declared count to equal the available file count;
 truncated block headers and payloads are still rejected.
 
+### Audio timing and register coverage
+
+The wave and modulation accumulators advance every 16 CPU clocks. Wave pitch
+retains the full 20-bit modulation product, including the low bits needed for
+very slow detuned notes. Opening wavetable RAM for writes holds the output
+sample while phase continues to advance. Volume changes latch at wave position
+zero; a direct zero-gain write mutes immediately. `$4083.D6` resets and holds both
+envelope timers; wave halt accelerates their rate fourfold and stops modulation
+phase. `$4087.D7` clears the fractional and ghost-address bits while retaining the
+32-entry table address. Its D6 test control forces a step at each unit tick.
+
+| Register | Modeled readback |
+|---|---|
+| `$4090`, `$4092` | Current envelope gains |
+| `$4091` | Wave accumulator bits 12–19 |
+| `$4093` | Modulation accumulator bits 5–11 |
+| `$4094` | Settled counter × gain product bits 4–11; intermediate multiplier phases are approximated |
+| `$4095` | Decoded next modulation increment in the low nibble; unknown upper nibble is zero |
+| `$4096` | Held wave sample gated by 32-CPU-clock volume PWM |
+| `$4097` | Signed seven-bit modulation counter |
+
+The audio mixer averages the ultrasonic PWM duty cycle; register reads expose
+its instantaneous gate. Snapshot version 6 preserves the tick/PWM phase, held
+sample, latched gain, and modulation test control. Versions 4 and 5 remain
+readable with converted accumulator fractions and reconstructed output latches;
+the older files do not contain the exact new latch or divider state.
+
+The unmodified public audio viewer copies `$4090–$4097` into nametable tiles.
+The integration runner checks those CPU-driven values while muted, after two
+counter decrements, and during playback, then verifies deterministic replay.
+These checks validate the implemented register contracts, not agreement with
+a cycle-by-cycle recording from physical hardware.
+
 ### Remaining accuracy limits
 
 - The instruction-stepped CPU/bus approximates the exact cycle of register access
   and interrupt sampling. The 21 IRQ results do not certify all cycle-level cases.
-- The audio viewer now reads the signed modulation counter at `$4097`, but debug
-  registers `$4091` and `$4093–$4096` remain unimplemented. Sequential multiplier
-  phases and PWM output readback are not represented.
-- Audio reset transients, rapid pause/resume behavior, volume-latch timing, and
-  continued phase advancement during wavetable writes need further hardware work.
+- `$4094` exposes the settled product rather than sequential multiplier partial
+  results. `$4095`'s undocumented upper counter and the absolute alignment of
+  divider/PWM phases to hardware power-on are not verified.
+- Envelope timing uses `8 * (speed + 1) * (master + 1)`. Published descriptions
+  conflict about master speed zero; this model follows that formula at zero too.
+- Audio reset transients, analog filtering/DAC nonlinearity, and rapid
+  pause/resume behavior need further hardware work.
 - The DRAM refresh watchdog is not modeled; analog DRAM decay and mechanical disk
   effects remain outside the current model.
 - CRC coverage is synthetic: a generated CPU program verifies `$4030.D4` after
@@ -100,7 +135,8 @@ or a comparison with recordings from hardware.
   four public diagnostic cases; commercial-image cases were skipped. Leak detection
   was disabled because this macOS runtime does not support it.
 - The FDS static analyzer, changed-file formatting and documentation-link checks
-  passed. Source BIOS and disk SHA-256 values were unchanged.
+  passed. The headless CLI ran Metroid for 1200 frames with the new audio model.
+  Source BIOS and disk SHA-256 values were unchanged.
 
 ## Reproduce the checks
 
@@ -145,11 +181,16 @@ acknowledgement, side insertion, long tracks with many small files, writable
 RAM, disk persistence, and snapshot restoration.
 
 Sound-reset coverage verifies that `$4023.D1` silences and resets the volume/wave
-unit while retaining access to wavetable RAM. Wave frequency and envelope tests
-explicitly enable sound before starting a channel. These register contracts are
+unit while retaining access to wavetable RAM. Audio regressions cover held samples,
+continued phase during writes, wave-zero gain latching, immediate mute, fractional
+pitch, debug reads, PWM duty cycle, envelope reset/rate, forced modulation steps,
+legacy-state conversion, invalid audio state, and replay during a table write.
+Wave frequency and envelope tests explicitly enable sound before starting a
+channel. These register contracts are
 based on the [NESdev FDS register reference](https://www.nesdev.org/wiki/Famicom_Disk_System)
-and [FDS audio reference](https://www.nesdev.org/wiki/FDS_audio). Analog reset
-transients and undocumented modulation-table reset behavior remain outside the
+and [FDS audio reference](https://www.nesdev.org/wiki/FDS_audio), with accumulator
+and pitch details from [Loopy's hardware measurements](https://forums.nesdev.org/viewtopic.php?p=232713).
+Analog reset transients and undocumented modulation-table reset behavior remain outside the
 model.
 
 Run the synthetic coverage without a BIOS or game image:

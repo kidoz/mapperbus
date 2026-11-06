@@ -186,7 +186,7 @@ TEST_CASE("FDS CPU program observes both clean and corrupt block CRCs", "[fds][s
             auto state = writer.take();
             constexpr std::size_t kTrackSize = 84000;
             constexpr std::size_t kFirstCrc = 3537 + 1 + 56;
-            state[state.size() - kTrackSize + kFirstCrc] ^= 1;
+            state[state.size() - 4 - kTrackSize + kFirstCrc] ^= 1;
             StateReader reader(state);
             emulator.fds().load_state(reader);
             REQUIRE(reader.ok());
