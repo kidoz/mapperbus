@@ -1,11 +1,19 @@
+#include <algorithm>
+#include <array>
 #include <catch2/catch_test_macros.hpp>
 #include <chrono>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <initializer_list>
 #include <memory>
+#include <optional>
+#include <utility>
 
 #include "../support/fds_image.hpp"
 #include "core/binary_file.hpp"
+#include "core/bus/memory_bus.hpp"
+#include "core/cpu/cpu.hpp"
 #include "core/emulator.hpp"
 #include "core/fds/fds_mapper.hpp"
 #include "core/state/state.hpp"
@@ -186,7 +194,7 @@ TEST_CASE("FDS CPU program observes both clean and corrupt block CRCs", "[fds][s
             auto state = writer.take();
             constexpr std::size_t kTrackSize = 84000;
             constexpr std::size_t kFirstCrc = 3537 + 1 + 56;
-            state[state.size() - 4 - kTrackSize + kFirstCrc] ^= 1;
+            state[state.size() - 9 - kTrackSize + kFirstCrc] ^= 1U;
             StateReader reader(state);
             emulator.fds().load_state(reader);
             REQUIRE(reader.ok());
@@ -196,5 +204,208 @@ TEST_CASE("FDS CPU program observes both clean and corrupt block CRCs", "[fds][s
             emulator.step_frame();
         REQUIRE(emulator.cpu().pc() == 0xE02D);
         REQUIRE(emulator.read_cpu(0x6000) == (corrupt ? 0x10 : 0));
+    }
+}
+
+namespace {
+struct WatchdogCpu {
+    Fds drive;
+    std::optional<Cartridge> cartridge;
+    MemoryBus bus;
+    Ppu ppu;
+    Cpu cpu{bus};
+
+    WatchdogCpu(std::initializer_list<Byte> program, Address entry = 0x6000) {
+        auto bios = mapperbus::tests::make_fds_bios();
+        std::ranges::fill(bios, 0xEA);
+        for (std::size_t vector = 8192 - 6; vector < bios.size(); vector += 2) {
+            bios[vector] = static_cast<Byte>(entry);
+            bios[vector + 1] = static_cast<Byte>(entry >> 8U);
+        }
+        if (entry >= 0xE000)
+            std::ranges::copy(program, bios.begin() + (entry - 0xE000));
+        REQUIRE(drive.load_disk(mapperbus::tests::make_fds_image()));
+        auto loaded = Cartridge::from_fds_bios(bios, drive);
+        REQUIRE(loaded);
+        cartridge.emplace(std::move(*loaded));
+        bus.connect_cartridge(&*cartridge);
+        bus.connect_fds(&drive);
+        bus.connect_ppu(&ppu);
+        if (entry < 0xE000) {
+            for (const auto value : program)
+                bus.write(entry++, value);
+        }
+        bus.write(0, 0);
+        bus.write(1, 0x60); // indirect address $6000
+        cpu.reset();
+    }
+
+    void enable() {
+        drive.write(0x4023, 0x82);
+        drive.write(0x4023, 0x83);
+    }
+
+    std::pair<std::uint16_t, Byte> counters() const {
+        StateWriter writer;
+        drive.save_state(writer);
+        const auto& bytes = writer.data();
+        std::uint16_t timer = 0;
+        std::memcpy(&timer, bytes.data() + bytes.size() - 5, sizeof(timer));
+        return {timer, bytes[bytes.size() - 3]};
+    }
+};
+} // namespace
+
+TEST_CASE("Every CPU opcode accounts for all elapsed watchdog cycles", "[fds][cpu][watchdog]") {
+    for (unsigned opcode = 0; opcode < 256; ++opcode) {
+        WatchdogCpu machine({static_cast<Byte>(opcode), 0, 0x60});
+        machine.enable();
+        const auto cycles = machine.cpu.step();
+        INFO("opcode " << opcode << " cycles " << cycles);
+        CHECK(machine.counters().first == 4095 - cycles);
+    }
+}
+
+TEST_CASE("CPU dummy stack and indexed cycles refresh FDS RAM at their bus addresses",
+          "[fds][cpu][watchdog]") {
+    struct Case {
+        std::initializer_list<Byte> program;
+        Address entry;
+        unsigned cycles;
+        Byte refreshes;
+    };
+    for (const auto& test : {
+             Case{.program = {0xEA},
+                  .entry = 0x6000,
+                  .cycles = 2,
+                  .refreshes = 0}, // implied NOP, dummy PC in DRAM
+             Case{.program = {0xEA},
+                  .entry = 0xE000,
+                  .cycles = 2,
+                  .refreshes = 2}, // same NOP in BIOS, both clocks refresh
+             Case{.program = {0x20, 0, 0x60},
+                  .entry = 0x6000,
+                  .cycles = 6,
+                  .refreshes = 3}, // JSR: dummy stack read + two pushes
+             Case{.program = {0x48}, .entry = 0x6000, .cycles = 3, .refreshes = 1}, // PHA
+             Case{.program = {0x68},
+                  .entry = 0x6000,
+                  .cycles = 4,
+                  .refreshes = 2}, // PLA: dummy stack read + pop
+             Case{.program = {0x40},
+                  .entry = 0x6000,
+                  .cycles = 6,
+                  .refreshes = 4}, // RTI: dummy + three pops
+             Case{.program = {0xB5, 0x10},
+                  .entry = 0x6000,
+                  .cycles = 4,
+                  .refreshes = 2}, // LDA zp,X: dummy + data
+             Case{.program = {0xA1, 0},
+                  .entry = 0x6000,
+                  .cycles = 6,
+                  .refreshes = 3}, // LDA (zp,X): dummy + pointer
+             Case{.program = {0xE6, 0x10},
+                  .entry = 0x6000,
+                  .cycles = 5,
+                  .refreshes = 3}, // INC zp: read + old/new writes
+             Case{.program = {0xEE, 0, 0x60},
+                  .entry = 0xE000,
+                  .cycles = 6,
+                  .refreshes = 3}, // INC DRAM from BIOS: operand writes do not refresh
+             Case{.program = {0xD0, 2},
+                  .entry = 0xDFFD,
+                  .cycles = 4,
+                  .refreshes = 0}, // branch correction address stays in DRAM
+         }) {
+        WatchdogCpu machine(test.program, test.entry);
+        machine.enable();
+        INFO("entry " << test.entry << " opcode " << static_cast<int>(*test.program.begin()));
+        REQUIRE(machine.cpu.step() == test.cycles);
+        CHECK(machine.counters().second == test.refreshes);
+        CHECK(machine.counters().first == 4095 - test.cycles);
+    }
+    SECTION("page-cross correction observes the unadjusted address") {
+        WatchdogCpu machine({0xA0, 1, 0xB1, 0}); // LDY #1; LDA ($00),Y
+        machine.bus.write(0, 0xFF);
+        machine.bus.write(1, 0xDF); // final $E000, correction $DF00
+        REQUIRE(machine.cpu.step() == 2);
+        machine.enable();
+        REQUIRE(machine.cpu.step() == 6);
+        CHECK(machine.counters().second == 3); // two ZP pointer reads + BIOS data
+    }
+}
+
+TEST_CASE("OAM DMA clocks the FDS watchdog for both source reads and PPU writes",
+          "[fds][dma][watchdog]") {
+    for (const Byte page : {0, 0x60}) {
+        for (const bool odd : {false, true}) {
+            WatchdogCpu machine({0xA9, page, 0x48, 0x8D, 0x14, 0x40});
+            REQUIRE(machine.cpu.step() == 2);
+            if (odd) {
+                REQUIRE(machine.cpu.step() == 3); // PHA makes the DMA start odd
+            } else {
+                machine.bus.write(0x6002, 0xEA); // NOP keeps the start even
+                REQUIRE(machine.cpu.step() == 2);
+            }
+            machine.enable();
+            for (int row = 0; row < 63; ++row)
+                machine.drive.clock_cpu_cycle(0);
+            REQUIRE(machine.cpu.step() == (odd ? 518 : 517));
+            // Starting row 63 + the $4014 write + 256 PPU writes (+256 RAM
+            // reads on page 0). Last reload is 128 or 64 clocks before the end.
+            CHECK(machine.counters().second == 64);
+            CHECK(machine.counters().first == (page == 0 ? 3181 : 3117));
+        }
+    }
+}
+
+TEST_CASE("DMC stalls count once and debugger reads do not clock the FDS watchdog",
+          "[fds][dma][watchdog]") {
+    WatchdogCpu machine({0xEA});
+    machine.enable();
+    for (int read = 0; read < 10000; ++read) {
+        (void)machine.bus.read(0x6000);
+        (void)machine.bus.read(0xE000);
+    }
+    CHECK(machine.counters() == std::pair<std::uint16_t, Byte>{4095, 0});
+    (void)machine.bus.read_dmc(0xE000, 0x6000);
+    CHECK(machine.counters() == std::pair<std::uint16_t, Byte>{4091, 1});
+    machine.cpu.add_stall_cycles(4); // already accounted by the DMC read path
+    CHECK(machine.counters() == std::pair<std::uint16_t, Byte>{4091, 1});
+    (void)machine.bus.read_dmc(0xC000, 0xE000);
+    CHECK(machine.counters() == std::pair<std::uint16_t, Byte>{4087, 4});
+}
+
+TEST_CASE("CPU loops which refresh RAM avoid the FDS watchdog while tight DRAM loops trip it",
+          "[fds][cpu][watchdog]") {
+    for (const bool refreshing : {false, true}) {
+        WatchdogCpu machine(refreshing ? std::initializer_list<Byte>{0xA5, 0, 0x4C, 0, 0x60}
+                                       : std::initializer_list<Byte>{0x4C, 0, 0x60});
+        machine.enable();
+        for (int instruction = 0; instruction < 5000; ++instruction)
+            machine.cpu.step();
+        CHECK(machine.drive.irq_pending() == !refreshing);
+    }
+}
+
+TEST_CASE("Emulator rejects malformed watchdog state and restores the running machine",
+          "[fds][state][watchdog]") {
+    Emulator emulator;
+    REQUIRE(
+        emulator.load_fds(mapperbus::tests::make_fds_bios(), mapperbus::tests::make_fds_image()));
+    emulator.reset();
+    emulator.fds().write(0x4023, 0x83);
+    for (int cycle = 0; cycle < 4096; ++cycle)
+        emulator.fds().clock_cpu_cycle(0x6000);
+    REQUIRE(emulator.fds().irq_pending());
+    const auto original = emulator.save_state();
+    constexpr std::size_t kMapperRamBytes = 32 * 1024 + 8 * 1024;
+    for (const auto [offset, value] :
+         std::array<std::pair<unsigned, Byte>, 4>{{{1, 0x10}, {2, 128}, {3, 2}, {4, 2}}}) {
+        auto invalid = original;
+        invalid[invalid.size() - kMapperRamBytes - 5 + offset] = value;
+        REQUIRE_FALSE(emulator.load_state(invalid));
+        REQUIRE(emulator.save_state() == original);
+        REQUIRE(emulator.fds().irq_pending());
     }
 }

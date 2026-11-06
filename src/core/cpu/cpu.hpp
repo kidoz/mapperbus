@@ -83,8 +83,13 @@ class Cpu {
     uint64_t total_cycles_ = 0;
     // Set by KIL/JAM opcodes; the CPU stays halted until reset().
     bool jammed_ = false;
+    // Transient within step(); snapshots are taken at instruction boundaries.
+    mutable uint32_t bus_cycles_ = 0;
 
+    void clock_bus(Address addr, uint32_t cycles = 1) const;
+    void finish_bus_cycles(uint32_t cycles) const;
     Byte read(Address addr) const;
+    Byte read_modify(Address addr) const;
     void write(Address addr, Byte value);
 
     Byte fetch_byte();
@@ -113,7 +118,7 @@ class Cpu {
     Byte ror(Byte value);
 
     AddressResult absolute_indexed(Byte index) const;
-    AddressResult indirect_indexed(Byte zero_page_addr) const;
+    AddressResult indirect_indexed(Byte zero_page_addr, bool always_dummy = false) const;
 };
 
 } // namespace mapperbus::core

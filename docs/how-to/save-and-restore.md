@@ -60,9 +60,10 @@ slots 2–10. A present but invalid central file reports an error instead of
 falling back. Legacy files are never moved or deleted. Pressing `F5` after an
 import writes a new snapshot to the configured location.
 
-New version-6 snapshots (and supported version-4/5 snapshots) validate the media
-SHA-256 before changing the machine. Version 6 also preserves FDS audio phase and
-output latches; older snapshots reconstruct the missing audio state.
+New version-7 snapshots (and supported version-4/5/6 snapshots) validate the media
+SHA-256 before changing the machine. New snapshots preserve FDS audio latches and
+DRAM watchdog state. Older snapshots reconstruct missing audio state and leave
+the watchdog disabled until the next `$4023` write.
 The legacy sibling import also accepts version 3; those files contain no hash,
 so use them only with their original ROM. Older versions remain unsupported.
 

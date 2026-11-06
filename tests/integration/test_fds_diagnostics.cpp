@@ -180,3 +180,24 @@ TEST_CASE("Public FDS audio viewer plays, resets, and reads the modulation count
     press(emulator, Button::A);
     REQUIRE(frames(emulator, 20) > 0.001f);
 }
+
+TEST_CASE("Public FDS watchdog diagnostic captures two NOP-slide IRQ addresses",
+          "[integration][fds][diagnostic][watchdog]") {
+    Emulator emulator;
+    load_diagnostic(emulator,
+                    "4030d1-addr.fds",
+                    "ed9f62f8c85c3d94909359a55ff94a53427473378a2eff556f4b465f268fe0c5");
+    frames(emulator, 600);
+    REQUIRE(emulator.read_cpu(0x10) == 2); // upstream IRQ_Count
+    // Despite the upstream array names, the stack extraction stores the
+    // high bytes at $11/$12 and low bytes at $13/$14.
+    const auto first = static_cast<Address>((static_cast<uint32_t>(emulator.read_cpu(0x11)) << 8U) |
+                                            emulator.read_cpu(0x13));
+    const auto second = static_cast<Address>(
+        (static_cast<uint32_t>(emulator.read_cpu(0x12)) << 8U) | emulator.read_cpu(0x14));
+    INFO("IRQ addresses " << first << " / " << second);
+    artifact(emulator, "watchdog-addresses.ppm");
+    // Upstream's published Twin Famicom capture shows $67FF / $6E25.
+    CHECK(first == 0x67FF);
+    CHECK(second == 0x6E25);
+}

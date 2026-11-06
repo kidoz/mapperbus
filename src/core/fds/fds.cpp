@@ -88,9 +88,13 @@ void Fds::save_state(StateWriter& writer) const {
     writer.write(wave_sample_);
     writer.write(volume_gain_);
     writer.write<Byte>(mod_force_step_ ? 1 : 0);
+    writer.write(watchdog_timer_);
+    writer.write(refresh_row_);
+    writer.write<Byte>(watchdog_enabled_ ? 1 : 0);
+    writer.write<Byte>(watchdog_irq_flag_ ? 1 : 0);
 }
 
-void Fds::load_state(StateReader& reader, bool extended, bool timed_audio) {
+void Fds::load_state(StateReader& reader, bool extended, bool timed_audio, bool watchdog) {
     std::vector<Byte> saved_stream;
     reader.read(loaded_);
     reader.read(num_sides_);
@@ -191,6 +195,23 @@ void Fds::load_state(StateReader& reader, bool extended, bool timed_audio) {
         mod_force_step_ = false;
     }
 
+    watchdog_timer_ = 0x0FFF;
+    refresh_row_ = 0;
+    watchdog_enabled_ = false;
+    watchdog_irq_flag_ = false;
+    if (watchdog) {
+        reader.read(watchdog_timer_);
+        reader.read(refresh_row_);
+        const auto enabled = reader.read<Byte>();
+        const auto pending = reader.read<Byte>();
+        watchdog_enabled_ = enabled == 1;
+        watchdog_irq_flag_ = pending == 1;
+        if (watchdog_timer_ > 0x0FFF || refresh_row_ > 127 || enabled > 1 || pending > 1 ||
+            (!disk_io_enabled_ && (watchdog_timer_ != 0x0FFF || refresh_row_ != 0)) ||
+            (watchdog_irq_flag_ && (!watchdog_enabled_ || !disk_io_enabled_)))
+            reader.fail();
+    }
+
     const bool valid_transfer_delay = transfer_delay_ >= 0;
     const bool valid_audio = wave_position_ < wavetable_.size() && wave_frequency_ <= 0x0FFF &&
                              wave_accumulator_ < 0x40000 && mod_accumulator_ < 0x1000 &&
@@ -215,6 +236,7 @@ void Fds::load_state(StateReader& reader, bool extended, bool timed_audio) {
         disk_stream_ = std::move(saved_stream);
         disk_position_ = std::min(disk_position_, static_cast<uint32_t>(disk_stream_.size()));
     }
+    update_irq();
 }
 
 void Fds::sanitize_disk_geometry() {
@@ -303,6 +325,10 @@ void Fds::reset_drive() {
     crc_error_ = false;
     end_of_disk_ = false;
     irq_line_ = false;
+    watchdog_timer_ = 0x0FFF;
+    refresh_row_ = 0;
+    watchdog_enabled_ = false;
+    watchdog_irq_flag_ = false;
 }
 
 void Fds::reset() {
@@ -579,7 +605,28 @@ void Fds::synchronize_disk() {
 }
 
 void Fds::update_irq() {
-    irq_line_ = timer_irq_flag_ || (irq_on_transfer_ && byte_transfer_flag_);
+    irq_line_ = timer_irq_flag_ || watchdog_irq_flag_ || (irq_on_transfer_ && byte_transfer_flag_);
+}
+
+void Fds::clock_cpu_cycle(Address address) {
+    if (!disk_io_enabled_)
+        return; // $4023.D0 keeps both counters reset.
+    if (address < 0x6000 || address >= 0xE000) {
+        refresh_row_ = (refresh_row_ + 1U) & 0x7FU;
+        if (refresh_row_ == 0) {
+            watchdog_timer_ = 3245;
+            return; // Refresh reload has priority over the decrement.
+        }
+    }
+    if (watchdog_timer_ == 0) {
+        watchdog_timer_ = 0x0FFF;
+        if (watchdog_enabled_ && !watchdog_irq_flag_) {
+            watchdog_irq_flag_ = true;
+            update_irq();
+        }
+    } else {
+        --watchdog_timer_;
+    }
 }
 
 void Fds::transfer_byte() {
@@ -652,15 +699,17 @@ void Fds::step_transfer(uint32_t cpu_cycles) {
 
 Byte Fds::read_drive_register(Address reg) {
     switch (reg) {
-    case 0x30: { // Disk status: clears the timer IRQ on read
+    case 0x30: { // Status: acknowledge timer/watchdog, retain transfer IRQ.
         Byte status = 0;
         status |= timer_irq_flag_ ? 0x01 : 0x00;
+        status |= watchdog_irq_flag_ ? 0x02U : 0x00U;
         status |= byte_transfer_flag_ ? 0x80 : 0x00;
         status |= horizontal_mirroring_ ? 0x08 : 0x00;
         status |= crc_error_ ? 0x10 : 0x00;
         status |= end_of_disk_ ? 0x40 : 0x00;
         timer_irq_flag_ = false;
-        irq_line_ = irq_on_transfer_ && byte_transfer_flag_;
+        watchdog_irq_flag_ = false;
+        update_irq();
         return status;
     }
     case 0x31: { // Read data: clears the byte-transfer flag
@@ -702,12 +751,17 @@ void Fds::write_drive_register(Address reg, Byte value) {
             irq_timer_ = irq_reload_;
         } else {
             timer_irq_flag_ = false;
-            irq_line_ = irq_on_transfer_ && byte_transfer_flag_;
+            update_irq();
         }
         break;
     case 0x23: // Master I/O enable
         disk_io_enabled_ = (value & 0x01) != 0;
         sound_io_enabled_ = (value & 0x02) != 0;
+        watchdog_enabled_ = (value & 0x80U) != 0;
+        // Hardware testing on 2026-11-04 confirmed D7 clear acknowledges
+        // the latched IRQ without resetting the running counters.
+        if (!watchdog_enabled_ || !disk_io_enabled_)
+            watchdog_irq_flag_ = false;
         if (!sound_io_enabled_) {
             hold_audio_reset();
         }
@@ -720,13 +774,15 @@ void Fds::write_drive_register(Address reg, Byte value) {
             transfer_reset_ = true;
             read_mode_ = true;
             horizontal_mirroring_ = false;
-            update_irq();
+            watchdog_timer_ = 0x0FFF;
+            refresh_row_ = 0;
         }
+        update_irq();
         break;
     case 0x24: // Write data register
         write_data_ = value;
         byte_transfer_flag_ = false;
-        irq_line_ = timer_irq_flag_;
+        update_irq();
         break;
     case 0x25: { // See NESdev FDS Control: scan, motor stop, read, mirror, CRC.
         if (!read_mode_ && ((value & 0x04) != 0 || (value & 0x40) == 0 || (value & 0x03) != 1))

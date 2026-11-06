@@ -9,6 +9,8 @@ Versioning.
 
 ### Added
 
+- FDS DRAM refresh watchdog with CPU/dummy/DMA address accounting, shared IRQ
+  acknowledgement, and regression coverage against the public hardware diagnostic.
 - Original FDS audio capture probe with 16 pages for multiplier, counter, reset,
   and envelope research; generated without BIOS/game data or an assembler.
 - FDS BIOS boot with the RAM adapter, raw/archived disk loading, side and
@@ -28,8 +30,8 @@ Versioning.
 
 ### Changed
 
-- Save-state version 6 preserves FDS audio phase and output latches in addition
-  to drive/CRC/physical-stream state; versions 4 and 5 remain readable.
+- Save-state version 7 preserves FDS DRAM watchdog state, audio latches, and
+  drive/CRC/physical-stream state; versions 4–6 remain readable.
 
 ## [0.2.0] - 2026-11-04
 

@@ -37,6 +37,32 @@ void MemoryBus::write(Address addr, Byte value) {
     (this->*(write_map_[addr >> 10]))(addr, value);
 }
 
+void MemoryBus::clock_cpu_bus(Address addr, uint32_t cycles) {
+    if (fds_ != nullptr && fds_->is_loaded()) {
+        for (uint32_t cycle = 0; cycle < cycles; ++cycle)
+            fds_->clock_cpu_cycle(addr);
+    }
+}
+
+void MemoryBus::clock_oam_dma(Byte page, Address halt_address, bool odd_alignment) {
+    if (ppu_ == nullptr || fds_ == nullptr || !fds_->is_loaded())
+        return;
+    clock_cpu_bus(halt_address, odd_alignment ? 2 : 1);
+    for (uint16_t offset = 0; offset < 256; ++offset) {
+        clock_cpu_bus(static_cast<Address>((static_cast<uint32_t>(page) << 8U) |
+                                           static_cast<uint32_t>(offset)));
+        clock_cpu_bus(0x2004);
+    }
+}
+
+Byte MemoryBus::read_dmc(Address addr, Address halt_address) {
+    // The instruction-stepped DMA model uses three stalled CPU reads and
+    // one sample read. Count them here, not again in add_stall_cycles().
+    clock_cpu_bus(halt_address, 3);
+    clock_cpu_bus(addr);
+    return read(addr);
+}
+
 void MemoryBus::update_mappings() {
     for (int i = 0; i < 8; ++i) {
         read_map_[i] = &MemoryBus::read_ram;

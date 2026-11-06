@@ -91,8 +91,8 @@ SDL3 `--state-dir PATH` and `--portable-states` override storage for the current
 run without persisting that override. Explicit slot changes and successful
 save/load targets are remembered by content hash.
 
-The core writes version-6 snapshots with media SHA-256 in the header and FDS audio
-phase/output latches. Versions 4 and 5 remain readable; directory policy lives in
+The core writes version-7 snapshots with media SHA-256, FDS audio phase/output
+latches, and DRAM watchdog state. Versions 4–6 remain readable; directory policy lives in
 the application layer. Legacy version-3 loading is enabled
 only when importing a sibling `.state`/`.stateN` file. Battery `.sav` behavior
 is unchanged. See [Save and restore a game](../how-to/save-and-restore.md).

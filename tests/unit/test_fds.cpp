@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <utility>
 #include <vector>
 
 #include "../support/fds_image.hpp"
@@ -538,11 +539,12 @@ TEST_CASE("FDS CRC status detects a corrupt physical block", "[fds][transfer][cr
     source.save_state(writer);
     for (bool corrupt : {false, true}) {
         auto state = writer.data();
-        // Stream payload follows its size prefix, before the four v6 audio bytes.
+        // Stream payload follows its size prefix, before the four v6 audio and five v7 watchdog
+        // bytes.
         constexpr std::size_t kTrackSize = 84000;
         constexpr std::size_t kFirstCrc = 3537 + 1 + 56;
         if (corrupt)
-            state[state.size() - 4 - kTrackSize + kFirstCrc] ^= 1;
+            state[state.size() - 9 - kTrackSize + kFirstCrc] ^= 1U;
         Fds drive;
         StateReader reader(state);
         drive.load_state(reader);
@@ -783,7 +785,7 @@ TEST_CASE("FDS rejects invalid audio latch and phase state", "[fds][audio][state
     constexpr std::array<Byte, 4> kInvalid = {32, 64, 33, 2};
     for (std::size_t index = 0; index < kInvalid.size(); ++index) {
         auto blob = writer.data();
-        blob[blob.size() - 4 + index] = kInvalid[index];
+        blob[blob.size() - 9 + index] = kInvalid[index];
         Fds restored;
         StateReader reader(blob);
         restored.load_state(reader);
@@ -833,7 +835,7 @@ TEST_CASE("FDS imports legacy audio phase into the wider accumulators", "[fds][a
     StateWriter writer;
     source.save_state(writer);
     auto legacy = writer.data();
-    legacy.resize(legacy.size() - 4); // v5 had no phase or DAC/gain latches
+    legacy.resize(legacy.size() - 9); // v5 had no audio latches or watchdog state
     // Frozen v3-v5 offsets for an empty drive: 47 drive bytes + 64 wave bytes,
     // write flag + frequency precede the wave fraction; mod fraction is at 158.
     constexpr std::size_t kWaveFraction = 114;
@@ -847,7 +849,7 @@ TEST_CASE("FDS imports legacy audio phase into the wider accumulators", "[fds][a
     std::memcpy(legacy.data() + kModFraction, &mod, sizeof(mod));
     Fds restored;
     StateReader reader(legacy);
-    restored.load_state(reader, true, false);
+    restored.load_state(reader, true, false, false);
     REQUIRE(reader.ok());
     CHECK(reader.remaining() == 0);
     CHECK(restored.read(0x4091) == source.read(0x4091));
@@ -903,5 +905,169 @@ TEST_CASE("FDS envelope master zero uses the hardware measured plus-one period",
                 CHECK((drive.read(0x4092) & 0x3FU) == 14);
             }
         }
+    }
+}
+
+namespace {
+void watchdog_clocks(Fds& drive, Address address, unsigned count) {
+    for (unsigned cycle = 0; cycle < count; ++cycle)
+        drive.clock_cpu_cycle(address);
+}
+
+std::pair<std::uint16_t, Byte> watchdog_counters(const Fds& drive) {
+    StateWriter writer;
+    drive.save_state(writer);
+    const auto& bytes = writer.data();
+    std::uint16_t timer = 0;
+    std::memcpy(&timer, bytes.data() + bytes.size() - 5, sizeof(timer));
+    return {timer, bytes[bytes.size() - 3]};
+}
+} // namespace
+
+TEST_CASE("FDS watchdog expires after 4096 CPU cycles and repeats without refresh",
+          "[fds][watchdog]") {
+    Fds drive;
+    drive.write(0x4023, 0x83);
+    watchdog_clocks(drive, 0x6000, 4095);
+    REQUIRE_FALSE(drive.irq_pending());
+    drive.clock_cpu_cycle(0xDFFF);
+    REQUIRE(drive.irq_pending());
+    REQUIRE((drive.read(0x4030) & 3U) == 2);
+    REQUIRE_FALSE(drive.irq_pending());
+    watchdog_clocks(drive, 0x8000, 4095);
+    REQUIRE_FALSE(drive.irq_pending());
+    drive.clock_cpu_cycle(0x8000);
+    REQUIRE((drive.read(0x4030) & 2U) != 0);
+}
+
+TEST_CASE("FDS watchdog refresh reload wins over decrement on the 128th refresh",
+          "[fds][watchdog]") {
+    for (const Address address : {0x0000, 0x2000, 0x5FFF, 0xE000, 0xFFFF}) {
+        Fds drive;
+        drive.write(0x4023, 0x83);
+        watchdog_clocks(drive, address, 127);
+        CHECK(watchdog_counters(drive) == std::pair<std::uint16_t, Byte>{3968, 127});
+        drive.clock_cpu_cycle(address);
+        CHECK(watchdog_counters(drive) == std::pair<std::uint16_t, Byte>{3245, 0});
+        watchdog_clocks(drive, 0x6000, 3245);
+        REQUIRE_FALSE(drive.irq_pending());
+        drive.clock_cpu_cycle(0x6000);
+        REQUIRE(drive.irq_pending());
+        // Servicing the IRQ in ROM refreshes rows but must not itself ack it.
+        watchdog_clocks(drive, 0xE149, 128);
+        REQUIRE(drive.irq_pending());
+        REQUIRE((drive.read(0x4030) & 2U) != 0);
+        REQUIRE_FALSE(drive.irq_pending());
+    }
+}
+
+TEST_CASE("FDS watchdog distinguishes interrupt masking from counter reset", "[fds][watchdog]") {
+    Fds drive;
+    drive.write(0x4023, 3); // D7 masks IRQ, counters still run
+    watchdog_clocks(drive, 0x6000, 4096);
+    REQUIRE_FALSE(drive.irq_pending());
+    watchdog_clocks(drive, 0x6000, 100);
+    const auto masked = watchdog_counters(drive);
+    drive.write(0x4023, 0x83);
+    REQUIRE(watchdog_counters(drive) == masked);
+    watchdog_clocks(drive, 0x6000, 3996);
+    REQUIRE(drive.irq_pending());
+    drive.write(0x4023, 3); // D7 clear acknowledges, but preserves both counters
+    REQUIRE_FALSE(drive.irq_pending());
+    REQUIRE((drive.read(0x4030) & 2U) == 0);
+    drive.write(0x4023, 0x82); // D0 resets both counters
+    watchdog_clocks(drive, 0xE000, 512);
+    CHECK(watchdog_counters(drive) == std::pair<std::uint16_t, Byte>{4095, 0});
+    drive.write(0x4023, 0x83);
+    watchdog_clocks(drive, 0x6000, 4095);
+    REQUIRE_FALSE(drive.irq_pending());
+    drive.clock_cpu_cycle(0x6000);
+    REQUIRE(drive.irq_pending());
+}
+
+TEST_CASE("FDS refresh on the expiry cycle prevents a watchdog IRQ", "[fds][watchdog]") {
+    Fds drive;
+    drive.write(0x4023, 0x83);
+    watchdog_clocks(drive, 0xE000, 127);
+    watchdog_clocks(drive, 0x6000, 3968); // timer zero, one refresh short of reload
+    REQUIRE_FALSE(drive.irq_pending());
+    drive.clock_cpu_cycle(0xE000);
+    CHECK(watchdog_counters(drive) == std::pair<std::uint16_t, Byte>{3245, 0});
+    REQUIRE_FALSE(drive.irq_pending());
+}
+
+TEST_CASE("FDS watchdog timer and transfer IRQs acknowledge independently", "[fds][watchdog]") {
+    Fds drive;
+    REQUIRE(drive.load_disk(make_fds_image()));
+    drive.write(0x4023, 0x83);
+    drive.write(0x4025, 0xE5);
+    (void)next_byte(drive); // consume first byte, then request another
+    for (int cycle = 0; cycle < 1000 && !drive.irq_pending(); ++cycle)
+        drive.step(1);
+    REQUIRE(drive.irq_pending());
+    watchdog_clocks(drive, 0x6000, 4096);
+    drive.write(0x4020, 1);
+    drive.write(0x4022, 2);
+    drive.step(1);
+    CHECK((drive.read(0x4030) & 0x83U) == 0x83); // all three sources
+    REQUIRE(drive.irq_pending());                // transfer remains pending after status ack
+    (void)drive.read(0x4031);
+    REQUIRE_FALSE(drive.irq_pending());
+    watchdog_clocks(drive, 0x6000, 4096);
+    drive.write(0x4022, 0); // disabling timer must retain watchdog
+    drive.write(0x4024, 0); // clearing transfer must retain watchdog
+    (void)drive.read(0x4032);
+    REQUIRE(drive.irq_pending());
+    CHECK((drive.read(0x4030) & 3U) == 2);
+}
+
+TEST_CASE("FDS watchdog state resumes counters and pending IRQs", "[fds][watchdog][state]") {
+    Fds source;
+    source.write(0x4023, 0x83);
+    watchdog_clocks(source, 0xE000, 20);
+    watchdog_clocks(source, 0x6000, 4000);
+    StateWriter writer;
+    source.save_state(writer);
+    Fds restored;
+    StateReader reader(writer.data());
+    restored.load_state(reader);
+    REQUIRE(reader.ok());
+    for (unsigned cycle = 0; cycle < 4300; ++cycle) {
+        source.clock_cpu_cycle(0x6000);
+        restored.clock_cpu_cycle(0x6000);
+        REQUIRE(source.irq_pending() == restored.irq_pending());
+    }
+    REQUIRE(restored.irq_pending());
+    StateWriter pending;
+    restored.save_state(pending);
+    Fds latched;
+    StateReader pending_reader(pending.data());
+    latched.load_state(pending_reader);
+    REQUIRE(pending_reader.ok());
+    REQUIRE(latched.irq_pending());
+    REQUIRE((latched.read(0x4030) & 2U) != 0);
+    // Old snapshots contain no D7 value; start with watchdog IRQ disabled.
+    auto legacy = writer.data();
+    legacy.resize(legacy.size() - 5);
+    Fds imported;
+    StateReader old_reader(legacy);
+    imported.load_state(old_reader, true, true, false);
+    REQUIRE(old_reader.ok());
+    watchdog_clocks(imported, 0x6000, 8192);
+    REQUIRE_FALSE(imported.irq_pending());
+}
+
+TEST_CASE("FDS rejects malformed watchdog counters and flags", "[fds][watchdog][state]") {
+    Fds source;
+    StateWriter writer;
+    source.save_state(writer);
+    for (const auto [offset, value] :
+         std::array<std::pair<unsigned, Byte>, 4>{{{1, 0x10}, {2, 128}, {3, 2}, {4, 2}}}) {
+        auto invalid = writer.data();
+        invalid[invalid.size() - 5 + offset] = value;
+        Fds restored;
+        StateReader reader(invalid);
+        restored.load_state(reader);
+        REQUIRE_FALSE(reader.ok());
     }
 }

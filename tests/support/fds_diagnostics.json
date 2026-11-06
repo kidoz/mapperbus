@@ -37,6 +37,16 @@
       "revision": "v1.2",
       "url": "https://github.com/TakuikaNinja/FDS-Audio-Registers/releases/download/v1.2/audio-registers.fds",
       "sha256": "80ccda5443653426f27e6b4b3125c9834e97931c50b9fcdccc00b8367ef9fe28"
+    },
+    {
+      "id": "watchdog",
+      "filename": "4030d1-addr.fds",
+      "author": "TakuikaNinja",
+      "source": "https://github.com/TakuikaNinja/FDS-4030D1-Addr",
+      "revision": "v1.0",
+      "url": "https://github.com/TakuikaNinja/FDS-4030D1-Addr/releases/download/v1.0/FDS-4030D1-Addr.zip",
+      "member": "4030d1-addr.fds",
+      "sha256": "ed9f62f8c85c3d94909359a55ff94a53427473378a2eff556f4b465f268fe0c5"
     }
   ]
 }

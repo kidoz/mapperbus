@@ -117,7 +117,7 @@ TEST_CASE("Legacy sibling import is read-only and never masks a corrupt centrali
     REQUIRE(session.step_frame() == TickResult::FrameAdvanced);
     const auto snapshot = session.emulator().save_state();
     auto legacy = snapshot;
-    legacy.erase(legacy.end() - 16384 - 22, legacy.end() - 16384);
+    legacy.erase(legacy.end() - 16384 - 27, legacy.end() - 16384);
     legacy.erase(legacy.begin() + 11, legacy.begin() + 43);
     const std::uint32_t version = 3;
     std::memcpy(legacy.data() + 4, &version, sizeof(version));

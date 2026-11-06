@@ -33,12 +33,19 @@ class Fds {
 
     void reset();
     void step(uint32_t cpu_cycles);
+    /// CPU bus address for one M2 cycle, including dummy accesses and DMA.
+    /// Kept separate from drive/audio stepping and debugger reads.
+    void clock_cpu_cycle(Address address);
 
     Byte read(Address addr);
     void write(Address addr, Byte value);
 
     void save_state(StateWriter& writer) const;
-    void load_state(StateReader& reader, bool extended = true, bool timed_audio = true);
+    // Emulator supplies version gates: v5 drive, v6 audio, v7 watchdog.
+    void load_state(StateReader& reader,
+                    bool extended = true,
+                    bool timed_audio = true,
+                    bool watchdog = true);
 
     /// Mounts a `.fds` image (optionally prefixed with the 16-byte "FDS\x1a"
     /// fwNES header). Returns false when the image is empty or larger than
@@ -161,7 +168,12 @@ class Fds {
     bool byte_transfer_flag_ = false;
     bool crc_error_ = false;
     bool end_of_disk_ = false;
-    bool irq_line_ = false; // combined timer + transfer IRQ line
+    bool irq_line_ = false; // combined timer + watchdog + transfer IRQ line
+
+    uint16_t watchdog_timer_ = 0x0FFF;
+    Byte refresh_row_ = 0;
+    bool watchdog_enabled_ = false;
+    bool watchdog_irq_flag_ = false;
 
     // --- Wavetable audio channel ---
     std::array<Byte, 64> wavetable_{}; // 64 x 6-bit samples

@@ -15,18 +15,21 @@ The programs are fetched separately; they are not vendored into MapperBus.
 | TakuikaNinja FDS Mirroring Test | v1.1 | All three failure counters are zero; screen displays three passes |
 | TakuikaNinja FDS 4023 Test | v1.0 | I/O toggles work; the program observes disk removal/reinsertion while disk writes are disabled |
 | TakuikaNinja FDS Audio Registers | v1.2 | Play/reset/resume, CPU-driven debug-register reads, accumulator activity, and snapshot replay work |
+| TakuikaNinja FDS 4030.D1 Address | v1.0 | Captures `$67FF` / `$6E25`, matching the published Twin Famicom capture |
 
 The I/O and audio programs are interactive viewers. Their results above describe
 specific automated interactions, not a claim that every displayed register matches
-hardware. The IRQ runner reads the ROM's result bytes at `$0405–$0419`; it does not
+hardware. The watchdog runner checks the program's two captured return addresses;
+it does not interpret raster stripes as a pass/fail result. The IRQ runner reads the ROM's result bytes at `$0405–$0419`; it does not
 infer success from a nonblank screen. The mirroring runner reads the original
 program's three failure counters. No diagnostic binary is patched by this runner.
 
 Sources: [Sour's IRQ research](https://forums.nesdev.org/viewtopic.php?t=16507),
 [archived IRQ image](https://github.com/christopherpow/nes-test-roms/tree/b2497f4d9427643a9044f7a91016299a698fc55f/fdsirqtests),
 [mirroring test](https://github.com/TakuikaNinja/FDS-Mirroring-Test),
-[I/O viewer](https://github.com/TakuikaNinja/FDS-4023-Test), and
-[audio viewer](https://github.com/TakuikaNinja/FDS-Audio-Registers).
+[I/O viewer](https://github.com/TakuikaNinja/FDS-4023-Test),
+[audio viewer](https://github.com/TakuikaNinja/FDS-Audio-Registers), and
+[watchdog diagnostic](https://github.com/TakuikaNinja/FDS-4030D1-Addr).
 The [fixture manifest](../../tests/support/fds_diagnostics.json) records exact
 URLs, versions, and SHA-256 digests.
 
@@ -88,6 +91,37 @@ counter decrements, and during playback, then verifies deterministic replay.
 These checks validate the implemented register contracts, not agreement with
 a cycle-by-cycle recording from physical hardware.
 
+### DRAM refresh watchdog
+
+The watchdog uses a 12-bit down-counter and a seven-bit refresh-row counter.
+`$4023.D0 = 0` resets them to 4095 and zero. CPU cycles outside PRG RAM
+`$6000–$DFFF` advance the row counter; its 128th refresh reloads the timer to
+3245 instead of decrementing it. Timer underflow wraps to 4095 and latches an IRQ
+when `$4023.D7` enables it. Both counters continue while the IRQ is pending.
+Reading `$4030` acknowledges the watchdog (`D1`) and timer (`D0`), while retaining
+the transfer IRQ (`D7`). Clearing `$4023.D7` acknowledges the watchdog without
+resetting either counter.
+
+CPU execution reports bus addresses for explicit accesses, implied idle cycles,
+index correction, stack/interrupt handling, unofficial NOPs, and read-modify-write
+cycles. The observation of dummy cycles does not add memory-mapped I/O side
+effects. OAM DMA includes source reads, PPU writes, and halt/alignment clocks;
+DMC includes the existing three-stall-plus-one-sample approximation. Host debugger
+reads do not advance these counters. Drive/audio stepping does not clock the
+watchdog a second time.
+
+Snapshot version 7 appends the timer, row, IRQ enable, and pending latch. Versions
+4–6 remain readable; their missing watchdog state starts reset and disabled until
+the next `$4023` write, preserving their previous interrupt behavior.
+
+Sources: [hardware investigation](https://forums.nesdev.org/viewtopic.php?t=26359),
+[register reference](https://www.nesdev.org/wiki/Famicom_Disk_System#DRAM_Refresh_Watchdog),
+and the hardware investigator's
+[November 2026 acknowledgement/timing clarification](https://github.com/nesdev-org/MesenCE/pull/302).
+The primary diagnostic's
+[published capture](https://github.com/TakuikaNinja/FDS-4030D1-Addr/blob/64161a5e09930f0f3fece6e5b43d16dcf4cdeb7d/img/FDS-4030D1-Addr_TwinFC.png)
+shows `$67FF` / `$6E25`; both captured values match in MapperBus.
+
 ### Remaining accuracy limits
 
 - The instruction-stepped CPU/bus approximates the exact cycle of register access
@@ -101,8 +135,10 @@ a cycle-by-cycle recording from physical hardware.
   [research and capture probe](fds-audio-research.md) for the evidence and limits.
 - Audio reset transients, analog filtering/DAC nonlinearity, and rapid
   pause/resume behavior need further hardware work.
-- The DRAM refresh watchdog is not modeled; analog DRAM decay and mechanical disk
-  effects remain outside the current model.
+- Watchdog address accounting does not turn the CPU into a fully cycle-stepped
+  bus. Interrupt sampling, dummy I/O side effects, OAM DMA reads of I/O space,
+  and exact DMC halt placement retain instruction-level approximations. Analog
+  DRAM decay, 2C33 test mode, and mechanical disk effects are not modeled.
 - CRC coverage is synthetic: a generated CPU program verifies `$4030.D4` after
   clean and deliberately corrupted physical CRC bytes. No third-party disk-write
   or CRC diagnostic is claimed by this pass.
@@ -134,7 +170,7 @@ or a comparison with recordings from hardware.
   cases were skipped in the asset-free run and passed in separate explicit
   asset runs.
 - The GUI-disabled ASan/UBSan build passed 27 suite executables, including all
-  four public diagnostic cases and the original audio probe; commercial-image
+  five public diagnostic cases and the original audio probe; commercial-image
   cases were skipped. Leak detection was disabled because this macOS runtime does not support it.
 - The FDS static analyzer, changed-file formatting and documentation-link checks
   passed. The headless CLI ran Metroid for 1200 frames with the new audio model.
@@ -187,6 +223,9 @@ unit while retaining access to wavetable RAM. Audio regressions cover held sampl
 continued phase during writes, wave-zero gain latching, immediate mute, fractional
 pitch, debug reads, PWM duty cycle, envelope reset/rate, forced modulation steps,
 legacy-state conversion, invalid audio state, and replay during a table write.
+Watchdog coverage checks every opcode's elapsed clock count, dummy/stack/indexed
+addresses, OAM/DMC cycles, refresh and starvation loops, shared IRQ acknowledgement,
+mask/reset behavior, and malformed-state rollback.
 Wave frequency and envelope tests explicitly enable sound before starting a
 channel. These register contracts are
 based on the [NESdev FDS register reference](https://www.nesdev.org/wiki/Famicom_Disk_System)

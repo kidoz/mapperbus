@@ -14,8 +14,8 @@ namespace mapperbus::core {
 namespace {
 // "MBST" — MapperBus STate. Bump kStateVersion on any layout change.
 constexpr std::array<Byte, 4> kStateMagic = {'M', 'B', 'S', 'T'};
-// v6 adds FDS audio phase/output latches. v5 added drive state; v4 media SHA-256.
-constexpr std::uint32_t kStateVersion = 6;
+// v7 adds the FDS DRAM watchdog. v6 added audio latches; v5 drive state; v4 SHA-256.
+constexpr std::uint32_t kStateVersion = 7;
 
 [[nodiscard]] std::string battery_path_for(const std::string& rom_path) {
     return std::filesystem::path(rom_path).replace_extension(".sav").string();
@@ -37,7 +37,7 @@ constexpr std::uint32_t kStateVersion = 6;
         return std::nullopt;
     }
     const auto version = reader.read<std::uint32_t>();
-    if (version != kStateVersion && version != 5 && version != 4 &&
+    if (version != kStateVersion && version != 6 && version != 5 && version != 4 &&
         !(version == 3 && allow_legacy)) {
         logger::warn("Save-state rejected: unsupported version");
         return std::nullopt;
@@ -85,7 +85,7 @@ void Emulator::wire_apu() {
     bus_.connect_fds(&fds_);
 
     // Wire DMC memory reader to bus
-    apu_.set_memory_reader([this](Address addr) -> Byte { return bus_.read(addr); });
+    apu_.set_memory_reader([this](Address addr) -> Byte { return bus_.read_dmc(addr, cpu_.pc()); });
 
     // Wire expansion audio (mapper + FDS) into APU mixer
     apu_.set_expansion_audio([this]() -> float {
@@ -387,7 +387,7 @@ bool Emulator::restore_state(std::span<const Byte> data, bool allow_legacy) {
     apu_.load_state(reader);
     bus_.load_state(reader);
     controller_.load_state(reader);
-    fds_.load_state(reader, version >= 5, version >= 6);
+    fds_.load_state(reader, version >= 5, version >= 6, version >= 7);
     if (cartridge_) {
         cartridge_->load_state(reader);
     }

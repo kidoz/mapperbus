@@ -1,5 +1,6 @@
 #include "core/cpu/cpu.hpp"
 
+#include <cassert>
 #include <cstdlib>
 
 #include "core/bus/memory_bus.hpp"
@@ -28,6 +29,7 @@ void Cpu::load_state(StateReader& reader) {
     reader.read(pc_);
     reader.read(status_);
     reader.read(total_cycles_);
+    bus_cycles_ = 0;
 }
 
 void Cpu::reset() {
@@ -38,6 +40,7 @@ void Cpu::reset() {
     status_ = 0x24;
     total_cycles_ = 0;
     jammed_ = false;
+    bus_cycles_ = 0;
 
     // Read reset vector at $FFFC-$FFFD
     Byte lo = bus_.read(0xFFFC);
@@ -46,11 +49,35 @@ void Cpu::reset() {
 }
 
 Byte Cpu::read(Address addr) const {
+    clock_bus(addr);
     return bus_.read(addr);
 }
 
+void Cpu::clock_bus(Address addr, uint32_t cycles) const {
+    bus_cycles_ += cycles;
+    bus_.clock_cpu_bus(addr, cycles);
+}
+
+void Cpu::finish_bus_cycles(uint32_t cycles) const {
+    assert(bus_cycles_ <= cycles);
+    // Implied/accumulator operations and unsupported-opcode NOPs perform
+    // their remaining read at the next PC. Other addressing/stack cycles
+    // are observed explicitly below, without adding new I/O side effects.
+    if (bus_cycles_ < cycles)
+        clock_bus(pc_, cycles - bus_cycles_);
+}
+
+Byte Cpu::read_modify(Address addr) const {
+    const Byte value = read(addr);
+    clock_bus(addr); // Observe the NMOS old-value write without adding I/O side effects.
+    return value;
+}
+
 void Cpu::write(Address addr, Byte value) {
+    clock_bus(addr);
     bus_.write(addr, value);
+    if (addr == 0x4014)
+        bus_.clock_oam_dma(value, pc_, ((total_cycles_ + bus_cycles_) & 1U) != 0);
 }
 
 Byte Cpu::fetch_byte() {
@@ -190,53 +217,74 @@ Cpu::AddressResult Cpu::absolute_indexed(Byte index) const {
     return {.address = address, .page_crossed = (base & 0xFF00) != (address & 0xFF00)};
 }
 
-Cpu::AddressResult Cpu::indirect_indexed(Byte zero_page_addr) const {
+Cpu::AddressResult Cpu::indirect_indexed(Byte zero_page_addr, bool always_dummy) const {
     Word base = read_word_zero_page(zero_page_addr);
     Word address = static_cast<Word>(base + y_);
+    if (always_dummy || (base & 0xFF00U) != (address & 0xFF00U))
+        clock_bus(static_cast<Address>((base & 0xFF00U) | (address & 0x00FFU)));
     return {.address = address, .page_crossed = (base & 0xFF00) != (address & 0xFF00)};
 }
 
 uint32_t Cpu::step() {
+    bus_cycles_ = 0;
     if (jammed_) {
         // KIL halts the CPU until reset: stay parked and only burn cycles.
         total_cycles_ += 2;
+        clock_bus(pc_, 2);
         return 2;
     }
 
     if (bus_.poll_nmi()) {
+        clock_bus(pc_, 2);
         service_interrupt(0xFFFA, false);
+        finish_bus_cycles(7);
         total_cycles_ += 7;
         return 7;
     }
 
     if (!get_flag(InterruptDisable) && bus_.poll_irq()) {
+        clock_bus(pc_, 2);
         service_interrupt(0xFFFE, false);
+        finish_bus_cycles(7);
         total_cycles_ += 7;
         return 7;
     }
 
     auto zero_page = [this]() -> Address { return fetch_byte(); };
-    auto zero_page_x = [this]() -> Address { return static_cast<Byte>(fetch_byte() + x_); };
-    auto zero_page_y = [this]() -> Address { return static_cast<Byte>(fetch_byte() + y_); };
+    auto zero_page_x = [this]() -> Address {
+        const auto base = fetch_byte();
+        clock_bus(base);
+        return static_cast<Byte>(base + x_);
+    };
+    auto zero_page_y = [this]() -> Address {
+        const auto base = fetch_byte();
+        clock_bus(base);
+        return static_cast<Byte>(base + y_);
+    };
     auto absolute = [this]() -> Address { return fetch_word(); };
-    auto absolute_x = [this]() -> AddressResult {
+    auto absolute_x = [this](bool always_dummy = false) -> AddressResult {
         Word base = fetch_word();
         Word address = static_cast<Word>(base + x_);
+        if (always_dummy || (base & 0xFF00U) != (address & 0xFF00U))
+            clock_bus(static_cast<Address>((base & 0xFF00U) | (address & 0x00FFU)));
         return {.address = address, .page_crossed = (base & 0xFF00) != (address & 0xFF00)};
     };
-    auto absolute_y = [this]() -> AddressResult {
+    auto absolute_y = [this](bool always_dummy = false) -> AddressResult {
         Word base = fetch_word();
         Word address = static_cast<Word>(base + y_);
+        if (always_dummy || (base & 0xFF00U) != (address & 0xFF00U))
+            clock_bus(static_cast<Address>((base & 0xFF00U) | (address & 0x00FFU)));
         return {.address = address, .page_crossed = (base & 0xFF00) != (address & 0xFF00)};
     };
     auto indirect_x = [this]() -> Address {
         Byte base = fetch_byte();
+        clock_bus(base);
         Byte ptr = static_cast<Byte>(base + x_);
         return read_word_zero_page(ptr);
     };
-    auto indirect_y = [this]() -> AddressResult {
+    auto indirect_y = [this](bool always_dummy = false) -> AddressResult {
         Byte base = fetch_byte();
-        return indirect_indexed(base);
+        return indirect_indexed(base, always_dummy);
     };
     auto branch = [this](bool condition) -> uint32_t {
         int8_t offset = static_cast<int8_t>(fetch_byte());
@@ -244,7 +292,10 @@ uint32_t Cpu::step() {
             return 2;
         }
         Word previous = pc_;
+        clock_bus(previous);
         pc_ = static_cast<Word>(pc_ + offset);
+        if ((previous & 0xFF00U) != (pc_ & 0xFF00U))
+            clock_bus(static_cast<Address>((previous & 0xFF00U) | (pc_ & 0x00FFU)));
         return 2 + 1 + (((previous & 0xFF00) != (pc_ & 0xFF00)) ? 1 : 0);
     };
 
@@ -253,7 +304,7 @@ uint32_t Cpu::step() {
 
     switch (opcode) {
     case 0x00:
-        ++pc_;
+        fetch_byte();
         service_interrupt(0xFFFE, true);
         cycles = 7;
         break;
@@ -270,12 +321,13 @@ uint32_t Cpu::step() {
         break;
     case 0x06: {
         Address addr = zero_page();
-        Byte value = asl(read(addr));
+        Byte value = asl(read_modify(addr));
         write(addr, value);
         cycles = 5;
         break;
     }
     case 0x08:
+        clock_bus(pc_);
         push(static_cast<Byte>(status_ | Break | Unused));
         cycles = 3;
         break;
@@ -289,7 +341,7 @@ uint32_t Cpu::step() {
         cycles = 2;
         break;
     case 0x0C:
-        pc_ += 2;
+        clock_bus(absolute());
         cycles = 4;
         break;
     case 0x0D:
@@ -299,7 +351,7 @@ uint32_t Cpu::step() {
         break;
     case 0x0E: {
         Address addr = absolute();
-        Byte value = asl(read(addr));
+        Byte value = asl(read_modify(addr));
         write(addr, value);
         cycles = 6;
         break;
@@ -320,7 +372,7 @@ uint32_t Cpu::step() {
     case 0x74:
     case 0xD4:
     case 0xF4:
-        fetch_byte();
+        clock_bus(zero_page_x());
         cycles = 4;
         break;
     case 0x15:
@@ -330,7 +382,7 @@ uint32_t Cpu::step() {
         break;
     case 0x16: {
         Address addr = zero_page_x();
-        Byte value = asl(read(addr));
+        Byte value = asl(read_modify(addr));
         write(addr, value);
         cycles = 6;
         break;
@@ -356,6 +408,7 @@ uint32_t Cpu::step() {
     case 0xDC:
     case 0xFC: {
         auto addr = absolute_x();
+        clock_bus(addr.address);
         cycles = 4 + (addr.page_crossed ? 1 : 0);
         break;
     }
@@ -367,16 +420,18 @@ uint32_t Cpu::step() {
         break;
     }
     case 0x1E: {
-        auto addr = absolute_x();
-        Byte value = asl(read(addr.address));
+        auto addr = absolute_x(true);
+        Byte value = asl(read_modify(addr.address));
         write(addr.address, value);
         cycles = 7;
         break;
     }
     case 0x20: {
-        Word target = fetch_word();
-        push_word(static_cast<Word>(pc_ - 1));
-        pc_ = target;
+        const auto low = fetch_byte();
+        clock_bus(static_cast<Address>(0x0100U | sp_));
+        push_word(pc_);
+        const auto high = fetch_byte();
+        pc_ = static_cast<Word>((static_cast<uint32_t>(high) << 8U) | low);
         cycles = 6;
         break;
     }
@@ -401,12 +456,14 @@ uint32_t Cpu::step() {
         break;
     case 0x26: {
         Address addr = zero_page();
-        Byte value = rol(read(addr));
+        Byte value = rol(read_modify(addr));
         write(addr, value);
         cycles = 5;
         break;
     }
     case 0x28:
+        clock_bus(pc_);
+        clock_bus(static_cast<Address>(0x0100U | sp_));
         status_ = static_cast<Byte>((pop() & ~Break) | Unused);
         cycles = 4;
         break;
@@ -434,7 +491,7 @@ uint32_t Cpu::step() {
         break;
     case 0x2E: {
         Address addr = absolute();
-        Byte value = rol(read(addr));
+        Byte value = rol(read_modify(addr));
         write(addr, value);
         cycles = 6;
         break;
@@ -456,7 +513,7 @@ uint32_t Cpu::step() {
         break;
     case 0x36: {
         Address addr = zero_page_x();
-        Byte value = rol(read(addr));
+        Byte value = rol(read_modify(addr));
         write(addr, value);
         cycles = 6;
         break;
@@ -483,13 +540,15 @@ uint32_t Cpu::step() {
         break;
     }
     case 0x3E: {
-        auto addr = absolute_x();
-        Byte value = rol(read(addr.address));
+        auto addr = absolute_x(true);
+        Byte value = rol(read_modify(addr.address));
         write(addr.address, value);
         cycles = 7;
         break;
     }
     case 0x40:
+        clock_bus(pc_);
+        clock_bus(static_cast<Address>(0x0100U | sp_));
         status_ = static_cast<Byte>((pop() & ~Break) | Unused);
         pc_ = pop_word();
         cycles = 6;
@@ -503,7 +562,7 @@ uint32_t Cpu::step() {
     case 0x04:
     case 0x44:
     case 0x64:
-        fetch_byte();
+        clock_bus(zero_page());
         cycles = 3;
         break;
     case 0x45:
@@ -513,12 +572,13 @@ uint32_t Cpu::step() {
         break;
     case 0x46: {
         Address addr = zero_page();
-        Byte value = lsr(read(addr));
+        Byte value = lsr(read_modify(addr));
         write(addr, value);
         cycles = 5;
         break;
     }
     case 0x48:
+        clock_bus(pc_);
         push(a_);
         cycles = 3;
         break;
@@ -542,7 +602,7 @@ uint32_t Cpu::step() {
         break;
     case 0x4E: {
         Address addr = absolute();
-        Byte value = lsr(read(addr));
+        Byte value = lsr(read_modify(addr));
         write(addr, value);
         cycles = 6;
         break;
@@ -564,7 +624,7 @@ uint32_t Cpu::step() {
         break;
     case 0x56: {
         Address addr = zero_page_x();
-        Byte value = lsr(read(addr));
+        Byte value = lsr(read_modify(addr));
         write(addr, value);
         cycles = 6;
         break;
@@ -591,16 +651,21 @@ uint32_t Cpu::step() {
         break;
     }
     case 0x5E: {
-        auto addr = absolute_x();
-        Byte value = lsr(read(addr.address));
+        auto addr = absolute_x(true);
+        Byte value = lsr(read_modify(addr.address));
         write(addr.address, value);
         cycles = 7;
         break;
     }
-    case 0x60:
-        pc_ = static_cast<Word>(pop_word() + 1);
+    case 0x60: {
+        clock_bus(pc_);
+        clock_bus(static_cast<Address>(0x0100U | sp_));
+        const auto target = pop_word();
+        clock_bus(target);
+        pc_ = static_cast<Word>(target + 1);
         cycles = 6;
         break;
+    }
     case 0x61:
         adc(read(indirect_x()));
         cycles = 6;
@@ -611,12 +676,14 @@ uint32_t Cpu::step() {
         break;
     case 0x66: {
         Address addr = zero_page();
-        Byte value = ror(read(addr));
+        Byte value = ror(read_modify(addr));
         write(addr, value);
         cycles = 5;
         break;
     }
     case 0x68:
+        clock_bus(pc_);
+        clock_bus(static_cast<Address>(0x0100U | sp_));
         a_ = pop();
         set_zero_negative(a_);
         cycles = 4;
@@ -639,7 +706,7 @@ uint32_t Cpu::step() {
         break;
     case 0x6E: {
         Address addr = absolute();
-        Byte value = ror(read(addr));
+        Byte value = ror(read_modify(addr));
         write(addr, value);
         cycles = 6;
         break;
@@ -659,7 +726,7 @@ uint32_t Cpu::step() {
         break;
     case 0x76: {
         Address addr = zero_page_x();
-        Byte value = ror(read(addr));
+        Byte value = ror(read_modify(addr));
         write(addr, value);
         cycles = 6;
         break;
@@ -684,8 +751,8 @@ uint32_t Cpu::step() {
         break;
     }
     case 0x7E: {
-        auto addr = absolute_x();
-        Byte value = ror(read(addr.address));
+        auto addr = absolute_x(true);
+        Byte value = ror(read_modify(addr.address));
         write(addr.address, value);
         cycles = 7;
         break;
@@ -740,7 +807,7 @@ uint32_t Cpu::step() {
         cycles = branch(!get_flag(Carry));
         break;
     case 0x91:
-        write(indirect_y().address, a_);
+        write(indirect_y(true).address, a_);
         cycles = 6;
         break;
     case 0x94:
@@ -761,7 +828,7 @@ uint32_t Cpu::step() {
         cycles = 2;
         break;
     case 0x99:
-        write(absolute_y().address, a_);
+        write(absolute_y(true).address, a_);
         cycles = 5;
         break;
     case 0x9A:
@@ -769,7 +836,7 @@ uint32_t Cpu::step() {
         cycles = 2;
         break;
     case 0x9D:
-        write(absolute_x().address, a_);
+        write(absolute_x(true).address, a_);
         cycles = 5;
         break;
     case 0xA0:
@@ -912,7 +979,7 @@ uint32_t Cpu::step() {
         break;
     case 0xC6: {
         Address addr = zero_page();
-        Byte value = static_cast<Byte>(read(addr) - 1);
+        Byte value = static_cast<Byte>(read_modify(addr) - 1);
         write(addr, value);
         set_zero_negative(value);
         cycles = 5;
@@ -942,7 +1009,7 @@ uint32_t Cpu::step() {
         break;
     case 0xCE: {
         Address addr = absolute();
-        Byte value = static_cast<Byte>(read(addr) - 1);
+        Byte value = static_cast<Byte>(read_modify(addr) - 1);
         write(addr, value);
         set_zero_negative(value);
         cycles = 6;
@@ -963,7 +1030,7 @@ uint32_t Cpu::step() {
         break;
     case 0xD6: {
         Address addr = zero_page_x();
-        Byte value = static_cast<Byte>(read(addr) - 1);
+        Byte value = static_cast<Byte>(read_modify(addr) - 1);
         write(addr, value);
         set_zero_negative(value);
         cycles = 6;
@@ -989,8 +1056,8 @@ uint32_t Cpu::step() {
         break;
     }
     case 0xDE: {
-        auto addr = absolute_x();
-        Byte value = static_cast<Byte>(read(addr.address) - 1);
+        auto addr = absolute_x(true);
+        Byte value = static_cast<Byte>(read_modify(addr.address) - 1);
         write(addr.address, value);
         set_zero_negative(value);
         cycles = 7;
@@ -1014,7 +1081,7 @@ uint32_t Cpu::step() {
         break;
     case 0xE6: {
         Address addr = zero_page();
-        Byte value = static_cast<Byte>(read(addr) + 1);
+        Byte value = static_cast<Byte>(read_modify(addr) + 1);
         write(addr, value);
         set_zero_negative(value);
         cycles = 5;
@@ -1043,7 +1110,7 @@ uint32_t Cpu::step() {
         break;
     case 0xEE: {
         Address addr = absolute();
-        Byte value = static_cast<Byte>(read(addr) + 1);
+        Byte value = static_cast<Byte>(read_modify(addr) + 1);
         write(addr, value);
         set_zero_negative(value);
         cycles = 6;
@@ -1064,7 +1131,7 @@ uint32_t Cpu::step() {
         break;
     case 0xF6: {
         Address addr = zero_page_x();
-        Byte value = static_cast<Byte>(read(addr) + 1);
+        Byte value = static_cast<Byte>(read_modify(addr) + 1);
         write(addr, value);
         set_zero_negative(value);
         cycles = 6;
@@ -1090,8 +1157,8 @@ uint32_t Cpu::step() {
         break;
     }
     case 0xFE: {
-        auto addr = absolute_x();
-        Byte value = static_cast<Byte>(read(addr.address) + 1);
+        auto addr = absolute_x(true);
+        Byte value = static_cast<Byte>(read_modify(addr.address) + 1);
         write(addr.address, value);
         set_zero_negative(value);
         cycles = 7;
@@ -1165,7 +1232,7 @@ uint32_t Cpu::step() {
     // --- DCP: Decrement memory then Compare with A ---
     case 0xC7: { // DCP zpg
         Address addr = zero_page();
-        Byte value = static_cast<Byte>(read(addr) - 1);
+        Byte value = static_cast<Byte>(read_modify(addr) - 1);
         write(addr, value);
         compare(a_, value);
         cycles = 5;
@@ -1173,7 +1240,7 @@ uint32_t Cpu::step() {
     }
     case 0xD7: { // DCP zpg,X
         Address addr = zero_page_x();
-        Byte value = static_cast<Byte>(read(addr) - 1);
+        Byte value = static_cast<Byte>(read_modify(addr) - 1);
         write(addr, value);
         compare(a_, value);
         cycles = 6;
@@ -1181,23 +1248,23 @@ uint32_t Cpu::step() {
     }
     case 0xCF: { // DCP abs
         Address addr = absolute();
-        Byte value = static_cast<Byte>(read(addr) - 1);
+        Byte value = static_cast<Byte>(read_modify(addr) - 1);
         write(addr, value);
         compare(a_, value);
         cycles = 6;
         break;
     }
     case 0xDF: { // DCP abs,X
-        auto ar = absolute_x();
-        Byte value = static_cast<Byte>(read(ar.address) - 1);
+        auto ar = absolute_x(true);
+        Byte value = static_cast<Byte>(read_modify(ar.address) - 1);
         write(ar.address, value);
         compare(a_, value);
         cycles = 7;
         break;
     }
     case 0xDB: { // DCP abs,Y
-        auto ar = absolute_y();
-        Byte value = static_cast<Byte>(read(ar.address) - 1);
+        auto ar = absolute_y(true);
+        Byte value = static_cast<Byte>(read_modify(ar.address) - 1);
         write(ar.address, value);
         compare(a_, value);
         cycles = 7;
@@ -1205,15 +1272,15 @@ uint32_t Cpu::step() {
     }
     case 0xC3: { // DCP (ind,X)
         Address addr = indirect_x();
-        Byte value = static_cast<Byte>(read(addr) - 1);
+        Byte value = static_cast<Byte>(read_modify(addr) - 1);
         write(addr, value);
         compare(a_, value);
         cycles = 8;
         break;
     }
     case 0xD3: { // DCP (ind),Y
-        auto ar = indirect_y();
-        Byte value = static_cast<Byte>(read(ar.address) - 1);
+        auto ar = indirect_y(true);
+        Byte value = static_cast<Byte>(read_modify(ar.address) - 1);
         write(ar.address, value);
         compare(a_, value);
         cycles = 8;
@@ -1223,7 +1290,7 @@ uint32_t Cpu::step() {
     // --- ISB (ISC): Increment memory then SBC ---
     case 0xE7: { // ISB zpg
         Address addr = zero_page();
-        Byte value = static_cast<Byte>(read(addr) + 1);
+        Byte value = static_cast<Byte>(read_modify(addr) + 1);
         write(addr, value);
         sbc(value);
         cycles = 5;
@@ -1231,7 +1298,7 @@ uint32_t Cpu::step() {
     }
     case 0xF7: { // ISB zpg,X
         Address addr = zero_page_x();
-        Byte value = static_cast<Byte>(read(addr) + 1);
+        Byte value = static_cast<Byte>(read_modify(addr) + 1);
         write(addr, value);
         sbc(value);
         cycles = 6;
@@ -1239,23 +1306,23 @@ uint32_t Cpu::step() {
     }
     case 0xEF: { // ISB abs
         Address addr = absolute();
-        Byte value = static_cast<Byte>(read(addr) + 1);
+        Byte value = static_cast<Byte>(read_modify(addr) + 1);
         write(addr, value);
         sbc(value);
         cycles = 6;
         break;
     }
     case 0xFF: { // ISB abs,X
-        auto ar = absolute_x();
-        Byte value = static_cast<Byte>(read(ar.address) + 1);
+        auto ar = absolute_x(true);
+        Byte value = static_cast<Byte>(read_modify(ar.address) + 1);
         write(ar.address, value);
         sbc(value);
         cycles = 7;
         break;
     }
     case 0xFB: { // ISB abs,Y
-        auto ar = absolute_y();
-        Byte value = static_cast<Byte>(read(ar.address) + 1);
+        auto ar = absolute_y(true);
+        Byte value = static_cast<Byte>(read_modify(ar.address) + 1);
         write(ar.address, value);
         sbc(value);
         cycles = 7;
@@ -1263,15 +1330,15 @@ uint32_t Cpu::step() {
     }
     case 0xE3: { // ISB (ind,X)
         Address addr = indirect_x();
-        Byte value = static_cast<Byte>(read(addr) + 1);
+        Byte value = static_cast<Byte>(read_modify(addr) + 1);
         write(addr, value);
         sbc(value);
         cycles = 8;
         break;
     }
     case 0xF3: { // ISB (ind),Y
-        auto ar = indirect_y();
-        Byte value = static_cast<Byte>(read(ar.address) + 1);
+        auto ar = indirect_y(true);
+        Byte value = static_cast<Byte>(read_modify(ar.address) + 1);
         write(ar.address, value);
         sbc(value);
         cycles = 8;
@@ -1281,7 +1348,7 @@ uint32_t Cpu::step() {
     // --- SLO: ASL memory then ORA with A ---
     case 0x07: { // SLO zpg
         Address addr = zero_page();
-        Byte value = asl(read(addr));
+        Byte value = asl(read_modify(addr));
         write(addr, value);
         a_ |= value;
         set_zero_negative(a_);
@@ -1290,7 +1357,7 @@ uint32_t Cpu::step() {
     }
     case 0x17: { // SLO zpg,X
         Address addr = zero_page_x();
-        Byte value = asl(read(addr));
+        Byte value = asl(read_modify(addr));
         write(addr, value);
         a_ |= value;
         set_zero_negative(a_);
@@ -1299,7 +1366,7 @@ uint32_t Cpu::step() {
     }
     case 0x0F: { // SLO abs
         Address addr = absolute();
-        Byte value = asl(read(addr));
+        Byte value = asl(read_modify(addr));
         write(addr, value);
         a_ |= value;
         set_zero_negative(a_);
@@ -1307,8 +1374,8 @@ uint32_t Cpu::step() {
         break;
     }
     case 0x1F: { // SLO abs,X
-        auto ar = absolute_x();
-        Byte value = asl(read(ar.address));
+        auto ar = absolute_x(true);
+        Byte value = asl(read_modify(ar.address));
         write(ar.address, value);
         a_ |= value;
         set_zero_negative(a_);
@@ -1316,8 +1383,8 @@ uint32_t Cpu::step() {
         break;
     }
     case 0x1B: { // SLO abs,Y
-        auto ar = absolute_y();
-        Byte value = asl(read(ar.address));
+        auto ar = absolute_y(true);
+        Byte value = asl(read_modify(ar.address));
         write(ar.address, value);
         a_ |= value;
         set_zero_negative(a_);
@@ -1326,7 +1393,7 @@ uint32_t Cpu::step() {
     }
     case 0x03: { // SLO (ind,X)
         Address addr = indirect_x();
-        Byte value = asl(read(addr));
+        Byte value = asl(read_modify(addr));
         write(addr, value);
         a_ |= value;
         set_zero_negative(a_);
@@ -1334,8 +1401,8 @@ uint32_t Cpu::step() {
         break;
     }
     case 0x13: { // SLO (ind),Y
-        auto ar = indirect_y();
-        Byte value = asl(read(ar.address));
+        auto ar = indirect_y(true);
+        Byte value = asl(read_modify(ar.address));
         write(ar.address, value);
         a_ |= value;
         set_zero_negative(a_);
@@ -1346,7 +1413,7 @@ uint32_t Cpu::step() {
     // --- RLA: ROL memory then AND with A ---
     case 0x27: { // RLA zpg
         Address addr = zero_page();
-        Byte value = rol(read(addr));
+        Byte value = rol(read_modify(addr));
         write(addr, value);
         a_ &= value;
         set_zero_negative(a_);
@@ -1355,7 +1422,7 @@ uint32_t Cpu::step() {
     }
     case 0x37: { // RLA zpg,X
         Address addr = zero_page_x();
-        Byte value = rol(read(addr));
+        Byte value = rol(read_modify(addr));
         write(addr, value);
         a_ &= value;
         set_zero_negative(a_);
@@ -1364,7 +1431,7 @@ uint32_t Cpu::step() {
     }
     case 0x2F: { // RLA abs
         Address addr = absolute();
-        Byte value = rol(read(addr));
+        Byte value = rol(read_modify(addr));
         write(addr, value);
         a_ &= value;
         set_zero_negative(a_);
@@ -1372,8 +1439,8 @@ uint32_t Cpu::step() {
         break;
     }
     case 0x3F: { // RLA abs,X
-        auto ar = absolute_x();
-        Byte value = rol(read(ar.address));
+        auto ar = absolute_x(true);
+        Byte value = rol(read_modify(ar.address));
         write(ar.address, value);
         a_ &= value;
         set_zero_negative(a_);
@@ -1381,8 +1448,8 @@ uint32_t Cpu::step() {
         break;
     }
     case 0x3B: { // RLA abs,Y
-        auto ar = absolute_y();
-        Byte value = rol(read(ar.address));
+        auto ar = absolute_y(true);
+        Byte value = rol(read_modify(ar.address));
         write(ar.address, value);
         a_ &= value;
         set_zero_negative(a_);
@@ -1391,7 +1458,7 @@ uint32_t Cpu::step() {
     }
     case 0x23: { // RLA (ind,X)
         Address addr = indirect_x();
-        Byte value = rol(read(addr));
+        Byte value = rol(read_modify(addr));
         write(addr, value);
         a_ &= value;
         set_zero_negative(a_);
@@ -1399,8 +1466,8 @@ uint32_t Cpu::step() {
         break;
     }
     case 0x33: { // RLA (ind),Y
-        auto ar = indirect_y();
-        Byte value = rol(read(ar.address));
+        auto ar = indirect_y(true);
+        Byte value = rol(read_modify(ar.address));
         write(ar.address, value);
         a_ &= value;
         set_zero_negative(a_);
@@ -1411,7 +1478,7 @@ uint32_t Cpu::step() {
     // --- SRE (LSE): LSR memory then EOR with A ---
     case 0x47: { // SRE zpg
         Address addr = zero_page();
-        Byte value = lsr(read(addr));
+        Byte value = lsr(read_modify(addr));
         write(addr, value);
         a_ ^= value;
         set_zero_negative(a_);
@@ -1420,7 +1487,7 @@ uint32_t Cpu::step() {
     }
     case 0x57: { // SRE zpg,X
         Address addr = zero_page_x();
-        Byte value = lsr(read(addr));
+        Byte value = lsr(read_modify(addr));
         write(addr, value);
         a_ ^= value;
         set_zero_negative(a_);
@@ -1429,7 +1496,7 @@ uint32_t Cpu::step() {
     }
     case 0x4F: { // SRE abs
         Address addr = absolute();
-        Byte value = lsr(read(addr));
+        Byte value = lsr(read_modify(addr));
         write(addr, value);
         a_ ^= value;
         set_zero_negative(a_);
@@ -1437,8 +1504,8 @@ uint32_t Cpu::step() {
         break;
     }
     case 0x5F: { // SRE abs,X
-        auto ar = absolute_x();
-        Byte value = lsr(read(ar.address));
+        auto ar = absolute_x(true);
+        Byte value = lsr(read_modify(ar.address));
         write(ar.address, value);
         a_ ^= value;
         set_zero_negative(a_);
@@ -1446,8 +1513,8 @@ uint32_t Cpu::step() {
         break;
     }
     case 0x5B: { // SRE abs,Y
-        auto ar = absolute_y();
-        Byte value = lsr(read(ar.address));
+        auto ar = absolute_y(true);
+        Byte value = lsr(read_modify(ar.address));
         write(ar.address, value);
         a_ ^= value;
         set_zero_negative(a_);
@@ -1456,7 +1523,7 @@ uint32_t Cpu::step() {
     }
     case 0x43: { // SRE (ind,X)
         Address addr = indirect_x();
-        Byte value = lsr(read(addr));
+        Byte value = lsr(read_modify(addr));
         write(addr, value);
         a_ ^= value;
         set_zero_negative(a_);
@@ -1464,8 +1531,8 @@ uint32_t Cpu::step() {
         break;
     }
     case 0x53: { // SRE (ind),Y
-        auto ar = indirect_y();
-        Byte value = lsr(read(ar.address));
+        auto ar = indirect_y(true);
+        Byte value = lsr(read_modify(ar.address));
         write(ar.address, value);
         a_ ^= value;
         set_zero_negative(a_);
@@ -1476,7 +1543,7 @@ uint32_t Cpu::step() {
     // --- RRA: ROR memory then ADC with A ---
     case 0x67: { // RRA zpg
         Address addr = zero_page();
-        Byte value = ror(read(addr));
+        Byte value = ror(read_modify(addr));
         write(addr, value);
         adc(value);
         cycles = 5;
@@ -1484,7 +1551,7 @@ uint32_t Cpu::step() {
     }
     case 0x77: { // RRA zpg,X
         Address addr = zero_page_x();
-        Byte value = ror(read(addr));
+        Byte value = ror(read_modify(addr));
         write(addr, value);
         adc(value);
         cycles = 6;
@@ -1492,23 +1559,23 @@ uint32_t Cpu::step() {
     }
     case 0x6F: { // RRA abs
         Address addr = absolute();
-        Byte value = ror(read(addr));
+        Byte value = ror(read_modify(addr));
         write(addr, value);
         adc(value);
         cycles = 6;
         break;
     }
     case 0x7F: { // RRA abs,X
-        auto ar = absolute_x();
-        Byte value = ror(read(ar.address));
+        auto ar = absolute_x(true);
+        Byte value = ror(read_modify(ar.address));
         write(ar.address, value);
         adc(value);
         cycles = 7;
         break;
     }
     case 0x7B: { // RRA abs,Y
-        auto ar = absolute_y();
-        Byte value = ror(read(ar.address));
+        auto ar = absolute_y(true);
+        Byte value = ror(read_modify(ar.address));
         write(ar.address, value);
         adc(value);
         cycles = 7;
@@ -1516,15 +1583,15 @@ uint32_t Cpu::step() {
     }
     case 0x63: { // RRA (ind,X)
         Address addr = indirect_x();
-        Byte value = ror(read(addr));
+        Byte value = ror(read_modify(addr));
         write(addr, value);
         adc(value);
         cycles = 8;
         break;
     }
     case 0x73: { // RRA (ind),Y
-        auto ar = indirect_y();
-        Byte value = ror(read(ar.address));
+        auto ar = indirect_y(true);
+        Byte value = ror(read_modify(ar.address));
         write(ar.address, value);
         adc(value);
         cycles = 8;
@@ -1597,6 +1664,7 @@ uint32_t Cpu::step() {
         break;
     }
 
+    finish_bus_cycles(cycles);
     uint32_t dma_cycles = bus_.take_dma_cycles();
     if (dma_cycles > 0) {
         if ((total_cycles_ + cycles) % 2 != 0) {
