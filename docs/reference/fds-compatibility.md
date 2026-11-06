@@ -95,8 +95,10 @@ a cycle-by-cycle recording from physical hardware.
 - `$4094` exposes the settled product rather than sequential multiplier partial
   results. `$4095`'s undocumented upper counter and the absolute alignment of
   divider/PWM phases to hardware power-on are not verified.
-- Envelope timing uses `8 * (speed + 1) * (master + 1)`. Published descriptions
-  conflict about master speed zero; this model follows that formula at zero too.
+- Envelope timing follows the hardware-research formula
+  `8 * (speed + 1) * (master + 1)`, including zero. The older “zero disables”
+  description conflicts with that formula; see the
+  [research and capture probe](fds-audio-research.md) for the evidence and limits.
 - Audio reset transients, analog filtering/DAC nonlinearity, and rapid
   pause/resume behavior need further hardware work.
 - The DRAM refresh watchdog is not modeled; analog DRAM decay and mechanical disk
@@ -128,12 +130,12 @@ or a comparison with recordings from hardware.
 
 - Both local-image workflows passed with the supplied files; frame artifacts
   confirmed SMB2 world 1-1 and Metroid gameplay/save/reloaded-file screens.
-- The regular build passed 28 suite executables. Its optional image/diagnostic
+- The regular build passed 29 suite executables. Its optional image/diagnostic
   cases were skipped in the asset-free run and passed in separate explicit
   asset runs.
-- The GUI-disabled ASan/UBSan build passed 26 suite executables, including all
-  four public diagnostic cases; commercial-image cases were skipped. Leak detection
-  was disabled because this macOS runtime does not support it.
+- The GUI-disabled ASan/UBSan build passed 27 suite executables, including all
+  four public diagnostic cases and the original audio probe; commercial-image
+  cases were skipped. Leak detection was disabled because this macOS runtime does not support it.
 - The FDS static analyzer, changed-file formatting and documentation-link checks
   passed. The headless CLI ran Metroid for 1200 frames with the new audio model.
   Source BIOS and disk SHA-256 values were unchanged.

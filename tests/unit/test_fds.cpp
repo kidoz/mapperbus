@@ -859,3 +859,49 @@ TEST_CASE("FDS imports legacy audio phase into the wider accumulators", "[fds][a
         REQUIRE(restored.read(0x4093) == source.read(0x4093));
     }
 }
+
+TEST_CASE("FDS envelope master zero uses the hardware measured plus-one period", "[fds][audio]") {
+    // Loopy's 2019 hardware report corrects the divider to
+    // 8 * (speed + 1) * (master + 1), including the master-zero boundary.
+    // Test both independent timers, direct-register restart, and wave halt.
+    for (const Byte master : {0, 1, 255}) {
+        for (const Byte speed : {0, 63}) {
+            for (const bool halted : {false, true}) {
+                Fds drive;
+                drive.reset();
+                drive.write(0x4023, 2);
+                drive.write(0x4083, 0x40); // hold both timers while seeding
+                drive.write(0x408A, master);
+                drive.write(0x4080, 0xA0);
+                drive.write(0x4084, 0x90);
+                drive.write(0x4080, speed);
+                drive.write(0x4084, speed);
+                drive.write(0x4083, halted ? 0x80 : 0);
+                const auto period = 8U * (static_cast<unsigned>(speed) + 1U) *
+                                    (static_cast<unsigned>(master) + 1U) / (halted ? 4U : 1U);
+                INFO("master " << static_cast<int>(master) << " speed " << static_cast<int>(speed)
+                               << " halted " << halted);
+                for (unsigned cycle = 1; cycle < period; ++cycle)
+                    drive.clock_audio();
+                CHECK((drive.read(0x4090) & 0x3FU) == 32);
+                CHECK((drive.read(0x4092) & 0x3FU) == 16);
+                drive.clock_audio();
+                CHECK((drive.read(0x4090) & 0x3FU) == 31);
+                CHECK((drive.read(0x4092) & 0x3FU) == 15);
+                // Restart only the volume divider halfway through a period.
+                const auto lead = period / 2;
+                for (unsigned cycle = 0; cycle < lead; ++cycle)
+                    drive.clock_audio();
+                drive.write(0x4080, speed);
+                for (unsigned cycle = 0; cycle < period - lead; ++cycle)
+                    drive.clock_audio();
+                CHECK((drive.read(0x4090) & 0x3FU) == 31);
+                CHECK((drive.read(0x4092) & 0x3FU) == 14);
+                for (unsigned cycle = 0; cycle < lead; ++cycle)
+                    drive.clock_audio();
+                CHECK((drive.read(0x4090) & 0x3FU) == 30);
+                CHECK((drive.read(0x4092) & 0x3FU) == 14);
+            }
+        }
+    }
+}

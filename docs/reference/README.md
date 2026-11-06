@@ -7,6 +7,7 @@ Reference pages describe the implemented interfaces, defaults, and boundaries.
 - [Configuration](configuration.md) — `mapperbus.conf` locations, keys, and defaults.
 - [Compatibility](compatibility.md) — supported mapper numbers, regions, and frontend scope.
 - [FDS compatibility checks](fds-compatibility.md) — tested workflows and optional local-image tests.
+- [FDS audio research](fds-audio-research.md) — hardware evidence, unresolved timing, and a capture probe.
 - [Source tree](source-tree.md) — directories, modules, and test locations.
 
 For instructions to perform a task, see the [how-to guides](../how-to/README.md).

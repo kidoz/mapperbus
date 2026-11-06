@@ -9,6 +9,8 @@ Versioning.
 
 ### Added
 
+- Original FDS audio capture probe with 16 pages for multiplier, counter, reset,
+  and envelope research; generated without BIOS/game data or an assembler.
 - FDS BIOS boot with the RAM adapter, raw/archived disk loading, side and
   write-protection controls, persistent disk changes, and disk-image export.
 - Shared FDS BIOS configuration and CLI `--fds-bios` / `--frames` options.

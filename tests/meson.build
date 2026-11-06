@@ -188,3 +188,17 @@ test_fds_diagnostics = executable('test-fds-diagnostics',
 )
 test('fds-diagnostics', test_fds_diagnostics,
     args : ['--allow-running-no-tests'], timeout : 120)
+
+# Original read-only capture ROM; generated without a BIOS or external assembler.
+probe_python = import('python').find_installation()
+fds_audio_probe = custom_target('fds-audio-probe',
+    input : '../tools/build_fds_audio_probe.py',
+    output : ['fds-audio-probe.fds', 'fds-audio-probe.json'],
+    command : [probe_python, '@INPUT@', '--output', '@OUTPUT0@', '--manifest', '@OUTPUT1@'],
+)
+test_fds_audio_probe = executable('test-fds-audio-probe',
+    'integration/test_fds_audio_probe.cpp',
+    dependencies : [mapperbus_core_dep, catch2_dep],
+    cpp_args : ['-DMAPPERBUS_FDS_AUDIO_PROBE_PATH="' + (meson.current_build_dir() / 'fds-audio-probe.fds') + '"'],
+)
+test('fds-audio-probe', test_fds_audio_probe, depends : fds_audio_probe, timeout : 120)
