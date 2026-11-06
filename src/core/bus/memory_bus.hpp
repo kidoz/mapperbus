@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
 
 #include "core/types.hpp"
 
@@ -24,12 +25,15 @@ class MemoryBus {
     /// CPU writes latch $4014; Cpu runs its DMA after the instruction's last
     /// write, at the next read cycle. Other writes have their normal effects.
     void write_cpu(Address addr, Byte value, bool consecutive = false);
-    /// Advance FDS clocks for a CPU/DMA cycle without performing the access.
+    /// Advance FDS, APU and expansion audio for CPU/DMA cycles without an access.
     /// Ordinary read/write remain untimed debugger/test operations.
     void clock_cpu_bus(Address addr, uint32_t cycles = 1);
     uint32_t run_oam_dma(Byte page, Address halt_address, bool odd_alignment);
-    /// Existing four-cycle fetch model; 2A03 halt reads have real side effects.
-    Byte read_dmc(Address addr, Address halt_address, Region region = Region::NTSC);
+    /// Service a ready DMC request before this eligible CPU read.
+    uint32_t run_dmc_dma(Address halt_address);
+    void set_region(Region region) {
+        region_ = region;
+    }
 
     void save_state(StateWriter& writer) const;
     void load_state(StateReader& reader);
@@ -62,6 +66,7 @@ class MemoryBus {
     }
 
   private:
+    uint32_t run_dma(Address halt_address, std::optional<Byte> page, bool odd_alignment);
     void update_mappings();
 
     using ReadFunc = Byte (MemoryBus::*)(Address);
@@ -86,6 +91,7 @@ class MemoryBus {
     std::array<Byte, kRamSize> ram_{};
     Byte open_bus_ = 0;
     uint32_t dma_cycles_ = 0;
+    Region region_ = Region::NTSC;
 
     Cartridge* cartridge_ = nullptr;
     Ppu* ppu_ = nullptr;

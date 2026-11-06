@@ -9,6 +9,8 @@ Versioning.
 
 ### Added
 
+- CPU/DMC/OAM timing regressions, including optional hash-pinned public Blargg
+  DMA diagnostics, overlap at the last OAM transfers, and delayed-request snapshots.
 - Independent FDS BIOS disk-write checks for fast/slow dumps, physical block
   CRCs, write protection, CRC-error retry, and snapshots during writes, using
   the pinned public BIOS dumper and fixed CRC vectors from FDSKey.
@@ -24,6 +26,9 @@ Versioning.
 
 ### Fixed
 
+- DMC DMA now waits for eligible CPU reads, uses three/four-cycle get/put
+  alignment, and overlaps setup with OAM DMA. APU/expansion audio advance once
+  per bus cycle; the DMC output unit continues after the reader is disabled.
 - FDS register acknowledgements on CPU dummy reads and DMA, with per-bus-cycle
   disk/timer clocks and bytes arriving during OAM/DMC stalls. Restore both NMOS
   read-modify-write writes, defer OAM DMA to the last page written, and preserve
@@ -43,8 +48,9 @@ Versioning.
 
 ### Changed
 
-- Save-state version 7 preserves FDS DRAM watchdog state, audio latches, and
-  drive/CRC/physical-stream state; versions 4–6 remain readable.
+- Save-state version 8 preserves APU cycle phase, pending DMC request delay, and
+  output-unit silence alongside FDS watchdog, audio, and drive/CRC/physical-stream
+  state; versions 4–7 remain readable with reconstructed DMA state.
 
 ## [0.2.0] - 2026-11-04
 

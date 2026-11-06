@@ -37,20 +37,47 @@ void Apu::save_state(StateWriter& writer) const {
     writer.write(frame_counter_mode_);
     writer.write(frame_irq_inhibit_);
     writer.write(frame_irq_pending_);
-    writer.write(dmc_stall_cycles_);
+    writer.write(uint32_t{0}); // reserved legacy stall accumulator
+    writer.write(cpu_cycles_);
+    writer.write(dmc_dma_delay_);
+    writer.write(static_cast<Byte>(dmc_dma_pending_));
+    writer.write(static_cast<Byte>(dmc_silence_));
 }
 
-void Apu::load_state(StateReader& reader) {
+void Apu::load_state(StateReader& reader, bool has_dma_state, uint64_t legacy_cycles) {
     reader.read(pulse1_);
     reader.read(pulse2_);
     reader.read(triangle_);
     reader.read(noise_);
     reader.read(dmc_);
+    // Older resets left the inactive DMC rate at zero. The free-running
+    // output timer now needs the power-on rate even before the first $4010 write.
+    if (!has_dma_state && dmc_.timer_period == 0) {
+        dmc_.timer_period = (*dmc_rate_table_)[0];
+        dmc_.timer = 0;
+    }
     reader.read(frame_counter_cycles_);
     reader.read(frame_counter_mode_);
     reader.read(frame_irq_inhibit_);
     reader.read(frame_irq_pending_);
-    reader.read(dmc_stall_cycles_);
+    (void)reader.read<uint32_t>(); // legacy post-instruction stall accumulator
+    cpu_cycles_ = legacy_cycles;
+    dmc_dma_delay_ = 0;
+    dmc_dma_pending_ = dmc_.sample_buffer_empty && dmc_.bytes_remaining > 0;
+    dmc_silence_ = dmc_.bits_remaining == 0 || (!dmc_.enabled && dmc_.sample_buffer_empty);
+    if (has_dma_state) {
+        reader.read(cpu_cycles_);
+        reader.read(dmc_dma_delay_);
+        const auto pending = reader.read<Byte>();
+        const auto silence = reader.read<Byte>();
+        dmc_dma_pending_ = pending == 1;
+        dmc_silence_ = silence == 1;
+        if (pending > 1 || silence > 1 || dmc_dma_delay_ > 3 ||
+            (!dmc_dma_pending_ && dmc_dma_delay_ != 0) ||
+            (dmc_dma_pending_ &&
+             (!dmc_.enabled || !dmc_.sample_buffer_empty || dmc_.bytes_remaining == 0)))
+            reader.fail();
+    }
 
     if (!valid_pulse(pulse1_)) {
         pulse1_ = {};
@@ -69,7 +96,8 @@ void Apu::load_state(StateReader& reader) {
         noise_ = {};
         reader.fail();
     }
-    if (dmc_.output_level > 127 || dmc_.bits_remaining > 8) {
+    if (dmc_.output_level > 127 || dmc_.bits_remaining > 8 || dmc_.timer_period < 2 ||
+        dmc_.timer_period > 428 || (dmc_.timer_period & 1U) != 0) {
         dmc_ = {};
         reader.fail();
     }
@@ -232,27 +260,26 @@ uint8_t NoiseChannel::output() const {
 
 // --- DMC Channel ---
 
-void DmcChannel::clock_timer() {
-    // The output-cycle restart shares a timer clock with the first bit
-    // shift, so 8 bits consume exactly 8 timer periods (not 9).
-    if (bits_remaining == 0) {
-        if (sample_buffer_empty) {
-            return; // silence: hold the current output level
-        }
-        shift_register = sample_buffer;
-        sample_buffer_empty = true;
-        bits_remaining = 8;
-    }
-
-    if (shift_register & 0x01) {
-        if (output_level <= 125)
-            output_level += 2;
-    } else {
-        if (output_level >= 2)
+void DmcChannel::clock_timer(bool& silence) {
+    if (!silence) {
+        if ((shift_register & 0x01U) != 0) {
+            if (output_level <= 125)
+                output_level += 2;
+        } else if (output_level >= 2) {
             output_level -= 2;
+        }
     }
-    shift_register >>= 1;
-    --bits_remaining;
+    shift_register >>= 1U;
+    if (bits_remaining > 0)
+        --bits_remaining;
+    if (bits_remaining == 0) {
+        bits_remaining = 8;
+        silence = sample_buffer_empty;
+        if (!silence) {
+            shift_register = sample_buffer;
+            sample_buffer_empty = true;
+        }
+    }
 }
 
 // --- AudioFilter (first-order IIR) ---
@@ -399,6 +426,7 @@ void Apu::reset() {
     noise_ = {};
     noise_.shift_register = 1;
     dmc_ = {};
+    dmc_.timer_period = (*dmc_rate_table_)[0];
     frame_counter_cycles_ = 0;
     frame_counter_mode_ = false;
     frame_irq_inhibit_ = false;
@@ -409,7 +437,10 @@ void Apu::reset() {
     for (auto& chain : filters_)
         chain.reset();
     drc_rate_ = 1.0;
-    dmc_stall_cycles_ = 0;
+    cpu_cycles_ = 0;
+    dmc_dma_delay_ = 0;
+    dmc_dma_pending_ = false;
+    dmc_silence_ = true;
     output_ring_.reset();
     prev_blip_mix_ = 0.0f;
     prev_blip_mix_r_ = 0.0f;
@@ -490,10 +521,24 @@ void Apu::set_expansion_audio(ExpansionAudioSource source) {
     expansion_audio_ = std::move(source);
 }
 
-uint32_t Apu::take_dmc_stall_cycles() {
-    uint32_t cycles = dmc_stall_cycles_;
-    dmc_stall_cycles_ = 0;
-    return cycles;
+void Apu::complete_dmc_dma(Byte value) {
+    if (!dmc_dma_pending_ || dmc_.bytes_remaining == 0)
+        return;
+    dmc_dma_pending_ = false;
+    dmc_dma_delay_ = 0;
+    dmc_.sample_buffer = value;
+    dmc_.sample_buffer_empty = false;
+    dmc_.current_address =
+        static_cast<Address>(dmc_.current_address == 0xFFFF ? 0x8000 : dmc_.current_address + 1);
+    --dmc_.bytes_remaining;
+    if (dmc_.bytes_remaining == 0) {
+        if (dmc_.loop_flag) {
+            dmc_.current_address = dmc_.sample_address;
+            dmc_.bytes_remaining = dmc_.sample_length;
+        } else if (dmc_.irq_enabled) {
+            dmc_.irq_pending = true;
+        }
+    }
 }
 
 void Apu::update_rate_control(float buffer_fill_ratio) {
@@ -541,34 +586,28 @@ void Apu::step(uint32_t cpu_cycles) {
         triangle_.clock_timer();
         noise_.clock_timer();
 
-        if (dmc_.enabled) {
-            if (dmc_.timer == 0) {
-                // Rate table encodes the full interval; see NoiseChannel.
-                dmc_.timer = static_cast<uint16_t>(dmc_.timer_period - 1);
+        if (dmc_dma_delay_ > 0)
+            --dmc_dma_delay_;
+        // The output unit runs independently of the reader enable. DMC timer
+        // edges stay on get phases even while playback is stopped or silent.
+        if (dma_get_cycle()) {
+            if (dmc_.timer <= 1) {
+                dmc_.timer = static_cast<uint16_t>(dmc_.timer_period - 2);
                 clock_dmc();
-                mix_dirty_ = true; // DMC output_level changed
-            } else {
-                --dmc_.timer;
-            }
-
-            if (dmc_.sample_buffer_empty && dmc_.bytes_remaining > 0 && memory_reader_) {
-                dmc_.sample_buffer = memory_reader_(dmc_.current_address);
-                dmc_.sample_buffer_empty = false;
-                dmc_stall_cycles_ += 4; // DMC read stalls CPU for 4 cycles
-                dmc_.current_address = static_cast<Address>(
-                    (dmc_.current_address == 0xFFFF) ? 0x8000 : dmc_.current_address + 1);
-                --dmc_.bytes_remaining;
-
-                if (dmc_.bytes_remaining == 0) {
-                    if (dmc_.loop_flag) {
-                        dmc_.current_address = dmc_.sample_address;
-                        dmc_.bytes_remaining = dmc_.sample_length;
-                    } else if (dmc_.irq_enabled) {
-                        dmc_.irq_pending = true;
-                    }
+                mix_dirty_ = true;
+                if (dmc_.sample_buffer_empty && dmc_.bytes_remaining > 0 && !dmc_dma_pending_) {
+                    dmc_dma_pending_ = true; // reload halt on the following put
+                    dmc_dma_delay_ = 0;
                 }
+            } else {
+                dmc_.timer -= 2;
             }
         }
+        // An isolated APU can synthesize audio without a CPU. Emulator does
+        // not install this convenience callback: its bus arbitrates each fetch.
+        if (dmc_dma_ready() && memory_reader_)
+            complete_dmc_dma(memory_reader_(dmc_.current_address));
+        ++cpu_cycles_;
 
         ++frame_counter_cycles_;
         clock_frame_counter();
@@ -758,7 +797,7 @@ void Apu::emit_sample() {
 }
 
 void Apu::clock_dmc() {
-    dmc_.clock_timer();
+    dmc_.clock_timer(dmc_silence_);
 }
 
 void Apu::clock_frame_counter() {
@@ -1055,9 +1094,17 @@ void Apu::write_register(Address addr, Byte value) {
         dmc_.irq_pending = false;
         if (!dmc_.enabled) {
             dmc_.bytes_remaining = 0;
+            dmc_dma_pending_ = false;
+            dmc_dma_delay_ = 0;
         } else if (dmc_.bytes_remaining == 0) {
             dmc_.current_address = dmc_.sample_address;
             dmc_.bytes_remaining = dmc_.sample_length;
+            if (dmc_.sample_buffer_empty && !dmc_dma_pending_) {
+                dmc_dma_pending_ = true;
+                // This write follows its bus clock. Halt on the get in the
+                // second following APU cycle (third/fourth following CPU cycle).
+                dmc_dma_delay_ = dma_get_cycle() ? 2 : 3;
+            }
         }
         break;
     case 0x4017:

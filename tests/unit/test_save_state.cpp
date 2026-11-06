@@ -106,13 +106,27 @@ TEST_CASE("Version 3 states require explicit legacy import", "[state][identity]"
     emulator.reset();
     emulator.step_frame();
     const auto original = emulator.save_state();
-    auto version6 = original;
+    // V8 appends the explicit DMA cadence/request fields to the APU section.
+    StateWriter prefix;
+    emulator.cpu().save_state(prefix);
+    emulator.ppu().save_state(prefix);
+    StateWriter apu_state;
+    Apu{}.save_state(apu_state);
+    const auto dma_end = 43 + prefix.data().size() + apu_state.data().size();
+    auto version7 = original;
+    version7.erase(version7.begin() + static_cast<std::ptrdiff_t>(dma_end - 11),
+                   version7.begin() + static_cast<std::ptrdiff_t>(dma_end));
+    const std::uint32_t version7_number = 7;
+    std::memcpy(version7.data() + 4, &version7_number, sizeof(version7_number));
+    REQUIRE(emulator.load_state(version7));
+    REQUIRE(emulator.save_state() == original);
+    auto version6 = version7;
     version6.erase(version6.end() - 16384 - 5, version6.end() - 16384);
     const std::uint32_t version6_number = 6;
     std::memcpy(version6.data() + 4, &version6_number, sizeof(version6_number));
     REQUIRE(emulator.load_state(version6));
     REQUIRE(emulator.save_state() == original);
-    auto version5 = original;
+    auto version5 = version7;
     version5.erase(version5.end() - 16384 - 9, version5.end() - 16384);
     const std::uint32_t version5_number = 5;
     std::memcpy(version5.data() + 4, &version5_number, sizeof(version5_number));
@@ -126,13 +140,13 @@ TEST_CASE("Version 3 states require explicit legacy import", "[state][identity]"
         REQUIRE_FALSE(emulator.load_state(corrupt));
         REQUIRE(emulator.save_state() == original);
     }
-    auto version4 = original;
+    auto version4 = version7;
     version4.erase(version4.end() - 16384 - 27, version4.end() - 16384);
     const std::uint32_t version4_number = 4;
     std::memcpy(version4.data() + 4, &version4_number, sizeof(version4_number));
     REQUIRE(emulator.load_state(version4));
     REQUIRE(emulator.save_state() == original);
-    auto legacy = original;
+    auto legacy = version7;
     // V5 adds 18 drive bytes, v6 four audio bytes, v7 five watchdog bytes.
     legacy.erase(legacy.end() - 16384 - 27, legacy.end() - 16384);
     legacy.erase(legacy.begin() + 11, legacy.begin() + 43);

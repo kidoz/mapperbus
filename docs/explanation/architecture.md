@@ -66,12 +66,13 @@ polling remain coordinated through the bus and emulator timing.
 
 CPU accesses, including dummy reads and both read-modify-write writes, pass through
 the bus with their side effects. The bus advances FDS disk, timer, and watchdog
-clocks before each CPU/DMA access; the emulator advances PPU/APU and expansion
-audio separately. OAM DMA runs after the instruction's last write. CPU mapper
+clocks before each CPU/DMA access, along with APU and expansion audio. The emulator
+advances the PPU after the instruction. OAM DMA runs after the instruction's last
+write. CPU mapper
 writes carry consecutive-cycle information so MMC1 can filter serial writes
-without putting mapper-specific logic in the CPU. DMC request placement and
-interrupt sampling retain the limits described in the
-[FDS compatibility reference](../reference/fds-compatibility.md#remaining-accuracy-limits).
+without putting mapper-specific logic in the CPU. The APU schedules DMC loads
+and reloads; the bus halts eligible CPU reads and arbitrates DMC/OAM gets. See
+[DMA timing](../reference/dma-timing.md) for timing contracts and remaining limits.
 
 ## Persistence belongs at different boundaries
 
@@ -81,7 +82,9 @@ audio settings. Keeping these separate means a UI preference does not become
 part of cartridge hardware state.
 
 Snapshots are taken between instructions, after any OAM DMA. CPU bus-cycle and
-pending-DMA bookkeeping is transient and does not change the snapshot layout.
+active-DMA bookkeeping is transient. Version 8 adds APU cycle phase, delayed DMC
+requests, and the output unit's silence flag. Earlier snapshots reconstruct the
+missing fields; they cannot reproduce a pending request's original phase exactly.
 
 The core implements snapshot and battery operations. The session assigns save
 slot filenames. The application configuration layer reads and writes

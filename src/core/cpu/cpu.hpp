@@ -18,9 +18,8 @@ class Cpu {
     void reset();
     uint32_t step();
 
-    /// Advances the master cycle counter without executing an instruction.
-    /// Used for cycles the CPU was stalled by external hardware (DMC sample
-    /// fetches), so OAM-DMA odd/even parity stays aligned.
+    /// Untimed external counter adjustment for host/tests. CPU step() already
+    /// accounts for the DMC/OAM cycles performed by the bus.
     void add_stall_cycles(uint32_t cycles) {
         total_cycles_ += cycles;
     }
@@ -86,6 +85,7 @@ class Cpu {
     bool jammed_ = false;
     // Transient within step(); snapshots are taken at instruction boundaries.
     mutable uint32_t bus_cycles_ = 0;
+    mutable uint32_t dma_stall_cycles_ = 0;
     uint32_t last_write_cycle_ = 0;
     // Multiple RMW writes replace the page before the next read can halt.
     std::optional<Byte> oam_dma_page_;

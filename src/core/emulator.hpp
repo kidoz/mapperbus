@@ -147,11 +147,11 @@ class Emulator {
         region_ = region;
         ppu_.set_region(region_);
         apu_.set_region(region_);
+        bus_.set_region(region_);
     }
 
   private:
     void wire_apu();
-    void clock_expansion_audio(uint32_t cycles);
     /// Applies a blob that has already passed the size check. On failure the
     /// machine may be partially updated; `load_state` rolls that back.
     [[nodiscard]] bool restore_state(std::span<const Byte> data, bool allow_legacy = false);

@@ -14,8 +14,9 @@ namespace mapperbus::core {
 namespace {
 // "MBST" — MapperBus STate. Bump kStateVersion on any layout change.
 constexpr std::array<Byte, 4> kStateMagic = {'M', 'B', 'S', 'T'};
-// v7 adds the FDS DRAM watchdog. v6 added audio latches; v5 drive state; v4 SHA-256.
-constexpr std::uint32_t kStateVersion = 7;
+// v8 adds DMC request/cadence state. v7 added the FDS DRAM watchdog. v6 added audio latches; v5
+// drive state; v4 SHA-256.
+constexpr std::uint32_t kStateVersion = 8;
 
 [[nodiscard]] std::string battery_path_for(const std::string& rom_path) {
     return std::filesystem::path(rom_path).replace_extension(".sav").string();
@@ -37,7 +38,7 @@ constexpr std::uint32_t kStateVersion = 7;
         return std::nullopt;
     }
     const auto version = reader.read<std::uint32_t>();
-    if (version != kStateVersion && version != 6 && version != 5 && version != 4 &&
+    if (version != kStateVersion && version != 7 && version != 6 && version != 5 && version != 4 &&
         !(version == 3 && allow_legacy)) {
         logger::warn("Save-state rejected: unsupported version");
         return std::nullopt;
@@ -83,10 +84,6 @@ void Emulator::wire_apu() {
     bus_.connect_apu(&apu_);
     bus_.connect_controller(&controller_);
     bus_.connect_fds(&fds_);
-
-    // Wire DMC memory reader to bus
-    apu_.set_memory_reader(
-        [this](Address addr) -> Byte { return bus_.read_dmc(addr, cpu_.pc(), region_); });
 
     // Wire expansion audio (mapper + FDS) into APU mixer
     apu_.set_expansion_audio([this]() -> float {
@@ -136,6 +133,7 @@ Result<void> Emulator::load_cartridge(Cartridge cartridge, const std::string& ba
 
     ppu_.set_region(region_);
     apu_.set_region(region_);
+    bus_.set_region(region_);
 
     battery_save_path_ = battery_path;
 
@@ -265,6 +263,7 @@ void Emulator::unload_cartridge() {
     region_ = Region::NTSC;
     ppu_.set_region(region_);
     apu_.set_region(region_);
+    bus_.set_region(region_);
     ppu_.reset();
     apu_.reset();
     fds_.reset();
@@ -281,17 +280,6 @@ void Emulator::reset() {
     cpu_.reset();
 }
 
-void Emulator::clock_expansion_audio(uint32_t cycles) {
-    for (uint32_t c = 0; c < cycles; ++c) {
-        if (cartridge_ && cartridge_->has_expansion_audio()) {
-            cartridge_->clock_audio();
-        }
-        if (fds_.is_loaded()) {
-            fds_.clock_audio();
-        }
-    }
-}
-
 void Emulator::step_frame() {
     ppu_.clear_frame_ready();
     while (!ppu_.frame_ready()) {
@@ -305,20 +293,6 @@ void Emulator::step_frame() {
 bool Emulator::step_instruction() {
     uint32_t cpu_cycles = cpu_.step();
     ppu_.step(cpu_cycles);
-    apu_.step(cpu_cycles);
-    clock_expansion_audio(cpu_cycles);
-
-    // DMC memory reads stall the CPU — advance the CPU cycle counter and the
-    // PPU/APU/mapper clocks by the stall so OAM-DMA odd/even parity and the
-    // rest of the machine stay in step.
-    uint32_t dmc_stall = apu_.take_dmc_stall_cycles();
-    if (dmc_stall > 0) {
-        cpu_.add_stall_cycles(dmc_stall);
-        ppu_.step(dmc_stall);
-        apu_.step(dmc_stall);
-        clock_expansion_audio(dmc_stall);
-    }
-
     return ppu_.frame_ready();
 }
 
@@ -383,7 +357,9 @@ bool Emulator::restore_state(std::span<const Byte> data, bool allow_legacy) {
 
     cpu_.load_state(reader);
     ppu_.load_state(reader);
-    apu_.load_state(reader);
+    apu_.load_state(reader, version >= 8, cpu_.cycles());
+    if (version >= 8 && apu_.cpu_cycles() != cpu_.cycles())
+        reader.fail();
     bus_.load_state(reader);
     controller_.load_state(reader);
     fds_.load_state(reader, version >= 5, version >= 6, version >= 7);

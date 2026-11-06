@@ -30,6 +30,7 @@ void Cpu::load_state(StateReader& reader) {
     reader.read(status_);
     reader.read(total_cycles_);
     bus_cycles_ = 0;
+    dma_stall_cycles_ = 0;
     last_write_cycle_ = 0;
     oam_dma_page_.reset();
 }
@@ -43,6 +44,7 @@ void Cpu::reset() {
     total_cycles_ = 0;
     jammed_ = false;
     bus_cycles_ = 0;
+    dma_stall_cycles_ = 0;
     last_write_cycle_ = 0;
     oam_dma_page_.reset();
 
@@ -53,6 +55,7 @@ void Cpu::reset() {
 }
 
 Byte Cpu::read(Address addr) const {
+    dma_stall_cycles_ += bus_.run_dmc_dma(addr);
     clock_bus(addr);
     return bus_.read(addr);
 }
@@ -238,29 +241,30 @@ Cpu::AddressResult Cpu::indirect_indexed(Byte zero_page_addr, bool always_dummy)
 
 uint32_t Cpu::step() {
     bus_cycles_ = 0;
+    dma_stall_cycles_ = 0;
     last_write_cycle_ = 0;
     oam_dma_page_.reset();
     if (jammed_) {
         // KIL halts the CPU until reset: stay parked and only burn cycles.
-        total_cycles_ += 2;
         dummy_read(pc_, 2);
-        return 2;
+        total_cycles_ += 2 + dma_stall_cycles_;
+        return 2 + dma_stall_cycles_;
     }
 
     if (bus_.poll_nmi()) {
         dummy_read(pc_, 2);
         service_interrupt(0xFFFA, false);
         finish_bus_cycles(7);
-        total_cycles_ += 7;
-        return 7;
+        total_cycles_ += 7 + dma_stall_cycles_;
+        return 7 + dma_stall_cycles_;
     }
 
     if (!get_flag(InterruptDisable) && bus_.poll_irq()) {
         dummy_read(pc_, 2);
         service_interrupt(0xFFFE, false);
         finish_bus_cycles(7);
-        total_cycles_ += 7;
-        return 7;
+        total_cycles_ += 7 + dma_stall_cycles_;
+        return 7 + dma_stall_cycles_;
     }
 
     auto zero_page = [this]() -> Address { return fetch_byte(); };
@@ -1679,9 +1683,11 @@ uint32_t Cpu::step() {
 
     finish_bus_cycles(cycles);
     if (oam_dma_page_) {
-        cycles += bus_.run_oam_dma(*oam_dma_page_, pc_, ((total_cycles_ + cycles) & 1U) != 0);
+        cycles += bus_.run_oam_dma(
+            *oam_dma_page_, pc_, ((total_cycles_ + cycles + dma_stall_cycles_) & 1U) != 0);
         oam_dma_page_.reset();
     }
+    cycles += dma_stall_cycles_;
     uint32_t dma_cycles = bus_.take_dma_cycles();
     if (dma_cycles > 0) {
         if ((total_cycles_ + cycles) % 2 != 0) {

@@ -145,7 +145,7 @@ struct DmcChannel {
     bool irq_pending = false;
 
     uint16_t timer = 0;
-    uint16_t timer_period = 0;
+    uint16_t timer_period = 428;
     uint8_t output_level = 0;
 
     Address sample_address = 0xC000;
@@ -156,9 +156,9 @@ struct DmcChannel {
     Byte sample_buffer = 0;
     bool sample_buffer_empty = true;
     Byte shift_register = 0;
-    uint8_t bits_remaining = 0;
+    uint8_t bits_remaining = 8;
 
-    void clock_timer();
+    void clock_timer(bool& silence);
     uint8_t output() const {
         return output_level;
     }
@@ -359,7 +359,7 @@ class Apu {
     /// pipeline (filters, resampler, ring buffer) is intentionally not
     /// serialized; it re-primes within a frame after a load.
     void save_state(StateWriter& writer) const;
-    void load_state(StateReader& reader);
+    void load_state(StateReader& reader, bool has_dma_state = true, uint64_t legacy_cycles = 0);
 
     Byte read_register(Address addr);
     void write_register(Address addr, Byte value);
@@ -371,6 +371,7 @@ class Apu {
     void set_region(Region region);
     void set_sample_rate(int sample_rate);
     void apply_settings(const AudioSettings& settings);
+    /// Standalone audio synthesis only; the emulator services requests on the bus.
     void set_memory_reader(MemoryReader reader);
     void set_expansion_audio(ExpansionAudioSource source);
 
@@ -382,8 +383,20 @@ class Apu {
         return frame_irq_pending_ || dmc_.irq_pending;
     }
 
-    /// Returns and clears accumulated DMC memory read stall cycles.
-    uint32_t take_dmc_stall_cycles();
+    [[nodiscard]] uint64_t cpu_cycles() const {
+        return cpu_cycles_;
+    }
+    /// Fixed deterministic power-on alignment: odd cycles are DMA gets.
+    [[nodiscard]] bool dma_get_cycle() const {
+        return (cpu_cycles_ & 1U) != 0;
+    }
+    [[nodiscard]] bool dmc_dma_ready() const {
+        return dmc_dma_pending_ && dmc_dma_delay_ == 0;
+    }
+    [[nodiscard]] Address dmc_dma_address() const {
+        return dmc_.current_address;
+    }
+    void complete_dmc_dma(Byte value);
 
     /// Call from frontend with current audio buffer fill ratio (0.0-1.0)
     /// to enable dynamic rate control for audio-video sync.
@@ -465,8 +478,10 @@ class Apu {
     std::vector<float> frame_output_buffer_;
     std::vector<float> discard_buffer_;
 
-    // DMC CPU stall cycles (4 per memory read)
-    uint32_t dmc_stall_cycles_ = 0;
+    uint64_t cpu_cycles_ = 0;
+    Byte dmc_dma_delay_ = 0;
+    bool dmc_dma_pending_ = false;
+    bool dmc_silence_ = true;
 
     // Dynamic rate control
     double drc_rate_ = 1.0;

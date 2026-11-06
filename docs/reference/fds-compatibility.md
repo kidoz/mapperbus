@@ -153,16 +153,20 @@ The bus advances the FDS watchdog, timer, and disk transfer once before each
 CPU/DMA access. This allows bytes arriving during DMA to be read or acknowledged
 on that DMA cycle. OAM DMA starts at the next read after the last `$4014` write,
 uses the last page written by a read-modify-write instruction, and performs real
-halt/alignment and source reads between PPU writes. DMC retains the existing
-three-stall-plus-one-sample approximation; its NTSC/Dendy halt cycles repeat the
-halted read, while PAL retains clock-only stalls pending separate validation.
+halt/alignment and source reads between PPU writes. DMC loads and reloads schedule
+on APU get/put phases and halt the next eligible CPU read. Halt/dummy/alignment
+and sample fetch take three or four cycles; setup overlaps OAM and DMC gets take
+priority. NTSC/Dendy repeat halted reads; PAL performs the initial halt read and
+suppresses repeats pending separate validation.
 Untimed host debugger/test accesses do not advance these clocks. The emulator
-does not step the FDS drive a second time after an instruction or DMA; expansion
-audio is clocked separately.
+does not step the FDS drive, APU, or expansion audio a second time after an
+instruction or DMA. All three advance with each bus cycle.
 
 These contracts follow the [DMA reference](https://www.nesdev.org/wiki/DMA),
 [hardware DMA tests](https://forums.nesdev.org/viewtopic.php?t=14120), and
 [MMC1 register reference](https://www.nesdev.org/wiki/MMC1).
+The [DMA timing reference](dma-timing.md) records the optional public Blargg
+diagnostics and the pending-request snapshot format.
 
 Snapshot version 7 appends the timer, row, IRQ enable, and pending latch. Versions
 4–6 remain readable; their missing watchdog state starts reset and disabled until
@@ -178,7 +182,7 @@ shows `$67FF` / `$6E25`; both captured values match in MapperBus.
 
 ### Remaining accuracy limits
 
-- IRQ/NMI sampling remains at instruction boundaries, and PPU/APU advancement
+- IRQ/NMI sampling remains at instruction boundaries, and PPU advancement
   remains instruction-batched. The 21 IRQ results do not certify all cycle-level
   cases, including the precise interrupt sampling cycle.
 - `$4094` exposes the settled product rather than sequential multiplier partial
@@ -190,9 +194,8 @@ shows `$67FF` / `$6E25`; both captured values match in MapperBus.
   [research and capture probe](fds-audio-research.md) for the evidence and limits.
 - Audio reset transients, analog filtering/DAC nonlinearity, and rapid
   pause/resume behavior need further hardware work.
-- DMC requests use the next instruction's PC as the halt address at the APU
-  callback. Exact request placement, three/four-cycle arbitration, OAM/DMC overlap,
-  and PAL repeated-read behavior remain unverified. Reset-cycle bus activity,
+- DMC stop/abort and duplicate-fetch bugs, internal register/controller bus
+  conflicts, and PAL repeated-read behavior remain unverified. Reset-cycle bus activity,
   analog DRAM decay, 2C33 test mode, and mechanical disk effects are not modeled.
 - CRC coverage includes the public BIOS-dumper write/readback flows, independent
   fixed vectors, and injected CRC faults described above. Physical-drive fault
@@ -242,13 +245,16 @@ or a comparison with recordings from hardware.
   artifacts confirmed SMB2 world 1-1 and Metroid gameplay/save/reloaded-file screens.
 - All ten public-diagnostic/CRC cases passed, including fast/slow disk writes,
   write protection and retry, either CRC-byte fault, and mid-write replay.
-- The regular build passed 30 suite executables, including GUI close recovery.
+- The regular build passed 31 suite executables, including GUI close recovery
+  and the optional public DMA diagnostics.
   Its optional image/diagnostic cases were skipped in the asset-free run and
   passed in separate explicit asset runs.
-- The GUI-disabled ASan/UBSan build passed 27 suite executables, including all
-  ten public-diagnostic/CRC cases and the original audio probe. All six licensed
-  raw/ZIP/7z workflows also passed in separate sanitizer runs. Leak detection was
+- The GUI-disabled ASan/UBSan build passed 28 suite executables, including the
+  original audio probe. Separate asset runs passed all ten public-diagnostic/CRC
+  cases and six licensed raw/ZIP/7z workflows. Leak detection was
   disabled because this macOS runtime does not support it.
+- Both public Blargg OAM/DMC timing diagnostics passed in regular and sanitizer
+  builds; [DMA timing](dma-timing.md) records the source pins and accuracy limits.
 - The FDS static analyzer, changed-file formatting and documentation-link checks
   passed. The headless CLI ran Metroid for 1200 frames with the new audio model.
   Source BIOS and disk SHA-256 values were unchanged.

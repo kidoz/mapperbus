@@ -46,45 +46,86 @@ void MemoryBus::write_cpu(Address addr, Byte value, bool consecutive) {
 }
 
 void MemoryBus::clock_cpu_bus(Address addr, uint32_t cycles) {
-    if (fds_ != nullptr && fds_->is_loaded()) {
-        for (uint32_t cycle = 0; cycle < cycles; ++cycle) {
+    for (uint32_t cycle = 0; cycle < cycles; ++cycle) {
+        if (fds_ != nullptr && fds_->is_loaded()) {
             fds_->clock_cpu_cycle(addr);
             fds_->step(1);
         }
+        if (apu_ != nullptr)
+            apu_->step(1);
+        if (cartridge_ != nullptr && cartridge_->has_expansion_audio())
+            cartridge_->clock_audio();
+        if (fds_ != nullptr && fds_->is_loaded())
+            fds_->clock_audio();
     }
+}
+
+uint32_t MemoryBus::run_dmc_dma(Address halt_address) {
+    if (apu_ == nullptr || !apu_->dmc_dma_ready())
+        return 0;
+    return run_dma(halt_address, std::nullopt, false);
 }
 
 uint32_t MemoryBus::run_oam_dma(Byte page, Address halt_address, bool odd_alignment) {
     if (ppu_ == nullptr)
-        return 0;
-    const auto read_cycle = [this](Address address) {
-        clock_cpu_bus(address);
-        return read(address);
-    };
-    (void)read_cycle(halt_address);
-    if (odd_alignment)
-        (void)read_cycle(halt_address);
-    for (uint16_t offset = 0; offset < 256; ++offset) {
-        const auto value = read_cycle(static_cast<Address>((static_cast<uint32_t>(page) << 8U) |
-                                                           static_cast<uint32_t>(offset)));
-        clock_cpu_bus(0x2004);
-        ppu_->write_oam_dma(value);
-    }
-    return odd_alignment ? 514 : 513;
+        return run_dmc_dma(halt_address);
+    return run_dma(halt_address, page, odd_alignment);
 }
 
-Byte MemoryBus::read_dmc(Address addr, Address halt_address, Region region) {
-    // The instruction-stepped DMA model uses three stalled CPU reads and
-    // one sample read. Count them here, not again in add_stall_cycles().
-    for (int cycle = 0; cycle < 3; ++cycle) {
-        clock_cpu_bus(halt_address);
-        // The 2A03 repeats the halted read on its no-operation DMA cycles.
-        // Keep the previous PAL model pending separate 2A07 validation.
-        if (region != Region::PAL)
-            (void)read(halt_address);
-    }
-    clock_cpu_bus(addr);
-    return read(addr);
+uint32_t MemoryBus::run_dma(Address halt_address, std::optional<Byte> page, bool odd_alignment) {
+    enum class DmcPhase { Idle, Halt, Dummy, Get };
+    DmcPhase dmc = DmcPhase::Idle;
+    bool oam_halt = page.has_value();
+    bool oam_byte_ready = false;
+    Byte oam_byte = 0;
+    uint16_t offset = 0;
+    uint32_t cycles = 0;
+    // The fallback preserves isolated CPU/bus fixtures without an APU. With an
+    // APU connected, its serialized cycle phase is the only DMA cadence source.
+    bool get_cycle = odd_alignment;
+    do {
+        if (apu_ != nullptr) {
+            get_cycle = apu_->dma_get_cycle();
+            if (dmc == DmcPhase::Idle && apu_->dmc_dma_ready())
+                dmc = DmcPhase::Halt;
+        }
+        const auto phase = dmc;
+        if (apu_ != nullptr && phase == DmcPhase::Get && get_cycle) {
+            const Address address = apu_->dmc_dma_address();
+            clock_cpu_bus(address);
+            apu_->complete_dmc_dma(read(address));
+            dmc = DmcPhase::Idle;
+        } else if (page && !oam_halt && oam_byte_ready && !get_cycle) {
+            clock_cpu_bus(0x2004);
+            ppu_->write_oam_dma(oam_byte);
+            oam_byte_ready = false;
+            ++offset;
+            if (offset == 256)
+                page.reset();
+        } else if (page && !oam_halt && !oam_byte_ready && get_cycle) {
+            const auto address = static_cast<Address>((static_cast<uint32_t>(*page) << 8U) |
+                                                      static_cast<uint32_t>(offset));
+            clock_cpu_bus(address);
+            oam_byte = read(address);
+            oam_byte_ready = true;
+        } else {
+            clock_cpu_bus(halt_address);
+            // PAL performs the initial halted read too; repeated dummy/alignment
+            // reads remain suppressed pending separate 2A07 validation.
+            if (region_ != Region::PAL || cycles == 0)
+                (void)read(halt_address);
+        }
+        // Halt/dummy setup overlaps OAM accesses. Only the DMC get steals a
+        // transfer cycle; OAM then realigns before its next source read.
+        if (phase == DmcPhase::Halt)
+            dmc = DmcPhase::Dummy;
+        else if (phase == DmcPhase::Dummy)
+            dmc = DmcPhase::Get;
+        oam_halt = false;
+        get_cycle = !get_cycle;
+        ++cycles;
+    } while (page || dmc != DmcPhase::Idle);
+    return cycles;
 }
 
 void MemoryBus::update_mappings() {

@@ -160,6 +160,14 @@ test_cpu_accuracy = executable('test-cpu-accuracy',
 )
 test('cpu-accuracy', test_cpu_accuracy, workdir : meson.project_source_root())
 
+# Public hardware diagnostics are opt-in and hash-checked at runtime.
+test_dma_diagnostics = executable('test-dma-diagnostics',
+    'integration/test_dma_diagnostics.cpp',
+    dependencies : [mapperbus_core_dep, catch2_dep],
+)
+test('dma-diagnostics', test_dma_diagnostics,
+    args : ['--allow-running-no-tests'], timeout : 60)
+
 test_mapper_timing = executable('test-mapper-timing',
     'unit/test_mapper_timing.cpp',
     dependencies : [mapperbus_core_dep, catch2_dep],

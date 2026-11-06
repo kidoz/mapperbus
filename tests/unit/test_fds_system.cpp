@@ -269,6 +269,17 @@ void arm_disk_irqs(WatchdogCpu& machine, uint32_t advance = 160) {
     REQUIRE(machine.drive.irq_pending());
 }
 
+void prepare_dmc(WatchdogCpu& machine, Apu& apu, Region region = Region::NTSC) {
+    machine.bus.connect_apu(&apu);
+    machine.bus.set_region(region);
+    machine.bus.write(0x4012, 0x80); // $E000
+    machine.bus.write(0x4013, 0);
+    machine.bus.write(0x4015, 0x10);
+    // Untimed setup does not advance the FDS drive/watchdog.
+    apu.step(3);
+    REQUIRE(apu.dmc_dma_ready());
+}
+
 Byte oam_byte(WatchdogCpu& machine, Byte address) {
     machine.bus.write(0x2003, address);
     return machine.bus.read(0x2004);
@@ -374,13 +385,15 @@ TEST_CASE("DMC halt reads acknowledge FDS registers without duplicating their cl
         for (const auto region : {Region::NTSC, Region::PAL}) {
             CAPTURE(data, region);
             WatchdogCpu machine({0xEA});
+            Apu apu;
+            prepare_dmc(machine, apu, region);
             arm_disk_irqs(machine);
-            REQUIRE(machine.bus.read_dmc(0xE000, data ? 0x4031 : 0x4030, region) == 0xEA);
-            // PAL keeps its previous clock-only halt model in this change.
-            const unsigned expected = region == Region::PAL ? 0x83 : (data ? 0x03 : 0x80);
+            REQUIRE(machine.bus.run_dmc_dma(data ? 0x4031 : 0x4030) == 3);
+            // Both chips perform the initial halt read; PAL suppresses repeats.
+            const unsigned expected = data ? 0x03 : 0x80;
             CHECK((machine.drive.read(0x4030) & 0x83U) == expected);
             const auto after = machine.counters();
-            machine.cpu.add_stall_cycles(4);
+            machine.cpu.add_stall_cycles(3);
             CHECK(machine.counters() == after);
         }
     }
@@ -389,9 +402,11 @@ TEST_CASE("DMC halt reads acknowledge FDS registers without duplicating their cl
 TEST_CASE("DMC repeated data reads consume a byte arriving between halt cycles",
           "[fds][dma][bus-side-effects]") {
     WatchdogCpu machine({0xEA});
+    Apu apu;
+    prepare_dmc(machine, apu);
     arm_disk_irqs(machine, 0);
     machine.drive.step(146); // next byte arrives on halt cycle 1 or 2
-    REQUIRE(machine.bus.read_dmc(0xE000, 0x4031) == 0xEA);
+    REQUIRE(machine.bus.run_dmc_dma(0x4031) == 3);
     CHECK((machine.drive.read(0x4030) & 0x83U) == 0x03);
     CHECK(machine.drive.read(0x4031) == '*');
 }
@@ -550,18 +565,21 @@ TEST_CASE("OAM DMA clocks the FDS watchdog for both source reads and PPU writes"
 TEST_CASE("DMC stalls count once and debugger reads do not clock the FDS watchdog",
           "[fds][dma][watchdog]") {
     WatchdogCpu machine({0xEA});
+    Apu apu;
+    prepare_dmc(machine, apu);
     machine.enable();
     for (int read = 0; read < 10000; ++read) {
         (void)machine.bus.read(0x6000);
         (void)machine.bus.read(0xE000);
     }
     CHECK(machine.counters() == std::pair<std::uint16_t, Byte>{4095, 0});
-    (void)machine.bus.read_dmc(0xE000, 0x6000);
-    CHECK(machine.counters() == std::pair<std::uint16_t, Byte>{4091, 1});
-    machine.cpu.add_stall_cycles(4); // already accounted by the DMC read path
-    CHECK(machine.counters() == std::pair<std::uint16_t, Byte>{4091, 1});
-    (void)machine.bus.read_dmc(0xC000, 0xE000);
-    CHECK(machine.counters() == std::pair<std::uint16_t, Byte>{4087, 4});
+    REQUIRE(machine.bus.run_dmc_dma(0x6000) == 3);
+    CHECK(machine.counters() == std::pair<std::uint16_t, Byte>{4092, 1});
+    machine.cpu.add_stall_cycles(3); // clocks were already accounted by the DMA path
+    CHECK(machine.counters() == std::pair<std::uint16_t, Byte>{4092, 1});
+    // A filled sample buffer does not request a duplicate DMA.
+    CHECK(machine.bus.run_dmc_dma(0xE000) == 0);
+    CHECK(machine.counters() == std::pair<std::uint16_t, Byte>{4092, 1});
 }
 
 TEST_CASE("CPU loops which refresh RAM avoid the FDS watchdog while tight DRAM loops trip it",

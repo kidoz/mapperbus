@@ -10,6 +10,7 @@
 #include "app/emulation_session.hpp"
 #include "app/state_storage.hpp"
 #include "core/mappers/mapper_registry.hpp"
+#include "core/state/state.hpp"
 #include "platform/audio/null_audio.hpp"
 #include "platform/input/null_input.hpp"
 #include "platform/video/null_video.hpp"
@@ -117,6 +118,14 @@ TEST_CASE("Legacy sibling import is read-only and never masks a corrupt centrali
     REQUIRE(session.step_frame() == TickResult::FrameAdvanced);
     const auto snapshot = session.emulator().save_state();
     auto legacy = snapshot;
+    core::StateWriter prefix;
+    session.emulator().cpu().save_state(prefix);
+    session.emulator().ppu().save_state(prefix);
+    core::StateWriter apu_state;
+    core::Apu{}.save_state(apu_state);
+    const auto dma_end = 43 + prefix.data().size() + apu_state.data().size();
+    legacy.erase(legacy.begin() + static_cast<std::ptrdiff_t>(dma_end - 11),
+                 legacy.begin() + static_cast<std::ptrdiff_t>(dma_end));
     legacy.erase(legacy.end() - 16384 - 27, legacy.end() - 16384);
     legacy.erase(legacy.begin() + 11, legacy.begin() + 43);
     const std::uint32_t version = 3;

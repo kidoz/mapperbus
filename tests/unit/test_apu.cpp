@@ -2,9 +2,11 @@
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
 #include <cstddef>
+#include <cstring>
 #include <vector>
 
 #include "core/apu/apu.hpp"
+#include "core/state/state.hpp"
 
 using namespace mapperbus::core;
 
@@ -292,9 +294,74 @@ TEST_CASE("DPCM playback rate is 8 timer clocks per byte", "[apu][accuracy]") {
     std::vector<float> samples = capture_seconds(apu, 62);
     REQUIRE(samples.size() > 30000);
     // 522.7 Hz -> lag ~184 samples at 96 kHz; the 9-clock bug reads 464.6.
-    const double freq = autocorr_freq(samples, 100, 400);
+    // The free-running silent output cycle changes the initial phase. Search
+    // the fundamental, excluding its octave while retaining the 9-clock bug.
+    const double freq = autocorr_freq(samples, 100, 250);
     REQUIRE(freq > 510.0);
     REQUIRE(freq < 535.0);
+}
+
+TEST_CASE("DMC output finishes buffered bytes while the reader is disabled", "[apu][dma]") {
+    DmcChannel channel;
+    channel.bits_remaining = 8;
+    channel.sample_buffer_empty = false;
+    channel.sample_buffer = 0xFF;
+    bool silence = true;
+    for (int clock = 0; clock < 8; ++clock)
+        channel.clock_timer(silence);
+    CHECK(channel.sample_buffer_empty);
+    CHECK_FALSE(silence);
+    CHECK(channel.output_level == 0);
+    CHECK_FALSE(channel.enabled);
+    for (int clock = 0; clock < 8; ++clock)
+        channel.clock_timer(silence);
+    CHECK(channel.output_level == 16);
+    CHECK(silence);
+    channel.clock_timer(silence);
+    CHECK(channel.output_level == 16);
+}
+
+TEST_CASE("DMC reload requests are exactly eight timer periods apart", "[apu][dma]") {
+    Apu apu;
+    std::vector<uint64_t> reads;
+    apu.set_memory_reader([&apu, &reads](Address) -> Byte {
+        reads.push_back(apu.cpu_cycles());
+        return 0xF0;
+    });
+    apu.write_register(0x4010, 0x4F); // looping, 54 CPU cycles per bit
+    apu.write_register(0x4015, 0x10);
+    apu.step(5000);
+    REQUIRE(reads.size() > 8);
+    for (std::size_t i = 2; i < reads.size(); ++i)
+        CHECK(reads[i] - reads[i - 1] == 8 * 54);
+}
+
+TEST_CASE("Legacy inactive DMC state imports a valid free-running timer rate",
+          "[apu][dma][state]") {
+    for (const auto region : {Region::NTSC, Region::PAL}) {
+        Apu apu;
+        apu.set_region(region);
+        StateWriter writer;
+        apu.save_state(writer);
+        auto legacy = writer.take();
+        legacy.resize(legacy.size() - 11);
+        constexpr auto kOffset =
+            2 * sizeof(PulseChannel) + sizeof(TriangleChannel) + sizeof(NoiseChannel);
+        DmcChannel old_reset; // pre-v8: rate zero, no output bits
+        old_reset.timer_period = 0;
+        old_reset.bits_remaining = 0;
+        std::memcpy(legacy.data() + kOffset, &old_reset, sizeof(old_reset));
+        StateReader reader(legacy);
+        apu.load_state(reader, false);
+        REQUIRE(reader.ok());
+        apu.step(860);
+        StateWriter restored;
+        apu.save_state(restored);
+        DmcChannel channel;
+        std::memcpy(&channel, restored.data().data() + kOffset, sizeof(channel));
+        CHECK(channel.timer_period == (region == Region::PAL ? 398 : 428));
+        CHECK(channel.timer < channel.timer_period);
+    }
 }
 
 TEST_CASE("PseudoStereo BlipBuffer output varies within a frame", "[apu][accuracy]") {
