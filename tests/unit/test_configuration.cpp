@@ -445,3 +445,30 @@ TEST_CASE("Unquoted configuration values still honor inline comments", "[app][co
 
 } // namespace
 } // namespace mapperbus::app
+
+TEST_CASE("Recent archive members round-trip and deduplicate independently",
+          "[app][configuration]") {
+    using namespace mapperbus::app;
+    const auto root = std::filesystem::temp_directory_path() /
+                      ("mapperbus-archive-recents-" +
+                       std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    std::filesystem::create_directories(root);
+    const auto path = root / "collection.zip";
+    {
+        std::ofstream file(path);
+    }
+    MapperBusConfiguration configuration;
+    touch_recent_rom(configuration, path, "one.nes");
+    touch_recent_rom(configuration, path, "folder/two#;\n.nes");
+    touch_recent_rom(configuration, path, "one.nes");
+    REQUIRE(configuration.recent_roms.size() == 2);
+    CHECK(configuration.recent_roms.front().archive_member == "one.nes");
+    REQUIRE(save_mapperbus_configuration_to_file(configuration, root / "mapperbus.conf"));
+    auto loaded = load_mapperbus_configuration_from_file(root / "mapperbus.conf");
+    REQUIRE(loaded.recent_roms.size() == 2);
+    CHECK(loaded.recent_roms.back().archive_member == "folder/two#;\n.nes");
+    remove_recent_rom(loaded, path, "one.nes");
+    REQUIRE(loaded.recent_roms.size() == 1);
+    CHECK(loaded.recent_roms.front().archive_member == "folder/two#;\n.nes");
+    std::filesystem::remove_all(root);
+}

@@ -316,6 +316,17 @@ void apply_setting(MapperBusConfiguration& configuration,
         }
         return;
     }
+    if (full_key.starts_with("recent.member_")) {
+        const auto slot = parse_int_value(full_key.substr(std::strlen("recent.member_")));
+        if (slot && *slot >= 0 && *slot < 5) {
+            auto& entries = configuration.recent_roms;
+            if (entries.size() <= static_cast<std::size_t>(*slot)) {
+                entries.resize(static_cast<std::size_t>(*slot) + 1);
+            }
+            entries[static_cast<std::size_t>(*slot)].archive_member = value;
+        }
+        return;
+    }
     if (full_key.starts_with("recent.opened_")) {
         const std::string suffix(full_key.substr(std::strlen("recent.opened_")));
         const auto slot = parse_int_value(suffix);
@@ -737,6 +748,10 @@ core::Result<void> save_mapperbus_configuration_to_file(const MapperBusConfigura
         for (std::size_t index = 0; index < configuration.recent_roms.size(); ++index) {
             const auto& entry = configuration.recent_roms[index];
             file << "rom_" << index << "=" << quote_config_value(entry.path.string()) << '\n';
+            if (!entry.archive_member.empty()) {
+                file << "member_" << index << "=" << quote_config_value(entry.archive_member)
+                     << '\n';
+            }
             file << "opened_" << index << "=" << entry.last_opened_unix << '\n';
         }
         file << '\n';
@@ -823,19 +838,24 @@ void remember_state_slot(MapperBusConfiguration& configuration,
     }
 }
 
-void touch_recent_rom(MapperBusConfiguration& configuration, const std::filesystem::path& path) {
+void touch_recent_rom(MapperBusConfiguration& configuration,
+                      const std::filesystem::path& path,
+                      std::string_view archive_member) {
     constexpr std::size_t kMaxRecentRoms = 5;
     auto normalized = std::filesystem::weakly_canonical(path);
     if (normalized.empty()) {
         normalized = path.lexically_normal();
     }
 
-    std::erase_if(configuration.recent_roms, [&normalized](const RecentRomEntry& entry) {
-        return std::filesystem::weakly_canonical(entry.path) == normalized ||
-               entry.path.lexically_normal() == normalized;
-    });
+    std::erase_if(configuration.recent_roms,
+                  [&normalized, archive_member](const RecentRomEntry& entry) {
+                      return entry.archive_member == archive_member &&
+                             (std::filesystem::weakly_canonical(entry.path) == normalized ||
+                              entry.path.lexically_normal() == normalized);
+                  });
     RecentRomEntry entry;
     entry.path = path;
+    entry.archive_member = archive_member;
     entry.last_opened_unix = static_cast<std::int64_t>(std::time(nullptr));
     configuration.recent_roms.insert(configuration.recent_roms.begin(), std::move(entry));
     if (configuration.recent_roms.size() > kMaxRecentRoms) {
@@ -843,16 +863,20 @@ void touch_recent_rom(MapperBusConfiguration& configuration, const std::filesyst
     }
 }
 
-void remove_recent_rom(MapperBusConfiguration& configuration, const std::filesystem::path& path) {
+void remove_recent_rom(MapperBusConfiguration& configuration,
+                       const std::filesystem::path& path,
+                       std::string_view archive_member) {
     auto normalized = std::filesystem::weakly_canonical(path);
     if (normalized.empty()) {
         normalized = path.lexically_normal();
     }
 
-    std::erase_if(configuration.recent_roms, [&normalized](const RecentRomEntry& entry) {
-        return std::filesystem::weakly_canonical(entry.path) == normalized ||
-               entry.path.lexically_normal() == normalized;
-    });
+    std::erase_if(configuration.recent_roms,
+                  [&normalized, archive_member](const RecentRomEntry& entry) {
+                      return entry.archive_member == archive_member &&
+                             (std::filesystem::weakly_canonical(entry.path) == normalized ||
+                              entry.path.lexically_normal() == normalized);
+                  });
 }
 
 void clear_recent_roms(MapperBusConfiguration& configuration) {

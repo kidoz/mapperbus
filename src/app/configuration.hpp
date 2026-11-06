@@ -51,6 +51,7 @@ struct MapperBusFrontendConfiguration {
 struct RecentRomEntry {
     std::filesystem::path path;
     std::int64_t last_opened_unix = 0;
+    std::string archive_member = {};
 };
 
 struct MapperBusConfiguration {
@@ -71,14 +72,18 @@ void remember_state_slot(MapperBusConfiguration& configuration,
                          std::string_view identity,
                          int slot);
 
-/// Record a successful open: dedupe by normalized path, move to front, stamp
+/// Record a successful open: dedupe by normalized path and member, move to front, stamp
 /// the time, and trim to the newest five entries.
-void touch_recent_rom(MapperBusConfiguration& configuration, const std::filesystem::path& path);
+void touch_recent_rom(MapperBusConfiguration& configuration,
+                      const std::filesystem::path& path,
+                      std::string_view archive_member = {});
 
-/// Forget one recently opened ROM (matched by normalized path, like
+/// Forget one recently opened ROM (matched by normalized path and member, like
 /// touch_recent_rom). Used to prune entries whose file can no longer be
 /// opened. Never touches game or save files.
-void remove_recent_rom(MapperBusConfiguration& configuration, const std::filesystem::path& path);
+void remove_recent_rom(MapperBusConfiguration& configuration,
+                       const std::filesystem::path& path,
+                       std::string_view archive_member = {});
 
 /// Forget all recently opened ROMs. Never touches game or save files.
 void clear_recent_roms(MapperBusConfiguration& configuration);
