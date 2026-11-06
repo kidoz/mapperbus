@@ -42,9 +42,13 @@ void Apu::save_state(StateWriter& writer) const {
     writer.write(dmc_dma_delay_);
     writer.write(static_cast<Byte>(dmc_dma_pending_));
     writer.write(static_cast<Byte>(dmc_silence_));
+    writer.write(frame_reset_delay_);
 }
 
-void Apu::load_state(StateReader& reader, bool has_dma_state, uint64_t legacy_cycles) {
+void Apu::load_state(StateReader& reader,
+                     bool has_dma_state,
+                     uint64_t legacy_cycles,
+                     bool has_frame_state) {
     reader.read(pulse1_);
     reader.read(pulse2_);
     reader.read(triangle_);
@@ -79,6 +83,9 @@ void Apu::load_state(StateReader& reader, bool has_dma_state, uint64_t legacy_cy
             reader.fail();
     }
 
+    frame_reset_delay_ = has_frame_state ? reader.read<Byte>() : Byte{0};
+    if (frame_reset_delay_ > 4)
+        reader.fail();
     if (!valid_pulse(pulse1_)) {
         pulse1_ = {};
         pulse1_.sweep.is_pulse1 = true;
@@ -428,6 +435,7 @@ void Apu::reset() {
     dmc_ = {};
     dmc_.timer_period = (*dmc_rate_table_)[0];
     frame_counter_cycles_ = 0;
+    frame_reset_delay_ = 0;
     frame_counter_mode_ = false;
     frame_irq_inhibit_ = false;
     frame_irq_pending_ = false;
@@ -610,7 +618,18 @@ void Apu::step(uint32_t cpu_cycles) {
         ++cpu_cycles_;
 
         ++frame_counter_cycles_;
-        clock_frame_counter();
+        const bool reset_frame_counter = frame_reset_delay_ == 1;
+        if (frame_reset_delay_ > 0)
+            --frame_reset_delay_;
+        if (reset_frame_counter) {
+            frame_counter_cycles_ = 0;
+            if (frame_counter_mode_) {
+                clock_quarter_frame();
+                clock_half_frame();
+            }
+        } else {
+            clock_frame_counter();
+        }
 
         if (stereo_blip) {
             if (mix_dirty_) {
@@ -802,6 +821,9 @@ void Apu::clock_dmc() {
 
 void Apu::clock_frame_counter() {
     if (!frame_counter_mode_) {
+        if (frame_counter_cycles_ >= frame_timing_->step4 - 1 &&
+            frame_counter_cycles_ <= frame_timing_->step4 + 1 && !frame_irq_inhibit_)
+            frame_irq_pending_ = true;
         if (frame_counter_cycles_ == frame_timing_->step1) {
             clock_quarter_frame();
         } else if (frame_counter_cycles_ == frame_timing_->step2) {
@@ -812,9 +834,7 @@ void Apu::clock_frame_counter() {
         } else if (frame_counter_cycles_ == frame_timing_->step4) {
             clock_quarter_frame();
             clock_half_frame();
-            if (!frame_irq_inhibit_) {
-                frame_irq_pending_ = true;
-            }
+        } else if (frame_counter_cycles_ == frame_timing_->step4 + 1) {
             frame_counter_cycles_ = 0;
         }
     } else {
@@ -828,6 +848,7 @@ void Apu::clock_frame_counter() {
         } else if (frame_counter_cycles_ == frame_timing_->step5) {
             clock_quarter_frame();
             clock_half_frame();
+        } else if (frame_counter_cycles_ == frame_timing_->step5 + 1) {
             frame_counter_cycles_ = 0;
         }
     }
@@ -1112,11 +1133,9 @@ void Apu::write_register(Address addr, Byte value) {
         frame_irq_inhibit_ = (value & 0x40) != 0;
         if (frame_irq_inhibit_)
             frame_irq_pending_ = false;
-        frame_counter_cycles_ = 0;
-        if (frame_counter_mode_) {
-            clock_quarter_frame();
-            clock_half_frame();
-        }
+        // Reset on the second get following this write: 3 cycles after a put,
+        // 4 after a get. Inhibit/IRQ acknowledgement above remain immediate.
+        frame_reset_delay_ = dma_get_cycle() ? 3 : 4;
         break;
     default:
         break;

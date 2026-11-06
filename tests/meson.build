@@ -168,6 +168,13 @@ test_dma_diagnostics = executable('test-dma-diagnostics',
 test('dma-diagnostics', test_dma_diagnostics,
     args : ['--allow-running-no-tests'], timeout : 60)
 
+test_interrupt_diagnostics = executable('test-interrupt-diagnostics',
+    'integration/test_interrupt_diagnostics.cpp',
+    dependencies : [mapperbus_core_dep, catch2_dep],
+)
+test('interrupt-diagnostics', test_interrupt_diagnostics,
+    args : ['--allow-running-no-tests'], timeout : 120)
+
 test_mapper_timing = executable('test-mapper-timing',
     'unit/test_mapper_timing.cpp',
     dependencies : [mapperbus_core_dep, catch2_dep],

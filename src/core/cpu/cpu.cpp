@@ -19,9 +19,10 @@ void Cpu::save_state(StateWriter& writer) const {
     writer.write(pc_);
     writer.write(status_);
     writer.write(total_cycles_);
+    writer.write(interrupt_pending_);
 }
 
-void Cpu::load_state(StateReader& reader) {
+void Cpu::load_state(StateReader& reader, bool has_interrupt_state) {
     reader.read(a_);
     reader.read(x_);
     reader.read(y_);
@@ -29,6 +30,9 @@ void Cpu::load_state(StateReader& reader) {
     reader.read(pc_);
     reader.read(status_);
     reader.read(total_cycles_);
+    interrupt_pending_ = has_interrupt_state ? reader.read<Byte>() : Byte{0};
+    if (interrupt_pending_ > 2)
+        reader.fail();
     bus_cycles_ = 0;
     dma_stall_cycles_ = 0;
     last_write_cycle_ = 0;
@@ -42,6 +46,8 @@ void Cpu::reset() {
     sp_ = 0xFD;
     status_ = 0x24;
     total_cycles_ = 0;
+    interrupt_pending_ = 0;
+    bus_.reset_interrupts();
     jammed_ = false;
     bus_cycles_ = 0;
     dma_stall_cycles_ = 0;
@@ -57,12 +63,26 @@ void Cpu::reset() {
 Byte Cpu::read(Address addr) const {
     dma_stall_cycles_ += bus_.run_dmc_dma(addr);
     clock_bus(addr);
-    return bus_.read(addr);
+    const Byte value = bus_.read(addr);
+    bus_.end_cpu_cycle();
+    return value;
 }
 
-void Cpu::clock_bus(Address addr, uint32_t cycles) const {
-    bus_cycles_ += cycles;
-    bus_.clock_cpu_bus(addr, cycles);
+void Cpu::clock_bus(Address addr) const {
+    bus_.begin_cpu_cycle(addr);
+    assert(bus_cycles_ < interrupt_samples_.size());
+    interrupt_samples_[bus_cycles_++] = bus_.interrupt_sample();
+}
+
+void Cpu::poll_interrupts(Byte sample, bool disabled) {
+    if ((sample & 2U) != 0)
+        interrupt_pending_ = 2;
+    else if ((sample & 1U) != 0 && !disabled && interrupt_pending_ != 2)
+        interrupt_pending_ = 1;
+}
+
+void Cpu::restore_legacy_interrupts() {
+    poll_interrupts(bus_.interrupt_sample(), get_flag(InterruptDisable));
 }
 
 void Cpu::dummy_read(Address addr, uint32_t cycles) const {
@@ -89,6 +109,7 @@ void Cpu::write(Address addr, Byte value) {
     const bool consecutive = bus_cycles_ == last_write_cycle_;
     clock_bus(addr);
     bus_.write_cpu(addr, value, consecutive);
+    bus_.end_cpu_cycle();
     last_write_cycle_ = bus_cycles_;
     if (addr == 0x4014)
         oam_dma_page_ = value;
@@ -171,6 +192,12 @@ void Cpu::service_interrupt(Word vector, bool set_break_flag) {
     }
     push(pushed_status);
     set_flag(InterruptDisable, true);
+    // A late NMI can redirect IRQ/BRK through its own vector without changing
+    // the PC or B flag already pushed. The vector pair is chosen atomically.
+    if (vector == 0xFFFE && (bus_.interrupt_sample() & 2U) != 0) {
+        vector = 0xFFFA;
+        bus_.acknowledge_nmi();
+    }
     pc_ = read_word(vector);
 }
 
@@ -251,21 +278,18 @@ uint32_t Cpu::step() {
         return 2 + dma_stall_cycles_;
     }
 
-    if (bus_.poll_nmi()) {
+    const auto accepted = interrupt_pending_;
+    interrupt_pending_ = 0;
+    if (accepted != 0) {
+        if (accepted == 2)
+            bus_.acknowledge_nmi();
         dummy_read(pc_, 2);
-        service_interrupt(0xFFFA, false);
+        service_interrupt(accepted == 2 ? 0xFFFA : 0xFFFE, false);
         finish_bus_cycles(7);
         total_cycles_ += 7 + dma_stall_cycles_;
         return 7 + dma_stall_cycles_;
     }
-
-    if (!get_flag(InterruptDisable) && bus_.poll_irq()) {
-        dummy_read(pc_, 2);
-        service_interrupt(0xFFFE, false);
-        finish_bus_cycles(7);
-        total_cycles_ += 7 + dma_stall_cycles_;
-        return 7 + dma_stall_cycles_;
-    }
+    const bool interrupt_disabled = get_flag(InterruptDisable);
 
     auto zero_page = [this]() -> Address { return fetch_byte(); };
     auto zero_page_x = [this]() -> Address {
@@ -1682,6 +1706,17 @@ uint32_t Cpu::step() {
     }
 
     finish_bus_cycles(cycles);
+    if ((opcode & 0x1FU) == 0x10U) {
+        // Branches poll before their operand fetch, skip the taken cycle,
+        // and poll again before a page-crossing PCH fixup.
+        poll_interrupts(interrupt_samples_[1], interrupt_disabled);
+        if (cycles == 4)
+            poll_interrupts(interrupt_samples_[3], interrupt_disabled);
+    } else if (opcode != 0) {
+        const bool old_mask = opcode == 0x58 || opcode == 0x78 || opcode == 0x28;
+        poll_interrupts(interrupt_samples_[cycles - 1],
+                        old_mask ? interrupt_disabled : get_flag(InterruptDisable));
+    }
     if (oam_dma_page_) {
         cycles += bus_.run_oam_dma(
             *oam_dma_page_, pc_, ((total_cycles_ + cycles + dma_stall_cycles_) & 1U) != 0);

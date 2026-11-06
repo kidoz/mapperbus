@@ -1,8 +1,9 @@
 # DMA timing
 
-The APU and expansion audio advance once per CPU/DMA bus cycle. The PPU remains
-instruction-stepped, with its existing scanline/per-pixel renderer. IRQ/NMI
-sampling remains at instruction boundaries.
+The PPU, APU and expansion audio advance with CPU/DMA bus cycles. PPU access
+timing uses two dots before the access and one after it, retaining the existing
+per-pixel renderer. [Interrupt timing](interrupt-timing.md) describes IRQ/NMI
+polling and edge preservation during DMA.
 
 The emulator chooses a deterministic power-on phase: odd APU cycle indices are
 gets, even indices are puts. Hardware can power on in either alignment.
@@ -31,10 +32,12 @@ The contracts come from the [NESdev DMA reference](https://www.nesdev.org/wiki/D
 
 ## Snapshots
 
-Version 8 appends eleven bytes to the APU section: a 64-bit CPU cycle count,
+Version 8 introduced eleven bytes in the APU section: a 64-bit CPU cycle count,
 one-byte request delay, pending flag, and silence flag. The cycle count agrees
 with the CPU's count. Invalid flags, delays, pending-buffer combinations, or
 inconsistent counts reject the snapshot and restore the previous machine.
+Version 9 adds interrupt and frame-reset state; its layout is described in the
+[interrupt reference](interrupt-timing.md#snapshots).
 Active DMA finishes before the instruction boundary; a delayed request can
 remain pending across it and is serialized.
 
@@ -77,7 +80,8 @@ MAPPERBUS_CPU_DMA_DIAGNOSTICS="$PWD/tmp/dmc-timing" \
 The stop/abort and duplicate-fetch DMC bugs are not modeled. PAL repeated-read
 addresses, internal `$4000–$401F` register conflicts, joypad output-enable edge
 behavior, and adjacent PPUDATA read quirks are not certified. The public timing
-passes do not establish those contracts or precise IRQ/NMI sampling. Reset bus
+passes do not establish those contracts. The separate interrupt diagnostics
+cover the implemented IRQ/NMI polling contracts. Reset bus
 cycles and analog power-on alignment are outside the current model.
 
 [Reference index](README.md) · [FDS checks](fds-compatibility.md)

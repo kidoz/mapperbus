@@ -343,8 +343,8 @@ TEST_CASE("Accepted IRQ prefetch reads retain the FDS register acknowledgement r
         const Byte low = data ? 0x31 : 0x30;
         WatchdogCpu machine({0x58, 0x4C, low, 0x40}); // CLI; JMP to the interrupted read
         REQUIRE(machine.cpu.step() == 2);
+        arm_disk_irqs(machine); // JMP polls the source before its final cycle
         REQUIRE(machine.cpu.step() == 3);
-        arm_disk_irqs(machine);
         REQUIRE(machine.cpu.step() == 7);
         CHECK(machine.cpu.pc() == 0x6000); // the IRQ remains accepted after acknowledgement
         CHECK((machine.drive.read(0x4030) & 0x83U) == (data ? 0x03 : 0x80));

@@ -182,9 +182,10 @@ shows `$67FF` / `$6E25`; both captured values match in MapperBus.
 
 ### Remaining accuracy limits
 
-- IRQ/NMI sampling remains at instruction boundaries, and PPU advancement
-  remains instruction-batched. The 21 IRQ results do not certify all cycle-level
-  cases, including the precise interrupt sampling cycle.
+- CPU polling now follows per-cycle detector outputs, including I-flag latency,
+  branches and IRQ/BRK hijacking, checked by the five public
+  [interrupt diagnostics](interrupt-timing.md). The 21 FDS IRQ checks do not
+  certify every CPU/PPU alignment or register race.
 - `$4094` exposes the settled product rather than sequential multiplier partial
   results. `$4095`'s undocumented upper counter and the absolute alignment of
   divider/PWM phases to hardware power-on are not verified.
@@ -245,11 +246,11 @@ or a comparison with recordings from hardware.
   artifacts confirmed SMB2 world 1-1 and Metroid gameplay/save/reloaded-file screens.
 - All ten public-diagnostic/CRC cases passed, including fast/slow disk writes,
   write protection and retry, either CRC-byte fault, and mid-write replay.
-- The regular build passed 31 suite executables, including GUI close recovery
+- The regular build passed 32 suite executables, including GUI close recovery
   and the optional public DMA diagnostics.
   Its optional image/diagnostic cases were skipped in the asset-free run and
   passed in separate explicit asset runs.
-- The GUI-disabled ASan/UBSan build passed 28 suite executables, including the
+- The GUI-disabled ASan/UBSan build passed 29 suite executables, including the
   original audio probe. Separate asset runs passed all ten public-diagnostic/CRC
   cases and six licensed raw/ZIP/7z workflows. Leak detection was
   disabled because this macOS runtime does not support it.

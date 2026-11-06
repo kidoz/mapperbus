@@ -25,9 +25,12 @@ class MemoryBus {
     /// CPU writes latch $4014; Cpu runs its DMA after the instruction's last
     /// write, at the next read cycle. Other writes have their normal effects.
     void write_cpu(Address addr, Byte value, bool consecutive = false);
-    /// Advance FDS, APU and expansion audio for CPU/DMA cycles without an access.
+    /// Advance machine clocks for CPU/DMA cycles without performing an access.
     /// Ordinary read/write remain untimed debugger/test operations.
     void clock_cpu_bus(Address addr, uint32_t cycles = 1);
+    /// CPU/DMA access falls between the second and third PPU dots of a cycle.
+    void begin_cpu_cycle(Address addr);
+    void end_cpu_cycle();
     uint32_t run_oam_dma(Byte page, Address halt_address, bool odd_alignment);
     /// Service a ready DMC request before this eligible CPU read.
     uint32_t run_dmc_dma(Address halt_address);
@@ -36,8 +39,13 @@ class MemoryBus {
     }
 
     void save_state(StateWriter& writer) const;
-    void load_state(StateReader& reader);
-    bool poll_nmi();
+    void load_state(StateReader& reader, bool has_interrupt_state = true);
+    /// Detector outputs for the current CPU cycle: IRQ level and latched NMI edge.
+    [[nodiscard]] Byte interrupt_sample() const {
+        return static_cast<Byte>((irq_sampled_ ? 1U : 0U) | (nmi_pending_ ? 2U : 0U));
+    }
+    void acknowledge_nmi();
+    void reset_interrupts();
     bool poll_irq();
     uint32_t take_dma_cycles();
     [[nodiscard]] Byte open_bus() const {
@@ -92,6 +100,9 @@ class MemoryBus {
     Byte open_bus_ = 0;
     uint32_t dma_cycles_ = 0;
     Region region_ = Region::NTSC;
+    bool irq_sampled_ = false;
+    bool nmi_line_ = false;
+    bool nmi_pending_ = false;
 
     Cartridge* cartridge_ = nullptr;
     Ppu* ppu_ = nullptr;

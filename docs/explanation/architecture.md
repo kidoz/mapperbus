@@ -66,13 +66,18 @@ polling remain coordinated through the bus and emulator timing.
 
 CPU accesses, including dummy reads and both read-modify-write writes, pass through
 the bus with their side effects. The bus advances FDS disk, timer, and watchdog
-clocks before each CPU/DMA access, along with APU and expansion audio. The emulator
-advances the PPU after the instruction. OAM DMA runs after the instruction's last
-write. CPU mapper
+clocks before each CPU/DMA access, along with APU and expansion audio. PPU stepping
+places each access between its second and third dots. Its per-pixel renderer and
+scroll rules retain their existing design. OAM DMA runs after the instruction's
+last write. CPU mapper
 writes carry consecutive-cycle information so MMC1 can filter serial writes
 without putting mapper-specific logic in the CPU. The APU schedules DMC loads
 and reloads; the bus halts eligible CPU reads and arbitrates DMC/OAM gets. See
 [DMA timing](../reference/dma-timing.md) for timing contracts and remaining limits.
+IRQ/NMI detector outputs are recorded during bus cycles and polled at the
+instruction's hardware polling points. Accepted decisions survive source
+acknowledgements and I-flag changes; late NMI can redirect IRQ/BRK vectoring. See
+[interrupt timing](../reference/interrupt-timing.md).
 
 ## Persistence belongs at different boundaries
 
@@ -82,9 +87,10 @@ audio settings. Keeping these separate means a UI preference does not become
 part of cartridge hardware state.
 
 Snapshots are taken between instructions, after any OAM DMA. CPU bus-cycle and
-active-DMA bookkeeping is transient. Version 8 adds APU cycle phase, delayed DMC
-requests, and the output unit's silence flag. Earlier snapshots reconstruct the
-missing fields; they cannot reproduce a pending request's original phase exactly.
+active-DMA bookkeeping is transient. Version 9 preserves accepted interrupts, NMI
+detector state, vblank suppression and delayed frame-counter resets, alongside
+the APU phase/DMC fields added in version 8. Earlier snapshots reconstruct the
+missing fields; they cannot reproduce their original sampling history exactly.
 
 The core implements snapshot and battery operations. The session assigns save
 slot filenames. The application configuration layer reads and writes

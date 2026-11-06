@@ -1,5 +1,7 @@
 #include "core/ppu/ppu.hpp"
 
+#include <utility>
+
 #include "core/cartridge/cartridge.hpp"
 #include "core/ppu/loopy.hpp"
 #include "core/state/state.hpp"
@@ -29,9 +31,10 @@ void Ppu::save_state(StateWriter& writer) const {
     writer.write(write_latch_);
     writer.write_array(visible_sprites_);
     writer.write(visible_sprite_count_);
+    writer.write(static_cast<Byte>(suppress_vblank_));
 }
 
-void Ppu::load_state(StateReader& reader) {
+void Ppu::load_state(StateReader& reader, bool has_interrupt_state) {
     reader.read(scanline_);
     reader.read(cycle_);
     reader.read(frame_ready_);
@@ -54,6 +57,10 @@ void Ppu::load_state(StateReader& reader) {
     reader.read(write_latch_);
     reader.read_array(visible_sprites_);
     reader.read(visible_sprite_count_);
+    const auto suppress = has_interrupt_state ? reader.read<Byte>() : Byte{0};
+    suppress_vblank_ = suppress == 1;
+    if (suppress > 1)
+        reader.fail();
     // evaluate_sprites never stores more than the 8 hardware sprites. A blob
     // can, and render_pixel indexes the array with this count before the next
     // evaluation at dot 257.
@@ -127,6 +134,7 @@ void Ppu::reset() {
     oam_addr_ = 0;
     read_buffer_ = 0;
     nmi_pending_ = false;
+    suppress_vblank_ = false;
     reg_v_ = 0;
     reg_t_ = 0;
     fine_x_ = 0;
@@ -195,7 +203,10 @@ void Ppu::tick_delayed_registers() {
 // === PPU step ===
 
 void Ppu::step(uint32_t cpu_cycles) {
-    uint32_t ppu_dots = cpu_cycles * 3;
+    step_dots(cpu_cycles * 3);
+}
+
+void Ppu::step_dots(uint32_t ppu_dots) {
     for (uint32_t i = 0; i < ppu_dots; ++i) {
         ++cycle_;
 
@@ -234,9 +245,11 @@ void Ppu::step(uint32_t cpu_cycles) {
 
         // VBlank start
         if (scanline_ == timing_->vblank_scanline && cycle_ == 1) {
-            ppustatus_ |= 0x80;
+            if (!suppress_vblank_)
+                ppustatus_ = static_cast<Byte>(ppustatus_ | 0x80U);
+            suppress_vblank_ = false;
             frame_ready_ = true;
-            if ((ppuctrl_ & 0x80) != 0) {
+            if (nmi_line()) {
                 nmi_pending_ = true;
             }
         }
@@ -276,11 +289,14 @@ Byte Ppu::read_register(uint8_t reg) {
     switch (reg) {
     case 0x02: { // PPUSTATUS
         Byte value = static_cast<Byte>((ppustatus_ & 0xE0) | (read_buffer_ & 0x1F));
+        // A status read one dot before vblank suppresses its flag and NMI.
+        if (std::cmp_equal(scanline_, timing_->vblank_scanline) && cycle_ == 0)
+            suppress_vblank_ = true;
         // Clear VBlank flag and reset w.
         ppustatus_ &= ~0x80;
         write_latch_ = false;
-        // Model the vblank/NMI sampling race in the instruction-stepped bus.
-        // Outside this short window an already latched NMI must survive reads.
+        // Retain the legacy PPU edge view for old snapshot imports. Current
+        // CPU edge latching belongs to the bus and survives later status reads.
         if (scanline_ == timing_->vblank_scanline && cycle_ < 7) {
             nmi_pending_ = false;
         }
@@ -365,13 +381,8 @@ void Ppu::write_register(uint8_t reg, Byte value) {
 }
 
 bool Ppu::consume_nmi() {
-    // The CPU samples the edge after a short propagation/synchronization
-    // delay. This lets a concurrent $2002 poll observe and suppress vblank;
-    // immediate instruction-boundary delivery would starve such polling loops
-    // whenever their NMI handler also reads $2002 (e.g. an FDS program reload).
-    if (scanline_ == timing_->vblank_scanline && cycle_ < 7) {
-        return false;
-    }
+    // Compatibility/debug edge view. The CPU uses the physical nmi_line()
+    // through the bus detector rather than this helper's cached event.
     bool pending = nmi_pending_;
     nmi_pending_ = false;
     return pending;

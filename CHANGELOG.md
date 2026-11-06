@@ -9,6 +9,8 @@ Versioning.
 
 ### Added
 
+- CPU interrupt regressions for I-flag latency, branch polling, NMI takeover of
+  IRQ/BRK, interrupts during DMA, and five optional hash-pinned Blargg diagnostics.
 - CPU/DMC/OAM timing regressions, including optional hash-pinned public Blargg
   DMA diagnostics, overlap at the last OAM transfers, and delayed-request snapshots.
 - Independent FDS BIOS disk-write checks for fast/slow dumps, physical block
@@ -26,6 +28,9 @@ Versioning.
 
 ### Fixed
 
+- Poll IRQ/NMI detector outputs at instruction-specific cycles, retain accepted
+  interrupts through source acknowledgements and I-flag changes, and latch NMI
+  during DMA. Clock the PPU around CPU accesses and delay APU frame-counter resets.
 - DMC DMA now waits for eligible CPU reads, uses three/four-cycle get/put
   alignment, and overlaps setup with OAM DMA. APU/expansion audio advance once
   per bus cycle; the DMC output unit continues after the reader is disabled.
@@ -48,9 +53,9 @@ Versioning.
 
 ### Changed
 
-- Save-state version 8 preserves APU cycle phase, pending DMC request delay, and
-  output-unit silence alongside FDS watchdog, audio, and drive/CRC/physical-stream
-  state; versions 4–7 remain readable with reconstructed DMA state.
+- Save-state version 9 adds interrupt decisions, NMI detector state, vblank
+  suppression, and delayed APU resets alongside DMA and FDS state. Versions 4–8
+  remain readable with reconstructed sampling state.
 
 ## [0.2.0] - 2026-11-04
 

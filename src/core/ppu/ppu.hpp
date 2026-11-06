@@ -18,9 +18,10 @@ class Ppu {
     void set_region(Region region);
     void reset();
     void step(uint32_t cpu_cycles);
+    void step_dots(uint32_t ppu_dots);
 
     void save_state(StateWriter& writer) const;
-    void load_state(StateReader& reader);
+    void load_state(StateReader& reader, bool has_interrupt_state = true);
 
     bool frame_ready() const {
         return frame_ready_;
@@ -47,6 +48,9 @@ class Ppu {
     Byte read_register(uint8_t reg);
     void write_register(uint8_t reg, Byte value);
     bool consume_nmi();
+    [[nodiscard]] bool nmi_line() const {
+        return (0x80U & ppuctrl_ & ppustatus_) != 0;
+    }
     void write_oam_dma(Byte value);
 
     void connect_cartridge(Cartridge* cartridge) {
@@ -106,6 +110,7 @@ class Ppu {
     Byte oam_addr_ = 0;
     Byte read_buffer_ = 0;
     bool nmi_pending_ = false;
+    bool suppress_vblank_ = false;
 
     // Loopy internal registers — pure model per Mesen2/FCEUX/NESDev wiki.
     //

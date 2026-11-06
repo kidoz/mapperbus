@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "../support/fds_image.hpp"
+#include "../support/legacy_state.hpp"
 #include "../support/test_rom.hpp"
 #include "core/emulator.hpp"
 #include "core/mappers/mapper_registry.hpp"
@@ -106,18 +107,10 @@ TEST_CASE("Version 3 states require explicit legacy import", "[state][identity]"
     emulator.reset();
     emulator.step_frame();
     const auto original = emulator.save_state();
-    // V8 appends the explicit DMA cadence/request fields to the APU section.
-    StateWriter prefix;
-    emulator.cpu().save_state(prefix);
-    emulator.ppu().save_state(prefix);
-    StateWriter apu_state;
-    Apu{}.save_state(apu_state);
-    const auto dma_end = 43 + prefix.data().size() + apu_state.data().size();
-    auto version7 = original;
-    version7.erase(version7.begin() + static_cast<std::ptrdiff_t>(dma_end - 11),
-                   version7.begin() + static_cast<std::ptrdiff_t>(dma_end));
-    const std::uint32_t version7_number = 7;
-    std::memcpy(version7.data() + 4, &version7_number, sizeof(version7_number));
+    const auto version8 = mapperbus::tests::legacy_state(emulator, 8);
+    REQUIRE(emulator.load_state(version8));
+    REQUIRE(emulator.save_state() == original);
+    const auto version7 = mapperbus::tests::legacy_state(emulator, 7);
     REQUIRE(emulator.load_state(version7));
     REQUIRE(emulator.save_state() == original);
     auto version6 = version7;
@@ -471,7 +464,7 @@ TEST_CASE("PPU save-state rejects a sprite count above the hardware limit", "[st
     REQUIRE(blob.size() >= sizeof(int));
 
     int accepted = 8;
-    std::memcpy(blob.data() + blob.size() - sizeof(accepted), &accepted, sizeof(accepted));
+    std::memcpy(blob.data() + blob.size() - 1 - sizeof(accepted), &accepted, sizeof(accepted));
     {
         Ppu restored;
         StateReader reader(blob);
@@ -481,7 +474,7 @@ TEST_CASE("PPU save-state rejects a sprite count above the hardware limit", "[st
     }
 
     int rejected = 64;
-    std::memcpy(blob.data() + blob.size() - sizeof(rejected), &rejected, sizeof(rejected));
+    std::memcpy(blob.data() + blob.size() - 1 - sizeof(rejected), &rejected, sizeof(rejected));
     Ppu restored;
     StateReader reader(blob);
     restored.load_state(reader);

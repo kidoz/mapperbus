@@ -6,6 +6,7 @@
 #include "core/cartridge/cartridge.hpp"
 #include "core/mappers/mapper_registry.hpp"
 #include "core/ppu/ppu.hpp"
+#include "core/state/state.hpp"
 #include "core/types.hpp"
 
 using namespace mapperbus::core;
@@ -162,21 +163,41 @@ TEST_CASE("PPUCTRL only retriggers vblank NMI on an enable edge", "[ppu][nmi]") 
     REQUIRE_FALSE(ppu.consume_nmi());
 }
 
-TEST_CASE("PPUSTATUS can suppress an NMI at the vblank sampling boundary", "[ppu][nmi]") {
+TEST_CASE("PPUSTATUS at the dot before vblank suppresses its flag and NMI", "[ppu][nmi]") {
     Ppu ppu;
     ppu.reset();
     ppu.write_register(0x00, 0x80);
-    ppu.step(27394); // scanline 241, dot 1
+    ppu.step_dots(241 * 341); // scanline 241, dot 0
     REQUIRE_FALSE(ppu.consume_nmi());
-    REQUIRE((ppu.read_register(0x02) & 0x80) != 0);
-    ppu.step(2);
+    REQUIRE((ppu.read_register(0x02) & 0x80U) == 0);
+    ppu.step_dots(1);
+    REQUIRE_FALSE(ppu.nmi_line());
+    REQUIRE((ppu.read_register(0x02) & 0x80U) == 0);
     REQUIRE_FALSE(ppu.consume_nmi());
 
     ppu.reset();
     ppu.write_register(0x00, 0x80);
-    ppu.step(27396); // the edge has now reached CPU sampling
+    ppu.step(27396);
     (void)ppu.read_register(0x02);
     REQUIRE(ppu.consume_nmi());
+}
+
+TEST_CASE("Vblank suppression survives a snapshot taken before the next PPU dot",
+          "[ppu][nmi][state]") {
+    Ppu ppu;
+    ppu.reset();
+    ppu.write_register(0, 0x80);
+    ppu.step_dots(241 * 341);
+    REQUIRE((ppu.read_register(2) & 0x80U) == 0);
+    StateWriter writer;
+    ppu.save_state(writer);
+    Ppu restored;
+    StateReader reader(writer.data());
+    restored.load_state(reader);
+    REQUIRE(reader.ok());
+    restored.step_dots(1);
+    CHECK_FALSE(restored.nmi_line());
+    CHECK((restored.read_register(2) & 0x80U) == 0);
 }
 
 TEST_CASE("PPU OAM DMA writes through oam_addr", "[ppu][oam]") {

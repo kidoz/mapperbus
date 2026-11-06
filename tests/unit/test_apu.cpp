@@ -344,7 +344,7 @@ TEST_CASE("Legacy inactive DMC state imports a valid free-running timer rate",
         StateWriter writer;
         apu.save_state(writer);
         auto legacy = writer.take();
-        legacy.resize(legacy.size() - 11);
+        legacy.resize(legacy.size() - 12);
         constexpr auto kOffset =
             2 * sizeof(PulseChannel) + sizeof(TriangleChannel) + sizeof(NoiseChannel);
         DmcChannel old_reset; // pre-v8: rate zero, no output bits
@@ -352,7 +352,7 @@ TEST_CASE("Legacy inactive DMC state imports a valid free-running timer rate",
         old_reset.bits_remaining = 0;
         std::memcpy(legacy.data() + kOffset, &old_reset, sizeof(old_reset));
         StateReader reader(legacy);
-        apu.load_state(reader, false);
+        apu.load_state(reader, false, 0, false);
         REQUIRE(reader.ok());
         apu.step(860);
         StateWriter restored;
@@ -361,6 +361,54 @@ TEST_CASE("Legacy inactive DMC state imports a valid free-running timer rate",
         std::memcpy(&channel, restored.data().data() + kOffset, sizeof(channel));
         CHECK(channel.timer_period == (region == Region::PAL ? 398 : 428));
         CHECK(channel.timer < channel.timer_period);
+    }
+}
+
+TEST_CASE("Frame IRQ reasserts on three consecutive cycles and repeats after 29830 cycles",
+          "[apu][interrupt]") {
+    Apu apu;
+    apu.step(29827);
+    REQUIRE((apu.read_register(0x4015) & 0x40U) == 0);
+    for (int pulse = 0; pulse < 3; ++pulse) {
+        apu.step(1);
+        CHECK((apu.read_register(0x4015) & 0x40U) != 0);
+    }
+    apu.step(29827);
+    CHECK((apu.read_register(0x4015) & 0x40U) == 0);
+    apu.step(1);
+    CHECK((apu.read_register(0x4015) & 0x40U) != 0);
+    apu.write_register(0x4017, 0x40);
+    CHECK((apu.read_register(0x4015) & 0x40U) == 0);
+}
+
+TEST_CASE("Frame sequencer reset delays its half clock and survives snapshots",
+          "[apu][interrupt][state]") {
+    for (const bool odd : {false, true}) {
+        Apu apu;
+        apu.step(odd ? 1 : 0);
+        apu.write_register(0x4015, 1);
+        apu.write_register(0x4000, 0);
+        apu.write_register(0x4003, 0); // length 10
+        const auto delay = apu.dma_get_cycle() ? 3U : 4U;
+        apu.write_register(0x4017, 0x80);
+        apu.step(delay - 1);
+        StateWriter writer;
+        apu.save_state(writer);
+        PulseChannel pulse;
+        std::memcpy(&pulse, writer.data().data(), sizeof(pulse));
+        REQUIRE(pulse.length_counter == 10);
+        apu.step(1);
+        StateWriter expected;
+        apu.save_state(expected);
+        std::memcpy(&pulse, expected.data().data(), sizeof(pulse));
+        CHECK(pulse.length_counter == 9);
+        StateReader reader(writer.data());
+        apu.load_state(reader);
+        REQUIRE(reader.ok());
+        apu.step(1);
+        StateWriter replay;
+        apu.save_state(replay);
+        CHECK(replay.data() == expected.data());
     }
 }
 

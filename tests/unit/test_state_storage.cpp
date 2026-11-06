@@ -5,6 +5,7 @@
 #include <fstream>
 #include <string>
 
+#include "../support/legacy_state.hpp"
 #include "../support/test_rom.hpp"
 #include "app/configuration.hpp"
 #include "app/emulation_session.hpp"
@@ -117,15 +118,7 @@ TEST_CASE("Legacy sibling import is read-only and never masks a corrupt centrali
     REQUIRE(session.open_rom(fixture.rom.string()));
     REQUIRE(session.step_frame() == TickResult::FrameAdvanced);
     const auto snapshot = session.emulator().save_state();
-    auto legacy = snapshot;
-    core::StateWriter prefix;
-    session.emulator().cpu().save_state(prefix);
-    session.emulator().ppu().save_state(prefix);
-    core::StateWriter apu_state;
-    core::Apu{}.save_state(apu_state);
-    const auto dma_end = 43 + prefix.data().size() + apu_state.data().size();
-    legacy.erase(legacy.begin() + static_cast<std::ptrdiff_t>(dma_end - 11),
-                 legacy.begin() + static_cast<std::ptrdiff_t>(dma_end));
+    auto legacy = mapperbus::tests::legacy_state(session.emulator(), 7);
     legacy.erase(legacy.end() - 16384 - 27, legacy.end() - 16384);
     legacy.erase(legacy.begin() + 11, legacy.begin() + 43);
     const std::uint32_t version = 3;

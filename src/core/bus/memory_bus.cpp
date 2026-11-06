@@ -18,12 +18,26 @@ void MemoryBus::save_state(StateWriter& writer) const {
     writer.write_array(ram_);
     writer.write(open_bus_);
     writer.write(dma_cycles_);
+    writer.write(static_cast<Byte>(nmi_line_));
+    writer.write(static_cast<Byte>(nmi_pending_));
 }
 
-void MemoryBus::load_state(StateReader& reader) {
+void MemoryBus::load_state(StateReader& reader, bool has_interrupt_state) {
     reader.read_array(ram_);
     reader.read(open_bus_);
     reader.read(dma_cycles_);
+    reset_interrupts();
+    if (has_interrupt_state) {
+        const auto line = reader.read<Byte>();
+        const auto pending = reader.read<Byte>();
+        nmi_line_ = line == 1;
+        nmi_pending_ = pending == 1;
+        if (line > 1 || pending > 1)
+            reader.fail();
+    } else if (ppu_ != nullptr) {
+        nmi_pending_ = ppu_->consume_nmi();
+    }
+    irq_sampled_ = poll_irq();
 }
 
 Byte MemoryBus::read(Address addr) {
@@ -47,17 +61,34 @@ void MemoryBus::write_cpu(Address addr, Byte value, bool consecutive) {
 
 void MemoryBus::clock_cpu_bus(Address addr, uint32_t cycles) {
     for (uint32_t cycle = 0; cycle < cycles; ++cycle) {
-        if (fds_ != nullptr && fds_->is_loaded()) {
-            fds_->clock_cpu_cycle(addr);
-            fds_->step(1);
-        }
-        if (apu_ != nullptr)
-            apu_->step(1);
-        if (cartridge_ != nullptr && cartridge_->has_expansion_audio())
-            cartridge_->clock_audio();
-        if (fds_ != nullptr && fds_->is_loaded())
-            fds_->clock_audio();
+        begin_cpu_cycle(addr);
+        end_cpu_cycle();
     }
+}
+
+void MemoryBus::begin_cpu_cycle(Address addr) {
+    // phi1 detector outputs reflect the previous cycle's phi2 pin levels.
+    irq_sampled_ = poll_irq();
+    const bool nmi = ppu_ != nullptr && ppu_->nmi_line();
+    nmi_pending_ = nmi_pending_ || (nmi && !nmi_line_);
+    nmi_line_ = nmi;
+    if (ppu_ != nullptr)
+        ppu_->step_dots(2);
+    if (fds_ != nullptr && fds_->is_loaded()) {
+        fds_->clock_cpu_cycle(addr);
+        fds_->step(1);
+    }
+    if (apu_ != nullptr)
+        apu_->step(1);
+    if (cartridge_ != nullptr && cartridge_->has_expansion_audio())
+        cartridge_->clock_audio();
+    if (fds_ != nullptr && fds_->is_loaded())
+        fds_->clock_audio();
+}
+
+void MemoryBus::end_cpu_cycle() {
+    if (ppu_ != nullptr)
+        ppu_->step_dots(1);
 }
 
 uint32_t MemoryBus::run_dmc_dma(Address halt_address) {
@@ -92,11 +123,11 @@ uint32_t MemoryBus::run_dma(Address halt_address, std::optional<Byte> page, bool
         const auto phase = dmc;
         if (apu_ != nullptr && phase == DmcPhase::Get && get_cycle) {
             const Address address = apu_->dmc_dma_address();
-            clock_cpu_bus(address);
+            begin_cpu_cycle(address);
             apu_->complete_dmc_dma(read(address));
             dmc = DmcPhase::Idle;
         } else if (page && !oam_halt && oam_byte_ready && !get_cycle) {
-            clock_cpu_bus(0x2004);
+            begin_cpu_cycle(0x2004);
             ppu_->write_oam_dma(oam_byte);
             oam_byte_ready = false;
             ++offset;
@@ -105,16 +136,17 @@ uint32_t MemoryBus::run_dma(Address halt_address, std::optional<Byte> page, bool
         } else if (page && !oam_halt && !oam_byte_ready && get_cycle) {
             const auto address = static_cast<Address>((static_cast<uint32_t>(*page) << 8U) |
                                                       static_cast<uint32_t>(offset));
-            clock_cpu_bus(address);
+            begin_cpu_cycle(address);
             oam_byte = read(address);
             oam_byte_ready = true;
         } else {
-            clock_cpu_bus(halt_address);
+            begin_cpu_cycle(halt_address);
             // PAL performs the initial halted read too; repeated dummy/alignment
             // reads remain suppressed pending separate 2A07 validation.
             if (region_ != Region::PAL || cycles == 0)
                 (void)read(halt_address);
         }
+        end_cpu_cycle();
         // Halt/dummy setup overlaps OAM accesses. Only the DMC get steals a
         // transfer cycle; OAM then realigns before its next source read.
         if (phase == DmcPhase::Halt)
@@ -253,8 +285,16 @@ void MemoryBus::write_prg(Address addr, Byte value) {
 
 void MemoryBus::write_open_bus(Address, Byte) {}
 
-bool MemoryBus::poll_nmi() {
-    return ppu_ ? ppu_->consume_nmi() : false;
+void MemoryBus::reset_interrupts() {
+    nmi_line_ = ppu_ != nullptr && ppu_->nmi_line();
+    nmi_pending_ = false;
+    irq_sampled_ = false;
+}
+
+void MemoryBus::acknowledge_nmi() {
+    nmi_pending_ = false;
+    if (ppu_ != nullptr)
+        (void)ppu_->consume_nmi();
 }
 
 bool MemoryBus::poll_irq() {

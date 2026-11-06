@@ -359,7 +359,10 @@ class Apu {
     /// pipeline (filters, resampler, ring buffer) is intentionally not
     /// serialized; it re-primes within a frame after a load.
     void save_state(StateWriter& writer) const;
-    void load_state(StateReader& reader, bool has_dma_state = true, uint64_t legacy_cycles = 0);
+    void load_state(StateReader& reader,
+                    bool has_dma_state = true,
+                    uint64_t legacy_cycles = 0,
+                    bool has_frame_state = true);
 
     Byte read_register(Address addr);
     void write_register(Address addr, Byte value);
@@ -442,6 +445,7 @@ class Apu {
 
     uint32_t frame_counter_cycles_ = 0;
     bool frame_counter_mode_ = false;
+    Byte frame_reset_delay_ = 0;
     bool frame_irq_inhibit_ = false;
     bool frame_irq_pending_ = false;
 

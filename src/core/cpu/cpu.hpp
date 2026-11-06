@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <optional>
 
@@ -25,7 +26,8 @@ class Cpu {
     }
 
     void save_state(StateWriter& writer) const;
-    void load_state(StateReader& reader);
+    void load_state(StateReader& reader, bool has_interrupt_state = true);
+    void restore_legacy_interrupts();
     [[nodiscard]] uint64_t cycles() const {
         return total_cycles_;
     }
@@ -86,11 +88,14 @@ class Cpu {
     // Transient within step(); snapshots are taken at instruction boundaries.
     mutable uint32_t bus_cycles_ = 0;
     mutable uint32_t dma_stall_cycles_ = 0;
+    mutable std::array<Byte, 8> interrupt_samples_{};
+    Byte interrupt_pending_ = 0;
     uint32_t last_write_cycle_ = 0;
     // Multiple RMW writes replace the page before the next read can halt.
     std::optional<Byte> oam_dma_page_;
 
-    void clock_bus(Address addr, uint32_t cycles = 1) const;
+    void clock_bus(Address addr) const;
+    void poll_interrupts(Byte sample, bool disabled);
     void dummy_read(Address addr, uint32_t cycles = 1) const;
     void finish_bus_cycles(uint32_t cycles) const;
     Byte read(Address addr) const;

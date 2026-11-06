@@ -27,7 +27,7 @@ struct DmaMachine {
     Cpu cpu{bus};
     std::optional<Cartridge> cartridge;
 
-    DmaMachine(std::initializer_list<Byte> program) {
+    DmaMachine(std::initializer_list<Byte> program, bool separate_vectors = false) {
         register_builtin_mappers();
         std::vector<Byte> image(16 + 32768 + 8192);
         image[0] = 'N';
@@ -40,8 +40,12 @@ struct DmaMachine {
         image[16 + 0x4000] = 0xD5;
         for (const auto vector : {0x7FFA, 0x7FFC, 0x7FFE}) {
             image[16 + vector] = 0;
-            image[16 + vector + 1] = 0x80;
+            image[16 + vector + 1] = separate_vectors && vector != 0x7FFC
+                                         ? static_cast<Byte>(vector == 0x7FFA ? 0x90 : 0xA0)
+                                         : Byte{0x80};
         }
+        image[16 + 0x1000] = 0xEA; // first NMI/IRQ handler instruction
+        image[16 + 0x2000] = 0xEA;
         auto loaded = Cartridge::from_data(image);
         REQUIRE(loaded);
         cartridge = std::move(*loaded);
@@ -56,6 +60,27 @@ struct DmaMachine {
         bus.write(0x4012, 0);
         bus.write(0x4013, 0);
         bus.write(0x4015, 0x10);
+    }
+
+    void raise_irq() {
+        start_dmc();
+        apu.step(3);
+        REQUIRE(apu.dmc_dma_ready());
+        apu.complete_dmc_dma(0);
+        REQUIRE(apu.irq_pending());
+    }
+
+    void before_vblank(uint16_t dot) {
+        StateWriter writer;
+        ppu.save_state(writer);
+        auto state = writer.take();
+        const uint16_t line = 240;
+        std::memcpy(state.data(), &line, sizeof(line));
+        std::memcpy(state.data() + sizeof(line), &dot, sizeof(dot));
+        StateReader reader(state);
+        ppu.load_state(reader);
+        REQUIRE(reader.ok());
+        ppu.write_register(0, 0x80);
     }
 
     void reload_on_cycle(uint16_t cycle) {
@@ -80,13 +105,182 @@ struct DmaMachine {
         constexpr auto kOffset =
             2 * sizeof(PulseChannel) + sizeof(TriangleChannel) + sizeof(NoiseChannel);
         std::memcpy(state.data() + kOffset, &channel, sizeof(channel));
-        state[state.size() - 2] = static_cast<Byte>(pending);
+        state[state.size() - 3] = static_cast<Byte>(pending);
         StateReader reader(state);
         apu.load_state(reader);
         REQUIRE(reader.ok());
     }
 };
 } // namespace
+
+TEST_CASE("CLI and PLP clear I after polling and allow one following instruction",
+          "[cpu][interrupt]") {
+    for (const Byte opcode : {0x58, 0x28}) {
+        DmaMachine machine({opcode, 0xEA, 0xEA});
+        machine.bus.write(0x01FE, 0x20); // PLP clears I
+        machine.raise_irq();
+        REQUIRE(machine.cpu.step() == (opcode == 0x58 ? 2 : 4));
+        CHECK(machine.cpu.step() == 2);
+        CHECK(machine.cpu.step() == 7);
+        CHECK(machine.cpu.pc() == 0x8000);
+    }
+}
+
+TEST_CASE("SEI and PLP cannot cancel an IRQ accepted with the old I flag", "[cpu][interrupt]") {
+    for (const Byte opcode : {0x78, 0x28}) {
+        DmaMachine machine({0x58, 0xEA, opcode, 0xEA});
+        machine.bus.write(0x01FE, 0x24); // PLP sets I
+        REQUIRE(machine.cpu.step() == 2);
+        REQUIRE(machine.cpu.step() == 2);
+        machine.raise_irq();
+        CHECK(machine.cpu.step() == (opcode == 0x78 ? 2 : 4));
+        CHECK((machine.cpu.status() & 4U) != 0);
+        CHECK(machine.cpu.step() == 7);
+    }
+}
+
+TEST_CASE("A final-cycle IRQ acknowledgement cannot cancel the prior poll", "[cpu][interrupt]") {
+    DmaMachine machine({0x58, 0xEA, 0x8D, 0x15, 0x40, 0xEA});
+    REQUIRE(machine.cpu.step() == 2);
+    REQUIRE(machine.cpu.step() == 2);
+    machine.raise_irq();
+    CHECK(machine.cpu.step() == 4); // STA $4015 with A=0 clears the source
+    CHECK_FALSE(machine.apu.irq_pending());
+    CHECK(machine.cpu.step() == 7);
+}
+
+TEST_CASE("NMI sampling distinguishes penultimate and final instruction cycles",
+          "[cpu][interrupt][nmi]") {
+    for (const bool late : {false, true}) {
+        DmaMachine machine({0xEA, 0xEA, 0xEA}, true);
+        machine.before_vblank(late ? 337 : 340);
+        REQUIRE(machine.cpu.step() == 2);
+        if (late)
+            CHECK(machine.cpu.step() == 2);
+        // A status acknowledgement cannot erase an edge the CPU has latched.
+        (void)machine.bus.read(0x2002);
+        CHECK(machine.cpu.step() == 7);
+        CHECK(machine.cpu.pc() == 0x9000);
+        CHECK(machine.cpu.step() == 2); // at least one handler instruction
+    }
+}
+
+TEST_CASE("Branches poll NMI before the operand and again on page crossing",
+          "[cpu][interrupt][nmi]") {
+    SECTION("taken same-page branch defers an edge arriving after the first poll") {
+        DmaMachine machine({0xD0, 0, 0xEA}, true);
+        machine.before_vblank(337);
+        CHECK(machine.cpu.step() == 3);
+        CHECK(machine.cpu.step() == 2);
+        CHECK(machine.cpu.step() == 7);
+        CHECK(machine.cpu.pc() == 0x9000);
+    }
+    SECTION("page correction provides a second polling opportunity") {
+        DmaMachine machine({0xD0, 0xFC}, true); // $8002 - 4 -> $7FFE
+        machine.before_vblank(334);
+        CHECK(machine.cpu.step() == 4);
+        CHECK(machine.cpu.step() == 7);
+        CHECK(machine.cpu.pc() == 0x9000);
+    }
+}
+
+TEST_CASE("NMI hijacks IRQ or BRK without changing the pushed PC and B flag",
+          "[cpu][interrupt][nmi]") {
+    for (const bool irq : {false, true}) {
+        DmaMachine machine(irq ? std::initializer_list<Byte>{0x58, 0xEA, 0xEA}
+                               : std::initializer_list<Byte>{0, 0xEA},
+                           true);
+        if (irq) {
+            REQUIRE(machine.cpu.step() == 2);
+            machine.raise_irq();
+            REQUIRE(machine.cpu.step() == 2);
+        }
+        machine.before_vblank(334);
+        CHECK(machine.cpu.step() == 7);
+        CHECK(machine.cpu.pc() == 0x9000);
+        CHECK(machine.bus.read(0x01FD) == 0x80);
+        CHECK(machine.bus.read(0x01FC) == 2);
+        CHECK((machine.bus.read(0x01FB) & 0x30U) == (irq ? 0x20 : 0x30));
+    }
+}
+
+TEST_CASE("NMI after vector selection waits through the first IRQ handler instruction",
+          "[cpu][interrupt][nmi]") {
+    DmaMachine machine({0, 0xEA}, true);
+    machine.before_vblank(325);
+    CHECK(machine.cpu.step() == 7);
+    CHECK(machine.cpu.pc() == 0xA000);
+    CHECK(machine.cpu.step() == 2);
+    CHECK(machine.cpu.step() == 7);
+    CHECK(machine.cpu.pc() == 0x9000);
+}
+
+TEST_CASE("NMI latched during OAM survives a source read clearing PPUSTATUS",
+          "[cpu][interrupt][dma][nmi]") {
+    DmaMachine machine({0xA9, 0x20, 0x8D, 0x14, 0x40, 0xEA}, true);
+    REQUIRE(machine.cpu.step() == 2);
+    machine.before_vblank(328);
+    REQUIRE(machine.cpu.step() == 517);
+    CHECK_FALSE(machine.ppu.nmi_line()); // page $20 reads the mirrored status port
+    CHECK(machine.cpu.step() == 2);
+    CHECK(machine.cpu.step() == 7);
+    CHECK(machine.cpu.pc() == 0x9000);
+}
+
+TEST_CASE("NMI latched during DMC is serviced once after the halted instruction",
+          "[cpu][interrupt][dma][nmi]") {
+    DmaMachine machine({0xEA, 0xEA}, true);
+    machine.start_dmc();
+    machine.apu.step(3);
+    machine.before_vblank(340);
+    REQUIRE(machine.cpu.step() == 5);
+    CHECK(machine.cpu.step() == 7);
+    CHECK(machine.cpu.pc() == 0x9000);
+    CHECK(machine.cpu.step() == 2); // asserted NMI level does not retrigger
+}
+
+TEST_CASE("Accepted IRQ survives snapshots with I set and rejects invalid interrupt state",
+          "[cpu][interrupt][state]") {
+    DmaMachine fixture(
+        {0xA9, 0x80, 0x8D, 0x10, 0x40, 0xA9, 0x10, 0x8D, 0x15, 0x40, 0x58, 0x78, 0xEA});
+    Emulator emulator;
+    if (fixture.cartridge)
+        REQUIRE(emulator.load_cartridge(std::move(*fixture.cartridge), {}));
+    else
+        FAIL("Interrupt fixture did not produce a cartridge");
+    emulator.reset();
+    for (int instruction = 0; instruction < 6; ++instruction)
+        emulator.step_instruction();
+    REQUIRE((emulator.cpu().status() & 4U) != 0);
+    const auto before = emulator.save_state();
+    const auto cycles = emulator.cpu().cycles();
+    emulator.step_instruction();
+    REQUIRE(emulator.cpu().cycles() == cycles + 7);
+    const auto after = emulator.save_state();
+    REQUIRE(emulator.load_state(before));
+    emulator.step_instruction();
+    CHECK(emulator.save_state() == after);
+
+    StateWriter cpu, ppu, apu, bus;
+    emulator.cpu().save_state(cpu);
+    emulator.ppu().save_state(ppu);
+    Apu{}.save_state(apu);
+    MemoryBus{}.save_state(bus);
+    const auto cpu_end = 43 + cpu.data().size();
+    const auto ppu_end = cpu_end + ppu.data().size();
+    const auto apu_end = ppu_end + apu.data().size();
+    const auto bus_end = apu_end + bus.data().size();
+    for (const auto [offset, invalid] : {std::pair{cpu_end - 1, Byte{3}},
+                                         {ppu_end - 1, Byte{2}},
+                                         {apu_end - 1, Byte{5}},
+                                         {bus_end - 1, Byte{2}},
+                                         {bus_end - 2, Byte{2}}}) {
+        auto corrupt = before;
+        corrupt[offset] = invalid;
+        CHECK_FALSE(emulator.load_state(corrupt));
+        CHECK(emulator.save_state() == after);
+    }
+}
 
 TEST_CASE("DMC load DMA halts an eligible read within the instruction", "[cpu][dma]") {
     DmaMachine machine({0xEA, 0xEA});
@@ -227,7 +421,7 @@ TEST_CASE("Pending DMC loads survive snapshots and reject corrupt scheduling sta
     Apu{}.save_state(apu_state);
     const auto dma_end = 43 + prefix.data().size() + apu_state.data().size();
     for (const auto [back, value] :
-         {std::pair{11U, Byte{0}}, {3U, Byte{4}}, {2U, Byte{2}}, {1U, Byte{2}}}) {
+         {std::pair{12U, Byte{0}}, {4U, Byte{4}}, {3U, Byte{2}}, {2U, Byte{2}}, {1U, Byte{5}}}) {
         auto corrupt = before;
         corrupt[dma_end - back] = value;
         CHECK_FALSE(emulator.load_state(corrupt));
