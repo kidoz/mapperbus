@@ -60,11 +60,11 @@ slots 2–10. A present but invalid central file reports an error instead of
 falling back. Legacy files are never moved or deleted. Pressing `F5` after an
 import writes a new snapshot to the configured location.
 
-New version-4 snapshots validate the media SHA-256 before changing the machine.
+New version-5 snapshots (and supported version-4 snapshots) validate the media SHA-256 before changing the machine.
 The legacy sibling import also accepts version 3; those files contain no hash,
 so use them only with their original ROM. Older versions remain unsupported.
 
-For archived ROMs, legacy sibling import is disabled because an archive can
+For archived ROMs and FDS games, legacy sibling import is disabled because an archive can
 contain several games. Content-identified state files work across raw and
 archived copies of the same bytes.
 
@@ -92,3 +92,6 @@ Archived cartridges store battery RAM under the MapperBus application data
 folder as `battery/<ROM-SHA256>.sav`. Different games in one archive have
 independent saves. Raw files retain their sibling `.sav` behavior. See
 [Open archived ROMs](open-archived-roms.md) for locations and selection.
+
+FDS disk progress uses separate content-identified disk saves. See
+[Play Famicom Disk System games](play-fds-games.md#keep-disk-progress).

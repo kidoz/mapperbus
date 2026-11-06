@@ -1,13 +1,13 @@
 # Open archived ROMs
 
-MapperBus can load `.nes` ROMs directly from `.zip` and `.7z` archives through
+MapperBus can load `.nes` and `.fds` images directly from `.zip` and `.7z` archives through
 libarchive. Install the dependency using the [build guide](build-and-install.md).
 The examples below run from the repository root after building.
 
 ## Open an archive
 
 In the NodalKit GUI, use **Open ROM** or drop an archive onto the window. If
-several `.nes` members exist, choose one in the **Open Archived ROM** dialog.
+several supported members exist, choose one in the **Open Archived ROM** dialog.
 Recent games remember both the archive and the chosen member.
 
 For an archive containing exactly one ROM, pass its path to SDL3 or the CLI:
@@ -25,7 +25,7 @@ their member names and requires an exact, case-sensitive selection:
 ./buildDir/src/app/mapperbus-sdl3 --entry "folder/Game (E).nes" "/path/to/collection.zip"
 ```
 
-Archive extensions and member `.nes` extensions are case-insensitive. Region
+Archive extensions and member `.nes`/`.fds` extensions are case-insensitive. Region
 detection uses the selected ROM's header, CRC database, then member filename.
 Renaming the outer archive does not change the ROM's content identity.
 
@@ -47,10 +47,9 @@ save into this content-based location is a manual operation. See
 
 ## Supported scope and limits
 
-Only ZIP and 7z containers with regular `.nes` members are exposed. Directories,
+Only ZIP and 7z containers with regular `.nes` or `.fds` members are exposed. Directories,
 links, and other file types are ignored. Nested archives, encrypted archives,
-and duplicate ROM member names are rejected or are not ROM candidates. FDS
-launching is separate from cartridge archive support.
+and duplicate ROM member names are rejected or are not ROM candidates. FDS images additionally require an [FDS BIOS](play-fds-games.md).
 
 The archive file and total declared member sizes are each limited to 256 MiB;
 there may be at most 1024 entries. Member names are limited to 4096 bytes each

@@ -26,6 +26,7 @@ process. Scaling and region use their own startup defaults.
 | `--stereo` | Flag | Enable pseudo-stereo; fresh default is mono |
 | `--dither` | Flag | Enable dithering; fresh default is disabled |
 | `--expansion-mixing M` | `simple`, `resistance` | `simple` |
+| `--fds-bios PATH` | 8 KiB BIOS file | Saved `[fds] bios_path`, then application data `bios/disksys.rom` |
 | `--gamepad N` | Nonnegative SDL gamepad index | `0` for player 1 |
 | `--gamepad-deadzone N` | 1–32767 | `12000`; command-line value is clamped |
 | `--gamepad-map MAP` | Comma-separated `NES=SDL` pairs | Override named player 1 bindings |
@@ -103,6 +104,9 @@ unbound; existing custom controls keep their values.
 | `Ctrl+1`–`Ctrl+9`, `Ctrl+0` | Select slots 1–9, or slot 10; remembered per game |
 | `F5`, `F7` | Save / load the selected slot |
 | `Shift+F5`, `Shift+F7` | Save / load slot 2 directly; select it on success |
+| `F6` | Next FDS side |
+| `Shift+F6` | Eject or reinsert FDS side A |
+| `F8` | Toggle FDS write protection |
 | `F11` | Toggle fullscreen |
 | `V` | Toggle vsync |
 
@@ -115,13 +119,13 @@ Source: [SDL3 input](../../src/frontends/sdl3/sdl3_input.cpp).
 ## Headless CLI
 
 ```text
-./buildDir/src/frontends/cli/mapperbus-cli <rom-file>
+./buildDir/src/frontends/cli/mapperbus-cli <rom-file|archive> [--entry NAME] [--fds-bios PATH] [--frames N]
 ```
 
-Loads a cartridge, resets the emulator, executes 60 frames, logs
-`Ran 60 frames successfully.`, and exits. It does not present video, output
-audio, or consume the SDL3 command-line options or shared frontend settings.
-Missing arguments and cartridge load failures return failure.
+Loads NES/FDS media, resets the emulator, executes 60 frames by default, and
+exits. `--frames` accepts 1–1000000. The CLI reads the shared FDS BIOS path;
+`--fds-bios` overrides it. It presents no video, audio device, or interactive
+input. Invalid arguments and load/save failures return failure.
 
 Source: [CLI entry point](../../src/frontends/cli/main.cpp).
 

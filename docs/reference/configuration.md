@@ -32,8 +32,7 @@ When `mapperbus.conf` is absent, the loader can read a sibling legacy
 - Saving writes recognized settings through a sibling temporary file followed
   by rename. Unknown settings and comments are not preserved.
 - GUI settings and per-game slot selections can be saved. The SDL3 frontend reads supported settings and
-  applies process-local command-line overrides. The headless CLI does not load
-  this configuration.
+  applies process-local command-line overrides. The headless CLI reads the FDS BIOS path.
 
 ## Format identity
 
@@ -60,6 +59,13 @@ as GUI presentation settings or as its startup region override.
 Use the GUI to choose indexed preferences rather than treating the stored index
 as a literal scale multiplier or pixel density.
 
+## Famicom Disk System
+
+`[fds] bios_path` is an optional, quoted path to an exactly 8192-byte BIOS.
+It defaults to empty, selecting application data `bios/disksys.rom`. The GUI
+persists it through File → Famicom Disk System; SDL3 and CLI accept a process-local
+`--fds-bios PATH` override. See [FDS setup](../how-to/play-fds-games.md).
+
 ## Save-state storage and selected slots
 
 | `[save_states]` key | Default | Values |
@@ -85,7 +91,7 @@ SDL3 `--state-dir PATH` and `--portable-states` override storage for the current
 run without persisting that override. Explicit slot changes and successful
 save/load targets are remembered by content hash.
 
-The core writes version-4 snapshots with media SHA-256 in the header; directory
+The core writes version-5 snapshots with media SHA-256 in the header; directory
 policy lives in the application layer. Legacy version-3 loading is enabled
 only when importing a sibling `.state`/`.stateN` file. Battery `.sav` behavior
 is unchanged. See [Save and restore a game](../how-to/save-and-restore.md).

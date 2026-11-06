@@ -42,11 +42,12 @@ Source: [Cartridge loading](../../src/core/cartridge/cartridge.cpp) and
 
 ## Famicom Disk System
 
-The core includes FDS audio, disk image loading, and disk-drive/register logic.
-`Emulator::load_disk()` exposes disk mounting at the core API. The current
-frontend entry points load cartridges and do not expose a complete FDS BIOS
-and disk-launch workflow. FDS subsystem presence should not be read as a promise
-that arbitrary `.fds` games can be launched through the documented commands.
+FDS launch is available in the GUI, SDL3, and CLI with an external 8 KiB BIOS.
+The RAM adapter maps 32 KiB PRG RAM, 8 KiB CHR RAM, and the BIOS. Standard `.fds`
+images support side controls, timer/transfer IRQs, mirroring, CRCs, disk writes,
+separate persistent saves, and wavetable audio. ZIP/7z members use the same path.
+See [Play Famicom Disk System games](../how-to/play-fds-games.md) for setup,
+formats, storage, and compatibility limits.
 
 Source: [FDS subsystem](../../src/core/fds/fds.cpp),
 [Emulator API](../../src/core/emulator.hpp), and the
@@ -56,7 +57,7 @@ Source: [FDS subsystem](../../src/core/fds/fds.cpp),
 
 | Frontend | Presentation and input | Runtime scope |
 |---|---|---|
-| Headless CLI | No display, audio device, or interactive controller | Load a cartridge and execute 60 frames |
+| Headless CLI | No display, audio device, or interactive controller | Load NES/FDS media and execute 60 frames, or `--frames N` |
 | SDL3 | Window, audio, keyboard, gamepads | Command-line options, two-player gamepad input, runtime shortcuts |
 | NodalKit GUI | Toolkit window and controls; SDL3 audio/gamepads when found | ROM opening, settings, session actions, recent ROMs |
 

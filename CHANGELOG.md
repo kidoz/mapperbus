@@ -5,6 +5,24 @@ All notable changes to MapperBus are documented in this file.
 The format is based on Keep a Changelog, and this project adheres to Semantic
 Versioning.
 
+## [Unreleased]
+
+### Added
+
+- FDS BIOS boot with the RAM adapter, raw/archived disk loading, side and
+  write-protection controls, persistent disk changes, and disk-image export.
+- Shared FDS BIOS configuration and CLI `--fds-bios` / `--frames` options.
+
+### Fixed
+
+- PPU NMI enable-edge handling and the vblank polling race used during FDS
+  program reloads.
+
+### Changed
+
+- Save-state version 5 preserves FDS drive, CRC, and physical stream state;
+  version 4 remains readable.
+
 ## [0.2.0] - 2026-11-04
 
 ### Added

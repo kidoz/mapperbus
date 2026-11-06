@@ -4,6 +4,7 @@ These guides assume you know what you want to do and give you the steps to do it
 
 - [Build and install](build-and-install.md) — default, GUI, headless, and Linux builds.
 - [Configure the SDL3 frontend](configure-sdl3.md) — controllers, scaling, region, and audio.
+- [Play Famicom Disk System games](play-fds-games.md) — BIOS setup, disk sides, and disk saves.
 - [Open archived ROMs](open-archived-roms.md) — ZIP and 7z, member selection, and save locations.
 - [Save and restore a game](save-and-restore.md) — save slots and battery-backed saves.
 - [Run tests and diagnostics](test-and-diagnose.md) — targeted tests, GPU checks, and sanitizers.
