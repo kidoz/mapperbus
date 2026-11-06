@@ -181,3 +181,10 @@ test_fds_compatibility = executable('test-fds-compatibility',
 )
 test('fds-compatibility', test_fds_compatibility,
     args : ['--allow-running-no-tests'], timeout : 240)
+
+test_fds_diagnostics = executable('test-fds-diagnostics',
+    'integration/test_fds_diagnostics.cpp',
+    dependencies : [mapperbus_core_dep, catch2_dep],
+)
+test('fds-diagnostics', test_fds_diagnostics,
+    args : ['--allow-running-no-tests'], timeout : 120)

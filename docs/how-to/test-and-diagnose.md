@@ -31,6 +31,8 @@ test uses a generated NROM fixture; no commercial ROM is required.
 ## Exercise local FDS images
 
 The optional `fds-compatibility` suite uses BIOS/game files supplied locally.
+The `fds-diagnostics` suite uses separately fetched public diagnostics and your
+BIOS; its commands and pinned sources are documented on the same reference page.
 See [FDS compatibility checks](../reference/fds-compatibility.md) for exact
 fixtures, commands, frame artifacts, and the limits of those checks. The
 ordinary `fds` and `fds-system` suites need no external assets.

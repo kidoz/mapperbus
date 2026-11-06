@@ -15,6 +15,9 @@ Versioning.
 
 ### Fixed
 
+- FDS diagnostic boot bypasses that declare an absent final file, modulation-counter
+  readback, and wavetable reads while playback is active.
+
 - PPU NMI enable-edge handling and the vblank polling race used during FDS
   program reloads.
 

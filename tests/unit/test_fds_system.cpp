@@ -165,3 +165,36 @@ TEST_CASE("FDS switching refuses to discard disk changes when persistence fails"
     std::filesystem::create_directory(fixture.root / "missing");
     REQUIRE(emulator.flush_disk_changes());
 }
+
+TEST_CASE("FDS CPU program observes both clean and corrupt block CRCs", "[fds][system][crc]") {
+    auto bios = mapperbus::tests::make_fds_bios();
+    // Original synthetic firmware: consume block 1 and its first CRC byte,
+    // select CRC checking, consume the second byte, and store status at $6000.
+    const Byte program[] = {
+        0x78, 0xA9, 0x01, 0x8D, 0x23, 0x40, 0xA9, 0x65, 0x8D, 0x25, 0x40, 0xA2,
+        0x39, 0xAD, 0x30, 0x40, 0x10, 0xFB, 0xAD, 0x31, 0x40, 0xCA, 0xD0, 0xF5,
+        0xA9, 0x75, 0x8D, 0x25, 0x40, 0xAD, 0x30, 0x40, 0x10, 0xFB, 0xAD, 0x31,
+        0x40, 0xAD, 0x30, 0x40, 0x29, 0x10, 0x8D, 0x00, 0x60, 0x4C, 0x2D, 0xE0,
+    };
+    std::ranges::copy(program, bios.begin());
+    for (bool corrupt : {false, true}) {
+        Emulator emulator;
+        REQUIRE(emulator.load_fds(bios, mapperbus::tests::make_fds_image()));
+        if (corrupt) {
+            StateWriter writer;
+            emulator.fds().save_state(writer);
+            auto state = writer.take();
+            constexpr std::size_t kTrackSize = 84000;
+            constexpr std::size_t kFirstCrc = 3537 + 1 + 56;
+            state[state.size() - kTrackSize + kFirstCrc] ^= 1;
+            StateReader reader(state);
+            emulator.fds().load_state(reader);
+            REQUIRE(reader.ok());
+        }
+        emulator.reset();
+        for (int frame = 0; frame < 30; ++frame)
+            emulator.step_frame();
+        REQUIRE(emulator.cpu().pc() == 0xE02D);
+        REQUIRE(emulator.read_cpu(0x6000) == (corrupt ? 0x10 : 0));
+    }
+}

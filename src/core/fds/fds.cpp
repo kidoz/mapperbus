@@ -439,7 +439,6 @@ bool Fds::rebuild_disk_stream() {
     std::size_t offset = 0;
     std::size_t file_size = 0;
     Byte expected = 1;
-    int files_read = 0;
     while (offset < side.size()) {
         const Byte block = side[offset];
         if (block != expected) {
@@ -465,7 +464,6 @@ bool Fds::rebuild_disk_stream() {
         } else if (block == 4) {
             size = file_size + 1;
             expected = 3;
-            ++files_read;
         } else
             return false;
         if (size > side.size() - offset || disk_stream_.size() + size + 125 > kMaxStreamBytes)
@@ -483,7 +481,9 @@ bool Fds::rebuild_disk_stream() {
             append(0);
         offset += size;
     }
-    if (expected == 4 || files_read < static_cast<int>(side[57]))
+    // Some diagnostic boot bypasses deliberately declare an absent final file.
+    // Only an incomplete physical header/data pair is malformed here.
+    if (expected == 4)
         return false;
     while (disk_stream_.size() < 84000)
         append(0);
@@ -741,7 +741,8 @@ Byte Fds::read(Address addr) {
 
     // $4040-$407F: Wavetable RAM read
     if (addr >= 0x40 && addr <= 0x7F) {
-        return wavetable_[addr - 0x40] | 0x40; // Bit 6 always set on read
+        const auto index = wave_write_enabled_ ? addr - 0x40 : wave_position_;
+        return wavetable_[index] | 0x40; // Bit 6 always set on read
     }
 
     // $4090: Volume envelope output
@@ -752,6 +753,10 @@ Byte Fds::read(Address addr) {
     // $4092: Modulation envelope output
     if (addr == 0x92) {
         return mod_depth_ | 0x40;
+    }
+
+    if (addr == 0x97) { // $4097: signed modulation counter, exposed as seven bits
+        return static_cast<Byte>(mod_counter_) & 0x7FU;
     }
 
     return 0;

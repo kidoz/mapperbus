@@ -556,3 +556,52 @@ TEST_CASE("FDS CRC status detects a corrupt physical block", "[fds][transfer][cr
         CHECK(((drive.read(0x4030) & 0x10) != 0) == corrupt);
     }
 }
+
+TEST_CASE("FDS boot bypass may declare an intentionally absent final file", "[fds][format]") {
+    auto image = make_fds_image();
+    image[57] = 2; // one complete file, followed by a deliberately absent file
+    Fds drive;
+    REQUIRE(drive.load_disk(image));
+    // BIOS/game code decides what a declared-but-absent file means. The loader
+    // still rejects a partial physical block rather than manufacturing data.
+    auto truncated = image;
+    truncated[58 + 13] = 0xFF;
+    truncated[58 + 14] = 0xFF;
+    REQUIRE_FALSE(drive.load_disk(truncated));
+    REQUIRE(drive.is_loaded());
+}
+
+TEST_CASE("FDS modulation counter readback supports the public audio viewer", "[fds][audio]") {
+    Fds drive;
+    drive.reset();
+    drive.write(0x4023, 2);
+    drive.write(0x4087, 0x80); // halt modulation so the programmed counter stays fixed
+    for (Byte value : {0, 1, 63, 64, 127, 255}) {
+        drive.write(0x4085, value);
+        CHECK((drive.read(0x4097) & 0x7F) == (value & 0x7F));
+        drive.clock_audio();
+        CHECK((drive.read(0x4097) & 0x7F) == (value & 0x7F));
+    }
+    drive.write(0x4023, 0);
+    CHECK((drive.read(0x4097) & 0x7F) == 0);
+}
+
+TEST_CASE("FDS wave RAM reads follow the playback pointer when writes are disabled",
+          "[fds][audio]") {
+    Fds drive;
+    drive.reset();
+    drive.write(0x4023, 2);
+    drive.write(0x4089, 0x80);
+    drive.write(0x4040, 12);
+    drive.write(0x4041, 23);
+    CHECK((drive.read(0x4040) & 0x3F) == 12);
+    CHECK((drive.read(0x4041) & 0x3F) == 23);
+    drive.write(0x4089, 0);
+    CHECK((drive.read(0x407F) & 0x3F) == 12);
+    drive.write(0x4082, 0);
+    drive.write(0x4083, 4); // one wave-table position every 64 CPU clocks
+    for (int cycle = 0; cycle < 64; ++cycle)
+        drive.clock_audio();
+    CHECK((drive.read(0x4040) & 0x3F) == 23);
+    CHECK((drive.read(0x407F) & 0x3F) == 23);
+}

@@ -1,0 +1,42 @@
+{
+  "fixtures": [
+    {
+      "id": "irq",
+      "filename": "fdsirqtests-v7.fds",
+      "author": "Sour",
+      "source": "https://forums.nesdev.org/viewtopic.php?t=16507",
+      "revision": "b2497f4d9427643a9044f7a91016299a698fc55f",
+      "url": "https://raw.githubusercontent.com/christopherpow/nes-test-roms/b2497f4d9427643a9044f7a91016299a698fc55f/fdsirqtests/fdsirqtests.fds",
+      "sha256": "38c3ed71d73c71bd09c54e687173bcc2ceea9aa78c78a2813f6c56106814e86b"
+    },
+    {
+      "id": "mirroring",
+      "filename": "mirroring-test.fds",
+      "author": "TakuikaNinja",
+      "source": "https://github.com/TakuikaNinja/FDS-Mirroring-Test",
+      "revision": "v1.1",
+      "url": "https://github.com/TakuikaNinja/FDS-Mirroring-Test/releases/download/v1.1/FDS-Mirroring-Test.zip",
+      "member": "mirroring-test.fds",
+      "sha256": "501bda77be6190bfb57d07a707880e74029e3e0f910441f6f7ba88431e70c2e3"
+    },
+    {
+      "id": "io",
+      "filename": "4023-test.fds",
+      "author": "TakuikaNinja",
+      "source": "https://github.com/TakuikaNinja/FDS-4023-Test",
+      "revision": "v1.0",
+      "url": "https://github.com/TakuikaNinja/FDS-4023-Test/releases/download/v1.0/FDS-4023-Test.zip",
+      "member": "4023-test.fds",
+      "sha256": "958dfad1656aaf1c3c82b162b68acada253ff59ed01726ff79430222fa49df3c"
+    },
+    {
+      "id": "audio",
+      "filename": "audio-registers.fds",
+      "author": "TakuikaNinja",
+      "source": "https://github.com/TakuikaNinja/FDS-Audio-Registers",
+      "revision": "v1.2",
+      "url": "https://github.com/TakuikaNinja/FDS-Audio-Registers/releases/download/v1.2/audio-registers.fds",
+      "sha256": "80ccda5443653426f27e6b4b3125c9834e97931c50b9fcdccc00b8367ef9fe28"
+    }
+  ]
+}
