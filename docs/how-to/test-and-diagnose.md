@@ -28,6 +28,13 @@ The suites cover CPU, PPU, bus, mappers and timing, FDS, audio, configuration,
 sessions, input, saves, and rendering. The `battle-city-render` integration
 test uses a generated NROM fixture; no commercial ROM is required.
 
+## Exercise local FDS images
+
+The optional `fds-compatibility` suite uses BIOS/game files supplied locally.
+See [FDS compatibility checks](../reference/fds-compatibility.md) for exact
+fixtures, commands, frame artifacts, and the limits of those checks. The
+ordinary `fds` and `fds-system` suites need no external assets.
+
 ## Validate a GPU backend
 
 An SDL3 build adds `sdl3-input` and `sdl3-gpu`. Run:

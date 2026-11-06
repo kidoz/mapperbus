@@ -221,11 +221,11 @@ void Fds::reset_audio() {
     wave_frequency_ = 0;
     wave_accumulator_ = 0;
     wave_position_ = 0;
-    volume_envelope_ = 32;
+    volume_envelope_ = 0;
     volume_enabled_ = true;
     master_volume_ = 0;
     sound_enabled_ = false;
-    envelope_disabled_ = false;
+    envelope_disabled_ = true;
     vol_env_speed_ = 0;
     vol_env_increase_ = false;
     vol_env_timer_ = 0;
@@ -372,6 +372,7 @@ void Fds::insert_side(int side) {
     transfer_active_ = motor_on_ && !transfer_reset_ && disk_io_enabled_;
     end_of_disk_ = false;
     byte_transfer_flag_ = false;
+    update_irq();
 }
 
 void Fds::eject() {
@@ -399,10 +400,9 @@ void Fds::step_timer(uint32_t cpu_cycles) {
         return;
     }
     for (uint32_t i = 0; i < cpu_cycles; ++i) {
-        if (irq_timer_ == 0) {
-            irq_timer_ = irq_reload_;
+        if (irq_timer_ > 0) {
+            --irq_timer_;
         }
-        --irq_timer_;
         if (irq_timer_ == 0) {
             timer_irq_flag_ = true;
             irq_line_ = true;
@@ -656,7 +656,7 @@ Byte Fds::read_drive_register(Address reg) {
 }
 
 void Fds::write_drive_register(Address reg, Byte value) {
-    if (reg != 0x23 && !disk_io_enabled_)
+    if (reg != 0x20 && reg != 0x21 && reg != 0x23 && !disk_io_enabled_)
         return;
     switch (reg) {
     case 0x20: // IRQ reload low
@@ -678,6 +678,9 @@ void Fds::write_drive_register(Address reg, Byte value) {
     case 0x23: // Master I/O enable
         disk_io_enabled_ = (value & 0x01) != 0;
         sound_io_enabled_ = (value & 0x02) != 0;
+        if (!sound_io_enabled_) {
+            hold_audio_reset();
+        }
         if (!disk_io_enabled_) {
             irq_timer_enabled_ = false;
             timer_irq_flag_ = false;
@@ -773,6 +776,8 @@ void Fds::write(Address addr, Byte value) {
 
     switch (addr) {
     case 0x80: // $4080: Volume envelope
+        if (!sound_io_enabled_)
+            break;
         envelope_disabled_ = (value & 0x80) != 0;
         vol_env_increase_ = (value & 0x40) != 0;
         vol_env_speed_ = value & 0x3F;
@@ -884,7 +889,20 @@ void Fds::clock_envelopes() {
     }
 }
 
+void Fds::hold_audio_reset() {
+    volume_envelope_ = 0;
+    envelope_disabled_ = true;
+    vol_env_timer_ = 0;
+    wave_accumulator_ = 0;
+    wave_position_ = 0;
+    mod_counter_ = 0;
+}
+
 void Fds::clock_audio() {
+    if (!sound_io_enabled_) {
+        hold_audio_reset();
+        return;
+    }
     clock_envelopes();
 
     // The mod unit runs independently of the wave unit; only $4087 bit 7
@@ -946,6 +964,8 @@ void Fds::clock_audio() {
 }
 
 float Fds::audio_output() const {
+    if (!sound_io_enabled_)
+        return 0.0f;
     // The DAC holds the current sample while the wave unit is halted or the
     // table is open for writes; gating to 0 here would pop on every table
     // swap (same failure mode as the triangle DAC).

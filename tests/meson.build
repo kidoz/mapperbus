@@ -173,3 +173,11 @@ if get_option('enable_sdl3')
     )
     test('sdl3-gpu', test_sdl3_gpu)
 endif
+
+# Licensed BIOS/game assets are opt-in; ordinary CI reports these cases skipped.
+test_fds_compatibility = executable('test-fds-compatibility',
+    'integration/test_fds_compatibility.cpp',
+    dependencies : [mapperbus_core_dep, catch2_dep],
+)
+test('fds-compatibility', test_fds_compatibility,
+    args : ['--allow-running-no-tests'], timeout : 240)

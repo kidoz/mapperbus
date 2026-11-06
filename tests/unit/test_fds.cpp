@@ -316,6 +316,8 @@ namespace {
 
 // Load a square wavetable (32 low, 32 high) and start the wave unit.
 void start_fds_square(Fds& fds, uint16_t frequency, Byte gain_reg) {
+    fds.write(0x4023, 2);    // release the sound unit from reset
+    fds.write(0x4080, 0xA0); // seed gain before enabling an automatic envelope
     fds.write(0x4089, 0x80); // open wavetable for writes
     for (Address i = 0; i < 64; ++i) {
         fds.write(0x4040 + i, (i < 32) ? 0x00 : 0x3F);
@@ -429,4 +431,128 @@ TEST_CASE("FDS rewrites erase old sync markers when gap lengths change", "[fds][
     fds.save_state(a);
     restored.save_state(b);
     CHECK(a.data() == b.data());
+}
+
+TEST_CASE("FDS reload registers remain writable while disk I/O is reset", "[fds][irq]") {
+    Fds fds;
+    fds.write(0x4020, 3);
+    fds.write(0x4021, 1); // $0103, written before enabling disk I/O
+    fds.write(0x4022, 2); // enabling the timer is still gated
+    fds.step(1000);
+    REQUIRE_FALSE(fds.irq_pending());
+    fds.write(0x4023, 1);
+    fds.write(0x4022, 2);
+    fds.step(258);
+    REQUIRE_FALSE(fds.irq_pending());
+    fds.step(1);
+    REQUIRE(fds.irq_pending());
+}
+
+TEST_CASE("FDS zero timer reload fires on the next CPU cycle", "[fds][irq]") {
+    Fds fds;
+    fds.write(0x4023, 1);
+    fds.write(0x4022, 3);
+    fds.step(1);
+    REQUIRE(fds.irq_pending());
+    REQUIRE((fds.read(0x4030) & 1) != 0);
+    fds.step(1);
+    REQUIRE(fds.irq_pending());
+    fds.write(0x4022, 0);
+    REQUIRE_FALSE(fds.irq_pending());
+    fds.step(65536);
+    REQUIRE_FALSE(fds.irq_pending());
+}
+
+TEST_CASE("FDS reinsertion clears a stale transfer IRQ but preserves a timer IRQ", "[fds][irq]") {
+    Fds fds;
+    REQUIRE(fds.load_disk(make_fds_image(2)));
+    fds.write(0x4023, 1);
+    fds.write(0x4025, 0xE5);
+    for (int cycle = 0; cycle < 700000 && !fds.irq_pending(); ++cycle)
+        fds.step(1);
+    REQUIRE(fds.irq_pending());
+    fds.insert_side(1);
+    REQUIRE_FALSE(fds.irq_pending());
+    REQUIRE((fds.read(0x4030) & 0x80) == 0);
+    fds.write(0x4020, 1);
+    fds.write(0x4022, 2);
+    fds.step(1);
+    REQUIRE(fds.irq_pending());
+    fds.insert_side(0);
+    REQUIRE(fds.irq_pending());
+    REQUIRE((fds.read(0x4030) & 1) != 0);
+    REQUIRE_FALSE(fds.irq_pending());
+}
+
+TEST_CASE("FDS state preserves head position on tracks with many small files", "[fds][state]") {
+    auto disk = make_fds_image();
+    std::fill(disk.begin() + 58, disk.end(), 0);
+    disk[57] = 1;
+    for (int file = 0; file < 400; ++file) {
+        const auto offset = 58 + static_cast<std::size_t>(file) * 17;
+        disk[offset] = 3;
+        disk[offset + 16] = 4;
+    }
+    Fds source;
+    REQUIRE(source.load_disk(disk));
+    source.write(0x4023, 1);
+    source.write(0x4025, 0x65);
+    source.step(14000000); // past byte 84000 on a valid track longer than the default
+    StateWriter writer;
+    source.save_state(writer);
+    Fds restored;
+    StateReader reader(writer.data());
+    restored.load_state(reader);
+    REQUIRE(reader.ok());
+    StateWriter copy;
+    restored.save_state(copy);
+    REQUIRE(copy.data() == writer.data());
+    REQUIRE(next_byte(source) == next_byte(restored));
+}
+
+TEST_CASE("FDS sound reset silences output while preserving wavetable RAM", "[fds][audio]") {
+    Fds fds;
+    fds.reset();
+    fds.write(0x4023, 2);
+    start_fds_square(fds, 0x0400, 0xA0);
+    REQUIRE(fds_peak(fds, 10000) > 0.05f);
+    fds.write(0x4023, 0);
+    REQUIRE((fds.read(0x4090) & 0x3F) == 0);
+    REQUIRE(fds.audio_output() == 0.0f);
+    fds.write(0x4080, 0xA0); // volume is held in reset
+    REQUIRE(fds_peak(fds, 10000) == 0.0f);
+    fds.write(0x4089, 0x80); // wave RAM and its write enable are still accessible
+    REQUIRE((fds.read(0x4060) & 0x3F) == 0x3F);
+    fds.write(0x4040, 12);
+    REQUIRE((fds.read(0x4040) & 0x3F) == 12);
+    fds.write(0x4023, 2);
+    fds.write(0x4089, 0);
+    fds.write(0x4080, 0xA0);
+    REQUIRE(fds_peak(fds, 10000) > 0.05f);
+}
+
+TEST_CASE("FDS CRC status detects a corrupt physical block", "[fds][transfer][crc]") {
+    Fds source;
+    REQUIRE(source.load_disk(make_fds_image()));
+    StateWriter writer;
+    source.save_state(writer);
+    for (bool corrupt : {false, true}) {
+        auto state = writer.data();
+        // Stream payload follows its size prefix and ends the FDS state.
+        constexpr std::size_t kTrackSize = 84000;
+        constexpr std::size_t kFirstCrc = 3537 + 1 + 56;
+        if (corrupt)
+            state[state.size() - kTrackSize + kFirstCrc] ^= 1;
+        Fds drive;
+        StateReader reader(state);
+        drive.load_state(reader);
+        REQUIRE(reader.ok());
+        drive.write(0x4023, 1);
+        drive.write(0x4025, 0x65);
+        for (int index = 0; index < 57; ++index)
+            (void)next_byte(drive);
+        drive.write(0x4025, 0x75); // BIOS selects CRC checking after the first CRC byte
+        (void)next_byte(drive);
+        CHECK(((drive.read(0x4030) & 0x10) != 0) == corrupt);
+    }
 }

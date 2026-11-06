@@ -6,6 +6,7 @@ Reference pages describe the implemented interfaces, defaults, and boundaries.
 - [Commands and controls](commands-and-controls.md) — frontend arguments and keyboard controls.
 - [Configuration](configuration.md) — `mapperbus.conf` locations, keys, and defaults.
 - [Compatibility](compatibility.md) — supported mapper numbers, regions, and frontend scope.
+- [FDS compatibility checks](fds-compatibility.md) — tested workflows and optional local-image tests.
 - [Source tree](source-tree.md) — directories, modules, and test locations.
 
 For instructions to perform a task, see the [how-to guides](../how-to/README.md).

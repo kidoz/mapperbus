@@ -97,6 +97,7 @@ class Fds {
 
   private:
     void reset_audio();
+    void hold_audio_reset();
     void clock_envelopes();
     void reset_drive();
     [[nodiscard]] Byte read_drive_register(Address reg);
