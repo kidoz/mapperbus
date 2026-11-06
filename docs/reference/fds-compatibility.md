@@ -16,6 +16,7 @@ The programs are fetched separately; they are not vendored into MapperBus.
 | TakuikaNinja FDS 4023 Test | v1.0 | I/O toggles work; the program observes disk removal/reinsertion while disk writes are disabled |
 | TakuikaNinja FDS Audio Registers | v1.2 | Play/reset/resume, CPU-driven debug-register reads, accumulator activity, and snapshot replay work |
 | TakuikaNinja FDS 4030.D1 Address | v1.0 | Captures `$67FF` / `$6E25`, matching the published Twin Famicom capture |
+| TakuikaNinja FDS BIOS Dumper | v1.0 | Fast and slow dumps match the supplied 8 KiB BIOS; write protection, either corrupted CRC byte, automatic retry, and mid-write snapshot replay pass |
 
 The I/O and audio programs are interactive viewers. Their results above describe
 specific automated interactions, not a claim that every displayed register matches
@@ -29,7 +30,8 @@ Sources: [Sour's IRQ research](https://forums.nesdev.org/viewtopic.php?t=16507),
 [mirroring test](https://github.com/TakuikaNinja/FDS-Mirroring-Test),
 [I/O viewer](https://github.com/TakuikaNinja/FDS-4023-Test),
 [audio viewer](https://github.com/TakuikaNinja/FDS-Audio-Registers), and
-[watchdog diagnostic](https://github.com/TakuikaNinja/FDS-4030D1-Addr).
+[watchdog diagnostic](https://github.com/TakuikaNinja/FDS-4030D1-Addr), and
+[BIOS dumper](https://github.com/TakuikaNinja/FDS-BIOS-Dumper).
 The [fixture manifest](../../tests/support/fds_diagnostics.json) records exact
 URLs, versions, and SHA-256 digests.
 
@@ -52,11 +54,50 @@ file with a different digest. It downloads neither a BIOS nor commercial games.
 `MAPPERBUS_FDS_TEST_OUTPUT` is optional and captures PPM frames for visual review.
 The suite skips when `MAPPERBUS_FDS_DIAGNOSTICS` is unset. Once enabled, missing
 files, a missing BIOS, checksum mismatches, and failed checks are errors.
+Its 300-second timeout includes the slow disk-write and sanitizer workflows.
 
 The public mirroring and IRQ programs deliberately declare an absent final file
 to bypass the BIOS license screen via NMI. The loader accepts complete physical
 blocks without requiring the declared count to equal the available file count;
 truncated block headers and payloads are still rejected.
+
+### Disk writes and physical block CRCs
+
+The unmodified BIOS Dumper v1.0 is pinned to source commit
+`7196728970664b43016aaaf293a7006b4e84c968` and its release-image SHA-256. Its
+author reports testing with a Sharp Twin Famicom and FDSKey; this supplies an
+independent working disk-write program, rather than a dedicated cycle-level CRC
+diagnostic. See the [upstream usage and hardware acknowledgement](https://github.com/TakuikaNinja/FDS-BIOS-Dumper/blob/7196728970664b43016aaaf293a7006b4e84c968/README.md).
+
+The runner verifies the program's BIOS CRC32 calculation, then exercises both
+dump modes: one 8 KiB file and eight 1 KiB files. It checks the program's success
+state and `OK!` text, the directory count/names/addresses, preservation of its
+four boot files, and byte-for-byte equality between the dumped data and the
+supplied BIOS. Both modes replay a snapshot taken in write-data mode to identical
+machine state, flush to an isolated disk save, and reopen with unchanged source
+identity. Temporary disk saves are removed after each case; artifacts contain
+screenshots, not dumped BIOS data.
+
+Every physical block's CRC is checked before remounting the disk, using a
+separate normal-polynomial bit-serial calculation. A BIOS-free case checks fixed
+CRC vectors generated from [FDSKey's delayed-input CRC algorithm](https://github.com/ClusterM/fdskey/blob/f07ab82864a9f4a2e7b14b37f1837715edb0d0fe/FdsKey/Core/Src/fdsemu.c#L45-L71),
+pinned at `f07ab82864a9f4a2e7b14b37f1837715edb0d0fe`. This avoids treating CRCs
+regenerated from an exported `.fds` image as evidence of correct physical writes.
+
+Additional cases write-protect the mounted disk or alter either byte of its
+first physical block CRC in a runtime snapshot. The original program and BIOS
+report `Err. 03` and `Err. 27`, respectively, without changing the disk data.
+Clearing protection and ejecting/reinserting the disk lets the program retry and
+complete without patching its code. In the CRC cases, reinsertion reconstructs
+a clean track from the unchanged `.fds` data, removing the injected fault.
+The expected errors follow the
+[BIOS disk-I/O contract](https://www.nesdev.org/wiki/FDS_BIOS#Error_list).
+
+These fault cases are emulator injections. No physical-drive fault capture was
+made here, and drive-level copy-protection circuits, torn magnetic writes, and
+cycle-exact CRC-control edge timing remain outside this validation. The `.fds`
+format omits physical CRC bytes; runtime snapshots retain the live track, but
+exported disks and persistent normalized disk saves reconstruct CRCs on mount.
 
 ### Audio timing and register coverage
 
@@ -139,9 +180,9 @@ shows `$67FF` / `$6E25`; both captured values match in MapperBus.
   bus. Interrupt sampling, dummy I/O side effects, OAM DMA reads of I/O space,
   and exact DMC halt placement retain instruction-level approximations. Analog
   DRAM decay, 2C33 test mode, and mechanical disk effects are not modeled.
-- CRC coverage is synthetic: a generated CPU program verifies `$4030.D4` after
-  clean and deliberately corrupted physical CRC bytes. No third-party disk-write
-  or CRC diagnostic is claimed by this pass.
+- CRC coverage includes the public BIOS-dumper write/readback flows, independent
+  fixed vectors, and injected CRC faults described above. Physical-drive fault
+  timing, copy-protection circuitry, and torn magnetic writes are not certified.
 
 ## Local image workflows
 
@@ -185,11 +226,13 @@ or a comparison with recordings from hardware.
 
 - All six raw/ZIP/7z game workflows passed with the supplied files; frame
   artifacts confirmed SMB2 world 1-1 and Metroid gameplay/save/reloaded-file screens.
+- All ten public-diagnostic/CRC cases passed, including fast/slow disk writes,
+  write protection and retry, either CRC-byte fault, and mid-write replay.
 - The regular build passed 30 suite executables, including GUI close recovery.
   Its optional image/diagnostic cases were skipped in the asset-free run and
   passed in separate explicit asset runs.
 - The GUI-disabled ASan/UBSan build passed 27 suite executables, including all
-  five public diagnostic cases and the original audio probe. All six licensed
+  ten public-diagnostic/CRC cases and the original audio probe. All six licensed
   raw/ZIP/7z workflows also passed in separate sanitizer runs. Leak detection was
   disabled because this macOS runtime does not support it.
 - The FDS static analyzer, changed-file formatting and documentation-link checks

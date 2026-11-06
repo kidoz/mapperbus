@@ -9,6 +9,9 @@ Versioning.
 
 ### Added
 
+- Independent FDS BIOS disk-write checks for fast/slow dumps, physical block
+  CRCs, write protection, CRC-error retry, and snapshots during writes, using
+  the pinned public BIOS dumper and fixed CRC vectors from FDSKey.
 - End-to-end FDS game regressions through raw, ZIP, and 7z loading, including
   shared snapshots, cross-source progress reloads, and mixed-archive failure paths.
 - FDS DRAM refresh watchdog with CPU/dummy/DMA address accounting, shared IRQ

@@ -193,7 +193,7 @@ test_fds_diagnostics = executable('test-fds-diagnostics',
     dependencies : [mapperbus_core_dep, catch2_dep],
 )
 test('fds-diagnostics', test_fds_diagnostics,
-    args : ['--allow-running-no-tests'], timeout : 120)
+    args : ['--allow-running-no-tests'], timeout : 300)
 
 # Original read-only capture ROM; generated without a BIOS or external assembler.
 probe_python = import('python').find_installation()
