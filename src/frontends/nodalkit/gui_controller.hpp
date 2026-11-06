@@ -82,7 +82,8 @@ class MapperBusGuiController {
     void update_native_menu();
     void update_native_toolbar();
     void browse_for_rom();
-    void attempt_open(std::string rom_path);
+    void attempt_open(std::string rom_path, std::string member = {});
+    void choose_archive_rom(std::string rom_path, std::vector<std::string> members);
     void toggle_pause();
     void step_frame();
     void reset_session();
@@ -118,7 +119,7 @@ class MapperBusGuiController {
     void update_input_test_status();
     void update_settings_save_status(std::string text);
 
-    /// True while a sheet/dialog (settings, rebind) is presented. Session
+    /// True while a sheet/dialog (settings, rebind, archive, state slot) is presented. Session
     /// hotkeys must not dispatch then — e.g. the rebind sheet captures P/R as
     /// bindings and they must not also toggle pause/reset.
     [[nodiscard]] bool modal_dialog_presented() const;
@@ -151,6 +152,7 @@ class MapperBusGuiController {
     int active_state_slot_ = 0;
     int settings_input_player_ = 0;
     std::shared_ptr<nk::Dialog> state_slot_dialog_;
+    std::shared_ptr<nk::Dialog> archive_dialog_;
     std::weak_ptr<nk::ComboBox> state_slot_control_;
     std::shared_ptr<nk::ContextMenu> header_menu_;
     std::vector<std::string> header_menu_actions_;

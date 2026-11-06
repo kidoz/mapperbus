@@ -47,6 +47,7 @@ extern char** environ;
 #include <utility>
 #include <vector>
 
+#include "app/rom_source.hpp"
 #include "core/mappers/mapper_registry.hpp"
 #include "frontends/nodalkit/input_binding_table.hpp"
 #include "platform/video/fsr1.hpp"
@@ -648,7 +649,7 @@ bool is_rom_path(const std::filesystem::path& path) {
     for (auto& character : extension) {
         character = static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
     }
-    return extension == ".nes" || extension == ".fds";
+    return extension == ".nes" || extension == ".fds" || app::is_rom_archive(path);
 }
 
 std::string menu_label(std::string_view name, std::string_view shortcut) {
@@ -1349,7 +1350,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_welcome_view() {
     auto column = Box::vertical(14.0F);
     column->append(TitleText::create("Open a game"));
     column->append(
-        SecondaryText::create("Choose a .nes or .fds file, or drop one on this window."));
+        SecondaryText::create("Choose a .nes, .zip, or .7z file, or drop one on this window."));
 
     auto open_button = nk::Button::create("Open ROM…");
     open_button->add_style_class("suggested");
@@ -1364,13 +1365,15 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_welcome_view() {
         auto recents = nk::PreferencesGroup::create();
         recents->set_horizontal_size_policy(nk::SizePolicy::Expanding);
         for (const auto& entry : configuration_.recent_roms) {
-            auto row = nk::PreferencesRow::create(title_for_display(entry.path.string()));
-            row->set_subtitle(recent_media_type(entry.path) + " · last opened " +
-                              recent_opened_date(entry.last_opened_unix));
+            auto row = nk::PreferencesRow::create(title_for_display(
+                entry.archive_member.empty() ? entry.path.string() : entry.archive_member));
+            row->set_subtitle((entry.archive_member.empty() ? recent_media_type(entry.path)
+                                                            : entry.path.filename().string()) +
+                              " · last opened " + recent_opened_date(entry.last_opened_unix));
             row->set_suffix(SecondaryText::create("\u203A"));
             row->set_activatable(true);
             (void)row->on_activated().connect(
-                [this, path = entry.path] { attempt_open(path.string()); });
+                [this, entry] { attempt_open(entry.path.string(), entry.archive_member); });
             recents->add(std::move(row));
         }
         column->append(recents);
@@ -1413,7 +1416,8 @@ void MapperBusGuiController::refresh_ui() {
     const bool loaded = snapshot.has_cartridge;
     const bool paused = loaded && snapshot.paused;
     const std::string state_text = loaded ? (paused ? "Paused" : "Running") : "Ready";
-    const std::string display_title = title_for_display(snapshot.rom_path);
+    const std::string display_title =
+        title_for_display(snapshot.rom_member.empty() ? snapshot.rom_path : snapshot.rom_member);
     if (loaded == welcome_active_) {
         welcome_active_ = !loaded;
         if (welcome_active_) {
@@ -1625,22 +1629,24 @@ void MapperBusGuiController::update_fullscreen_chrome() {
 }
 
 void MapperBusGuiController::browse_for_rom() {
-    app_.open_file_dialog_async(
-        "Open ROM", {"*.nes", "*.fds"}, [this](nk::OpenFileDialogResult dialog_result) {
-            if (dialog_result) {
-                attempt_open(*dialog_result);
-                return;
-            }
+    app_.open_file_dialog_async("Open ROM",
+                                {"*.nes", "*.fds", "*.zip", "*.7z"},
+                                [this](nk::OpenFileDialogResult dialog_result) {
+                                    if (dialog_result) {
+                                        attempt_open(*dialog_result);
+                                        return;
+                                    }
 
-            if (dialog_result.error() != nk::FileDialogError::Cancelled) {
-                set_message(file_dialog_error_text(dialog_result.error()));
-            }
-            focus_game_surface();
-        });
+                                    if (dialog_result.error() != nk::FileDialogError::Cancelled) {
+                                        set_message(file_dialog_error_text(dialog_result.error()));
+                                    }
+                                    focus_game_surface();
+                                });
 }
 
-void MapperBusGuiController::attempt_open(std::string rom_path) {
-    if (state_slot_dialog_ && state_slot_dialog_->is_presented()) {
+void MapperBusGuiController::attempt_open(std::string rom_path, std::string member) {
+    if ((state_slot_dialog_ && state_slot_dialog_->is_presented()) ||
+        (archive_dialog_ && archive_dialog_->is_presented())) {
         return;
     }
     if (rom_path.empty()) {
@@ -1649,24 +1655,43 @@ void MapperBusGuiController::attempt_open(std::string rom_path) {
         return;
     }
 
-    auto result = actions_->open_rom(rom_path);
+    if (app::is_rom_archive(rom_path) && member.empty()) {
+        auto members = app::list_archive_roms(rom_path);
+        if (!members) {
+            set_message(members.error());
+            focus_game_surface();
+            return;
+        }
+        if (members->size() > 1) {
+            choose_archive_rom(std::move(rom_path), std::move(*members));
+            return;
+        }
+        if (members->size() == 1) {
+            member = members->front();
+        }
+    }
+    auto result = actions_->open_rom(rom_path, member);
     if (!result) {
         // A ROM that no longer opens (deleted, moved, unreadable) must not
         // stay in the welcome list forever.
-        remove_recent_rom(configuration_, rom_path);
+        remove_recent_rom(configuration_, rom_path, member);
         save_configuration_state();
         if (welcome_active_) {
             refresh_welcome_view();
         }
         set_message("Failed to open ROM: " + result.error());
         refresh_ui();
-        clear_preview();
+        if (session_->has_cartridge()) {
+            refresh_preview();
+        } else {
+            clear_preview();
+        }
         focus_game_surface();
         return;
     }
 
     active_state_slot_ = app::selected_state_slot(configuration_, session_->game_identity());
-    touch_recent_rom(configuration_, rom_path);
+    touch_recent_rom(configuration_, rom_path, session_->current_rom_member());
     save_configuration_state();
     detected_region_ = actions_->snapshot().region;
     apply_region_preference();
@@ -1674,9 +1699,48 @@ void MapperBusGuiController::attempt_open(std::string rom_path) {
     frame_accumulator_ = std::chrono::nanoseconds{0};
     last_tick_time_ = std::chrono::steady_clock::now();
     refresh_preview();
-    set_message("Loaded " + title_for_display(rom_path) + ".");
+    set_message("Loaded " + title_for_display(member.empty() ? rom_path : member) + ".");
     refresh_ui();
     focus_game_surface();
+}
+
+void MapperBusGuiController::choose_archive_rom(std::string rom_path,
+                                                std::vector<std::string> members) {
+    auto combo = nk::ComboBox::create();
+    combo->set_items(members);
+    combo->set_selected_index(0);
+    auto content = Box::vertical(12.0F);
+    content->append(SecondaryText::create("Choose a ROM from " +
+                                          std::filesystem::path(rom_path).filename().string()));
+    content->append(combo);
+    archive_dialog_ = nk::Dialog::create("Open Archived ROM");
+    archive_dialog_->set_content(FixedWidthSlot::create(440.0F, content));
+    archive_dialog_->add_button("Cancel", nk::DialogResponse::Cancel);
+    archive_dialog_->add_button("Open", nk::DialogResponse::Accept);
+    (void)archive_dialog_->on_response().connect(
+        [this, combo, rom_path = std::move(rom_path), members = std::move(members)](
+            nk::DialogResponse response) {
+            auto dialog = archive_dialog_;
+            const int index = combo->selected_index();
+            // Release the dialog after its dispatch has unwound.
+            app_.event_loop().post(
+                [this, dialog, response, index, rom_path, members] {
+                    if (archive_dialog_ != dialog) {
+                        return;
+                    }
+                    archive_dialog_.reset();
+                    if (response == nk::DialogResponse::Accept && index >= 0 &&
+                        static_cast<std::size_t>(index) < members.size()) {
+                        attempt_open(rom_path, members[static_cast<std::size_t>(index)]);
+                    }
+                    focus_game_surface();
+                    update_native_toolbar();
+                },
+                "mapperbus.archive-close");
+        });
+    archive_dialog_->present(window_);
+    combo->grab_focus();
+    update_native_toolbar();
 }
 
 void MapperBusGuiController::toggle_pause() {
@@ -1946,7 +2010,7 @@ void MapperBusGuiController::open_dropped_files(const std::vector<std::filesyste
         attempt_open(file.string());
         return;
     }
-    set_message("Drop a .nes or .fds file.");
+    set_message("Drop a .nes, .zip, or .7z file.");
     focus_game_surface();
 }
 
@@ -2915,10 +2979,14 @@ nk::Window& MapperBusGuiController::settings_host_window() {
 bool MapperBusGuiController::modal_dialog_presented() const {
     return (settings_dialog_ && settings_dialog_->is_presented()) ||
            (rebind_dialog_ && rebind_dialog_->is_presented()) ||
-           (state_slot_dialog_ && state_slot_dialog_->is_presented());
+           (state_slot_dialog_ && state_slot_dialog_->is_presented()) ||
+           (archive_dialog_ && archive_dialog_->is_presented());
 }
 
 void MapperBusGuiController::handle_menu_action(std::string_view action) {
+    if (archive_dialog_ && archive_dialog_->is_presented() && action != "file.quit") {
+        return;
+    }
     if (state_slot_dialog_ && state_slot_dialog_->is_presented() &&
         (action == "file.open" || action == "file.close" || action == "settings.open")) {
         return;
