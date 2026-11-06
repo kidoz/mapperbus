@@ -1,6 +1,4 @@
 #include <algorithm>
-#include <archive.h>
-#include <archive_entry.h>
 #include <catch2/catch_test_macros.hpp>
 #include <chrono>
 #include <cstdlib>
@@ -12,6 +10,7 @@
 #include <vector>
 
 #include "../support/fds_image.hpp"
+#include "../support/rom_archive.hpp"
 #include "app/emulation_session.hpp"
 #include "app/rom_source.hpp"
 #include "core/binary_file.hpp"
@@ -55,49 +54,8 @@ std::vector<Byte> make_rom(Byte value = 42, bool battery = false) {
     return bytes;
 }
 
-struct Member {
-    std::string name;
-    std::vector<Byte> bytes;
-    bool symlink = false;
-};
-
-void write_archive(const std::filesystem::path& path,
-                   const std::vector<Member>& members,
-                   bool seven_zip = false,
-                   bool encrypt = false) {
-    std::unique_ptr<archive, decltype(&archive_write_free)> writer(archive_write_new(),
-                                                                   archive_write_free);
-    REQUIRE(writer);
-    REQUIRE((seven_zip ? archive_write_set_format_7zip(writer.get())
-                       : archive_write_set_format_zip(writer.get())) == ARCHIVE_OK);
-    if (!seven_zip) {
-        REQUIRE(archive_write_set_options(writer.get(), "zip:compression=store") == ARCHIVE_OK);
-    }
-    if (encrypt) {
-        REQUIRE(archive_write_set_passphrase(writer.get(), "test-password") == ARCHIVE_OK);
-        REQUIRE(archive_write_set_options(writer.get(), "zip:encryption=traditional") ==
-                ARCHIVE_OK);
-    }
-    REQUIRE(archive_write_open_filename(writer.get(), path.string().c_str()) == ARCHIVE_OK);
-    for (const auto& member : members) {
-        std::unique_ptr<archive_entry, decltype(&archive_entry_free)> entry(archive_entry_new(),
-                                                                            archive_entry_free);
-        REQUIRE(entry);
-        archive_entry_set_pathname(entry.get(), member.name.c_str());
-        archive_entry_set_filetype(entry.get(), member.symlink ? AE_IFLNK : AE_IFREG);
-        archive_entry_set_perm(entry.get(), 0644);
-        archive_entry_set_size(entry.get(), static_cast<la_int64_t>(member.bytes.size()));
-        if (member.symlink) {
-            archive_entry_set_symlink(entry.get(), "game.nes");
-        }
-        REQUIRE(archive_write_header(writer.get(), entry.get()) == ARCHIVE_OK);
-        if (!member.bytes.empty()) {
-            REQUIRE(archive_write_data(writer.get(), member.bytes.data(), member.bytes.size()) ==
-                    static_cast<la_ssize_t>(member.bytes.size()));
-        }
-    }
-    REQUIRE(archive_write_close(writer.get()) == ARCHIVE_OK);
-}
+using Member = mapperbus::tests::ArchiveMember;
+using mapperbus::tests::write_archive;
 
 // Keep battery files in the fixture instead of the user's application data.
 class TestDataHome {
@@ -367,5 +325,117 @@ TEST_CASE("FDS archive sources share disk identity, BIOS validation, and side co
     CHECK(session.emulator().save_state() == before);
     session.close_rom();
     CHECK_FALSE(session.emulator().fds().is_loaded());
+}
+} // namespace mapperbus::app
+
+namespace mapperbus::app {
+TEST_CASE("Mixed NES and FDS archives select exact members and retain active FDS on failure",
+          "[app][archive][fds]") {
+    ArchiveFixture fixture;
+    const auto storage = fixture.root / "isolated-data";
+    const auto bios = storage / "bios" / "disksys.rom";
+    std::filesystem::create_directories(bios.parent_path());
+    REQUIRE(
+        core::write_binary_file_atomic(bios.string(), mapperbus::tests::make_fds_bios(), "BIOS"));
+    const auto disk = mapperbus::tests::make_fds_image(2);
+    const auto cartridge = make_rom(22, true);
+    const std::string disk_member = "../" + fixture.root.filename().string() + "-not-extracted.FDS";
+    for (const bool seven_zip : {false, true}) {
+        const auto path = fixture.root / (seven_zip ? "mixed.7z" : "mixed.zip");
+        write_archive(path,
+                      {{.name = "readme.txt", .bytes = {}},
+                       {.name = disk_member, .bytes = disk},
+                       {.name = "second.fds", .bytes = mapperbus::tests::make_fds_image()},
+                       {.name = "Cart.NES", .bytes = cartridge},
+                       {.name = "broken.fds", .bytes = {1, 2, 3}}},
+                      seven_zip);
+        auto members = list_archive_roms(path.string());
+        REQUIRE(members);
+        CHECK(*members ==
+              std::vector<std::string>{disk_member, "second.fds", "Cart.NES", "broken.fds"});
+        core::Emulator emulator;
+        // The explicit root also supplies the default BIOS location, without
+        // changing HOME or any process-wide application-data environment.
+        auto selected = load_rom_source(emulator, path.string(), disk_member, {}, storage);
+        REQUIRE(selected);
+        CHECK(*selected == disk_member);
+        emulator.reset();
+        for (int frame = 0; frame < 30; ++frame)
+            emulator.step_frame();
+        REQUIRE(emulator.read_cpu(0x6000) == 1); // synthetic BIOS really ran
+        emulator.fds().insert_side(1);
+        const auto state = emulator.save_state();
+        const auto identity = emulator.content_hash();
+        const auto unchanged = [&] {
+            CHECK(emulator.is_fds());
+            CHECK(emulator.content_hash() == identity);
+            CHECK(emulator.fds().current_side() == 1);
+            CHECK(emulator.save_state() == state);
+        };
+        auto ambiguous = load_rom_source(emulator, path.string(), {}, {}, storage);
+        REQUIRE_FALSE(ambiguous);
+        CHECK(ambiguous.error().find("--entry") != std::string::npos);
+        CHECK(ambiguous.error().find(disk_member) != std::string::npos);
+        CHECK(ambiguous.error().find("Cart.NES") != std::string::npos);
+        unchanged();
+        for (const auto* bad_member : {"missing.fds", "cart.nes", "readme.txt", "broken.fds"}) {
+            INFO(bad_member);
+            REQUIRE_FALSE(load_rom_source(emulator, path.string(), bad_member, {}, storage));
+            unchanged();
+        }
+        REQUIRE_FALSE(load_rom_source(emulator,
+                                      path.string(),
+                                      disk_member,
+                                      (fixture.root / "missing-bios.bin").string(),
+                                      storage));
+        unchanged();
+        const auto bad_bios = fixture.root / "short-bios.bin";
+        REQUIRE(core::write_binary_file_atomic(
+            bad_bios.string(), std::vector<core::Byte>(8191), "short BIOS"));
+        REQUIRE_FALSE(
+            load_rom_source(emulator, path.string(), disk_member, bad_bios.string(), storage));
+        unchanged();
+        const auto blocked = fixture.root / "not-a-directory";
+        REQUIRE(core::write_binary_file_atomic(
+            blocked.string(), std::vector<core::Byte>{1, 2, 3}, "blocked storage"));
+        REQUIRE_FALSE(
+            load_rom_source(emulator, path.string(), disk_member, bios.string(), blocked));
+        unchanged();
+        const auto damaged = fixture.root / (seven_zip ? "damaged.7z" : "damaged.zip");
+        auto encoded =
+            core::read_binary_file_capped(path.string(), kMaxArchiveBytes, "archive fixture");
+        REQUIRE(encoded);
+        if (seven_zip) {
+            encoded->resize(encoded->size() / 2);
+        } else {
+            // ZIP entries use store mode. Alter a disk-info byte which is
+            // otherwise legal FDS data, leaving the container CRC incorrect.
+            const auto marker =
+                std::search(encoded->begin(), encoded->end(), disk.begin(), disk.begin() + 16);
+            REQUIRE(marker != encoded->end());
+            *(marker + 16) ^= 1U;
+        }
+        REQUIRE(core::write_binary_file_atomic(damaged.string(), *encoded, "damaged archive"));
+        REQUIRE_FALSE(load_rom_source(emulator, damaged.string(), disk_member, {}, storage));
+        unchanged();
+        CHECK_FALSE(std::filesystem::exists(fixture.root.parent_path() /
+                                            std::filesystem::path(disk_member).filename()));
+        // Switching from the FDS to a NES member ignores BIOS policy and puts
+        // battery data under the same explicit, isolated persistence root.
+        REQUIRE(load_rom_source(emulator, path.string(), "Cart.NES", "missing-bios.bin", storage));
+        CHECK_FALSE(emulator.is_fds());
+        emulator.reset();
+        emulator.step_frame();
+        emulator.unload_cartridge();
+        auto battery = core::read_binary_file_capped(
+            (storage / "battery" / (core::sha256_hex(core::rom_sha256(cartridge)) + ".sav"))
+                .string(),
+            8192,
+            "isolated battery");
+        REQUIRE(battery);
+        REQUIRE_FALSE(battery->empty());
+        CHECK(battery->front() == 22);
+        CHECK_FALSE(std::filesystem::exists(fixture.root / "mixed.sav"));
+    }
 }
 } // namespace mapperbus::app

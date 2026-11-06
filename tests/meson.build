@@ -177,10 +177,10 @@ endif
 # Licensed BIOS/game assets are opt-in; ordinary CI reports these cases skipped.
 test_fds_compatibility = executable('test-fds-compatibility',
     'integration/test_fds_compatibility.cpp',
-    dependencies : [mapperbus_core_dep, catch2_dep],
+    dependencies : [mapperbus_app_dep, catch2_dep],
 )
 test('fds-compatibility', test_fds_compatibility,
-    args : ['--allow-running-no-tests'], timeout : 240)
+    args : ['--allow-running-no-tests'], timeout : 720)
 
 test_fds_diagnostics = executable('test-fds-diagnostics',
     'integration/test_fds_diagnostics.cpp',

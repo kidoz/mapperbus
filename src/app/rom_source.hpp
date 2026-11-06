@@ -18,9 +18,13 @@ inline constexpr std::size_t kMaxArchiveEntries = 1024;
 /// Loads raw media or one ZIP/7z member. With no member, exactly one candidate
 /// is required. Returns the selected member (empty for a raw ROM). Any failure
 /// leaves the emulator's current cartridge intact.
-[[nodiscard]] core::Result<std::string> load_rom_source(core::Emulator& emulator,
-                                                        const std::string& path,
-                                                        std::string_view member = {},
-                                                        const std::string& fds_bios_path = {});
+/// An optional persistence root replaces the platform data directory for FDS
+/// BIOS fallback/disk changes and archived battery saves. State slots are separate.
+[[nodiscard]] core::Result<std::string> load_rom_source(
+    core::Emulator& emulator,
+    const std::string& path,
+    std::string_view member = {},
+    const std::string& fds_bios_path = {},
+    const std::filesystem::path& persistence_directory = {});
 
 } // namespace mapperbus::app

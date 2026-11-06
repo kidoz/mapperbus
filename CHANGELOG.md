@@ -9,6 +9,8 @@ Versioning.
 
 ### Added
 
+- End-to-end FDS game regressions through raw, ZIP, and 7z loading, including
+  shared snapshots, cross-source progress reloads, and mixed-archive failure paths.
 - FDS DRAM refresh watchdog with CPU/dummy/DMA address accounting, shared IRQ
   acknowledgement, and regression coverage against the public hardware diagnostic.
 - Original FDS audio capture probe with 16 pages for multiplier, counter, reset,

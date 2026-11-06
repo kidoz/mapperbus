@@ -45,6 +45,16 @@ Raw ROMs continue using sibling `.sav` files. Moving a raw ROM's existing batter
 save into this content-based location is a manual operation. See
 [Save and restore a game](save-and-restore.md).
 
+FDS disk changes use `fds/<normalized-disk-SHA256>.fds-save` under the same
+application data directory. Raw, headered, ZIP, and 7z copies of the same disk
+share progress. With the same BIOS, they also share identified snapshot slots.
+The archive is preserved; game writes go to the separate disk-save file. See
+[FDS setup and disk controls](play-fds-games.md).
+
+The opt-in [FDS compatibility suite](../reference/fds-compatibility.md) exercises
+Metroid and SMB2 through the shared loader in raw, ZIP, and 7z forms, including
+snapshot interchange and Metroid progress reloads across formats.
+
 ## Supported scope and limits
 
 Only ZIP and 7z containers with regular `.nes` or `.fds` members are exposed. Directories,

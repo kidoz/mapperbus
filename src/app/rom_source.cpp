@@ -163,8 +163,9 @@ core::Result<std::vector<std::string>> list_archive_roms(const std::string& path
 namespace {
 core::Result<void> load_fds_source(core::Emulator& emulator,
                                    std::span<const core::Byte> disk,
-                                   const std::string& bios_path) {
-    const auto bios_file = bios_path.empty() ? mapperbus_data_directory() / "bios" / "disksys.rom"
+                                   const std::string& bios_path,
+                                   const std::filesystem::path& persistence_directory) {
+    const auto bios_file = bios_path.empty() ? persistence_directory / "bios" / "disksys.rom"
                                              : std::filesystem::path(bios_path);
     auto bios = core::read_binary_file_capped(bios_file.string(), 8192, "FDS BIOS");
     if (!bios)
@@ -174,7 +175,7 @@ core::Result<void> load_fds_source(core::Emulator& emulator,
     auto payload = disk;
     if (disk.size() >= 16 && disk[0] == 'F' && disk[1] == 'D' && disk[2] == 'S' && disk[3] == 0x1A)
         payload = disk.subspan(16);
-    const auto directory = mapperbus_data_directory() / "fds";
+    const auto directory = persistence_directory / "fds";
     if (auto created = ensure_state_directory(directory); !created)
         return created;
     const auto save_path = directory / (core::sha256_hex(core::rom_sha256(payload)) + ".fds-save");
@@ -185,7 +186,10 @@ core::Result<void> load_fds_source(core::Emulator& emulator,
 core::Result<std::string> load_rom_source(core::Emulator& emulator,
                                           const std::string& path,
                                           std::string_view member,
-                                          const std::string& fds_bios_path) {
+                                          const std::string& fds_bios_path,
+                                          const std::filesystem::path& persistence_directory) {
+    const auto storage =
+        persistence_directory.empty() ? mapperbus_data_directory() : persistence_directory;
     if (!is_rom_archive(path)) {
         if (!member.empty()) {
             return std::unexpected("A ROM member can only be selected in a .zip or .7z archive");
@@ -196,7 +200,7 @@ core::Result<std::string> load_rom_source(core::Emulator& emulator,
                 path, core::Fds::kMaxDiskImageBytes + 16, "FDS disk image");
             if (!disk)
                 return std::unexpected(disk.error());
-            loaded = load_fds_source(emulator, *disk, fds_bios_path);
+            loaded = load_fds_source(emulator, *disk, fds_bios_path, storage);
         } else {
             loaded = emulator.load_cartridge(path);
         }
@@ -231,7 +235,7 @@ core::Result<std::string> load_rom_source(core::Emulator& emulator,
         return std::unexpected("ROM archive member not found: " + selected);
     }
     if (lower_extension(selected) == ".fds") {
-        auto loaded = load_fds_source(emulator, contents->data, fds_bios_path);
+        auto loaded = load_fds_source(emulator, contents->data, fds_bios_path, storage);
         if (!loaded)
             return std::unexpected(loaded.error());
         return selected;
@@ -240,8 +244,8 @@ core::Result<std::string> load_rom_source(core::Emulator& emulator,
     if (!cartridge) {
         return std::unexpected(cartridge.error());
     }
-    const auto battery_path = mapperbus_data_directory() / "battery" /
-                              (core::sha256_hex(cartridge->content_hash()) + ".sav");
+    const auto battery_path =
+        storage / "battery" / (core::sha256_hex(cartridge->content_hash()) + ".sav");
     if (cartridge->has_battery()) {
         auto created = ensure_state_directory(battery_path.parent_path());
         if (!created) {

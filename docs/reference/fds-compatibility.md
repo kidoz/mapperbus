@@ -150,12 +150,31 @@ shows `$67FF` / `$6E25`; both captured values match in MapperBus.
 | Super Mario Brothers 2 (Japan) | BIOS boot, title screen, Start into world 1-1, snapshot replay during loading and gameplay, finite/nonzero mixed audio |
 | Metroid (Japan) (Rev 3) | BIOS boot, name registration, side-B gameplay, controller-two save-menu input, side-A save, fresh-machine reload of disk progress, snapshot replay during side insertion |
 
-The integration runner checks fixture SHA-256 values before running a script.
-This prevents a different revision or modified image from producing misleading
-results. Images and the BIOS are never downloaded or bundled. Metroid writes
-use an isolated temporary disk-save file, removed after the test; source images
-and existing user saves are preserved. Super Mario Bros. 2 is exercised without
-persistent writes. Its later save/unlock workflows are not covered.
+Each game runs in three forms through `app::load_rom_source`: a raw disk,
+a ZIP member with a 16-byte FDS header, and a renamed headerless 7z member.
+The runner constructs the archives temporarily using libarchive. It checks
+fixture SHA-256 values before playing; no BIOS, game, or generated archive is
+bundled or downloaded.
+
+Metroid's registration and in-game save use an explicitly isolated persistence
+root. Fresh emulators reopen the changed disk through all three sources, then
+boot from a different source to display the registered file. Disk progress uses
+one normalized-source-hash file and does not alter media identity. Source disk,
+archive, and BIOS-copy hashes are checked after each workflow. Super Mario Bros.
+2 runs without persistent disk writes; its later save/unlock workflows are not
+covered.
+
+Snapshot checks write an actual state file during BIOS loading, gameplay, and
+Metroid side insertion. Raw, ZIP, and 7z opens resolve the same content-based
+state directory and replay to identical machine state and frame pixels. The
+persistence root is passed directly to the shared loader; these tests do not
+change process-wide home/application-data variables or use existing user saves.
+
+The ordinary `rom-source` suite also covers mixed NES/FDS ZIP and 7z collections:
+exact case-sensitive member selection, ambiguity, invalid disk data, missing or
+short BIOS files, unavailable storage, corrupt ZIP checksums, truncated 7z data,
+and preservation of the active FDS state on failure. Archive member names remain
+identifiers and are not extraction paths.
 
 The runner checks visible frames, CPU liveness, deterministic snapshot replay,
 audio samples, and saved disk bytes. Optional frame artifacts support visual
@@ -164,14 +183,15 @@ or a comparison with recordings from hardware.
 
 ## Validation on 2026-11-06
 
-- Both local-image workflows passed with the supplied files; frame artifacts
-  confirmed SMB2 world 1-1 and Metroid gameplay/save/reloaded-file screens.
+- All six raw/ZIP/7z game workflows passed with the supplied files; frame
+  artifacts confirmed SMB2 world 1-1 and Metroid gameplay/save/reloaded-file screens.
 - The regular build passed 29 suite executables. Its optional image/diagnostic
   cases were skipped in the asset-free run and passed in separate explicit
   asset runs.
 - The GUI-disabled ASan/UBSan build passed 27 suite executables, including all
-  five public diagnostic cases and the original audio probe; commercial-image
-  cases were skipped. Leak detection was disabled because this macOS runtime does not support it.
+  five public diagnostic cases and the original audio probe. All six licensed
+  raw/ZIP/7z workflows also passed in separate sanitizer runs. Leak detection was
+  disabled because this macOS runtime does not support it.
 - The FDS static analyzer, changed-file formatting and documentation-link checks
   passed. The headless CLI ran Metroid for 1200 frames with the new audio model.
   Source BIOS and disk SHA-256 values were unchanged.
@@ -198,16 +218,18 @@ meson test -C buildDir fds-compatibility --print-errorlogs
 directory. The tests skip when `MAPPERBUS_FDS_TEST_ASSETS` is unset; inspect the
 test log to distinguish that from an actual licensed-image run. With the asset
 directory set, missing files or mismatched hashes fail. The suite has a
-240-second timeout to allow for emulated disk transfers on slower builds.
+720-second timeout for all six workflows, including sanitizer builds.
 
 For one image only, run the executable with a Catch2 filter:
 
 ```sh
 MAPPERBUS_FDS_TEST_ASSETS="$PWD/tmp" \
-./buildDir/tests/test-fds-compatibility 'Local SMB2*'
+./buildDir/tests/test-fds-compatibility '*SMB2*'
 ```
 
-Use `'Local Metroid*'` for the other workflow. Fixture digests are recorded in
+Use `'*Metroid*'` for the other game. Each filter runs raw, ZIP, and 7z.
+Use `'[raw]'`, `'[zip]'`, or `'[7z]'` to run both games in just that format.
+Fixture digests are recorded in
 [test_fds_compatibility.cpp](../../tests/integration/test_fds_compatibility.cpp).
 
 ## Hardware regressions without external assets
