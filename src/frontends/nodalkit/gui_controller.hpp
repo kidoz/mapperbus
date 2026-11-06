@@ -84,6 +84,8 @@ class MapperBusGuiController {
     void browse_for_rom();
     void attempt_open(std::string rom_path, std::string member = {});
     void choose_archive_rom(std::string rom_path, std::vector<std::string> members);
+    void open_fds_dialog();
+    void perform_disk_action(std::string_view action);
     void toggle_pause();
     void step_frame();
     void reset_session();
@@ -153,6 +155,7 @@ class MapperBusGuiController {
     int settings_input_player_ = 0;
     std::shared_ptr<nk::Dialog> state_slot_dialog_;
     std::shared_ptr<nk::Dialog> archive_dialog_;
+    std::shared_ptr<nk::Dialog> fds_dialog_;
     std::weak_ptr<nk::ComboBox> state_slot_control_;
     std::shared_ptr<nk::ContextMenu> header_menu_;
     std::vector<std::string> header_menu_actions_;

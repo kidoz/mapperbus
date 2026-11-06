@@ -48,6 +48,7 @@ extern char** environ;
 #include <vector>
 
 #include "app/rom_source.hpp"
+#include "core/binary_file.hpp"
 #include "core/mappers/mapper_registry.hpp"
 #include "frontends/nodalkit/input_binding_table.hpp"
 #include "platform/video/fsr1.hpp"
@@ -215,6 +216,7 @@ std::vector<nk::NativeMenu> build_native_menus(std::string_view app_name, int ac
          {
              nk::NativeMenuItem::action("Open ROM…", "file.open", command_shortcut(nk::KeyCode::O)),
              nk::NativeMenuItem::action("Close ROM", "file.close"),
+             nk::NativeMenuItem::action("Famicom Disk System…", "fds.settings"),
          }},
         {"Emulation",
          {
@@ -232,6 +234,12 @@ std::vector<nk::NativeMenu> build_native_menus(std::string_view app_name, int ac
              nk::NativeMenuItem::make_separator(),
              nk::NativeMenuItem::action("Step Frame", "emu.step"),
              nk::NativeMenuItem::action("Power Cycle", "emu.power"),
+             nk::NativeMenuItem::make_separator(),
+             nk::NativeMenuItem::action(
+                 "Next Disk Side", "fds.next", plain_shortcut(nk::KeyCode::F6)),
+             nk::NativeMenuItem::action("Eject or Insert Disk", "fds.eject"),
+             nk::NativeMenuItem::action(
+                 "Toggle Disk Write Protection", "fds.protect", plain_shortcut(nk::KeyCode::F8)),
          }},
 #if !defined(__APPLE__)
         {"Settings",
@@ -635,6 +643,10 @@ std::string reserved_key_message(nk::KeyCode key) {
         return "R resets the game. Choose another key.";
     case nk::KeyCode::F5:
         return "F5 saves a state. Choose another key.";
+    case nk::KeyCode::F6:
+        return "F6 controls FDS disk sides. Choose another key.";
+    case nk::KeyCode::F8:
+        return "F8 controls FDS write protection. Choose another key.";
     case nk::KeyCode::F7:
         return "F7 loads a state. Choose another key.";
     case nk::KeyCode::F11:
@@ -1030,6 +1042,7 @@ MapperBusGuiController::MapperBusGuiController(nk::Application& app, nk::Window&
     actions_ = std::make_unique<app::SessionActions>(*session_);
     session_->set_turbo_period(configuration_.input.turbo_period_frames);
     session_->set_state_storage(configuration_.save_states);
+    session_->set_fds_bios_path(configuration_.fds_bios_path);
     if (replaced_reserved_binding) {
         save_configuration_state();
     }
@@ -1232,6 +1245,9 @@ void MapperBusGuiController::build_ui() {
     bind_session_key(nk::KeyCode::R, nk::Modifiers::None, "emu.reset");
     bind_session_key(nk::KeyCode::F5, nk::Modifiers::None, "emu.save-state");
     bind_session_key(nk::KeyCode::F7, nk::Modifiers::None, "emu.load-state");
+    bind_session_key(nk::KeyCode::F6, nk::Modifiers::None, "fds.next");
+    bind_session_key(nk::KeyCode::F6, nk::Modifiers::Shift, "fds.eject");
+    bind_session_key(nk::KeyCode::F8, nk::Modifiers::None, "fds.protect");
     bind_session_key(nk::KeyCode::F5, nk::Modifiers::Shift, "emu.save-state-1");
     bind_session_key(nk::KeyCode::F7, nk::Modifiers::Shift, "emu.load-state-1");
     // macOS menu equivalents already bind Ctrl/Command chords. Register
@@ -1256,6 +1272,10 @@ void MapperBusGuiController::build_ui() {
                 handle_menu_action("emu.pause");
             } else if (key == nk::KeyCode::R && mods == nk::Modifiers::None) {
                 handle_menu_action("emu.reset");
+            } else if (key == nk::KeyCode::F6) {
+                handle_menu_action(mods == nk::Modifiers::Shift ? "fds.eject" : "fds.next");
+            } else if (key == nk::KeyCode::F8 && mods == nk::Modifiers::None) {
+                handle_menu_action("fds.protect");
             } else if (key == nk::KeyCode::F5 && mods == nk::Modifiers::None) {
                 handle_menu_action("emu.save-state");
             } else if (key == nk::KeyCode::F7 && mods == nk::Modifiers::None) {
@@ -1285,6 +1305,10 @@ void MapperBusGuiController::wire_ui() {
                                "mapperbus.settings-theme");
     });
     (void)window_.on_close_requested().connect([this] {
+        if (auto saved = session_->flush_disk_changes(); !saved) {
+            set_message(saved.error());
+            return;
+        }
         save_configuration_state();
         app_.quit(0);
     });
@@ -1349,8 +1373,8 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_welcome_view() {
 
     auto column = Box::vertical(14.0F);
     column->append(TitleText::create("Open a game"));
-    column->append(
-        SecondaryText::create("Choose a .nes, .zip, or .7z file, or drop one on this window."));
+    column->append(SecondaryText::create(
+        "Choose a .nes, .fds, .zip, or .7z file, or drop one on this window."));
 
     auto open_button = nk::Button::create("Open ROM…");
     open_button->add_style_class("suggested");
@@ -1440,6 +1464,19 @@ void MapperBusGuiController::refresh_ui() {
                     "Slot " + std::to_string(active_state_slot_ + 1)};
     } else {
         segments = {state_text};
+    }
+    if (snapshot.is_fds) {
+        segments.push_back(snapshot.disk_side < 0
+                               ? "Disk ejected"
+                               : "Disk " + std::to_string(snapshot.disk_side / 2 + 1) + " " +
+                                     (snapshot.disk_side % 2 == 0 ? "A" : "B"));
+        segments.push_back(snapshot.disk_active ? "Disk active" : "Disk idle");
+        if (snapshot.disk_write_protected)
+            segments.push_back("Write protected");
+        if (snapshot.disk_dirty)
+            segments.push_back("Unsaved disk changes");
+        if (!session_->disk_save_error().empty())
+            segments.push_back("Disk save failed");
     }
     status_bar_->set_segments(std::move(segments));
     // Handoff composition: session state leads, mapper identification trails
@@ -1584,9 +1621,15 @@ void MapperBusGuiController::rebuild_header_menu() {
         add_separator();
         add_action("Step Frame", "emu.step");
         add_action("Power Cycle", "emu.power");
+        if (snapshot.is_fds) {
+            add_action("Next Disk Side (F6)", "fds.next");
+            add_action("Eject or Insert Disk", "fds.eject");
+            add_action("Toggle Write Protection (F8)", "fds.protect");
+        }
         add_separator();
         add_action("Close ROM", "file.close");
     }
+    add_action("Famicom Disk System…", "fds.settings");
     add_action(menu_label(window_.is_fullscreen() ? "Leave Fullscreen" : "Fullscreen", "F11"),
                "win.toggle-fullscreen");
     add_action(menu_label("Settings…", "Ctrl+,"), "settings.open");
@@ -1646,7 +1689,8 @@ void MapperBusGuiController::browse_for_rom() {
 
 void MapperBusGuiController::attempt_open(std::string rom_path, std::string member) {
     if ((state_slot_dialog_ && state_slot_dialog_->is_presented()) ||
-        (archive_dialog_ && archive_dialog_->is_presented())) {
+        (archive_dialog_ && archive_dialog_->is_presented()) ||
+        (fds_dialog_ && fds_dialog_->is_presented())) {
         return;
     }
     if (rom_path.empty()) {
@@ -1740,6 +1784,134 @@ void MapperBusGuiController::choose_archive_rom(std::string rom_path,
         });
     archive_dialog_->present(window_);
     combo->grab_focus();
+    update_native_toolbar();
+}
+
+void MapperBusGuiController::perform_disk_action(std::string_view action) {
+    const auto snapshot = actions_->snapshot();
+    core::Result<void> result;
+    if (action == "fds.next") {
+        result = session_->insert_disk_side((snapshot.disk_side + 1) %
+                                            std::max(1, snapshot.disk_side_count));
+    } else if (action == "fds.eject") {
+        result = snapshot.disk_side < 0 ? session_->insert_disk_side(0) : session_->eject_disk();
+    } else if (action == "fds.protect") {
+        result = session_->set_disk_write_protected(!snapshot.disk_write_protected);
+    }
+    set_message(result ? "Disk control updated." : result.error());
+    refresh_ui();
+    focus_game_surface();
+}
+
+void MapperBusGuiController::open_fds_dialog() {
+    if (modal_dialog_presented())
+        return;
+    const auto snapshot = actions_->snapshot();
+    auto content = Box::vertical(12.0F);
+    auto bios_label = nk::Label::create(configuration_.fds_bios_path.empty()
+                                            ? "BIOS: application data / bios / disksys.rom"
+                                            : "BIOS: " + configuration_.fds_bios_path);
+    bios_label->set_wrapping(true);
+    content->append(bios_label);
+    auto browse = nk::Button::create("Choose FDS BIOS…");
+    (void)browse->on_clicked().connect([this, bios_label] {
+        app_.open_file_dialog_async(
+            "Choose 8 KiB FDS BIOS",
+            {"*.rom", "*.bin"},
+            [this, bios_label](nk::OpenFileDialogResult result) {
+                if (!result) {
+                    if (result.error() != nk::FileDialogError::Cancelled)
+                        set_message(file_dialog_error_text(result.error()));
+                    return;
+                }
+                auto bios = core::read_binary_file_capped(*result, 8192, "FDS BIOS");
+                if (!bios || bios->size() != 8192) {
+                    set_message(bios ? "FDS BIOS must contain exactly 8192 bytes." : bios.error());
+                    return;
+                }
+                configuration_.fds_bios_path = *result;
+                session_->set_fds_bios_path(*result);
+                save_configuration_state();
+                bios_label->set_text("BIOS: " + *result);
+                set_message("BIOS selected. Open an FDS disk to use it.");
+            });
+    });
+    content->append(browse);
+    if (snapshot.is_fds) {
+        std::vector<std::string> labels;
+        for (int side = 0; side < snapshot.disk_side_count; ++side) {
+            labels.push_back("Disk " + std::to_string(side / 2 + 1) + " " +
+                             (side % 2 == 0 ? "A" : "B"));
+        }
+        auto sides = nk::ComboBox::create();
+        sides->set_items(std::move(labels));
+        sides->set_selected_index(std::max(0, snapshot.disk_side));
+        content->append(sides);
+        auto insert = nk::Button::create("Insert Selected Side");
+        (void)insert->on_clicked().connect([this, sides] {
+            auto result = session_->insert_disk_side(sides->selected_index());
+            set_message(result ? "Selected disk side inserted." : result.error());
+            refresh_ui();
+        });
+        content->append(insert);
+        auto eject = nk::Button::create("Eject Disk");
+        (void)eject->on_clicked().connect([this] {
+            auto result = session_->eject_disk();
+            set_message(result ? "Disk ejected." : result.error());
+            refresh_ui();
+        });
+        content->append(eject);
+        auto protect = nk::Button::create(
+            snapshot.disk_write_protected ? "Allow Disk Writes" : "Protect Disk Against Writes");
+        (void)protect->on_clicked().connect([this, protect] {
+            const bool was_protected = actions_->snapshot().disk_write_protected;
+            auto result = session_->set_disk_write_protected(!was_protected);
+            if (result)
+                protect->set_label(was_protected ? "Protect Disk Against Writes"
+                                                 : "Allow Disk Writes");
+            set_message(result ? "Disk write protection updated." : result.error());
+            refresh_ui();
+        });
+        content->append(protect);
+        auto export_button = nk::Button::create("Export Modified Disk…");
+        (void)export_button->on_clicked().connect([this] {
+            app_.save_file_dialog_async(
+                {.title = "Export FDS Disk",
+                 .suggested_filename = "modified-disk.fds",
+                 .filters = {"*.fds"}},
+                [this](nk::SaveFileDialogResult result) {
+                    if (!result) {
+                        if (result.error() != nk::FileDialogError::Cancelled)
+                            set_message(file_dialog_error_text(result.error()));
+                        return;
+                    }
+                    std::error_code error;
+                    if (std::filesystem::equivalent(*result, session_->current_rom_path(), error)) {
+                        set_message("Choose a different path to preserve the original disk image.");
+                        return;
+                    }
+                    auto exported = session_->export_disk(*result);
+                    set_message(exported ? "Modified disk exported." : exported.error());
+                });
+        });
+        content->append(export_button);
+    } else
+        content->append(SecondaryText::create("Open a .fds image after choosing its BIOS."));
+    fds_dialog_ = nk::Dialog::create("Famicom Disk System");
+    fds_dialog_->set_content(FixedWidthSlot::create(480.0F, content));
+    fds_dialog_->add_button("Done", nk::DialogResponse::Close);
+    (void)fds_dialog_->on_response().connect([this](nk::DialogResponse) {
+        auto dialog = fds_dialog_;
+        app_.event_loop().post(
+            [this, dialog] {
+                if (fds_dialog_ == dialog)
+                    fds_dialog_.reset();
+                focus_game_surface();
+                update_native_toolbar();
+            },
+            "mapperbus.fds-close");
+    });
+    fds_dialog_->present(window_);
     update_native_toolbar();
 }
 
@@ -2010,11 +2182,15 @@ void MapperBusGuiController::open_dropped_files(const std::vector<std::filesyste
         attempt_open(file.string());
         return;
     }
-    set_message("Drop a .nes, .zip, or .7z file.");
+    set_message("Drop a .nes, .fds, .zip, or .7z file.");
     focus_game_surface();
 }
 
 void MapperBusGuiController::close_current_rom() {
+    if (auto saved = session_->flush_disk_changes(); !saved) {
+        set_message(saved.error());
+        return;
+    }
     actions_->close_rom();
     detected_region_.reset();
     frame_accumulator_ = std::chrono::nanoseconds{0};
@@ -2980,11 +3156,14 @@ bool MapperBusGuiController::modal_dialog_presented() const {
     return (settings_dialog_ && settings_dialog_->is_presented()) ||
            (rebind_dialog_ && rebind_dialog_->is_presented()) ||
            (state_slot_dialog_ && state_slot_dialog_->is_presented()) ||
-           (archive_dialog_ && archive_dialog_->is_presented());
+           (archive_dialog_ && archive_dialog_->is_presented()) ||
+           (fds_dialog_ && fds_dialog_->is_presented());
 }
 
 void MapperBusGuiController::handle_menu_action(std::string_view action) {
-    if (archive_dialog_ && archive_dialog_->is_presented() && action != "file.quit") {
+    if (((archive_dialog_ && archive_dialog_->is_presented()) ||
+         (fds_dialog_ && fds_dialog_->is_presented())) &&
+        action != "file.quit") {
         return;
     }
     if (state_slot_dialog_ && state_slot_dialog_->is_presented() &&
@@ -3000,6 +3179,14 @@ void MapperBusGuiController::handle_menu_action(std::string_view action) {
     if (action.starts_with("emu.") && modal_dialog_presented() && (!choosing_slot || other_modal)) {
         return;
     }
+    if (action == "fds.settings") {
+        open_fds_dialog();
+        return;
+    }
+    if (action.starts_with("fds.")) {
+        perform_disk_action(action);
+        return;
+    }
     if (action == "file.open") {
         browse_for_rom();
         return;
@@ -3009,6 +3196,10 @@ void MapperBusGuiController::handle_menu_action(std::string_view action) {
         return;
     }
     if (action == "file.quit") {
+        if (auto saved = session_->flush_disk_changes(); !saved) {
+            set_message(saved.error());
+            return;
+        }
         save_configuration_state();
         app_.quit(0);
         return;

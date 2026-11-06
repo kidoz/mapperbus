@@ -46,6 +46,8 @@ class NodalKitPlayerInput {
         case nk::KeyCode::P:
         case nk::KeyCode::R:
         case nk::KeyCode::F5:
+        case nk::KeyCode::F6:
+        case nk::KeyCode::F8:
         case nk::KeyCode::F7:
         case nk::KeyCode::F11:
             return true;
