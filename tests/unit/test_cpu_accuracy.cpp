@@ -325,9 +325,9 @@ TEST_CASE("Accepted IRQ survives snapshots with I set and rejects invalid interr
                                          {ppu_end - 3, Byte{2}},
                                          {ppu_end - 4, Byte{2}},
                                          {apu_end - 7, Byte{5}},
-                                         {bus_end - 5, Byte{1}},
-                                         {bus_end - 6, Byte{2}},
-                                         {bus_end - 7, Byte{2}}}) {
+                                         {bus_end - 8, Byte{1}},
+                                         {bus_end - 9, Byte{2}},
+                                         {bus_end - 10, Byte{2}}}) {
         auto corrupt = before;
         corrupt[offset] = invalid;
         CHECK_FALSE(emulator.load_state(corrupt));
@@ -751,7 +751,7 @@ TEST_CASE("Invalid CPU PPU divider phases reject snapshots with rollback", "[cpu
         Apu{}.save_state(apu);
         MemoryBus{}.save_state(bus);
         const auto phase_offset =
-            43 + cpu.data().size() + ppu.data().size() + apu.data().size() + bus.data().size() - 5;
+            43 + cpu.data().size() + ppu.data().size() + apu.data().size() + bus.data().size() - 8;
         const auto before = emulator.save_state();
         for (const Byte invalid :
              {Byte{5}, Byte{255}, static_cast<Byte>(region == Region::PAL ? 6U : 1U)}) {
@@ -1022,6 +1022,30 @@ TEST_CASE("DMC partial decoding can clock the other controller", "[cpu][dma][con
     CHECK(pads.peek(1) == 0); // the aliased $4017 read clocked player 2's A
 }
 
+TEST_CASE("DMC aliases sample the live microphone only on port one",
+          "[cpu][dma][controller][microphone]") {
+    for (const Address sample : {Address{0xC016}, Address{0xC017}}) {
+        for (const uint32_t phase : {0U, 512U, 1022U}) {
+            DmaMachine machine({0xEA});
+            Controller pads;
+            machine.bus.connect_controller(&pads);
+            machine.bus.set_controller_wiring(ControllerWiring::RfFamicom);
+            machine.bus.set_microphone_active(true);
+            machine.bus.clock_cpu_bus(0, phase);
+            DmcChannel channel;
+            channel.enabled = true;
+            channel.bytes_remaining = 1;
+            channel.current_address = sample;
+            channel.timer = 100;
+            machine.seed_channel(channel, true);
+            REQUIRE(machine.bus.run_dmc_dma(0x4000) == 4);
+            const Byte expected = sample == 0xC016 && (phase + 4) % 1024 < 512 ? 4 : 0;
+            CHECK(machine.bus.open_bus() == expected);
+            CHECK((machine.bus.read(0x4017) & 4U) == 0);
+        }
+    }
+}
+
 TEST_CASE("Machine snapshots preserve a controller read across an instruction boundary",
           "[cpu][controller][state]") {
     DmaMachine fixture({0xA9, 1,    0x8D, 0x16, 0x40, 0xA9, 0,    0x8D, 0x16, 0x40,
@@ -1063,10 +1087,10 @@ TEST_CASE("Invalid controller line states reject snapshots with rollback",
     Controller{}.save_state(controller);
     const auto end =
         43 + cpu.data().size() + ppu.data().size() + apu.data().size() + bus.data().size();
-    for (const auto [offset, value] : {std::pair{end - 1, Byte{2}},
-                                       {end - 2, Byte{2}},
-                                       {end - 3, Byte{2}},
-                                       {end - 4, Byte{3}},
+    for (const auto [offset, value] : {std::pair{end - 4, Byte{2}},
+                                       {end - 5, Byte{2}},
+                                       {end - 6, Byte{2}},
+                                       {end - 7, Byte{3}},
                                        {end + controller.data().size() - 1, Byte{2}}}) {
         auto corrupt = before;
         corrupt[offset] = value;

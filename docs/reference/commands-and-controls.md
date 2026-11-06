@@ -118,6 +118,17 @@ Both override the saved storage preference without persisting that override.
 
 Source: [SDL3 input](../../src/frontends/sdl3/sdl3_input.cpp).
 
+## Digital Famicom microphone
+
+With RF Famicom controller wiring selected, hold **M** to simulate microphone
+activity. GUI Settings → Input → Microphone changes the keyboard or gamepad
+binding for either profile; both activate the same device. Defaults are M in
+player one, unbound in player two, and no gamepad assignment. Older custom
+bindings take precedence over a new conflicting default. SDL3 also accepts
+`--gamepad-map mic=rightshoulder` or `--gamepad2-map microphone=rightshoulder`.
+The signal is independent of controller strobing and works only through RF
+wiring. Live audio capture and microphone audio mixing are separate features.
+
 ## Headless CLI
 
 ```text

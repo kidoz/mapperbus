@@ -15,6 +15,7 @@ class InputBackend {
         switch (action) {
         case InputAction::TurboA:
         case InputAction::TurboB:
+        case InputAction::Microphone:
             return false;
         default:
             for (auto button : {core::Button::A,

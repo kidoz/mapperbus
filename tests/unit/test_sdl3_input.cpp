@@ -14,6 +14,11 @@ namespace {
 
 TEST_CASE("Turbo gamepad mappings accept actions and explicit unbinding", "[sdl3][input][turbo]") {
     Sdl3InputConfig config;
+    CHECK(gamepad_control_for_button(config, platform::InputAction::Microphone).kind ==
+          GamepadControlKind::None);
+    REQUIRE(apply_gamepad_mapping(config, "mic=rightshoulder"));
+    CHECK(gamepad_control_for_button(config, platform::InputAction::Microphone).button ==
+          platform::GamepadButton::RightShoulder);
     REQUIRE(apply_gamepad_mapping(config, "turbo_a=leftshoulder,turbo_b=none,a=east"));
     CHECK(gamepad_control_for_button(config, platform::InputAction::TurboA).button ==
           platform::GamepadButton::LeftShoulder);
@@ -24,8 +29,8 @@ TEST_CASE("Turbo gamepad mappings accept actions and explicit unbinding", "[sdl3
           platform::GamepadButton::East);
 }
 
-TEST_CASE("Virtual SDL gamepads deliver turbo through a running NES ROM",
-          "[sdl3][input][turbo][functional]") {
+TEST_CASE("Virtual SDL gamepads deliver turbo and microphone through a running ROM",
+          "[sdl3][input][turbo][microphone][functional]") {
     // Exercise physical gamepad polling -> actions -> session pulses -> serial
     // NES ports -> emulated 6502 code -> CPU RAM, without a real gamepad.
     struct VirtualPads {
@@ -65,18 +70,21 @@ TEST_CASE("Virtual SDL gamepads deliver turbo through a running NES ROM",
         (player == 0 ? config.player1 : config.player2).gamepad_index = index;
     }
     REQUIRE(apply_gamepad_mapping(config.player1, "turbo_a=leftshoulder"));
-    REQUIRE(apply_gamepad_mapping(config.player2, "turbo_b=rightshoulder"));
+    REQUIRE(
+        apply_gamepad_mapping(config.player2, "turbo_b=rightshoulder,microphone=rightshoulder"));
     core::register_builtin_mappers();
     // Continuously latch and read A/B for both players into RAM. Repeated
     // reads within one frame must not change the generated signal.
     constexpr std::uint8_t kProgram[] = {
-        0xA9, 0x01, 0x8D, 0x16, 0x40,                   // LDA #1; STA $4016
-        0xA9, 0x00, 0x8D, 0x16, 0x40,                   // LDA #0; STA $4016
-        0xAD, 0x16, 0x40, 0x29, 0x01, 0x8D, 0x00, 0x02, // P1 A -> $0200
-        0xAD, 0x16, 0x40, 0x29, 0x01, 0x8D, 0x01, 0x02, // P1 B -> $0201
-        0xAD, 0x17, 0x40, 0x29, 0x01, 0x8D, 0x10, 0x02, // P2 A -> $0210
-        0xAD, 0x17, 0x40, 0x29, 0x01, 0x8D, 0x11, 0x02, // P2 B -> $0211
-        0x4C, 0x00, 0x80                                // JMP $8000
+        0xA9, 0x01, 0x8D, 0x16, 0x40,                                     // LDA #1; STA $4016
+        0xA9, 0x00, 0x8D, 0x16, 0x40,                                     // LDA #0; STA $4016
+        0xAD, 0x16, 0x40, 0x29, 0x01, 0x8D, 0x00, 0x02,                   // P1 A -> $0200
+        0xAD, 0x16, 0x40, 0x29, 0x01, 0x8D, 0x01, 0x02,                   // P1 B -> $0201
+        0xAD, 0x17, 0x40, 0x29, 0x01, 0x8D, 0x10, 0x02,                   // P2 A -> $0210
+        0xAD, 0x17, 0x40, 0x29, 0x01, 0x8D, 0x11, 0x02,                   // P2 B -> $0211
+        0xAD, 0x16, 0x40, 0x29, 0x04, 0x0D, 0x02, 0x02, 0x8D, 0x02, 0x02, // observed high
+        0xAD, 0x16, 0x40, 0x49, 0x04, 0x29, 0x04, 0x0D, 0x03, 0x02, 0x8D, 0x03, 0x02, // low
+        0x4C, 0x00, 0x80                                                              // JMP $8000
     };
     const auto rom = tests::build_ines_rom("turbo-functional", 0, 1, 1, kProgram);
     // Load independently persisted profiles before driving the actual NES ports.
@@ -96,6 +104,7 @@ TEST_CASE("Virtual SDL gamepads deliver turbo through a running NES ROM",
                                   std::make_unique<platform::NullAudio>(),
                                   std::move(input));
     REQUIRE(session.load_rom(rom.string()));
+    session.set_controller_wiring(core::ControllerWiring::RfFamicom);
     REQUIRE(
         SDL_SetJoystickVirtualButton(pads.joysticks[0], SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, true));
     REQUIRE(
@@ -108,6 +117,10 @@ TEST_CASE("Virtual SDL gamepads deliver turbo through a running NES ROM",
             REQUIRE(session.tick() == app::TickResult::FrameAdvanced);
             CHECK(backend->is_action_pressed(0, platform::InputAction::TurboA));
             CHECK(backend->is_action_pressed(1, platform::InputAction::TurboB));
+            CHECK(backend->is_action_pressed(1, platform::InputAction::Microphone));
+            CHECK(session.emulator().microphone_active());
+            CHECK((session.emulator().read_cpu(0x0202) & 4U) == 4);
+            CHECK((session.emulator().read_cpu(0x0203) & 4U) == 4);
             const int on = frame % 4 < 2 ? 1 : 0;
             CHECK(session.emulator().read_cpu(0x0200) == on);
             CHECK(session.emulator().read_cpu(0x0201) == 0);
@@ -123,6 +136,10 @@ TEST_CASE("Virtual SDL gamepads deliver turbo through a running NES ROM",
     REQUIRE(session.tick() == app::TickResult::FrameAdvanced);
     CHECK_FALSE(backend->is_action_pressed(0, platform::InputAction::TurboA));
     CHECK(session.emulator().read_cpu(0x0200) == 0);
+    REQUIRE(
+        SDL_SetJoystickVirtualButton(pads.joysticks[1], SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, false));
+    REQUIRE(session.tick() == app::TickResult::FrameAdvanced);
+    CHECK_FALSE(session.emulator().microphone_active());
     std::filesystem::remove(rom);
 }
 

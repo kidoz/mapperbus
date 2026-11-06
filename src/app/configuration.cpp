@@ -18,6 +18,8 @@ namespace {
 
 [[nodiscard]] int default_keyboard_code_for_button(platform::InputAction button) {
     switch (button) {
+    case platform::InputAction::Microphone:
+        return 16; // M
     case platform::InputAction::TurboA:
         return 22; // S
     case platform::InputAction::TurboB:
@@ -602,6 +604,8 @@ MapperBusInputConfiguration::MapperBusInputConfiguration() {
 
 std::string controller_button_name(platform::InputAction button) {
     switch (button) {
+    case platform::InputAction::Microphone:
+        return "microphone";
     case platform::InputAction::TurboA:
         return "turbo_a";
     case platform::InputAction::TurboB:
@@ -646,8 +650,11 @@ MapperBusConfiguration load_mapperbus_configuration() {
 
 MapperBusConfiguration load_mapperbus_configuration_from_file(const std::filesystem::path& path) {
     MapperBusConfiguration configuration;
-    std::array<std::array<bool, 2>, 2> explicit_turbo_keyboard{};
-    std::array<std::array<bool, 2>, 2> explicit_turbo_gamepad{};
+    constexpr auto kExtraActions = std::array{platform::InputAction::TurboA,
+                                              platform::InputAction::TurboB,
+                                              platform::InputAction::Microphone};
+    std::array<std::array<bool, kExtraActions.size()>, 2> explicit_extra_keyboard{};
+    std::array<std::array<bool, kExtraActions.size()>, 2> explicit_extra_gamepad{};
 
     std::ifstream file(path);
     if (!file) {
@@ -698,12 +705,12 @@ MapperBusConfiguration load_mapperbus_configuration_from_file(const std::filesys
         const auto full_key = scoped_key(section, key);
         for (int player = 0; player < 2; ++player) {
             const std::string prefix = player == 0 ? "input." : "input.player2.";
-            for (int index = 0; index < 2; ++index) {
-                const auto name = index == 0 ? "turbo_a" : "turbo_b";
+            for (std::size_t index = 0; index < kExtraActions.size(); ++index) {
+                const auto name = controller_button_name(kExtraActions[index]);
                 if (full_key == prefix + "keyboard." + name)
-                    explicit_turbo_keyboard[player][index] = true;
+                    explicit_extra_keyboard[player][index] = true;
                 if (full_key == prefix + "gamepad." + name)
-                    explicit_turbo_gamepad[player][index] = true;
+                    explicit_extra_gamepad[player][index] = true;
             }
         }
     }
@@ -715,25 +722,39 @@ MapperBusConfiguration load_mapperbus_configuration_from_file(const std::filesys
                                      : configuration.input.player2_keyboard_bindings;
         auto& gamepad =
             player == 0 ? configuration.input.gamepad : configuration.input.player2_gamepad;
-        for (int index = 0; index < 2; ++index) {
-            const auto action =
-                index == 0 ? platform::InputAction::TurboA : platform::InputAction::TurboB;
+        for (std::size_t index = 0; index < kExtraActions.size(); ++index) {
+            const auto action = kExtraActions[index];
             const auto target = platform::button_index(action);
             for (auto other : platform::input_actions()) {
                 if (other == action)
                     continue;
                 const auto source = platform::button_index(other);
-                if (!explicit_turbo_keyboard[player][index] && keyboard[target] != 0 &&
+                if (!explicit_extra_keyboard[player][index] && keyboard[target] != 0 &&
                     keyboard[target] == keyboard[source]) {
                     keyboard[target] = 0;
                 }
-                if (!explicit_turbo_gamepad[player][index] &&
+                if (!explicit_extra_gamepad[player][index] &&
                     gamepad.bindings[target].kind != platform::GamepadControlKind::None &&
                     gamepad.bindings[target] == gamepad.bindings[source]) {
                     gamepad.bindings[target] = {.kind = platform::GamepadControlKind::None};
                 }
             }
         }
+    }
+    // A keyboard Microphone binding in either profile drives one shared device.
+    // Avoid adding it over an older binding in the other profile as well.
+    const auto mic = platform::button_index(platform::InputAction::Microphone);
+    for (int player = 0; player < 2; ++player) {
+        auto& target = player == 0 ? configuration.input.keyboard_bindings
+                                   : configuration.input.player2_keyboard_bindings;
+        const auto& other = player == 0 ? configuration.input.player2_keyboard_bindings
+                                        : configuration.input.keyboard_bindings;
+        if (explicit_extra_keyboard[player][2] || target[mic] == 0)
+            continue;
+        for (const auto action : platform::input_actions())
+            if (action != platform::InputAction::Microphone &&
+                target[mic] == other[platform::button_index(action)])
+                target[mic] = 0;
     }
     return configuration;
 }

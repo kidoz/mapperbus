@@ -19,6 +19,7 @@ namespace {
     bindings[platform::button_index(platform::InputAction::Select)] = SDL_SCANCODE_RSHIFT;
     bindings[platform::button_index(platform::InputAction::TurboA)] = SDL_SCANCODE_S;
     bindings[platform::button_index(platform::InputAction::TurboB)] = SDL_SCANCODE_A;
+    bindings[platform::button_index(platform::InputAction::Microphone)] = SDL_SCANCODE_M;
     return bindings;
 }
 

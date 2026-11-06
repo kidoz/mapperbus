@@ -20,9 +20,10 @@ enum class InputAction : std::uint8_t {
     Select,
     TurboA,
     TurboB,
+    Microphone,
 };
 
-inline constexpr std::size_t kInputActionCount = 10;
+inline constexpr std::size_t kInputActionCount = 11;
 
 [[nodiscard]] constexpr auto input_actions() {
     return std::array{InputAction::Up,
@@ -34,7 +35,8 @@ inline constexpr std::size_t kInputActionCount = 10;
                       InputAction::Start,
                       InputAction::Select,
                       InputAction::TurboA,
-                      InputAction::TurboB};
+                      InputAction::TurboB,
+                      InputAction::Microphone};
 }
 
 [[nodiscard]] constexpr std::size_t button_index(InputAction action) {

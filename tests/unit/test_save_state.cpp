@@ -199,7 +199,7 @@ TEST_CASE("Snapshots restore controller timing and legacy states select NES wiri
     for (const bool invalid_timing : {false, true}) {
         auto corrupt = rf;
         // RF snapshots must have idle /OE at an instruction boundary.
-        corrupt[end - (invalid_timing ? 2 : 4)] = invalid_timing ? 255 : 1;
+        corrupt[end - (invalid_timing ? 5 : 7)] = invalid_timing ? 255 : 1;
         CHECK_FALSE(emulator.load_state(corrupt));
         CHECK(emulator.save_state() == rf);
     }
@@ -232,13 +232,60 @@ TEST_CASE("Snapshots preserve RF wiring and version 14 retains its NES wiring",
     Apu{}.save_state(apu);
     MemoryBus{}.save_state(bus);
     const auto wiring_offset =
-        43 + cpu.data().size() + ppu.data().size() + apu.data().size() + bus.data().size() - 1;
+        43 + cpu.data().size() + ppu.data().size() + apu.data().size() + bus.data().size() - 4;
     for (const Byte invalid : {Byte{2}, Byte{255}}) {
         auto corrupt = rf;
         corrupt[wiring_offset] = invalid;
         CHECK_FALSE(emulator.load_state(corrupt));
         CHECK(emulator.save_state() == rf);
     }
+}
+
+TEST_CASE("Microphone snapshots preserve the carrier and validate missing or corrupt history",
+          "[state][microphone]") {
+    Emulator emulator;
+    emulator.reset();
+    emulator.set_controller_wiring(ControllerWiring::RfFamicom);
+    const auto legacy = mapperbus::tests::legacy_state(emulator, 15);
+    emulator.set_microphone_active(true);
+    for (int i = 0; i < 80; ++i)
+        emulator.step_instruction();
+    const auto before = emulator.save_state();
+    for (int i = 0; i < 200; ++i)
+        emulator.step_instruction();
+    const auto after = emulator.save_state();
+    REQUIRE(emulator.load_state(before));
+    CHECK(emulator.microphone_active());
+    for (int i = 0; i < 200; ++i)
+        emulator.step_instruction();
+    CHECK(emulator.save_state() == after);
+    REQUIRE(emulator.load_state(legacy));
+    CHECK_FALSE(emulator.microphone_active());
+    CHECK(emulator.controller_wiring() == ControllerWiring::RfFamicom);
+    REQUIRE(emulator.load_state(before));
+    StateWriter cpu, ppu, apu, bus;
+    emulator.cpu().save_state(cpu);
+    emulator.ppu().save_state(ppu);
+    Apu{}.save_state(apu);
+    MemoryBus{}.save_state(bus);
+    const auto end =
+        43 + cpu.data().size() + ppu.data().size() + apu.data().size() + bus.data().size();
+    for (const uint16_t phase : {uint16_t{1024}, uint16_t{65535}}) {
+        auto corrupt = before;
+        std::memcpy(corrupt.data() + end - 2, &phase, sizeof(phase));
+        CHECK_FALSE(emulator.load_state(corrupt));
+        CHECK(emulator.save_state() == before);
+    }
+    auto invalid_flag = before;
+    invalid_flag[end - 3] = 2;
+    CHECK_FALSE(emulator.load_state(invalid_flag));
+    CHECK(emulator.save_state() == before);
+    auto inactive_phase = before;
+    inactive_phase[end - 3] = 0;
+    const uint16_t phase = 1;
+    std::memcpy(inactive_phase.data() + end - 2, &phase, sizeof(phase));
+    CHECK_FALSE(emulator.load_state(inactive_phase));
+    CHECK(emulator.save_state() == before);
 }
 
 TEST_CASE("StateWriter/StateReader round-trips primitives, arrays and byte runs", "[state]") {

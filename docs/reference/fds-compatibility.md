@@ -200,8 +200,9 @@ shows `$67FF` / `$6E25`; both captured values match in MapperBus.
   quirks and PAL register/repeated-read behavior remain unverified. The selected
   All four combinations of NES/AV or RF timing and NES or RF data wiring pass six
   additional targeted checks each. RF built-in controller 2 omits Start/Select.
-  Microphone/accessory behavior and electrical DMC sample capture remain outside
-  that coverage. Reset-cycle bus activity,
+  Synthetic microphone activity has normal/DMA read and snapshot coverage;
+  live audio capture, expansion accessories and electrical DMC sample capture
+  remain outside that coverage. Reset-cycle bus activity,
   analog DRAM decay, 2C33 test mode, and mechanical disk effects are not modeled.
 - CRC coverage includes the public BIOS-dumper write/readback flows, independent
   fixed vectors, and injected CRC faults described above. Physical-drive fault

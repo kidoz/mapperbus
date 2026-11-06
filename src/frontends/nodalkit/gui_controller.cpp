@@ -90,9 +90,11 @@ constexpr auto kBindingOrder = std::array{platform::InputAction::Up,
                                           platform::InputAction::TurboA,
                                           platform::InputAction::TurboB,
                                           platform::InputAction::Start,
-                                          platform::InputAction::Select};
+                                          platform::InputAction::Select,
+                                          platform::InputAction::Microphone};
 
-constexpr std::array<KeyBindingOption, 17> kKeyBindingOptions = {{
+constexpr std::array<KeyBindingOption, 18> kKeyBindingOptions = {{
+    {nk::KeyCode::M, "M"},
     {nk::KeyCode::Up, "Up Arrow"},
     {nk::KeyCode::Down, "Down Arrow"},
     {nk::KeyCode::Left, "Left Arrow"},
@@ -774,6 +776,8 @@ std::string file_dialog_error_text(nk::FileDialogError error) {
 
 std::string button_name(platform::InputAction button) {
     switch (button) {
+    case platform::InputAction::Microphone:
+        return "Microphone";
     case platform::InputAction::Up:
         return "Up";
     case platform::InputAction::Down:
@@ -2751,6 +2755,8 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
                 gamepad_help);
         }
         bindings->append(table);
+        bindings->append(
+            SecondaryText::create("Microphone: hold to simulate sound with RF Famicom wiring."));
         page->append(bindings);
 
         auto turbo_group = SettingsGroup::create("Turbo");

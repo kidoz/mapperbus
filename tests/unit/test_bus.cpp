@@ -405,6 +405,42 @@ TEST_CASE("RF Famicom controller data pins preserve only the documented floating
     CHECK(disconnected.read(0x4017) == 0xE0);
 }
 
+TEST_CASE("Microphone activity is live on RF port one and advances only on CPU clocks",
+          "[bus][controller][microphone]") {
+    for (const auto timing : {ControllerTiming::NesAvFamicom, ControllerTiming::RfFamicom}) {
+        IoMachine machine;
+        machine.bus.set_controller_timing(timing);
+        machine.bus.set_microphone_active(true);
+        CHECK((machine.bus.read(0x4016) & 4U) == 0); // NES wiring ignores the microphone
+        machine.bus.set_controller_wiring(ControllerWiring::RfFamicom);
+        for (int count = 0; count < 12; ++count) {
+            machine.bus.write(0x4016, static_cast<Byte>(count & 1));
+            CHECK((machine.bus.read(0x4016) & 4U) == 4);
+            CHECK((machine.bus.read(0x4017) & 4U) == 0);
+        }
+        constexpr auto half = MemoryBus::kMicrophonePeriodCycles / 2;
+        machine.bus.clock_cpu_bus(0, half - 1);
+        machine.bus.set_microphone_active(true); // host polling must preserve phase
+        CHECK((machine.read(0x4016) & 4U) == 0); // half-period boundary
+        const auto before = machine.save();
+        machine.bus.clock_cpu_bus(0, half);
+        CHECK((machine.bus.read(0x4016) & 4U) == 4);
+        const auto after = machine.save();
+        machine.restore(before);
+        machine.bus.clock_cpu_bus(0, half);
+        CHECK((machine.bus.read(0x4016) & 4U) == 4);
+        CHECK(machine.save() == after);
+        machine.bus.set_microphone_active(false);
+        CHECK((machine.bus.read(0x4016) & 4U) == 0);
+        machine.bus.set_microphone_active(true);
+        CHECK((machine.bus.read(0x4016) & 4U) == 4);
+        machine.bus.clock_cpu_bus(0, half);
+        CHECK_FALSE(machine.bus.microphone_level());
+        machine.bus.reset_clock();
+        CHECK(machine.bus.microphone_level());
+    }
+}
+
 TEST_CASE("RF Famicom built-in controller two has six buttons and still shifts in ones",
           "[bus][controller]") {
     for (const auto timing : {ControllerTiming::NesAvFamicom, ControllerTiming::RfFamicom}) {

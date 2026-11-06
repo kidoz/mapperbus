@@ -47,7 +47,7 @@ TEST_CASE("NodalKit gamepads route independent mappings and release disconnected
         configs[player].gamepad_index = index;
     }
     using platform::InputAction;
-    REQUIRE(platform::apply_gamepad_mapping(configs[1], "a=west,turbo_b=north"));
+    REQUIRE(platform::apply_gamepad_mapping(configs[1], "a=west,turbo_b=north,microphone=north"));
     nk::Window window({.title = "Two player gamepads", .width = 600, .height = 300});
     NodalKitInput input(window, configs[0], configs[1]);
     REQUIRE(SDL_SetJoystickVirtualButton(pads.joysticks[0], SDL_GAMEPAD_BUTTON_EAST, true));
@@ -71,12 +71,15 @@ TEST_CASE("NodalKit gamepads route independent mappings and release disconnected
     REQUIRE(SDL_SetJoystickVirtualButton(pads.joysticks[1], SDL_GAMEPAD_BUTTON_NORTH, true));
     input.poll();
     CHECK(input.is_action_pressed(1, InputAction::TurboB));
+    CHECK(input.is_action_pressed(1, InputAction::Microphone));
+    CHECK_FALSE(input.is_action_pressed(0, InputAction::Microphone));
     SDL_CloseJoystick(pads.joysticks[1]);
     pads.joysticks[1] = nullptr;
     REQUIRE(SDL_DetachVirtualJoystick(pads.ids[1]));
     pads.ids[1] = 0;
     input.poll();
     CHECK_FALSE(input.is_action_pressed(1, InputAction::TurboB));
+    CHECK_FALSE(input.is_action_pressed(1, InputAction::Microphone));
     CHECK_FALSE(input.player_input(1).gamepad_connected());
 }
 

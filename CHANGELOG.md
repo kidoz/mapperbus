@@ -37,6 +37,8 @@ Versioning.
   shared configuration, CLI/SDL3 overrides, and GUI hardware settings.
 - Selectable RF Famicom controller-port wiring, including floating data bits and
   the six-button second controller, with shared settings and frontend overrides.
+- Bindable digital Famicom microphone activity with M as the keyboard default,
+  gamepad mappings, deterministic CPU-cycle pulses, and snapshot persistence.
 
 ### Fixed
 
@@ -78,11 +80,13 @@ Versioning.
 
 ### Changed
 
-- Save-state version 15 preserves controller wiring and timing selections,
+- Save-state version 16 preserves microphone activity/phase, controller wiring
+  and timing selections,
   line/strobe history, and PPU I/O latch, alongside DMC stop latches, regional
-  clocks, interrupts, and FDS state. Versions 4–14 remain readable with
+  clocks, interrupts, and FDS state. Versions 4–15 remain readable with
   reconstructed missing history;
-  pre-v15 states select NES wiring; pre-v14 states select NES/AV Famicom timing;
+  pre-v16 states import an inactive microphone; pre-v15 states select NES wiring;
+  pre-v14 states select NES/AV Famicom timing;
   pre-v13 I/O latches start at zero and pre-v11 PAL states start with a fresh
   divider phase.
 

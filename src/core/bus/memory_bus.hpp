@@ -44,6 +44,7 @@ class MemoryBus {
     }
     void reset_clock() {
         ppu_clock_phase_ = 0;
+        microphone_phase_ = 0;
         set_controller_oe(0);
     }
     void set_controller_timing(ControllerTiming timing) {
@@ -58,6 +59,20 @@ class MemoryBus {
     [[nodiscard]] ControllerWiring controller_wiring() const {
         return controller_wiring_;
     }
+    /// Synthetic noise carrier: one period per 1024 emulated CPU cycles.
+    static constexpr uint16_t kMicrophonePeriodCycles = 1024;
+    void set_microphone_active(bool active) {
+        if (microphone_active_ != active)
+            microphone_phase_ = 0;
+        microphone_active_ = active;
+    }
+    [[nodiscard]] bool microphone_active() const {
+        return microphone_active_;
+    }
+    [[nodiscard]] bool microphone_level() const {
+        return controller_wiring_ == ControllerWiring::RfFamicom && microphone_active_ &&
+               microphone_phase_ < kMicrophonePeriodCycles / 2;
+    }
 
     void save_state(StateWriter& writer) const;
     void load_state(StateReader& reader,
@@ -65,7 +80,8 @@ class MemoryBus {
                     bool has_clock_phase = true,
                     bool has_io_state = true,
                     bool has_controller_timing = true,
-                    bool has_controller_wiring = true);
+                    bool has_controller_wiring = true,
+                    bool has_microphone = true);
     void restore_legacy_controller();
     /// Detector outputs for the current CPU cycle: IRQ level and latched NMI edge.
     [[nodiscard]] Byte interrupt_sample() const {
@@ -139,6 +155,8 @@ class MemoryBus {
     Region region_ = Region::NTSC;
     ControllerTiming controller_timing_ = ControllerTiming::NesAvFamicom;
     ControllerWiring controller_wiring_ = ControllerWiring::Nes;
+    bool microphone_active_ = false;
+    uint16_t microphone_phase_ = 0;
     Byte ppu_clock_phase_ = 0; // elapsed master clocks since the last PPU dot
     Byte controller_oe_ = 0;   // 0: neither, 1/2: continuous read of that port
     bool controller_strobe_request_ = false;

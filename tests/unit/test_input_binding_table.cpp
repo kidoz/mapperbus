@@ -311,3 +311,25 @@ TEST_CASE("NodalKit routes and resets each player's bindings independently", "[g
     CHECK(first.gamepad_config().gamepad_index == 0);
     CHECK_FALSE(first.gamepad_config().enabled);
 }
+
+TEST_CASE("NodalKit microphone key is bindable without sending controller buttons",
+          "[gui][input][microphone]") {
+    using namespace mapperbus;
+    using platform::InputAction;
+    nk::Window window({.title = "Microphone input", .width = 600, .height = 300});
+    platform::GamepadInputConfig player2;
+    player2.gamepad_index = 1;
+    frontend::NodalKitInput input(window, {}, player2);
+    CHECK(input.player_input(0).binding(InputAction::Microphone) == nk::KeyCode::M);
+    CHECK(input.player_input(1).binding(InputAction::Microphone) == nk::KeyCode::Unknown);
+    window.dispatch_key_event({.type = nk::KeyEvent::Type::Press, .key = nk::KeyCode::M});
+    CHECK(input.is_action_pressed(0, InputAction::Microphone));
+    for (const auto button : platform::controller_buttons())
+        CHECK_FALSE(input.is_button_pressed(0, button));
+    input.player_input(0).set_binding(InputAction::Microphone, nk::KeyCode::Unknown);
+    CHECK_FALSE(input.is_action_pressed(0, InputAction::Microphone));
+    input.player_input(1).set_binding(InputAction::Microphone, nk::KeyCode::M);
+    CHECK(input.is_action_pressed(1, InputAction::Microphone));
+    window.dispatch_key_event({.type = nk::KeyEvent::Type::Release, .key = nk::KeyCode::M});
+    CHECK_FALSE(input.is_action_pressed(1, InputAction::Microphone));
+}

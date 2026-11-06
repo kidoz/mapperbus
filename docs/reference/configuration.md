@@ -83,8 +83,8 @@ All frontends apply this preference. CLI and SDL3 accept `--controller-wiring`
 with the same tokens, without changing the saved configuration. The GUI exposes
 Settings → General → Hardware → Controller wiring and saves explicit choices.
 RF wiring models the built-in second controller without Start/Select and the
-unattached controller-port inputs. Microphone activity and expansion accessories
-are not implemented. Existing host bindings are retained for switching back to
+unattached controller-port inputs. Digital microphone activity is available
+through the Microphone action; expansion accessories are not implemented. Existing host bindings are retained for switching back to
 NES. Data-pin changes take effect immediately; a latched button report changes
 on the next strobe. Reset retains the selection.
 
@@ -92,6 +92,23 @@ Snapshot version 15 stores wiring independently of timing. Older snapshots load
 NES wiring, including version 14 snapshots that selected RF timing. Loading a
 snapshot changes the active selection without rewriting the configuration;
 a new GUI ROM open reapplies both preferences.
+
+## Microphone bindings
+
+Both input profiles accept `microphone` under their keyboard/gamepad sections.
+Player one defaults to keyboard code `16` (M); player two is unbound. Gamepad
+bindings default to `none`. Either profile activates the same single RF Famicom
+microphone. GUI Settings → Input includes Microphone capture, clear, conflict
+handling, defaults and input testing. SDL3 mapping options accept `microphone`
+or `mic`, for example `--gamepad2-map microphone=rightshoulder`.
+
+Hold the bound key/button with RF Famicom wiring selected to generate digital
+activity. Keyboard M defaults are unbound on legacy import if another action in
+either profile already uses M; explicit bindings are retained. Bindings use the
+existing version-1 format. Runtime activity and carrier phase are stored in
+snapshot version 16, not user configuration. Older states restore an inactive
+microphone. This feature does not capture host audio or mix microphone sound.
+See [microphone timing](dma-timing.md#digital-microphone).
 
 ## Famicom Disk System
 

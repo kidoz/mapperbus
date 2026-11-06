@@ -155,6 +155,12 @@ class Emulator {
     [[nodiscard]] ControllerWiring controller_wiring() const {
         return bus_.controller_wiring();
     }
+    void set_microphone_active(bool active) {
+        bus_.set_microphone_active(active);
+    }
+    [[nodiscard]] bool microphone_active() const {
+        return bus_.microphone_active();
+    }
 
     void set_region(Region region) {
         region_ = region;

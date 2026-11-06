@@ -70,6 +70,7 @@ core::Result<void> EmulationSession::open_rom(const std::string& rom_path,
         return std::unexpected(result.error());
     }
 
+    emulator_.set_microphone_active(false);
     emulator_.reset();
     turbo_input_.reset();
     // Go through set_paused() so a previously suspended audio device is
@@ -130,6 +131,7 @@ void EmulationSession::close_rom() {
         return;
     }
     emulator_.unload_cartridge();
+    emulator_.set_microphone_active(false);
     turbo_input_.reset();
     rom_loaded_ = false;
     running_ = false;
@@ -386,6 +388,9 @@ void EmulationSession::sync_input() {
                                    Button::Left,
                                    Button::Right};
 
+    emulator_.set_microphone_active(
+        input_->is_action_pressed(0, platform::InputAction::Microphone) ||
+        input_->is_action_pressed(1, platform::InputAction::Microphone));
     for (int player = 0; player < 2; ++player) {
         // Consume each turbo action even when ordinary A/B is held, so its
         // phase remains independent of the normal binding.

@@ -282,6 +282,8 @@ class NodalKitPlayerInput {
             return nk::KeyCode::Unknown;
         }
         switch (button) {
+        case platform::InputAction::Microphone:
+            return nk::KeyCode::M;
         case platform::InputAction::TurboA:
             return nk::KeyCode::S;
         case platform::InputAction::TurboB:

@@ -283,6 +283,38 @@ TEST_CASE("New turbo defaults do not overlap existing custom bindings",
     std::filesystem::remove_all(path.parent_path());
 }
 
+TEST_CASE("Microphone bindings persist and legacy keys keep their meaning",
+          "[configuration][microphone]") {
+    const auto mic = platform::button_index(platform::InputAction::Microphone);
+    const auto path = temporary_config_path();
+    MapperBusConfiguration config;
+    CHECK(config.input.keyboard_bindings[mic] == 16);
+    CHECK(config.input.player2_keyboard_bindings[mic] == 0);
+    CHECK(config.input.gamepad.bindings[mic].kind == platform::GamepadControlKind::None);
+    config.input.player2_keyboard_bindings[mic] = 17;
+    config.input.player2_gamepad.bindings[mic] =
+        platform::gamepad_button_control(platform::GamepadButton::RightShoulder);
+    REQUIRE(save_mapperbus_configuration_to_file(config, path));
+    auto loaded = load_mapperbus_configuration_from_file(path);
+    CHECK(loaded.input.player2_keyboard_bindings[mic] == 17);
+    CHECK(loaded.input.player2_gamepad.bindings[mic] == config.input.player2_gamepad.bindings[mic]);
+    for (const auto prefix : {"input", "input.player2"}) {
+        {
+            std::ofstream file(path);
+            file << '[' << prefix << ".keyboard]\na=16\n";
+        }
+        loaded = load_mapperbus_configuration_from_file(path);
+        CHECK(loaded.input.keyboard_bindings[mic] == 0);
+    }
+    {
+        std::ofstream file(path);
+        file << "[input.keyboard]\na=16\nmicrophone=16\n";
+    }
+    loaded = load_mapperbus_configuration_from_file(path);
+    CHECK(loaded.input.keyboard_bindings[mic] == 16);
+    std::filesystem::remove_all(path.parent_path());
+}
+
 TEST_CASE("MapperBus configuration round-trips universal settings", "[app][configuration]") {
     MapperBusConfiguration configuration;
     configuration.audio.sample_rate = 48000;

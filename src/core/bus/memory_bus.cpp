@@ -25,6 +25,8 @@ void MemoryBus::save_state(StateWriter& writer) const {
     writer.write(static_cast<Byte>(controller_strobe_request_));
     writer.write(controller_timing_);
     writer.write(controller_wiring_);
+    writer.write(static_cast<Byte>(microphone_active_));
+    writer.write(microphone_phase_);
 }
 
 void MemoryBus::load_state(StateReader& reader,
@@ -32,7 +34,8 @@ void MemoryBus::load_state(StateReader& reader,
                            bool has_clock_phase,
                            bool has_io_state,
                            bool has_controller_timing,
-                           bool has_controller_wiring) {
+                           bool has_controller_wiring,
+                           bool has_microphone) {
     reader.read_array(ram_);
     reader.read(open_bus_);
     reader.read(dma_cycles_);
@@ -60,6 +63,12 @@ void MemoryBus::load_state(StateReader& reader,
         has_controller_timing ? reader.read<ControllerTiming>() : ControllerTiming::NesAvFamicom;
     controller_wiring_ =
         has_controller_wiring ? reader.read<ControllerWiring>() : ControllerWiring::Nes;
+    const auto microphone = has_microphone ? reader.read<Byte>() : Byte{0};
+    microphone_active_ = microphone == 1;
+    microphone_phase_ = has_microphone ? reader.read<uint16_t>() : uint16_t{0};
+    if (microphone > 1 || microphone_phase_ >= kMicrophonePeriodCycles ||
+        (!microphone_active_ && microphone_phase_ != 0))
+        reader.fail();
     if (controller_wiring_ > ControllerWiring::RfFamicom ||
         controller_timing_ > ControllerTiming::RfFamicom || controller_oe_ > 2 || strobe > 1 ||
         ((!ntsc_io() || controller_timing_ == ControllerTiming::RfFamicom) && controller_oe_ != 0))
@@ -100,10 +109,11 @@ Byte MemoryBus::read_controller(int player, Byte external, bool timed) {
                      : timed && ntsc_io()   ? controller_->peek(player)
                                             : controller_->read(player);
     // RF $4016 D3/D4 float; D1 is an unattached expansion input and D2
-    // is an idle microphone. $4017's low five bits are all driven.
+    // is the live microphone, independent of the pad shifter and strobe.
     const Byte floating =
         controller_wiring_ == ControllerWiring::RfFamicom && player == 0 ? 0xF8 : 0xE0;
-    return static_cast<Byte>((external & floating) | bit);
+    const Byte microphone = player == 0 && microphone_level() ? 4 : 0;
+    return static_cast<Byte>((external & floating) | bit | microphone);
 }
 
 Byte MemoryBus::read_cpu(Address addr) {
@@ -168,6 +178,9 @@ void MemoryBus::clock_cpu_bus(Address addr, uint32_t cycles) {
 }
 
 void MemoryBus::begin_cpu_cycle(Address addr) {
+    if (microphone_active_)
+        microphone_phase_ =
+            static_cast<uint16_t>((microphone_phase_ + 1U) % kMicrophonePeriodCycles);
     io_access_ = false;
     controller_sample_cycle_ = apu_ == nullptr || apu_->dma_get_cycle();
     // phi1 detector outputs reflect the previous cycle's phi2 pin levels.

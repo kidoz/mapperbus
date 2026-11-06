@@ -105,6 +105,7 @@ struct GamepadInputConfig {
     bindings[button_index(core::Button::Select)] = gamepad_button_control(GamepadButton::Back);
     bindings[button_index(InputAction::TurboA)] = gamepad_button_control(GamepadButton::North);
     bindings[button_index(InputAction::TurboB)] = gamepad_button_control(GamepadButton::West);
+    bindings[button_index(InputAction::Microphone)] = {.kind = GamepadControlKind::None};
     return bindings;
 }
 
@@ -180,6 +181,8 @@ inline GamepadInputConfig::GamepadInputConfig() : bindings(default_gamepad_bindi
         return InputAction::TurboA;
     if (name == "turbob")
         return InputAction::TurboB;
+    if (name == "microphone" || name == "mic")
+        return InputAction::Microphone;
     auto button = parse_controller_button(text);
     if (!button)
         return std::unexpected(button.error());

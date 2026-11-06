@@ -562,6 +562,40 @@ TEST_CASE("Turbo generates frame-based NES signals independently for each player
     }
 }
 
+TEST_CASE("Both input profiles drive one microphone and pause preserves its carrier",
+          "[app][session][microphone]") {
+    core::register_builtin_mappers();
+    auto input = std::make_unique<ActionInput>();
+    auto* held = input.get();
+    held->hold(0, platform::InputAction::Microphone);
+    EmulationSession session(std::make_unique<platform::NullVideo>(),
+                             std::make_unique<TestAudioBackend>(),
+                             std::move(input));
+    session.set_controller_wiring(core::ControllerWiring::RfFamicom);
+    REQUIRE(session.load_rom(test_rom_path()));
+    CHECK_FALSE(session.emulator().microphone_active());
+    REQUIRE(session.tick() == TickResult::FrameAdvanced);
+    CHECK(session.emulator().microphone_active());
+    const auto before = session.emulator().save_state();
+    session.set_paused(true);
+    for (int i = 0; i < 8; ++i) {
+        held->poll();
+        CHECK(session.tick() == TickResult::Paused);
+    }
+    CHECK(session.emulator().save_state() == before);
+    held->hold(0, platform::InputAction::Microphone, false);
+    held->hold(1, platform::InputAction::Microphone);
+    REQUIRE(session.step_frame() == TickResult::FrameAdvanced);
+    CHECK(session.emulator().microphone_active());
+    held->hold(1, platform::InputAction::Microphone, false);
+    REQUIRE(session.step_frame() == TickResult::FrameAdvanced);
+    CHECK_FALSE(session.emulator().microphone_active());
+    held->hold(1, platform::InputAction::Microphone);
+    REQUIRE(session.step_frame() == TickResult::FrameAdvanced);
+    session.close_rom();
+    CHECK_FALSE(session.emulator().microphone_active());
+}
+
 TEST_CASE("Turbo phase ignores UI polls, pause, and audio backpressure", "[app][session][turbo]") {
     core::register_builtin_mappers();
     auto input = std::make_unique<ActionInput>();
