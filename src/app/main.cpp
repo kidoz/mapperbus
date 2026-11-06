@@ -121,6 +121,9 @@ int main(int argc, char* argv[]) {
             "Save-state: F5 save, F7 load; Ctrl+1..9/0 selects slots 1..10 (Shift+Fx: slot 2)");
         mapperbus::core::logger::info(
             "  --entry NAME          ROM member inside a .zip or .7z archive");
+        mapperbus::core::logger::info("  --fds-bios PATH       8 KiB Famicom Disk System BIOS");
+        mapperbus::core::logger::info(
+            "FDS: F6 next side, Shift+F6 eject/insert, F8 toggle write protection");
         mapperbus::core::logger::info("  --state-dir PATH      absolute save-state root override");
         mapperbus::core::logger::info(
             "  --portable-states     store states beside the ROM collection");
@@ -135,8 +138,10 @@ int main(int argc, char* argv[]) {
     const char* region_override = nullptr;
     const char* rom_path = nullptr;
     std::string_view rom_member;
+    std::string fds_bios;
     auto mapperbus_config = mapperbus::app::load_mapperbus_configuration();
     auto state_storage = mapperbus_config.save_states;
+    fds_bios = mapperbus_config.fds_bios_path;
     mapperbus::core::AudioSettings audio_settings = mapperbus_config.audio;
     mapperbus::frontend::Sdl3InputConfig input_config = mapperbus_config.input.gamepad;
     mapperbus::frontend::Sdl3InputConfig input_config2 = mapperbus_config.input.player2_gamepad;
@@ -215,6 +220,8 @@ int main(int argc, char* argv[]) {
         } else if (std::strcmp(argv[i], "--portable-states") == 0) {
             state_storage.mode = mapperbus::app::StateStorageMode::Portable;
             state_storage.directory.clear();
+        } else if (std::strcmp(argv[i], "--fds-bios") == 0 && i + 1 < argc) {
+            fds_bios = argv[++i];
         } else if (std::strcmp(argv[i], "--entry") == 0 && i + 1 < argc) {
             rom_member = argv[++i];
         } else if (std::strcmp(argv[i], "--region") == 0 && i + 1 < argc) {
@@ -263,6 +270,7 @@ int main(int argc, char* argv[]) {
     mapperbus::app::App app(std::move(video), std::move(audio), std::move(input), audio_settings);
     app.session().set_turbo_period(mapperbus_config.input.turbo_period_frames);
     app.session().set_state_storage(state_storage);
+    app.session().set_fds_bios_path(fds_bios);
     auto result = app.initialize(rom_path, rom_member);
     if (!result) {
         mapperbus::core::logger::error("{}", result.error());
@@ -314,6 +322,27 @@ int main(int argc, char* argv[]) {
         }
 
         if (const auto session_command = sdl_input->consume_session_command()) {
+            const auto kind = session_command.kind;
+            using Command = mapperbus::frontend::Sdl3SessionCommandKind;
+            if (kind == Command::NextDiskSide || kind == Command::EjectDisk ||
+                kind == Command::ToggleDiskProtection) {
+                const auto& drive = session.emulator().fds();
+                mapperbus::core::Result<void> changed;
+                if (kind == Command::NextDiskSide)
+                    changed = session.insert_disk_side((drive.current_side() + 1) %
+                                                       std::max(1, drive.side_count()));
+                else if (kind == Command::EjectDisk)
+                    changed = drive.current_side() < 0 ? session.insert_disk_side(0)
+                                                       : session.eject_disk();
+                else
+                    changed = session.set_disk_write_protected(!drive.write_protected());
+                if (!changed)
+                    mapperbus::core::logger::error("{}", changed.error());
+                else
+                    mapperbus::core::logger::info("FDS side: {}, write protected: {}",
+                                                  drive.current_side() + 1,
+                                                  drive.write_protected());
+            }
             const int slot = session_command.slot;
             if (session_command.kind == mapperbus::frontend::Sdl3SessionCommandKind::SlotSelect) {
                 remember_slot(slot);
@@ -374,5 +403,9 @@ int main(int argc, char* argv[]) {
                                           runtime_scale_factor);
         }
     });
+    if (auto saved = app.session().flush_disk_changes(); !saved) {
+        mapperbus::core::logger::error("{}", saved.error());
+        return EXIT_FAILURE;
+    }
     return EXIT_SUCCESS;
 }

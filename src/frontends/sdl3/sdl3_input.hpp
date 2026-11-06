@@ -39,6 +39,9 @@ enum class Sdl3SessionCommandKind {
     SaveState,
     LoadState,
     SlotSelect,
+    NextDiskSide,
+    EjectDisk,
+    ToggleDiskProtection,
 };
 
 struct Sdl3SessionCommand {

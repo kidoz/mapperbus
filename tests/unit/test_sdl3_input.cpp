@@ -222,6 +222,15 @@ TEST_CASE("SDL3 save-state hotkeys map to session commands", "[sdl3][input]") {
     REQUIRE_FALSE(Sdl3Input::session_command_for_scancode(SDL_SCANCODE_A, false, 0));
 }
 
+TEST_CASE("SDL3 FDS hotkeys map to disk controls", "[sdl3][input][fds]") {
+    CHECK(Sdl3Input::session_command_for_scancode(SDL_SCANCODE_F6, false, 0).kind ==
+          Sdl3SessionCommandKind::NextDiskSide);
+    CHECK(Sdl3Input::session_command_for_scancode(SDL_SCANCODE_F6, true, 0).kind ==
+          Sdl3SessionCommandKind::EjectDisk);
+    CHECK(Sdl3Input::session_command_for_scancode(SDL_SCANCODE_F8, false, 0).kind ==
+          Sdl3SessionCommandKind::ToggleDiskProtection);
+}
+
 TEST_CASE("SDL3 selects ten state slots without consuming scaler number keys", "[sdl3][input]") {
     for (int slot = 0; slot < 10; ++slot) {
         const auto key = static_cast<SDL_Scancode>(SDL_SCANCODE_1 + slot);

@@ -149,6 +149,11 @@ Sdl3SessionCommand Sdl3Input::session_command_for_scancode(SDL_Scancode scancode
     // F5/F7 operate on the active slot. Shift+F5/F7 operate on UI slot 2.
     // This gives both "select slot then save" and "quick-save slot 2" flows.
     switch (scancode) {
+    case SDL_SCANCODE_F6:
+        return {.kind = shift ? Sdl3SessionCommandKind::EjectDisk
+                              : Sdl3SessionCommandKind::NextDiskSide};
+    case SDL_SCANCODE_F8:
+        return {.kind = Sdl3SessionCommandKind::ToggleDiskProtection};
     case SDL_SCANCODE_F5:
         return {.kind = Sdl3SessionCommandKind::SaveState, .slot = shift ? 1 : active_slot};
     case SDL_SCANCODE_F7:
