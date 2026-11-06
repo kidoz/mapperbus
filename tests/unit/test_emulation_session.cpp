@@ -204,6 +204,19 @@ TEST_CASE("EmulationSession suspends and resumes the audio device with pause sta
     REQUIRE_FALSE(session.paused());
     REQUIRE(audio_ptr->resume_calls == 2);
     REQUIRE_FALSE(audio_ptr->device_paused);
+
+    // Closing a paused game must keep the logical and device pause states
+    // consistent, or the next open never resumes the device and can stall
+    // behind its undrained audio queue.
+    session.set_paused(true);
+    session.close_rom();
+    REQUIRE_FALSE(session.has_cartridge());
+    CHECK_FALSE(session.paused());
+    CHECK_FALSE(audio_ptr->device_paused);
+    REQUIRE(session.open_rom(test_rom_path()));
+    CHECK_FALSE(audio_ptr->device_paused);
+    CHECK(audio_ptr->resume_calls == 3);
+    REQUIRE(session.tick() == TickResult::FrameAdvanced);
 }
 
 TEST_CASE("EmulationSession supports close, region change, and audio settings mutation",

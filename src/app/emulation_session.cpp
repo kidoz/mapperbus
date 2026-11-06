@@ -133,7 +133,8 @@ void EmulationSession::close_rom() {
     turbo_input_.reset();
     rom_loaded_ = false;
     running_ = false;
-    paused_ = false;
+    // Resume a suspended device as well as clearing the session flag.
+    set_paused(false);
     current_rom_path_.clear();
     current_rom_member_.clear();
     state_directory_.clear();

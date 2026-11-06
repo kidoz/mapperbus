@@ -50,6 +50,7 @@ extern char** environ;
 #include "app/rom_source.hpp"
 #include "core/binary_file.hpp"
 #include "core/mappers/mapper_registry.hpp"
+#include "frontends/nodalkit/gui_close_policy.hpp"
 #include "frontends/nodalkit/input_binding_table.hpp"
 #include "platform/video/fsr1.hpp"
 #include "platform/video/null_video.hpp"
@@ -1304,11 +1305,14 @@ void MapperBusGuiController::wire_ui() {
         app_.event_loop().post([this] { refresh_settings_dialog_sections(); },
                                "mapperbus.settings-theme");
     });
+    guard_window_close(
+        window_,
+        [this] { return session_->flush_disk_changes(); },
+        [this](const std::string& error) {
+            set_message(error);
+            refresh_ui();
+        });
     (void)window_.on_close_requested().connect([this] {
-        if (auto saved = session_->flush_disk_changes(); !saved) {
-            set_message(saved.error());
-            return;
-        }
         save_configuration_state();
         app_.quit(0);
     });

@@ -131,6 +131,12 @@ test('state-storage', test_state_storage)
 
 
 if get_option('enable_nodalkit_gui')
+    test_gui_close = executable('test-gui-close',
+        'integration/test_gui_close.cpp',
+        dependencies : [mapperbus_core_dep, nodalkit_dep, catch2_dep],
+    )
+    test('gui-close', test_gui_close)
+
     test_input_binding_table = executable('test-input-binding-table',
         'unit/test_input_binding_table.cpp',
         include_directories : mapperbus_inc,

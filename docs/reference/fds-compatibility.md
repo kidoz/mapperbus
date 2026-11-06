@@ -185,9 +185,9 @@ or a comparison with recordings from hardware.
 
 - All six raw/ZIP/7z game workflows passed with the supplied files; frame
   artifacts confirmed SMB2 world 1-1 and Metroid gameplay/save/reloaded-file screens.
-- The regular build passed 29 suite executables. Its optional image/diagnostic
-  cases were skipped in the asset-free run and passed in separate explicit
-  asset runs.
+- The regular build passed 30 suite executables, including GUI close recovery.
+  Its optional image/diagnostic cases were skipped in the asset-free run and
+  passed in separate explicit asset runs.
 - The GUI-disabled ASan/UBSan build passed 27 suite executables, including all
   five public diagnostic cases and the original audio probe. All six licensed
   raw/ZIP/7z workflows also passed in separate sanitizer runs. Leak detection was
@@ -195,6 +195,37 @@ or a comparison with recordings from hardware.
 - The FDS static analyzer, changed-file formatting and documentation-link checks
   passed. The headless CLI ran Metroid for 1200 frames with the new audio model.
   Source BIOS and disk SHA-256 values were unchanged.
+
+### GUI workflow validation
+
+The macOS NodalKit GUI was exercised with the supplied Metroid image and BIOS
+using a temporary profile; the original profile was restored with matching file
+hashes afterward. Raw, headered ZIP, and headerless 7z opens used the BIOS saved
+through Settings. The checks covered:
+
+- Missing BIOS and an 8191-byte BIOS selection produce actionable errors.
+- Disk Controls can eject, insert side B, and toggle write protection. Loading
+  a snapshot restores side A and its original protection state.
+- A registered file is written to the separate disk save and appears after a
+  fresh 7z boot. Raw gameplay snapshots also restore through ZIP and 7z.
+- Corrupt archives and malformed members in the archive chooser leave the
+  paused machine snapshot byte-for-byte unchanged.
+- Blocking the disk-save directory preserves the session on Close ROM and
+  Quit, reports the error, and still permits a recovery disk export. Repairing
+  storage allows saving and closing normally.
+- Closing a paused game and opening an archive resumes audio and gameplay;
+  keyboard movement was checked after reopening in the rebuilt GUI.
+
+The display-free [gui-close regression](../../tests/integration/test_gui_close.cpp)
+sends NodalKit's native Close event
+with synthetic unsaved FDS progress. It verifies that failed persistence vetoes
+the close, retains the machine state and recovery export, and permits closing
+after storage is repaired. The old close-notification approach fails this test
+because it hides the window despite the save error. `emulation-session` also
+covers device resume after closing a paused game. Both regressions were checked
+against the previous behavior before applying the fixes.
+The close regression also passed with ASan/UBSan on the test and core; its
+NodalKit library used the regular build.
 
 ## Reproduce the checks
 

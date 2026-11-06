@@ -21,6 +21,10 @@ Versioning.
 
 ### Fixed
 
+- Keep the GUI window visible when FDS progress cannot be saved, using the
+  toolkit's close-veto policy before its close notification.
+- Resume the audio device when closing a paused game so the next game can
+  advance instead of stalling behind an undrained audio queue.
 - FDS audio phase advancement during wavetable writes, held output samples,
   volume-latch/envelope timing, fractional modulation pitch, and debug readback
   at `$4091` and `$4093–$4096` (with documented multiplier/counter approximations).

@@ -28,6 +28,14 @@ The suites cover CPU, PPU, bus, mappers and timing, FDS, audio, configuration,
 sessions, input, saves, and rendering. The `battle-city-render` integration
 test uses a generated NROM fixture; no commercial ROM is required.
 
+With the NodalKit frontend enabled, `gui-close` checks failed FDS saves, recovery
+export, and native window-close veto/retry using synthetic media and the
+toolkit's software window model. It needs no display or supplied BIOS:
+
+```sh
+meson test -C buildDir gui-close emulation-session --print-errorlogs
+```
+
 ## Exercise local FDS images
 
 The optional `fds-compatibility` suite uses BIOS/game files supplied locally
