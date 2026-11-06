@@ -246,7 +246,7 @@ TEST_CASE("MapperBus configuration round-trips universal settings", "[app][confi
     configuration.audio.drc_rate_adjustment = 0.01;
     configuration.frontend.preview_scale_index = 2;
     configuration.frontend.ui_density_index = 3;
-    configuration.frontend.settings_page_index = 2;
+    configuration.frontend.settings_page_index = 3;
     configuration.frontend.audio_muted = true;
     configuration.frontend.audio_volume_percent = 40;
     configuration.frontend.region = RegionPreference::Pal;
@@ -275,7 +275,7 @@ TEST_CASE("MapperBus configuration round-trips universal settings", "[app][confi
     REQUIRE(loaded.audio.drc_rate_adjustment == 0.01);
     REQUIRE(loaded.frontend.preview_scale_index == 2);
     REQUIRE(loaded.frontend.ui_density_index == 3);
-    REQUIRE(loaded.frontend.settings_page_index == 2);
+    REQUIRE(loaded.frontend.settings_page_index == 3);
     REQUIRE(loaded.frontend.audio_muted);
     REQUIRE(loaded.frontend.audio_volume_percent == 40);
     REQUIRE(loaded.frontend.region == RegionPreference::Pal);
@@ -296,13 +296,14 @@ TEST_CASE("Settings pane defaults safely for missing and invalid preferences",
     CHECK(MapperBusConfiguration{}.frontend.settings_page_index == 0);
     const auto path = temporary_config_path();
     std::filesystem::create_directories(path.parent_path());
-    for (const auto* value : {"0", "1", "2", "-1", "3", "invalid"}) {
+    for (const auto* value : {"0", "1", "2", "3", "-1", "4", "invalid"}) {
         {
             std::ofstream file(path);
             file << "[frontend]\nsettings_page=" << value << '\n';
         }
         const auto loaded = load_mapperbus_configuration_from_file(path);
-        const int expected = std::string(value) == "1" ? 1 : std::string(value) == "2" ? 2 : 0;
+        const std::string pane(value);
+        const int expected = pane == "1" ? 1 : pane == "2" ? 2 : pane == "3" ? 3 : 0;
         CHECK(loaded.frontend.settings_page_index == expected);
     }
     std::filesystem::remove_all(path.parent_path());

@@ -40,7 +40,7 @@ enum class RegionPreference {
 struct MapperBusFrontendConfiguration {
     int preview_scale_index = 0;
     int ui_density_index = 0;
-    /// Last Settings pane: Input (0), Video (1), or Audio (2).
+    /// Last Settings pane: Input (0), Video (1), Audio (2), or General (3).
     int settings_page_index = 0;
     bool audio_muted = false;
     /// Speaker loudness from 0 to 100. Mute is a separate switch.

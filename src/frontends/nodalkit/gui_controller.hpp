@@ -53,6 +53,7 @@ class MapperBusGuiController {
         Input,
         Video,
         Audio,
+        General,
     };
 
     enum class RebindDevice {
@@ -84,7 +85,7 @@ class MapperBusGuiController {
     void browse_for_rom();
     void attempt_open(std::string rom_path, std::string member = {});
     void choose_archive_rom(std::string rom_path, std::vector<std::string> members);
-    void open_fds_dialog();
+    void open_disk_controls();
     void perform_disk_action(std::string_view action);
     void toggle_pause();
     void step_frame();

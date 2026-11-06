@@ -292,7 +292,7 @@ void apply_setting(MapperBusConfiguration& configuration,
     }
     if (full_key == "frontend.settings_page") {
         const int page = parse_int(value, 0, full_key);
-        configuration.frontend.settings_page_index = page >= 0 && page <= 2 ? page : 0;
+        configuration.frontend.settings_page_index = page >= 0 && page <= 3 ? page : 0;
         return;
     }
     if (full_key == "frontend.audio_volume") {

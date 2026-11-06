@@ -170,7 +170,7 @@ core::Result<void> load_fds_source(core::Emulator& emulator,
     if (!bios)
         return std::unexpected(
             bios.error() +
-            "; choose an 8 KiB BIOS in File > Famicom Disk System or use --fds-bios PATH");
+            "; choose an 8 KiB BIOS in Settings > General > BIOS or use --fds-bios PATH");
     auto payload = disk;
     if (disk.size() >= 16 && disk[0] == 'F' && disk[1] == 'D' && disk[2] == 'S' && disk[3] == 0x1A)
         payload = disk.subspan(16);

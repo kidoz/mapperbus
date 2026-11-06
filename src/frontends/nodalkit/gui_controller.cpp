@@ -216,7 +216,6 @@ std::vector<nk::NativeMenu> build_native_menus(std::string_view app_name, int ac
          {
              nk::NativeMenuItem::action("Open ROM…", "file.open", command_shortcut(nk::KeyCode::O)),
              nk::NativeMenuItem::action("Close ROM", "file.close"),
-             nk::NativeMenuItem::action("Famicom Disk System…", "fds.settings"),
          }},
         {"Emulation",
          {
@@ -235,6 +234,7 @@ std::vector<nk::NativeMenu> build_native_menus(std::string_view app_name, int ac
              nk::NativeMenuItem::action("Step Frame", "emu.step"),
              nk::NativeMenuItem::action("Power Cycle", "emu.power"),
              nk::NativeMenuItem::make_separator(),
+             nk::NativeMenuItem::action("Disk Controls…", "fds.controls"),
              nk::NativeMenuItem::action(
                  "Next Disk Side", "fds.next", plain_shortcut(nk::KeyCode::F6)),
              nk::NativeMenuItem::action("Eject or Insert Disk", "fds.eject"),
@@ -1622,6 +1622,7 @@ void MapperBusGuiController::rebuild_header_menu() {
         add_action("Step Frame", "emu.step");
         add_action("Power Cycle", "emu.power");
         if (snapshot.is_fds) {
+            add_action("Disk Controls…", "fds.controls");
             add_action("Next Disk Side (F6)", "fds.next");
             add_action("Eject or Insert Disk", "fds.eject");
             add_action("Toggle Write Protection (F8)", "fds.protect");
@@ -1629,7 +1630,6 @@ void MapperBusGuiController::rebuild_header_menu() {
         add_separator();
         add_action("Close ROM", "file.close");
     }
-    add_action("Famicom Disk System…", "fds.settings");
     add_action(menu_label(window_.is_fullscreen() ? "Leave Fullscreen" : "Fullscreen", "F11"),
                "win.toggle-fullscreen");
     add_action(menu_label("Settings…", "Ctrl+,"), "settings.open");
@@ -1803,40 +1803,11 @@ void MapperBusGuiController::perform_disk_action(std::string_view action) {
     focus_game_surface();
 }
 
-void MapperBusGuiController::open_fds_dialog() {
+void MapperBusGuiController::open_disk_controls() {
     if (modal_dialog_presented())
         return;
     const auto snapshot = actions_->snapshot();
     auto content = Box::vertical(12.0F);
-    auto bios_label = nk::Label::create(configuration_.fds_bios_path.empty()
-                                            ? "BIOS: application data / bios / disksys.rom"
-                                            : "BIOS: " + configuration_.fds_bios_path);
-    bios_label->set_wrapping(true);
-    content->append(bios_label);
-    auto browse = nk::Button::create("Choose FDS BIOS…");
-    (void)browse->on_clicked().connect([this, bios_label] {
-        app_.open_file_dialog_async(
-            "Choose 8 KiB FDS BIOS",
-            {"*.rom", "*.bin"},
-            [this, bios_label](nk::OpenFileDialogResult result) {
-                if (!result) {
-                    if (result.error() != nk::FileDialogError::Cancelled)
-                        set_message(file_dialog_error_text(result.error()));
-                    return;
-                }
-                auto bios = core::read_binary_file_capped(*result, 8192, "FDS BIOS");
-                if (!bios || bios->size() != 8192) {
-                    set_message(bios ? "FDS BIOS must contain exactly 8192 bytes." : bios.error());
-                    return;
-                }
-                configuration_.fds_bios_path = *result;
-                session_->set_fds_bios_path(*result);
-                save_configuration_state();
-                bios_label->set_text("BIOS: " + *result);
-                set_message("BIOS selected. Open an FDS disk to use it.");
-            });
-    });
-    content->append(browse);
     if (snapshot.is_fds) {
         std::vector<std::string> labels;
         for (int side = 0; side < snapshot.disk_side_count; ++side) {
@@ -1896,8 +1867,8 @@ void MapperBusGuiController::open_fds_dialog() {
         });
         content->append(export_button);
     } else
-        content->append(SecondaryText::create("Open a .fds image after choosing its BIOS."));
-    fds_dialog_ = nk::Dialog::create("Famicom Disk System");
+        content->append(SecondaryText::create("Open a .fds image to use disk controls."));
+    fds_dialog_ = nk::Dialog::create("Disk Controls");
     fds_dialog_->set_content(FixedWidthSlot::create(480.0F, content));
     fds_dialog_->add_button("Done", nk::DialogResponse::Close);
     (void)fds_dialog_->on_response().connect([this](nk::DialogResponse) {
@@ -2578,6 +2549,8 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_dialog_shell(
             return 1;
         case SettingsPage::Audio:
             return 2;
+        case SettingsPage::General:
+            return 3;
         case SettingsPage::Input:
         default:
             return 0;
@@ -2587,7 +2560,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_dialog_shell(
     auto tabs_row = Box::horizontal(12.0F);
     settings_tabs_ = nk::SegmentedControl::create();
     settings_tabs_->ensure_accessible().set_name("Settings categories");
-    settings_tabs_->set_segments({"Input", "Video", "Audio"});
+    settings_tabs_->set_segments({"Input", "Video", "Audio", "General"});
     settings_tabs_->set_selected_index(page_index());
     (void)settings_tabs_->on_selection_changed().connect([this](int index) {
         const auto next_page = [index]() {
@@ -2596,6 +2569,8 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_dialog_shell(
                 return SettingsPage::Video;
             case 2:
                 return SettingsPage::Audio;
+            case 3:
+                return SettingsPage::General;
             case 0:
             default:
                 return SettingsPage::Input;
@@ -2633,7 +2608,59 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_dialog_shell(
 std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content() {
     auto page = Box::vertical(16.0F);
     page->set_horizontal_size_policy(nk::SizePolicy::Expanding);
-    if (settings_page_ == SettingsPage::Input) {
+    if (settings_page_ == SettingsPage::General) {
+        input_test_label_.reset();
+        auto bios_group = SettingsGroup::create("BIOS");
+        bios_group->set_horizontal_size_policy(nk::SizePolicy::Expanding);
+        const auto bios_path = configuration_.fds_bios_path.empty()
+                                   ? app::mapperbus_data_directory() / "bios" / "disksys.rom"
+                                   : std::filesystem::path(configuration_.fds_bios_path);
+        auto bios_status = nk::Label::create();
+        bios_status->set_wrapping(true);
+        bios_status->set_visible(false);
+        auto browse = nk::Button::create("Choose BIOS…");
+        auto bios_row = pref_row("Famicom Disk System", browse, bios_path.filename().string());
+        bios_row->ensure_accessible().set_description(bios_path.string());
+        browse->ensure_accessible().set_name("Choose FDS BIOS");
+        browse->ensure_accessible().set_description(bios_path.string());
+        const std::weak_ptr<nk::PreferencesRow> weak_bios_row = bios_row;
+        (void)browse->on_clicked().connect([this, weak_bios_row, bios_status] {
+            app_.open_file_dialog_async(
+                "Choose 8 KiB FDS BIOS",
+                {"*.rom", "*.bin"},
+                [this, weak_bios_row, bios_status](nk::OpenFileDialogResult result) {
+                    if (settings_window_ && settings_window_->is_visible()) {
+                        settings_window_->present();
+                    }
+                    if (!result) {
+                        if (result.error() != nk::FileDialogError::Cancelled) {
+                            bios_status->set_text(file_dialog_error_text(result.error()));
+                            bios_status->set_visible(true);
+                        }
+                        return;
+                    }
+                    auto bios = core::read_binary_file_capped(*result, 8192, "FDS BIOS");
+                    if (!bios || bios->size() != 8192) {
+                        bios_status->set_text(bios ? "FDS BIOS must contain exactly 8192 bytes."
+                                                   : bios.error());
+                        bios_status->set_visible(true);
+                        return;
+                    }
+                    configuration_.fds_bios_path = *result;
+                    session_->set_fds_bios_path(*result);
+                    save_configuration_state();
+                    if (const auto row = weak_bios_row.lock()) {
+                        row->set_subtitle(std::filesystem::path(*result).filename().string());
+                        row->ensure_accessible().set_description(*result);
+                        row->suffix()->ensure_accessible().set_description(*result);
+                    }
+                    bios_status->set_visible(false);
+                });
+        });
+        bios_group->add(bios_row);
+        page->append(bios_group);
+        page->append(bios_status);
+    } else if (settings_page_ == SettingsPage::Input) {
         auto player_selector = nk::SegmentedControl::create();
         player_selector->set_segments({"Player 1", "Player 2"});
         player_selector->set_selected_index(settings_input_player_);
@@ -3001,6 +3028,8 @@ void MapperBusGuiController::refresh_settings_dialog_sections() {
             return 1;
         case SettingsPage::Audio:
             return 2;
+        case SettingsPage::General:
+            return 3;
         case SettingsPage::Input:
         default:
             return 0;
@@ -3011,7 +3040,7 @@ void MapperBusGuiController::refresh_settings_dialog_sections() {
         settings_tabs_->set_selected_index(page_index());
     }
     if (settings_window_) {
-        const std::array<std::string_view, 3> names{"Input", "Video", "Audio"};
+        const std::array<std::string_view, 4> names{"Input", "Video", "Audio", "General"};
         settings_window_->set_title(std::string(names[page_index()]) + " — Settings");
     }
     if (settings_page_slot_) {
@@ -3179,8 +3208,8 @@ void MapperBusGuiController::handle_menu_action(std::string_view action) {
     if (action.starts_with("emu.") && modal_dialog_presented() && (!choosing_slot || other_modal)) {
         return;
     }
-    if (action == "fds.settings") {
-        open_fds_dialog();
+    if (action == "fds.controls") {
+        open_disk_controls();
         return;
     }
     if (action.starts_with("fds.")) {
