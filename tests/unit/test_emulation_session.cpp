@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "../support/test_rom.hpp"
+#include "app/async_rom_loader.hpp"
 #include "app/emulation_session.hpp"
 #include "app/session_actions.hpp"
 #include "core/mappers/mapper_registry.hpp"
@@ -192,7 +193,18 @@ TEST_CASE("EmulationSession suspends and resumes the audio device with pause sta
 
     // Reopening a ROM while paused must resume the suspended device through
     // set_paused(), not just flip the flag, or the new ROM stays silent.
-    REQUIRE(session.open_rom(test_rom_path()));
+    SECTION("Synchronous reopen") {
+        REQUIRE(session.open_rom(test_rom_path()));
+    }
+    SECTION("Adopt prepared media") {
+        REQUIRE(session.emulator().flush_persistent_data());
+        RomLoadRequest request;
+        request.path = test_rom_path();
+        request.audio_settings = session.audio_settings();
+        auto prepared = prepare_rom(request);
+        REQUIRE(prepared);
+        session.adopt_rom(std::move(*prepared));
+    }
     REQUIRE_FALSE(session.paused());
     REQUIRE(audio_ptr->resume_calls == 1);
     REQUIRE_FALSE(audio_ptr->device_paused);

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <filesystem>
 
+#include "app/async_rom_loader.hpp"
 #include "app/rom_source.hpp"
 #include "core/logger.hpp"
 
@@ -15,8 +16,9 @@ EmulationSession::EmulationSession(std::unique_ptr<platform::VideoBackend> video
                                    std::unique_ptr<platform::AudioBackend> audio,
                                    std::unique_ptr<platform::InputBackend> input,
                                    const core::AudioSettings& audio_settings)
-    : audio_settings_(audio_settings), emulator_(audio_settings), video_(std::move(video)),
-      audio_(std::move(audio)), input_(std::move(input)), audio_staging_(kAudioStagingSamples) {}
+    : audio_settings_(audio_settings), emulator_(std::make_shared<core::Emulator>(audio_settings)),
+      video_(std::move(video)), audio_(std::move(audio)), input_(std::move(input)),
+      audio_staging_(kAudioStagingSamples) {}
 
 EmulationSession::~EmulationSession() {
     suspend_live_microphone();
@@ -66,14 +68,14 @@ core::Result<void> EmulationSession::open_rom(const std::string& rom_path,
         }
     }
 
-    auto result = load_rom_source(emulator_, rom_path, member, fds_bios_path_);
+    auto result = load_rom_source(*emulator_, rom_path, member, fds_bios_path_);
     if (!result) {
         return std::unexpected(result.error());
     }
 
     suspend_live_microphone();
-    emulator_.set_microphone_active(false);
-    emulator_.reset();
+    emulator_->set_microphone_active(false);
+    emulator_->reset();
     turbo_input_.reset();
     // Go through set_paused() so a previously suspended audio device is
     // resumed; assigning paused_ directly would leave the new ROM silent.
@@ -89,36 +91,54 @@ core::Result<void> EmulationSession::open_rom(const std::string& rom_path,
     return {};
 }
 
+void EmulationSession::adopt_rom(PreparedRom media) {
+    // Outgoing persistence was checked by the worker. Retirement performs no I/O.
+    emulator_->set_persistence_enabled(false);
+    emulator_ = std::move(media.emulator);
+    emulator_->set_persistence_enabled(true);
+    suspend_live_microphone();
+    turbo_input_.reset();
+    set_paused(false);
+    running_ = true;
+    rom_loaded_ = true;
+    current_rom_path_ = std::move(media.path);
+    current_rom_member_ = std::move(media.member);
+    state_directory_ = std::move(media.state_directory);
+    disk_save_frames_ = 0;
+    disk_save_error_.clear();
+    reset_audio_fill_ratio_history();
+}
+
 core::Result<void> EmulationSession::insert_disk_side(int side) {
-    if (!emulator_.is_fds())
+    if (!emulator_->is_fds())
         return std::unexpected("No FDS game is loaded");
-    if (side < 0 || side >= emulator_.fds().side_count())
+    if (side < 0 || side >= emulator_->fds().side_count())
         return std::unexpected("Invalid disk side");
     if (auto saved = flush_disk_changes(); !saved)
         return saved;
-    emulator_.fds().insert_side(side);
+    emulator_->fds().insert_side(side);
     return {};
 }
 core::Result<void> EmulationSession::eject_disk() {
-    if (!emulator_.is_fds())
+    if (!emulator_->is_fds())
         return std::unexpected("No FDS game is loaded");
     if (auto saved = flush_disk_changes(); !saved)
         return saved;
-    emulator_.fds().eject();
+    emulator_->fds().eject();
     return {};
 }
 core::Result<void> EmulationSession::set_disk_write_protected(bool protected_disk) {
-    if (!emulator_.is_fds())
+    if (!emulator_->is_fds())
         return std::unexpected("No FDS game is loaded");
-    emulator_.fds().set_write_protected(protected_disk);
+    emulator_->fds().set_write_protected(protected_disk);
     return {};
 }
 core::Result<void> EmulationSession::export_disk(const std::string& path) {
-    return emulator_.export_disk(path);
+    return emulator_->export_disk(path);
 }
 
 core::Result<void> EmulationSession::flush_disk_changes() {
-    auto result = emulator_.flush_disk_changes();
+    auto result = emulator_->flush_disk_changes();
     disk_save_error_ = result ? std::string{} : result.error();
     return result;
 }
@@ -132,9 +152,9 @@ void EmulationSession::close_rom() {
         core::logger::error("{}", saved.error());
         return;
     }
-    emulator_.unload_cartridge();
+    emulator_->unload_cartridge();
     suspend_live_microphone();
-    emulator_.set_microphone_active(false);
+    emulator_->set_microphone_active(false);
     turbo_input_.reset();
     rom_loaded_ = false;
     running_ = false;
@@ -175,10 +195,10 @@ TickResult EmulationSession::tick() {
     }
 
     sync_input();
-    emulator_.step_frame();
+    emulator_->step_frame();
     if (++disk_save_frames_ >= 120) {
         disk_save_frames_ = 0;
-        if (!emulator_.fds().disk_active()) {
+        if (!emulator_->fds().disk_active()) {
             auto saved = flush_disk_changes();
             if (!saved)
                 core::logger::error("{}", saved.error());
@@ -207,14 +227,14 @@ TickResult EmulationSession::step_frame() {
     }
 
     sync_input();
-    emulator_.step_frame();
+    emulator_->step_frame();
     submit_current_frame();
     return TickResult::FrameAdvanced;
 }
 
 void EmulationSession::reset() {
     suspend_live_microphone();
-    emulator_.reset();
+    emulator_->reset();
     turbo_input_.reset();
 }
 
@@ -223,7 +243,7 @@ void EmulationSession::power_cycle() {
         return;
     }
     suspend_live_microphone();
-    emulator_.reset();
+    emulator_->reset();
     turbo_input_.reset();
     set_paused(false);
 }
@@ -272,7 +292,7 @@ void EmulationSession::configure_live_microphone(LiveMicrophoneSettings settings
 }
 
 void EmulationSession::set_region(core::Region region) {
-    emulator_.set_region(region);
+    emulator_->set_region(region);
 }
 
 int EmulationSession::audio_queued_samples() const {
@@ -291,7 +311,7 @@ core::Result<void> EmulationSession::apply_audio_settings(const core::AudioSetti
     suspend_live_microphone();
     const auto previous_settings = audio_settings_;
     audio_settings_ = settings;
-    emulator_.apply_audio_settings(audio_settings_);
+    emulator_->apply_audio_settings(audio_settings_);
 
     if (!initialized_) {
         return {};
@@ -305,7 +325,7 @@ core::Result<void> EmulationSession::apply_audio_settings(const core::AudioSetti
 
     const std::string& original_error = result.error();
     audio_settings_ = previous_settings;
-    emulator_.apply_audio_settings(audio_settings_);
+    emulator_->apply_audio_settings(audio_settings_);
     auto restore_result = reinitialize_audio_backend();
     if (!restore_result) {
         running_ = false;
@@ -324,7 +344,7 @@ void EmulationSession::set_state_storage(const StateStorageSettings& settings) {
 }
 
 std::string EmulationSession::game_identity() const {
-    return rom_loaded_ ? core::sha256_hex(emulator_.content_hash()) : std::string{};
+    return rom_loaded_ ? core::sha256_hex(emulator_->content_hash()) : std::string{};
 }
 
 std::string EmulationSession::state_path_for_slot(int slot) const {
@@ -344,7 +364,7 @@ core::Result<std::string> EmulationSession::state_load_path_for_slot(int slot) c
         return std::unexpected("Cannot access save-state file: " + primary + ": " +
                                error.message());
     }
-    if (!current_rom_member_.empty() || emulator_.is_fds()) {
+    if (!current_rom_member_.empty() || emulator_->is_fds()) {
         return primary;
     }
     auto legacy = legacy_state_path(current_rom_path_, slot).string();
@@ -370,7 +390,7 @@ core::Result<void> EmulationSession::save_state(int slot) {
     }
     if (auto saved = flush_disk_changes(); !saved)
         return saved;
-    return emulator_.save_state_to_file(state_path_for_slot(slot));
+    return emulator_->save_state_to_file(state_path_for_slot(slot));
 }
 
 core::Result<void> EmulationSession::load_state(int slot) {
@@ -383,7 +403,7 @@ core::Result<void> EmulationSession::load_state(int slot) {
         core::logger::warn(
             "Importing a legacy sibling state; old versions cannot verify ROM identity: {}", *path);
     }
-    auto result = emulator_.load_state_from_file(*path, legacy);
+    auto result = emulator_->load_state_from_file(*path, legacy);
     if (result) {
         suspend_live_microphone();
         turbo_input_.reset();
@@ -410,7 +430,7 @@ core::Result<void> EmulationSession::set_upscaler(std::unique_ptr<platform::Upsc
     }
 
     if (rom_loaded_) {
-        video_->render(emulator_.frame_buffer());
+        video_->render(emulator_->frame_buffer());
     }
 
     return {};
@@ -428,7 +448,7 @@ void EmulationSession::sync_input() {
                                    Button::Right};
 
     const bool was_recording = live_microphone_.recording();
-    const bool live = live_microphone_.poll(!paused_ && emulator_.controller_wiring() ==
+    const bool live = live_microphone_.poll(!paused_ && emulator_->controller_wiring() ==
                                                             core::ControllerWiring::RfFamicom);
     if (was_recording && !live_microphone_.recording())
         clear_microphone_playback();
@@ -447,19 +467,19 @@ void EmulationSession::sync_input() {
                 pressed |= turbo_a;
             if (button == Button::B)
                 pressed |= turbo_b;
-            auto& controller = player < 2   ? emulator_.controller()
-                               : player < 4 ? emulator_.expansion_controller()
-                                            : emulator_.additional_expansion_controller();
+            auto& controller = player < 2   ? emulator_->controller()
+                               : player < 4 ? emulator_->expansion_controller()
+                                            : emulator_->additional_expansion_controller();
             controller.set_button_state(player % 2, button, pressed);
         }
     }
-    emulator_.set_microphone_active(microphone);
+    emulator_->set_microphone_active(microphone);
 }
 
 void EmulationSession::submit_current_frame() {
-    video_->render(emulator_.frame_buffer());
+    video_->render(emulator_->frame_buffer());
 
-    const std::size_t count = emulator_.drain_audio(audio_staging_.data(), audio_staging_.size());
+    const std::size_t count = emulator_->drain_audio(audio_staging_.data(), audio_staging_.size());
     if (count > 0) {
         const int channels = audio_settings_.stereo_mode == core::StereoMode::PseudoStereo ? 2 : 1;
         live_microphone_.mix_into(
@@ -471,7 +491,7 @@ void EmulationSession::submit_current_frame() {
                                             static_cast<float>(max_queued_samples()),
                                         0.0f,
                                         1.0f);
-    emulator_.update_audio_rate_control(smooth_audio_fill_ratio(fill_ratio));
+    emulator_->update_audio_rate_control(smooth_audio_fill_ratio(fill_ratio));
 }
 
 float EmulationSession::smooth_audio_fill_ratio(float fill_ratio) {
@@ -524,7 +544,7 @@ void EmulationSession::reconcile_audio_sample_rate() {
     // resampler is taken out of the path — its variable buffer latency would
     // otherwise destabilize the DRC feedback loop (heard as crackle).
     audio_settings_.sample_rate = device_rate;
-    emulator_.apply_audio_settings(audio_settings_);
+    emulator_->apply_audio_settings(audio_settings_);
 }
 
 core::Result<void> EmulationSession::reinitialize_video_backend() {

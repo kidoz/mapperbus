@@ -1277,18 +1277,20 @@ void remember_state_slot(MapperBusConfiguration& configuration,
 void touch_recent_rom(MapperBusConfiguration& configuration,
                       const std::filesystem::path& path,
                       std::string_view archive_member) {
+    // Recents must remain usable even when a media volume stops responding.
+    // Compare paths lexically instead of resolving symlinks or touching files.
     constexpr std::size_t kMaxRecentRoms = 5;
-    auto normalized = std::filesystem::weakly_canonical(path);
+    auto normalized = std::filesystem::absolute(path).lexically_normal();
     if (normalized.empty()) {
         normalized = path.lexically_normal();
     }
 
-    std::erase_if(configuration.recent_roms,
-                  [&normalized, archive_member](const RecentRomEntry& entry) {
-                      return entry.archive_member == archive_member &&
-                             (std::filesystem::weakly_canonical(entry.path) == normalized ||
-                              entry.path.lexically_normal() == normalized);
-                  });
+    std::erase_if(
+        configuration.recent_roms, [&normalized, archive_member](const RecentRomEntry& entry) {
+            return entry.archive_member == archive_member &&
+                   (std::filesystem::absolute(entry.path).lexically_normal() == normalized ||
+                    entry.path.lexically_normal() == normalized);
+        });
     RecentRomEntry entry;
     entry.path = path;
     entry.archive_member = archive_member;
@@ -1302,17 +1304,17 @@ void touch_recent_rom(MapperBusConfiguration& configuration,
 void remove_recent_rom(MapperBusConfiguration& configuration,
                        const std::filesystem::path& path,
                        std::string_view archive_member) {
-    auto normalized = std::filesystem::weakly_canonical(path);
+    auto normalized = std::filesystem::absolute(path).lexically_normal();
     if (normalized.empty()) {
         normalized = path.lexically_normal();
     }
 
-    std::erase_if(configuration.recent_roms,
-                  [&normalized, archive_member](const RecentRomEntry& entry) {
-                      return entry.archive_member == archive_member &&
-                             (std::filesystem::weakly_canonical(entry.path) == normalized ||
-                              entry.path.lexically_normal() == normalized);
-                  });
+    std::erase_if(
+        configuration.recent_roms, [&normalized, archive_member](const RecentRomEntry& entry) {
+            return entry.archive_member == archive_member &&
+                   (std::filesystem::absolute(entry.path).lexically_normal() == normalized ||
+                    entry.path.lexically_normal() == normalized);
+        });
 }
 
 void clear_recent_roms(MapperBusConfiguration& configuration) {

@@ -10,6 +10,7 @@
 #include <ctime>
 #include <filesystem>
 #include <functional>
+#include <nk/widgets/spinner.h>
 
 #if defined(_WIN32)
 #ifndef NOMINMAX
@@ -1005,6 +1006,20 @@ gamepad_capture_controls() {
     return controls;
 }
 
+// Saving the outgoing game is an atomic handoff step; its worker owns the
+// paused machine. Keep the sheet visible until it finishes (including Escape).
+class RomLoadingDialog final : public nk::Dialog {
+  public:
+    explicit RomLoadingDialog(bool saving)
+        : nk::Dialog(saving ? "Saving Current Game" : "Opening ROM", {}), saving_(saving) {}
+    bool handle_key_event(const nk::KeyEvent& event) override {
+        return saving_ || nk::Dialog::handle_key_event(event);
+    }
+
+  private:
+    bool saving_;
+};
+
 } // namespace
 
 MapperBusGuiController::MapperBusGuiController(nk::Application& app, nk::Window& window)
@@ -1081,6 +1096,12 @@ MapperBusGuiController::MapperBusGuiController(nk::Application& app, nk::Window&
 
     last_tick_time_ = std::chrono::steady_clock::now();
     tick_handle_ = app_.event_loop().set_interval(std::chrono::milliseconds(1), [this] {
+        poll_rom_load();
+        if (loading_request_) {
+            last_tick_time_ = std::chrono::steady_clock::now();
+            frame_accumulator_ = std::chrono::nanoseconds{0};
+            return;
+        }
         poll_gamepad_assignment();
         poll_pending_rebind();
         update_input_test_status();
@@ -1328,7 +1349,11 @@ void MapperBusGuiController::wire_ui() {
     });
     guard_window_close(
         window_,
-        [this] { return session_->flush_disk_changes(); },
+        [this]() -> core::Result<void> {
+            if (rom_loader_.phase() == app::AsyncRomLoader::Phase::Saving)
+                return {};
+            return session_->flush_disk_changes();
+        },
         [this](const std::string& error) {
             set_message(error);
             refresh_ui();
@@ -1385,6 +1410,8 @@ void MapperBusGuiController::clear_preview() {
 }
 
 void MapperBusGuiController::refresh_preview() {
+    if (rom_loader_.phase() == app::AsyncRomLoader::Phase::Saving)
+        return;
     const auto& frame = session_->emulator().frame_buffer();
     update_preview_surface(
         frame.pixels.data(), mapperbus::core::kScreenWidth, mapperbus::core::kScreenHeight);
@@ -1462,6 +1489,8 @@ void MapperBusGuiController::refresh_welcome_view() {
 }
 
 void MapperBusGuiController::refresh_ui() {
+    if (rom_loader_.phase() == app::AsyncRomLoader::Phase::Saving)
+        return;
     const bool assignments_changed = input_backend_->consume_gamepad_assignment_changes();
     const bool devices_changed = input_backend_->consume_gamepad_inventory_changes();
     if (assignments_changed)
@@ -1546,6 +1575,8 @@ void MapperBusGuiController::refresh_ui() {
 }
 
 void MapperBusGuiController::update_native_menu() {
+    if (rom_loader_.phase() == app::AsyncRomLoader::Phase::Saving)
+        return;
     if (!app_.supports_native_app_menu() || native_menu_slot_ == active_state_slot_) {
         return;
     }
@@ -1556,6 +1587,8 @@ void MapperBusGuiController::update_native_menu() {
 }
 
 void MapperBusGuiController::update_native_toolbar() {
+    if (rom_loader_.phase() == app::AsyncRomLoader::Phase::Saving)
+        return;
     if (app_.system_preferences().platform_family != nk::PlatformFamily::MacOS) {
         return;
     }
@@ -1624,6 +1657,8 @@ void MapperBusGuiController::set_message(std::string message) {
 }
 
 void MapperBusGuiController::rebuild_header_menu() {
+    if (rom_loader_.phase() == app::AsyncRomLoader::Phase::Saving)
+        return;
     if (!header_menu_) {
         return;
     }
@@ -1720,56 +1755,132 @@ void MapperBusGuiController::browse_for_rom() {
 }
 
 void MapperBusGuiController::attempt_open(std::string rom_path, std::string member) {
-    if (gamepad_assignment_dialog_ || input_monitor_dialog_)
+    if (loading_request_ || modal_dialog_presented())
         return;
-    if ((state_slot_dialog_ && state_slot_dialog_->is_presented()) ||
-        (archive_dialog_ && archive_dialog_->is_presented()) ||
-        (fds_dialog_ && fds_dialog_->is_presented())) {
-        return;
-    }
     if (rom_path.empty()) {
         set_message("Open a ROM to start playback.");
         focus_game_surface();
         return;
     }
-
-    if (app::is_rom_archive(rom_path) && member.empty()) {
-        auto members = app::list_archive_roms(rom_path);
-        if (!members) {
-            set_message(members.error());
-            focus_game_surface();
-            return;
-        }
-        if (members->size() > 1) {
-            choose_archive_rom(std::move(rom_path), std::move(*members));
-            return;
-        }
-        if (members->size() == 1) {
-            member = members->front();
-        }
+    if (auto initialized = session_->initialize(); !initialized) {
+        set_message(initialized.error());
+        return;
     }
     // Capture the old game's assignment scope before the content identity changes.
     update_configuration_from_state();
-    auto result = actions_->open_rom(rom_path, member);
-    if (!result) {
-        // A ROM that no longer opens (deleted, moved, unreadable) must not
-        // stay in the welcome list forever.
-        remove_recent_rom(configuration_, rom_path, member);
-        save_configuration_state();
-        if (welcome_active_) {
-            refresh_welcome_view();
+    close_settings();
+    paused_before_rom_load_ = session_->paused();
+    session_->set_paused(true);
+    loading_request_ = app::RomLoadRequest{
+        .path = std::move(rom_path),
+        .member = std::move(member),
+        .fds_bios_path = configuration_.fds_bios_path,
+        .audio_settings = session_->audio_settings(),
+        .state_storage = configuration_.save_states,
+        .persistence_directory = {},
+    };
+    if (session_->has_cartridge()) {
+        // Save before reading replacement persistence, including reopening the same game.
+        present_rom_loading(true);
+        if (auto started = rom_loader_.save_current(session_->emulator_handle()); !started)
+            abandon_rom_load(started.error());
+    } else {
+        start_rom_read();
+    }
+}
+
+void MapperBusGuiController::present_rom_loading(bool saving) {
+    dismiss_rom_loading();
+    auto content = Box::vertical(12.0F);
+    auto spinner = nk::Spinner::create();
+    spinner->set_spinning(true);
+    content->append(spinner);
+    auto explanation = nk::Label::create(saving ? "Saving progress before opening the next game…"
+                                                : "Reading and checking the selected ROM…");
+    explanation->set_wrapping(true);
+    content->append(explanation);
+    auto filename =
+        nk::Label::create(std::filesystem::path(loading_request_->path).filename().string());
+    filename->set_wrapping(true);
+    content->append(filename);
+    loading_dialog_ = std::make_shared<RomLoadingDialog>(saving);
+    loading_dialog_->set_content(FixedWidthSlot::create(440.0F, content));
+    if (!saving)
+        loading_dialog_->add_button("Cancel", nk::DialogResponse::Cancel);
+    (void)loading_dialog_->on_response().connect([this](nk::DialogResponse) {
+        if (!loading_dialog_ || !rom_loader_.cancel())
+            return;
+        // Invalidate the result during dispatch, before a timer can adopt it.
+        // Widget retirement still waits for dispatch to unwind.
+        auto dialog = loading_dialog_;
+        app_.event_loop().post(
+            [this, dialog] {
+                if (loading_dialog_ != dialog)
+                    return;
+                abandon_rom_load("Opening ROM cancelled.");
+            },
+            "mapperbus.rom-cancel");
+    });
+    loading_dialog_->present(window_);
+}
+
+void MapperBusGuiController::dismiss_rom_loading() {
+    auto dialog = std::exchange(loading_dialog_, {});
+    if (dialog && dialog->is_presented())
+        dialog->close();
+}
+
+void MapperBusGuiController::start_rom_read() {
+    present_rom_loading(false);
+    if (auto started = rom_loader_.start(*loading_request_); !started)
+        abandon_rom_load(started.error());
+}
+
+void MapperBusGuiController::abandon_rom_load(std::string message) {
+    loading_request_.reset();
+    dismiss_rom_loading();
+    session_->set_paused(paused_before_rom_load_);
+    frame_accumulator_ = std::chrono::nanoseconds{0};
+    last_tick_time_ = std::chrono::steady_clock::now();
+    set_message(std::move(message));
+    refresh_ui();
+    focus_game_surface();
+}
+
+void MapperBusGuiController::poll_rom_load() {
+    const auto phase = rom_loader_.phase();
+    auto completed = rom_loader_.poll();
+    if (!completed)
+        return;
+    if (!*completed) {
+        if (phase == app::AsyncRomLoader::Phase::Loading) {
+            remove_recent_rom(configuration_, loading_request_->path, loading_request_->member);
+            save_configuration_state();
+            if (welcome_active_)
+                refresh_welcome_view();
         }
-        set_message("Failed to open ROM: " + result.error());
-        refresh_ui();
-        if (session_->has_cartridge()) {
-            refresh_preview();
-        } else {
-            clear_preview();
-        }
-        focus_game_surface();
+        abandon_rom_load("Failed to open ROM: " + completed->error());
         return;
     }
+    if (phase == app::AsyncRomLoader::Phase::Saving) {
+        start_rom_read();
+        return;
+    }
+    auto media = std::move(**completed);
+    if (!media.members.empty()) {
+        dismiss_rom_loading();
+        choose_archive_rom(std::move(media.path), std::move(media.members));
+        return;
+    }
+    auto path = media.path;
+    auto member = media.member;
+    session_->adopt_rom(std::move(media));
+    loading_request_.reset();
+    dismiss_rom_loading();
+    finish_rom_open(std::move(path), std::move(member));
+}
 
+void MapperBusGuiController::finish_rom_open(std::string rom_path, std::string member) {
     input_backend_->set_gamepad_assignments(
         app::gamepad_assignments_for_game(configuration_, session_->game_identity()));
     active_state_slot_ = app::selected_state_slot(configuration_, session_->game_identity());
@@ -1804,20 +1915,22 @@ void MapperBusGuiController::choose_archive_rom(std::string rom_path,
     archive_dialog_->add_button("Cancel", nk::DialogResponse::Cancel);
     archive_dialog_->add_button("Open", nk::DialogResponse::Accept);
     (void)archive_dialog_->on_response().connect(
-        [this, combo, rom_path = std::move(rom_path), members = std::move(members)](
-            nk::DialogResponse response) {
+        [this, combo, members = std::move(members)](nk::DialogResponse response) {
             auto dialog = archive_dialog_;
             const int index = combo->selected_index();
             // Release the dialog after its dispatch has unwound.
             app_.event_loop().post(
-                [this, dialog, response, index, rom_path, members] {
+                [this, dialog, response, index, members] {
                     if (archive_dialog_ != dialog) {
                         return;
                     }
                     archive_dialog_.reset();
                     if (response == nk::DialogResponse::Accept && index >= 0 &&
                         static_cast<std::size_t>(index) < members.size()) {
-                        attempt_open(rom_path, members[static_cast<std::size_t>(index)]);
+                        loading_request_->member = members[static_cast<std::size_t>(index)];
+                        start_rom_read();
+                    } else {
+                        abandon_rom_load("Opening ROM cancelled.");
                     }
                     focus_game_surface();
                     update_native_toolbar();
@@ -2287,6 +2400,8 @@ void MapperBusGuiController::update_preview_surface(const std::uint32_t* data,
 }
 
 void MapperBusGuiController::update_configuration_from_state() {
+    if (rom_loader_.phase() == app::AsyncRomLoader::Phase::Saving)
+        return;
     for (int player = 0; player < platform::kInputProfileCount; ++player) {
         const auto& input = input_backend_->player_input(player);
         auto& keyboard = configuration_.input.keyboard_profile(player);
@@ -3648,6 +3763,8 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_footer_conten
 }
 
 void MapperBusGuiController::refresh_settings_dialog_sections() {
+    if (rom_loader_.phase() == app::AsyncRomLoader::Phase::Saving)
+        return;
     if (!settings_dialog_ && !settings_window_) {
         return;
     }
@@ -3824,7 +3941,8 @@ nk::Window& MapperBusGuiController::settings_host_window() {
 }
 
 bool MapperBusGuiController::modal_dialog_presented() const {
-    return (input_monitor_dialog_ && input_monitor_dialog_->is_presented()) ||
+    return loading_request_.has_value() ||
+           (input_monitor_dialog_ && input_monitor_dialog_->is_presented()) ||
            (gamepad_assignment_dialog_ && gamepad_assignment_dialog_->is_presented()) ||
            (settings_dialog_ && settings_dialog_->is_presented()) ||
            (rebind_dialog_ && rebind_dialog_->is_presented()) ||
@@ -3834,6 +3952,8 @@ bool MapperBusGuiController::modal_dialog_presented() const {
 }
 
 void MapperBusGuiController::handle_menu_action(std::string_view action) {
+    if (loading_request_ && action != "file.quit")
+        return;
     if ((gamepad_assignment_dialog_ || input_monitor_dialog_) && action != "file.quit")
         return;
     if (((archive_dialog_ && archive_dialog_->is_presented()) ||
@@ -3871,9 +3991,11 @@ void MapperBusGuiController::handle_menu_action(std::string_view action) {
         return;
     }
     if (action == "file.quit") {
-        if (auto saved = session_->flush_disk_changes(); !saved) {
-            set_message(saved.error());
-            return;
+        if (rom_loader_.phase() != app::AsyncRomLoader::Phase::Saving) {
+            if (auto saved = session_->flush_disk_changes(); !saved) {
+                set_message(saved.error());
+                return;
+            }
         }
         save_configuration_state();
         app_.quit(0);

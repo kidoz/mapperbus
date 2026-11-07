@@ -615,3 +615,20 @@ TEST_CASE("Emulator rejects malformed watchdog state and restores the running ma
         REQUIRE(emulator.fds().irq_pending());
     }
 }
+
+TEST_CASE("Staged FDS machines discard dirty data without writing persistence",
+          "[fds][system][save]") {
+    Fixture fixture;
+    const auto save = fixture.root / "staged.fds-save";
+    {
+        Emulator staged;
+        staged.set_persistence_enabled(false);
+        REQUIRE(staged.load_fds(
+            mapperbus::tests::make_fds_bios(), mapperbus::tests::make_fds_image(2), save.string()));
+        write_payload_byte(staged.fds(), 42);
+        REQUIRE(staged.fds().dirty());
+        REQUIRE(staged.flush_persistent_data());
+        CHECK(staged.fds().dirty());
+    }
+    CHECK_FALSE(std::filesystem::exists(save));
+}

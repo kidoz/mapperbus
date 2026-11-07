@@ -67,8 +67,17 @@ and 1 MiB combined. Selected ROM output is limited to 16 MiB, both before and
 during decompression. Corrupt selected data and archive read errors abort the
 load, preserving the previous game. These checks bound application buffers;
 libarchive also allocates decoder memory internally, especially for solid 7z
-archives. The GUI reads archives synchronously, so large solid archives can
-delay the chooser or open action.
+archives. The GUI scans archives and prepares raw or archived media in the
+background. A loading sheet shows the selected filename and offers Cancel.
+Cancelling or failing to load keeps the current game and its previous pause state.
+The outgoing game is saved first; that save step cannot be cancelled. If saving
+fails, the current game stays available for recovery. This also ensures reopening
+the same game reads its latest battery or disk save.
+
+An OS file operation may remain blocked after Cancel. Its eventual result is
+discarded, and it cannot replace the game or write the staged game's saves. Up to
+four outstanding file operations are allowed; further opens report that earlier
+operations are still waiting. Closing the app does not wait for abandoned reads.
 
 Entries are read into memory and never extracted to disk. Battery and state
 paths are computed independently of archive member paths.

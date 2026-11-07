@@ -18,6 +18,11 @@ namespace mapperbus::core {
 [[nodiscard]] inline Result<std::vector<Byte>> read_binary_file_capped(const std::string& path,
                                                                        std::size_t max_bytes,
                                                                        std::string_view label) {
+    std::error_code error;
+    if (!std::filesystem::is_regular_file(path, error)) {
+        return std::unexpected("Failed to open " + std::string(label) + ": " + path +
+                               " (not an accessible regular file)");
+    }
     std::ifstream file(path, std::ios::binary);
     if (!file) {
         return std::unexpected("Failed to open " + std::string(label) + ": " + path);

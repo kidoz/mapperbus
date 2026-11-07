@@ -17,6 +17,9 @@ using MapperFactory = std::function<std::unique_ptr<Mapper>(
 class MapperRegistry {
   public:
     static MapperRegistry& instance();
+    /// Retain factory storage while a background media operation may outlive main.
+    /// Register factories before starting concurrent readers.
+    [[nodiscard]] static std::shared_ptr<MapperRegistry> retain();
 
     void register_mapper(uint16_t mapper_number, MapperFactory factory);
 

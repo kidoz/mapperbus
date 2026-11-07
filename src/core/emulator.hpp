@@ -34,6 +34,11 @@ class Emulator {
     /// .sav file. No-op when no battery-backed cartridge is loaded. Called
     /// automatically on cartridge switches, unload, and emulator teardown.
     void flush_battery_ram();
+    [[nodiscard]] Result<void> flush_persistent_data();
+    /// Staged machines read existing saves but must not write them on discard.
+    void set_persistence_enabled(bool enabled) {
+        persistence_enabled_ = enabled;
+    }
     void reset();
     void step_frame();
 
@@ -194,6 +199,7 @@ class Emulator {
     [[nodiscard]] bool restore_state(std::span<const Byte> data, bool allow_legacy = false);
 
     std::string battery_save_path_;
+    bool persistence_enabled_ = true;
     std::string disk_changes_path_;
     Sha256Digest disk_hash_{};
     Region region_ = Region::NTSC;

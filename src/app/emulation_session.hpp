@@ -18,6 +18,8 @@
 
 namespace mapperbus::app {
 
+struct PreparedRom;
+
 enum class TickResult {
     FrameAdvanced,
     AudioBackpressure,
@@ -37,6 +39,12 @@ class EmulationSession {
     core::Result<void> initialize();
     core::Result<void> open_rom(const std::string& rom_path, std::string_view member = {});
     core::Result<void> load_rom(const std::string& rom_path);
+    /// Adopt media prepared off-thread after the paused outgoing machine has been saved.
+    void adopt_rom(PreparedRom media);
+    /// The caller must pause and avoid all machine access while a worker saves this handle.
+    [[nodiscard]] std::shared_ptr<core::Emulator> emulator_handle() const {
+        return emulator_;
+    }
     void close_rom();
     [[nodiscard]] core::Result<void> flush_disk_changes();
     [[nodiscard]] const std::string& disk_save_error() const {
@@ -59,16 +67,16 @@ class EmulationSession {
     void set_paused(bool paused);
     void set_region(core::Region region);
     void set_controller_timing(core::ControllerTiming timing) {
-        emulator_.set_controller_timing(timing);
+        emulator_->set_controller_timing(timing);
     }
     void set_expansion_controllers(core::Byte ports) {
-        emulator_.set_expansion_controllers(ports);
+        emulator_->set_expansion_controllers(ports);
     }
     void set_controller_mode(core::ControllerMode mode) {
-        emulator_.set_controller_mode(mode);
+        emulator_->set_controller_mode(mode);
     }
     void set_controller_wiring(core::ControllerWiring wiring) {
-        emulator_.set_controller_wiring(wiring);
+        emulator_->set_controller_wiring(wiring);
         if (wiring != core::ControllerWiring::RfFamicom)
             suspend_live_microphone();
     }
@@ -143,10 +151,10 @@ class EmulationSession {
     [[nodiscard]] int audio_high_watermark_samples() const;
 
     core::Emulator& emulator() {
-        return emulator_;
+        return *emulator_;
     }
     const core::Emulator& emulator() const {
-        return emulator_;
+        return *emulator_;
     }
 
   private:
@@ -167,7 +175,7 @@ class EmulationSession {
     core::Result<void> reinitialize_video_backend();
 
     core::AudioSettings audio_settings_;
-    core::Emulator emulator_;
+    std::shared_ptr<core::Emulator> emulator_;
     std::unique_ptr<platform::VideoBackend> video_;
     std::unique_ptr<platform::AudioBackend> audio_;
     std::unique_ptr<platform::InputBackend> input_;

@@ -1,16 +1,20 @@
 #include <algorithm>
 #include <catch2/catch_test_macros.hpp>
 #include <chrono>
+#include <condition_variable>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "../support/fds_image.hpp"
 #include "../support/rom_archive.hpp"
+#include "app/async_rom_loader.hpp"
 #include "app/configuration.hpp"
 #include "app/emulation_session.hpp"
 #include "app/rom_source.hpp"
@@ -514,4 +518,296 @@ TEST_CASE("Mixed NES and FDS archives select exact members and retain active FDS
         CHECK_FALSE(std::filesystem::exists(fixture.root / "mixed.sav"));
     }
 }
+namespace {
+// A controlled stand-in for a file operation that cannot be interrupted by the OS.
+// Cleanup always releases it, including when an assertion fails.
+struct BlockedRomReads {
+    std::mutex mutex;
+    std::condition_variable changed;
+    bool released = false;
+    int entered = 0;
+    int finished = 0;
+
+    core::Result<PreparedRom> read(const RomLoadRequest& request) {
+        if (request.path == "ready") {
+            PreparedRom result;
+            result.path = request.path;
+            return result;
+        }
+        std::unique_lock lock(mutex);
+        ++entered;
+        changed.notify_all();
+        changed.wait(lock, [this] { return released; });
+        ++finished;
+        changed.notify_all();
+        PreparedRom result;
+        result.path = request.path;
+        return result;
+    }
+    bool wait_entered(int count) {
+        std::unique_lock lock(mutex);
+        return changed.wait_for(
+            lock, std::chrono::seconds(5), [this, count] { return entered >= count; });
+    }
+    void release() {
+        const std::lock_guard lock(mutex);
+        released = true;
+        changed.notify_all();
+    }
+};
+struct ReleaseReads {
+    std::shared_ptr<BlockedRomReads> reads;
+    ~ReleaseReads() {
+        reads->release();
+    }
+};
+core::Result<PreparedRom> wait_for_rom(AsyncRomLoader& loader) {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (auto result = loader.poll())
+            return std::move(*result);
+        std::this_thread::yield();
+    }
+    return std::unexpected("Timed out waiting for ROM job");
+}
+} // namespace
+
+TEST_CASE("Blocked ROM reads can be cancelled without waiting or accepting late results",
+          "[rom-source][async]") {
+    auto reads = std::make_shared<BlockedRomReads>();
+    const ReleaseReads cleanup{reads};
+    AsyncRomLoader loader([reads](const auto& request) { return reads->read(request); });
+    RomLoadRequest blocked;
+    blocked.path = "blocked";
+    REQUIRE(loader.start(blocked));
+    REQUIRE(reads->wait_entered(1));
+    CHECK(loader.phase() == AsyncRomLoader::Phase::Loading);
+    REQUIRE(loader.cancel());
+    CHECK(loader.phase() == AsyncRomLoader::Phase::Idle);
+    CHECK_FALSE(loader.poll());
+    RomLoadRequest ready;
+    ready.path = "ready";
+    REQUIRE(loader.start(ready));
+    auto result = wait_for_rom(loader);
+    REQUIRE(result);
+    CHECK(result->path == "ready");
+    reads->release();
+    CHECK_FALSE(loader.poll());
+}
+
+TEST_CASE("Abandoned ROM reads are bounded and loader destruction never joins them",
+          "[rom-source][async]") {
+    auto reads = std::make_shared<BlockedRomReads>();
+    const ReleaseReads cleanup{reads};
+    auto loader = std::make_unique<AsyncRomLoader>(
+        [reads](const auto& request) { return reads->read(request); });
+    RomLoadRequest request;
+    request.path = "blocked";
+    for (int i = 1; i <= 4; ++i) {
+        REQUIRE(loader->start(request));
+        REQUIRE(reads->wait_entered(i));
+        REQUIRE(loader->cancel());
+    }
+    CHECK_FALSE(loader->start(request));
+    loader.reset();
+    // This line is reached while every reader is still blocked.
+    const std::lock_guard lock(reads->mutex);
+    CHECK(reads->finished == 0);
+}
+
+TEST_CASE("Background preparation reads persistence but never writes discarded media",
+          "[rom-source][async]") {
+    ArchiveFixture fixture;
+    const auto path = fixture.root / "battery.nes";
+    const auto save = fixture.root / "battery.sav";
+    REQUIRE(core::write_binary_file_atomic(path.string(), make_rom(42, true), "ROM"));
+    const std::vector<Byte> original(8192, 73);
+    REQUIRE(core::write_binary_file_atomic(save.string(), original, "battery"));
+    RomLoadRequest request;
+    request.path = path.string();
+    request.state_storage.directory = fixture.root / "states";
+    auto prepared = prepare_rom(request);
+    REQUIRE(prepared);
+    REQUIRE(prepared->emulator);
+    CHECK(prepared->emulator->read_cpu(0x6000) == 73);
+    prepared->emulator->step_frame();
+    CHECK(prepared->emulator->read_cpu(0x6000) == 42);
+    prepared->emulator.reset();
+    auto persisted = core::read_binary_file_capped(save.string(), 8192, "battery");
+    REQUIRE(persisted);
+    CHECK(*persisted == original);
+    std::filesystem::remove(save);
+    prepared = prepare_rom(request);
+    REQUIRE(prepared);
+    prepared->emulator.reset();
+    CHECK_FALSE(std::filesystem::exists(save));
+}
+
+TEST_CASE("Async replacement saves outgoing RAM before reopening and resumes the session",
+          "[rom-source][async]") {
+    ArchiveFixture fixture;
+    const auto path = fixture.root / "reopen.nes";
+    REQUIRE(core::write_binary_file_atomic(path.string(), make_rom(91, true), "ROM"));
+    EmulationSession session(std::make_unique<platform::NullVideo>(),
+                             std::make_unique<platform::NullAudio>(),
+                             std::make_unique<platform::NullInput>());
+    StateStorageSettings settings;
+    settings.directory = fixture.root / "states";
+    session.set_state_storage(settings);
+    REQUIRE(session.open_rom(path.string()));
+    session.emulator().step_frame();
+    session.set_paused(true);
+    const auto before = session.emulator().save_state();
+    const auto identity = session.game_identity();
+    AsyncRomLoader loader;
+    REQUIRE(loader.save_current(session.emulator_handle()));
+    CHECK_FALSE(loader.cancel());
+    REQUIRE(wait_for_rom(loader));
+    CHECK(session.emulator().save_state() == before);
+    RomLoadRequest request;
+    request.path = (fixture.root / "missing.nes").string();
+    REQUIRE(loader.start(request));
+    CHECK_FALSE(wait_for_rom(loader));
+    CHECK(session.game_identity() == identity);
+    CHECK(session.emulator().save_state() == before);
+    CHECK(session.paused());
+    request.path = path.string();
+    request.state_storage = settings;
+    REQUIRE(loader.start(request));
+    auto prepared = wait_for_rom(loader);
+    REQUIRE(prepared);
+    CHECK(prepared->emulator->read_cpu(0x6000) == 91);
+    const auto directory = prepared->state_directory;
+    session.adopt_rom(std::move(*prepared));
+    CHECK(session.emulator().read_cpu(0x6000) == 91);
+    CHECK(session.running());
+    CHECK_FALSE(session.paused());
+    CHECK(session.state_directory() == directory);
+}
+
+TEST_CASE("Outgoing persistence failure leaves the paused machine available",
+          "[rom-source][async]") {
+    ArchiveFixture fixture;
+    auto current = std::make_shared<core::Emulator>();
+    auto cartridge = core::Cartridge::from_data(make_rom(66, true));
+    REQUIRE(cartridge);
+    // A directory cannot be replaced by a battery file on any supported OS.
+    const auto blocked = fixture.root / "blocked.sav";
+    std::filesystem::create_directory(blocked);
+    REQUIRE(current->load_cartridge(std::move(*cartridge), blocked.string()));
+    current->reset();
+    current->step_frame();
+    const auto before = current->save_state();
+    AsyncRomLoader loader;
+    REQUIRE(loader.save_current(current));
+    auto result = wait_for_rom(loader);
+    REQUIRE_FALSE(result);
+    CHECK(result.error().find("Cannot save the current game") != std::string::npos);
+    CHECK(current->save_state() == before);
+    CHECK(current->read_cpu(0x6000) == 66);
+    current->set_persistence_enabled(false);
+}
+
+TEST_CASE("Background ROM preparation reports missing inaccessible and invalid media",
+          "[rom-source][async]") {
+    ArchiveFixture fixture;
+    AsyncRomLoader loader;
+    RomLoadRequest request;
+    request.path = (fixture.root / "missing.nes").string();
+    REQUIRE(loader.start(request));
+    CHECK_FALSE(wait_for_rom(loader));
+    request.path = fixture.root.string();
+    REQUIRE(loader.start(request));
+    CHECK_FALSE(wait_for_rom(loader));
+    const auto invalid = fixture.root / "invalid.nes";
+    REQUIRE(core::write_binary_file_atomic(invalid.string(), std::vector<Byte>{1, 2, 3}, "ROM"));
+    request.path = invalid.string();
+    REQUIRE(loader.start(request));
+    CHECK_FALSE(wait_for_rom(loader));
+    // Reading a directory also exercises regular-file validation without relying
+    // on user-specific privileges or an OS permission prompt.
+    CHECK_FALSE(core::read_binary_file_capped(fixture.root.string(), 64, "ROM"));
+#ifndef _WIN32
+    const auto unreadable = fixture.root / "unreadable.nes";
+    REQUIRE(core::write_binary_file_atomic(unreadable.string(), make_rom(), "ROM"));
+    std::filesystem::permissions(unreadable, std::filesystem::perms::none);
+    const std::ifstream probe(unreadable, std::ios::binary);
+    if (!probe) {
+        request.path = unreadable.string();
+        REQUIRE(loader.start(request));
+        CHECK_FALSE(wait_for_rom(loader));
+    } else {
+        WARN("Unreadable regular-file check requires an unprivileged test process");
+    }
+    std::filesystem::permissions(unreadable, std::filesystem::perms::owner_all);
+#endif
+}
+
+TEST_CASE("Async archive discovery returns a choice before loading an exact member",
+          "[rom-source][async]") {
+    ArchiveFixture fixture;
+    const auto archive = fixture.root / "choice.zip";
+    write_archive(archive, {Member{"one.nes", make_rom(1)}, Member{"two.nes", make_rom(2)}});
+    RomLoadRequest request;
+    request.path = archive.string();
+    request.state_storage.directory = fixture.root / "states";
+    AsyncRomLoader loader;
+    REQUIRE(loader.start(request));
+    auto listed = wait_for_rom(loader);
+    REQUIRE(listed);
+    CHECK_FALSE(listed->emulator);
+    REQUIRE(listed->members.size() == 2);
+    request.member = "two.nes";
+    REQUIRE(loader.start(request));
+    auto loaded = wait_for_rom(loader);
+    REQUIRE(loaded);
+    REQUIRE(loaded->emulator);
+    CHECK(loaded->member == "two.nes");
+    loaded->emulator->step_frame();
+    CHECK(loaded->emulator->read_cpu(0x6000) == 2);
+}
+
+TEST_CASE("Async FDS preparation validates BIOS and restores disk overlays",
+          "[rom-source][async][fds]") {
+    ArchiveFixture fixture;
+    const auto disk = mapperbus::tests::make_fds_image(2);
+    const auto path = fixture.root / "disk.zip";
+    const auto bios = fixture.root / "bios.bin";
+    write_archive(path, {{"game.fds", disk}});
+    REQUIRE(
+        core::write_binary_file_atomic(bios.string(), mapperbus::tests::make_fds_bios(), "BIOS"));
+    RomLoadRequest request;
+    request.path = path.string();
+    request.fds_bios_path = bios.string();
+    request.persistence_directory = fixture.root / "data";
+    request.state_storage.directory = fixture.root / "states";
+    const auto identity = core::rom_sha256(disk);
+    const auto save =
+        request.persistence_directory / "fds" / (core::sha256_hex(identity) + ".fds-save");
+    std::filesystem::create_directories(save.parent_path());
+    auto changed = disk;
+    changed[75] = 42;
+    const auto digest = core::rom_sha256(changed);
+    std::vector<Byte> overlay{'M', 'B', 'F', 'D', 1, 0, 0, 0};
+    overlay.insert(overlay.end(), identity.begin(), identity.end());
+    overlay.insert(overlay.end(), digest.begin(), digest.end());
+    overlay.insert(overlay.end(), changed.begin(), changed.end());
+    REQUIRE(core::write_binary_file_atomic(save.string(), overlay, "disk save"));
+    AsyncRomLoader loader;
+    REQUIRE(loader.start(request));
+    auto prepared = wait_for_rom(loader);
+    REQUIRE(prepared);
+    REQUIRE(prepared->emulator);
+    CHECK(prepared->emulator->is_fds());
+    CHECK(prepared->emulator->fds().side_count() == 2);
+    CHECK(prepared->emulator->fds().disk_image()[75] == 42);
+    prepared->emulator.reset();
+    auto persisted = core::read_binary_file_capped(save.string(), overlay.size(), "disk save");
+    REQUIRE(persisted);
+    CHECK(*persisted == overlay);
+    request.fds_bios_path = (fixture.root / "missing.bin").string();
+    REQUIRE(loader.start(request));
+    CHECK_FALSE(wait_for_rom(loader));
+}
+
 } // namespace mapperbus::app

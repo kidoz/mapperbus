@@ -228,6 +228,8 @@ Result<void> Emulator::load_fds(std::span<const Byte> bios,
 }
 
 Result<void> Emulator::flush_disk_changes() {
+    if (!persistence_enabled_)
+        return {};
     fds_.synchronize_disk();
     if (!is_fds() || !fds_.dirty() || disk_changes_path_.empty())
         return {};
@@ -252,12 +254,22 @@ Result<void> Emulator::export_disk(const std::string& path) {
 
 void Emulator::flush_battery_ram() {
     // Persist battery-backed RAM of the currently loaded cartridge, if any.
-    if (cartridge_ && cartridge_->has_battery() && !battery_save_path_.empty()) {
+    if (persistence_enabled_ && cartridge_ && cartridge_->has_battery() &&
+        !battery_save_path_.empty()) {
         auto saved = save_battery_ram(battery_save_path_);
         if (!saved) {
             logger::warn("Failed to write battery save: {}", saved.error());
         }
     }
+}
+
+Result<void> Emulator::flush_persistent_data() {
+    if (auto saved = flush_disk_changes(); !saved)
+        return saved;
+    if (persistence_enabled_ && cartridge_ && cartridge_->has_battery() &&
+        !battery_save_path_.empty())
+        return save_battery_ram(battery_save_path_);
+    return {};
 }
 
 void Emulator::unload_cartridge() {

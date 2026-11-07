@@ -21,6 +21,7 @@
 #include <string_view>
 #include <vector>
 
+#include "app/async_rom_loader.hpp"
 #include "app/configuration.hpp"
 #include "app/emulation_session.hpp"
 #include "app/session_actions.hpp"
@@ -91,6 +92,12 @@ class MapperBusGuiController {
     void update_native_toolbar();
     void browse_for_rom();
     void attempt_open(std::string rom_path, std::string member = {});
+    void start_rom_read();
+    void poll_rom_load();
+    void present_rom_loading(bool saving);
+    void dismiss_rom_loading();
+    void abandon_rom_load(std::string message);
+    void finish_rom_open(std::string rom_path, std::string member);
     void choose_archive_rom(std::string rom_path, std::vector<std::string> members);
     void open_disk_controls();
     void perform_disk_action(std::string_view action);
@@ -158,6 +165,10 @@ class MapperBusGuiController {
     std::unique_ptr<app::EmulationSession> session_;
     std::unique_ptr<app::SessionActions> actions_;
     core::FrameBuffer blank_frame_{};
+    app::AsyncRomLoader rom_loader_;
+    std::optional<app::RomLoadRequest> loading_request_;
+    std::shared_ptr<nk::Dialog> loading_dialog_;
+    bool paused_before_rom_load_ = false;
 
     std::shared_ptr<Box> root_;
     std::shared_ptr<ContentSlot> main_slot_;

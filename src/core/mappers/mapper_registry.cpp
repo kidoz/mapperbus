@@ -50,7 +50,15 @@ namespace {
 } // namespace
 
 MapperRegistry& MapperRegistry::instance() {
-    static MapperRegistry registry;
+    // Readers retaining ownership may continue during static teardown. The
+    // cached reference does not access the static shared_ptr after its lifetime.
+    static auto& registry = *retain();
+    return registry;
+}
+
+std::shared_ptr<MapperRegistry> MapperRegistry::retain() {
+    struct SharedRegistry final : MapperRegistry {};
+    static const auto registry = std::make_shared<SharedRegistry>();
     return registry;
 }
 
