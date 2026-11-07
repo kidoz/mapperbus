@@ -4,6 +4,10 @@
 #include <algorithm>
 #include <limits>
 
+#if defined(__APPLE__)
+#include "frontends/sdl3/macos/microphone_permission.hpp"
+#endif
+
 namespace mapperbus::frontend {
 namespace {
 void SDLCALL trim_capture(void*, SDL_AudioStream* stream, int, int) {
@@ -12,6 +16,45 @@ void SDLCALL trim_capture(void*, SDL_AudioStream* stream, int, int) {
         (void)SDL_ClearAudioStream(stream);
 }
 } // namespace
+
+Sdl3Microphone::Sdl3Microphone(std::unique_ptr<platform::MicrophonePermission> permission)
+    : permission_(std::move(permission)) {
+#if defined(__APPLE__)
+    if (!permission_) {
+        permission_ = make_macos_microphone_permission();
+        native_permission_ = true;
+    }
+#endif
+}
+
+core::Result<void> Sdl3Microphone::check_permission(bool request_if_needed) {
+    if (!permission_)
+        return {};
+    // Dummy/disk drivers do not use hardware and must not prompt during tests.
+    const auto* driver = SDL_GetCurrentAudioDriver();
+    if (native_permission_ && driver && std::string_view(driver) != "coreaudio")
+        return {};
+    using platform::MicrophoneAccess;
+    switch (permission_->status()) {
+    case MicrophoneAccess::Authorized:
+        return {};
+    case MicrophoneAccess::NotDetermined:
+        if (!request_if_needed)
+            return std::unexpected("Microphone permission changed; choose Retry to request access");
+        permission_->request();
+        return std::unexpected("Answer the macOS microphone permission prompt, then choose Retry");
+    case MicrophoneAccess::Pending:
+        return std::unexpected(
+            "Waiting for macOS microphone permission; answer the prompt, then Retry");
+    case MicrophoneAccess::Denied:
+        return std::unexpected("Microphone access denied. Enable MapperBus in System Settings > "
+                               "Privacy & Security > Microphone. Reopen if macOS asks, then Retry");
+    case MicrophoneAccess::Restricted:
+        return std::unexpected("Microphone access is restricted by macOS policy. Contact your "
+                               "administrator; bound input remains available");
+    }
+    return std::unexpected("Microphone permission is unavailable");
+}
 
 Sdl3Microphone::~Sdl3Microphone() {
     stop();
@@ -74,6 +117,10 @@ core::Result<void> Sdl3Microphone::start(std::string_view device) {
     SDL_free(ids);
     if (!physical_)
         return std::unexpected("Selected recording device is unavailable: " + name);
+    if (auto result = check_permission(true); !result) {
+        stop();
+        return result;
+    }
     const SDL_AudioSpec spec{.format = SDL_AUDIO_F32, .channels = 1, .freq = 16000};
     stream_ =
         SDL_OpenAudioDeviceStream(system_default_ ? SDL_AUDIO_DEVICE_DEFAULT_RECORDING : physical_,
@@ -105,6 +152,10 @@ void Sdl3Microphone::stop() {
 core::Result<void> Sdl3Microphone::check_connected() {
     if (!stream_)
         return std::unexpected("Capture is not running");
+    if (auto result = check_permission(false); !result) {
+        stop();
+        return result;
+    }
     int count = 0;
     auto* ids = SDL_GetAudioRecordingDevices(&count);
     if (!ids)

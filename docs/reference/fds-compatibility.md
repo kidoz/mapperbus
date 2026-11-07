@@ -272,6 +272,27 @@ or a comparison with recordings from hardware.
 
 ### GUI workflow validation
 
+The permission update passed all 35 regular and 32 GUI-disabled ASan/UBSan
+suite targets in an asset-free run; optional external diagnostic/game cases
+were not repeated for this host-only change. Leak detection remains disabled
+on this macOS runtime. Injected SDL dummy tests cover request deduplication,
+pending/grant/deny/restricted states, revocation and Retry, continued frames and
+bound input. Core-only configuration selects only the C++ compiler.
+
+Native macOS checks used three temporary review identities. The user confirmed
+a first-use Allow decision; capture remained closed until Retry, then reported
+recording activity. The user also confirmed a fresh Don't Allow decision; Retry
+showed denied-access instructions and capture stayed closed. Revocation and
+re-enabling in System Settings required quitting/reopening as macOS instructed;
+the denied message and subsequent recording recovery were verified. Status
+instructions wrap and are exposed through accessibility text. Restricted policy
+was injected, not tested on a managed Mac.
+
+Computer Use blocks the system notification app, so the user handled the native
+prompt decisions. Review apps were closed, their three microphone permission
+records reset, and the original configuration restored byte-for-byte. No raw
+microphone PCM was saved; the normal MapperBus permission was left enabled.
+
 Optional microphone playback was reviewed in the rebuilt packaged GUI with
 Metroid, RF wiring/timing, the MacBook microphone and FIIO output. It defaulted
 off at volume 25; volume 0/100 and the switch worked. With microphone volume 100
@@ -279,7 +300,7 @@ and master volume 40, the user confirmed hearing their voice through headphones.
 Pause changed capture to waiting, resume restarted it, and disabling microphone
 audio left capture recording. No raw PCM was saved; the app was closed and the
 original configuration restored to the hash below. These checks do not certify
-Famicom analog audio fidelity or fresh OS permission prompts.
+Famicom analog audio fidelity; permission checks are recorded below.
 
 Deterministic tests cover mono/stereo addition, clipping, nonfinite samples,
 resampling, queue bounds/underruns, mute independent of activity, device failure,
@@ -296,9 +317,8 @@ A paused snapshot load kept capture closed, and a subsequent save was
 byte-for-byte identical to the original snapshot (SHA-256
 `b925a119737f8d0cd7923d1590413ed95230ebebf86afb39931ecbd317881d9c`).
 
-System Settings showed MapperBus microphone access already enabled. No permission
-settings were changed; fresh allow/deny prompts and revoked access remain
-untested. Unplugging the Steinberg interface reported disconnection; Retry
+The earlier capture check used existing macOS authorization and did not change
+permission settings. Unplugging the Steinberg interface reported disconnection; Retry
 while absent reported the selected device unavailable without falling back.
 Reconnection retained the error until Retry, which resumed recording. An auxiliary
 standalone probe returned only zero-valued samples and was not counted as proof

@@ -24,7 +24,7 @@ sdl3_sources = files(
     'gpu_fsr_upscaler.cpp',
 )
 
-mapperbus_sdl3_deps = [mapperbus_core_dep, sdl3_dep]
+mapperbus_sdl3_deps = [mapperbus_core_dep, sdl3_dep, mapperbus_microphone_permission_dep]
 mapperbus_sdl3_cpp_args = []
 
 if glslang.found()

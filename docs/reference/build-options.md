@@ -33,6 +33,10 @@ shadercross path. It is evaluated when the SDL3 backend is enabled.
 | Alternative shader compilation | Optional system `sdl3-shadercross` dependency outside macOS |
 
 The GUI enables its SDL3 audio/gamepad code when that dependency is found.
+macOS desktop builds also compile a small ARC Objective-C++23 bridge against
+Apple's AVFoundation/Foundation frameworks for microphone permission handling.
+The headless/core-only configuration does not require that bridge or compiler;
+other platforms keep their existing SDL permission behavior.
 See [SDL3 build definitions](../../src/frontends/sdl3/meson.build),
 [GUI build definitions](../../src/frontends/nodalkit/meson.build), and
 [test definitions](../../tests/meson.build).

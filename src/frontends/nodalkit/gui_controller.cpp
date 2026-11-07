@@ -2849,7 +2849,9 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
         });
         microphone_group->add(pref_row("Connection", retry));
         page->append(microphone_group);
-        live_microphone_status_ = SecondaryText::create(session_->live_microphone().status());
+        live_microphone_status_ = nk::Label::create(session_->live_microphone().status());
+        live_microphone_status_->set_wrapping(true);
+        live_microphone_status_->set_horizontal_size_policy(nk::SizePolicy::Expanding);
         page->append(live_microphone_status_);
         if (!devices)
             page->append(SecondaryText::create(devices.error()));

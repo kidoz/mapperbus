@@ -157,10 +157,32 @@ device state are host preferences outside snapshots; version 16 still stores onl
 processed activity and carrier phase. The SDL3 executable accepts process-local
 [overrides](commands-and-controls.md#famicom-microphone). Builds without SDL audio
 report capture unavailable. Real-device GUI capture has been checked on macOS
-with the built-in microphone and a Steinberg UR22mkII; fresh permission prompts
-and revoked access still need validation. macOS desktop binaries and the app
-bundle include a microphone purpose description. See the
+with the built-in microphone and a Steinberg UR22mkII. macOS desktop binaries
+and the app bundle include a microphone purpose description. See the
 [validation scope](fds-compatibility.md#gui-workflow-validation).
+
+### macOS microphone permission
+
+On the first eligible physical-device start, macOS asks for microphone access.
+Answer the prompt and choose Retry / Refresh Devices. The request is asynchronous;
+no recording stream opens while access is pending, and emulation plus bound
+keyboard/gamepad microphone input remain usable. Opening Settings or enumerating
+devices never requests access. Granting permission alone does not start capture
+until Retry or a relevant settings change.
+
+If access is denied, enable MapperBus under System Settings → Privacy & Security
+→ Microphone. Quit and reopen the app if macOS asks, then Retry. macOS can cache
+the old decision until the process exits; Retry cannot replace a required restart.
+Restricted access reports the policy restriction and directs the user to their
+administrator. Permission is checked again on capture reads/discards; loss of
+access closes capture and clears pending microphone playback through the normal
+failure path. Permission decisions stay in macOS, outside config and snapshots.
+
+The macOS bridge uses [AVFoundation authorization status](https://developer.apple.com/documentation/avfoundation/avcapturedevice/authorizationstatus(for:))
+and its [asynchronous request API](https://developer.apple.com/documentation/avfoundation/avcapturedevice/requestaccess(for:completionhandler:)).
+SDL dummy/disk audio drivers bypass the native permission prompt. Native grant,
+denial, and privacy-setting recovery were exercised with temporary app identities;
+managed-policy restriction is covered by injected tests.
 
 ## Famicom Disk System
 

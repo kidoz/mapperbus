@@ -140,6 +140,12 @@ off and requires Capture input. Sensitivity only controls game input detection.
 Master audio volume/mute affect the combined sound. Use headphones to avoid
 feedback. No raw microphone sound is saved.
 
+On macOS, answer the first-use microphone prompt and select Retry / Refresh
+Devices. Denial messages show the privacy-settings path; follow macOS's Quit &
+Reopen request when changing access, then Retry. Restricted access needs policy
+administrator help. Bound input remains available. See
+[permission behavior](configuration.md#macos-microphone-permission).
+
 The SDL3 executable accepts these process-local overrides:
 
 ```text

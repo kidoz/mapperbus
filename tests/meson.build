@@ -193,7 +193,7 @@ test('mapper-timing', test_mapper_timing)
 
 if get_option('enable_sdl3')
     test_sdl3_microphone = executable('test-sdl3-microphone',
-        'unit/test_sdl3_microphone.cpp', dependencies : [mapperbus_sdl3_dep, catch2_dep])
+        'unit/test_sdl3_microphone.cpp', dependencies : [mapperbus_sdl3_dep, mapperbus_app_dep, catch2_dep])
     test('sdl3-microphone', test_sdl3_microphone, env : ['SDL_AUDIODRIVER=dummy'])
     test_sdl3_input = executable('test-sdl3-input',
         'unit/test_sdl3_input.cpp',

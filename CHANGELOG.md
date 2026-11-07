@@ -9,6 +9,10 @@ Versioning.
 
 ### Added
 
+- Asynchronous macOS microphone permission requests, denied/restricted guidance,
+  Retry/reopen recovery, and permission-loss checks before capture reads. Native
+  prompts stay outside the core; status messages wrap and expose accessible text.
+
 - Optional microphone audio playback with independent volume, SDL3 overrides,
   bounded host-only PCM mixing, and queue clearing across pause, snapshots,
   device failures, and settings changes. Playback starts off and leaves input
