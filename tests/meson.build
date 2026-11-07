@@ -110,6 +110,9 @@ test_emulation_session = executable('test-emulation-session',
     dependencies : [mapperbus_app_dep, catch2_dep],
 )
 test('emulation-session', test_emulation_session, workdir : meson.project_source_root())
+test_live_microphone = executable('test-live-microphone',
+    'unit/test_live_microphone.cpp', dependencies : [mapperbus_app_dep, catch2_dep])
+test('live-microphone', test_live_microphone)
 
 test_configuration = executable('test-configuration',
     'unit/test_configuration.cpp',
@@ -189,6 +192,9 @@ test_mapper_timing = executable('test-mapper-timing',
 test('mapper-timing', test_mapper_timing)
 
 if get_option('enable_sdl3')
+    test_sdl3_microphone = executable('test-sdl3-microphone',
+        'unit/test_sdl3_microphone.cpp', dependencies : [mapperbus_sdl3_dep, catch2_dep])
+    test('sdl3-microphone', test_sdl3_microphone, env : ['SDL_AUDIODRIVER=dummy'])
     test_sdl3_input = executable('test-sdl3-input',
         'unit/test_sdl3_input.cpp',
         dependencies : [mapperbus_sdl3_dep, mapperbus_app_dep, catch2_dep],

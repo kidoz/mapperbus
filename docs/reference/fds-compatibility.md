@@ -201,8 +201,8 @@ shows `$67FF` / `$6E25`; both captured values match in MapperBus.
   All four combinations of NES/AV or RF timing and NES or RF data wiring pass six
   additional targeted checks each. RF built-in controller 2 omits Start/Select.
   Synthetic microphone activity has normal/DMA read and snapshot coverage;
-  live audio capture, expansion accessories and electrical DMC sample capture
-  remain outside that coverage. Reset-cycle bus activity,
+  physical microphone capture/audio mixing, expansion accessories and electrical
+  DMC sample capture remain outside that coverage. Reset-cycle bus activity,
   analog DRAM decay, 2C33 test mode, and mechanical disk effects are not modeled.
 - CRC coverage includes the public BIOS-dumper write/readback flows, independent
   fixed vectors, and injected CRC faults described above. Physical-drive fault
@@ -254,14 +254,13 @@ or a comparison with recordings from hardware.
   write protection and retry, either CRC-byte fault, and mid-write replay.
 - All ten public NTSC [PPU timing diagnostics](ppu-timing.md) passed, including
   vblank flag reads, NMI enable/disable races and odd-frame clock timing.
-- The regular build passed 33 suite executables, including GUI close recovery
-  and the optional public DMA diagnostics.
-  Its optional image/diagnostic cases were skipped in the asset-free run and
-  passed in separate explicit asset runs.
-- The GUI-disabled ASan/UBSan build passed 30 suite executables, including the
-  original audio probe. Separate asset runs passed all ten public-diagnostic/CRC
-  cases and eight licensed workflows: six raw/ZIP/7z cases with NES/AV timing
-  plus raw SMB2 and Metroid flows with RF timing and wiring. Leak detection was
+- With live microphone support, the regular build passed all 35 suite executables
+  with the public diagnostics and eight licensed workflows enabled. The generated
+  24 game frames match the preceding digital-microphone build byte-for-byte.
+- The GUI-disabled ASan/UBSan build passed all 32 suite executables with public
+  diagnostics, including capture/session and SDL dummy-device coverage. The
+  licensed workflows were not repeated under sanitizers for this host-only
+  change; all eight passed on the preceding unchanged core. Leak detection was
   disabled because this macOS runtime does not support it.
 - Both public Blargg OAM/DMC timing diagnostics and eight selected AccuracyCoin
   stop/register/controller checks (the six register/controller checks across all four
@@ -272,6 +271,13 @@ or a comparison with recordings from hardware.
   Source BIOS and disk SHA-256 values were unchanged.
 
 ### GUI workflow validation
+
+The live-capture controls were rendered using SDL dummy audio: enable/disable,
+device selection, sensitivity, retry, and the no-game waiting status. Metroid
+opened, but automation could not reactivate the review app afterward, so the
+in-game live-capture UI workflow was not completed. Fake and dummy-device tests
+cover capture lifecycle and failures; physical microphone capture and OS
+permission prompts remain untested. The original user configuration was restored.
 
 The macOS NodalKit GUI was exercised with the supplied Metroid image and BIOS
 using a temporary profile; the original profile was restored with matching file

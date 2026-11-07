@@ -107,8 +107,41 @@ activity. Keyboard M defaults are unbound on legacy import if another action in
 either profile already uses M; explicit bindings are retained. Bindings use the
 existing version-1 format. Runtime activity and carrier phase are stored in
 snapshot version 16, not user configuration. Older states restore an inactive
-microphone. This feature does not capture host audio or mix microphone sound.
+microphone. Bound input remains available alongside optional live capture.
 See [microphone timing](dma-timing.md#digital-microphone).
+
+## Live microphone capture
+
+GUI Settings → Input → Live microphone saves these optional version-1 keys:
+
+```ini
+[microphone]
+enabled=false
+device=""
+sensitivity=50
+```
+
+Capture is disabled by default. An empty device selects the system recording
+input when capture starts; a name selects the first exact matching device.
+Duplicate names appear once. A missing named device reports an error without
+falling back. Sensitivity ranges from 1 to 100; larger values detect quieter
+sounds. Out-of-range integers clamp, and malformed values use 50.
+
+Only unpaused RF Famicom play opens capture. Pause, stop, ROM close, wiring
+changes away from RF, and successful snapshot loads close it and discard queued
+sound. Resume or the next eligible frame starts fresh. Disconnects, device/default
+changes, and capture failures release live activity; use Retry / Refresh Devices
+or change a setting to retry. System-default capture stops if the recording-device
+set or default name changes. Bound keyboard/gamepad input remains usable.
+
+Captured mono PCM is converted to activity in memory and discarded. It is never
+saved, transmitted, or mixed into game audio. Capture settings and device state
+are host preferences outside snapshots; version 16 still stores only the core's
+processed activity and carrier phase. The SDL3 executable accepts process-local
+[overrides](commands-and-controls.md#famicom-microphone). Builds without SDL audio
+report capture unavailable. Physical-device permissions and behavior need host
+validation; macOS desktop binaries and the app bundle include a microphone
+purpose description.
 
 ## Famicom Disk System
 

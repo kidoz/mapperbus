@@ -12,5 +12,6 @@
     <key>CFBundleVersion</key><string>@VERSION@</string>
     <key>CFBundleIconFile</key><string>MapperBus.icns</string>
     <key>NSHighResolutionCapable</key><true/>
+    <key>NSMicrophoneUsageDescription</key><string>Use microphone sound as Famicom microphone activity when live input is enabled.</string>
 </dict>
 </plist>

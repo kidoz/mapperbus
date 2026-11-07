@@ -145,7 +145,7 @@ instruction through PPU open bus; the runner does not bypass its prerequisites.
 
 The [standard-controller reference](https://www.nesdev.org/wiki/Standard_controller)
 describes a live microphone report on `$4016` D2 and games detecting transitions.
-The emulator supplies deterministic activity from a bindable input action.
+The emulator supplies activity from bound input or an optional host capture gate.
 It models a synthetic carrier, not a captured acoustic waveform: while held,
 the period is 1024 CPU cycles, high for phases 0–511 and low for 512–1023.
 Activation and release reset phase to zero; reapplying the same held value leaves
@@ -163,8 +163,15 @@ shared core input. M is the player-one keyboard default; other bindings start
 unbound. Session input combines both profiles once per emulated frame and clears
 activity on successful ROM open/close. The next host input sync after snapshot
 load retains saved phase if the held value is unchanged, or releases/restarts it
-if host input differs. No host microphone device is opened and no microphone
-audio is mixed. This carrier is an emulator input policy, not a claim about a
+if host input differs. Optional live capture ORs its activity with both profiles.
+It uses mono float PCM at 16 kHz, a sensitivity-controlled RMS gate, and a 60%
+release threshold. No samples means inactive; nonfinite samples count as zero.
+The pending capture queue is bounded to 2048 samples; old backlogs are discarded.
+Pause/stop/wiring changes close capture; playback backpressure discards queued
+sound. A successful snapshot load closes capture without altering the restored
+core bytes. The next unpaused RF frame opens fresh capture and updates activity.
+Host settings, raw PCM, and the recording device are not serialized. Microphone
+audio is not mixed. This carrier is an emulator input policy, not a claim about a
 physical Famicom's microphone frequency, sensitivity, or analog response.
 
 ## Snapshots
@@ -321,7 +328,10 @@ independence, half-period boundaries, DMA aliases, phase replay, legacy imports,
 invalid-state rollback, input-profile merging, pause, rebinding and legacy
 configuration conflicts. A virtual SDL gamepad drives an original synthesized
 ROM which records observing both microphone levels in CPU RAM; NodalKit tests
-cover keyboard/gamepad binding and disconnect behavior.
+cover keyboard/gamepad binding and disconnect behavior. Fake-capture session
+tests cover sensitivity, errors/retry, pause/manual step, digital fallback and
+snapshot lifecycle; an SDL dummy recording device covers enumeration and stream
+start/read/discard/teardown without using a physical microphone.
 
 ```sh
 MAPPERBUS_DMA_CONFLICT_DIAGNOSTICS="$PWD/tmp/dmc-stop/AccuracyCoin" \
@@ -335,7 +345,8 @@ MAPPERBUS_CPU_DMA_DIAGNOSTICS="$PWD/tmp/dmc-timing" \
 These tests verify CPU-visible conflict values and OAM transfers. They do not
 measure the DMC sample latch's audio payload under electrical contention. PAL
 repeated-read addresses and register conflicts, expansion
-accessory behavior and live microphone audio, CPU revision selection, and
+accessory behavior, physical microphone capture/audio mixing, CPU revision
+selection, and
 adjacent PPUDATA read quirks remain outside this coverage. Passing the eight selected AccuracyCoin tests does not certify the
 whole ROM. Reset bus cycles and analog power-on alignment remain outside the
 current model.

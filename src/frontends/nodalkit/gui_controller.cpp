@@ -55,6 +55,9 @@ extern char** environ;
 #include "platform/video/fsr1.hpp"
 #include "platform/video/null_video.hpp"
 #include "platform/video/xbrz.hpp"
+#if defined(MAPPERBUS_HAVE_SDL3_AUDIO)
+#include "frontends/sdl3/sdl3_microphone.hpp"
+#endif
 
 #ifndef MAPPERBUS_VERSION
 #define MAPPERBUS_VERSION "dev"
@@ -1050,6 +1053,10 @@ MapperBusGuiController::MapperBusGuiController(nk::Application& app, nk::Window&
     session_->set_fds_bios_path(configuration_.fds_bios_path);
     session_->set_controller_timing(configuration_.input.controller_timing);
     session_->set_controller_wiring(configuration_.input.controller_wiring);
+#if defined(MAPPERBUS_HAVE_SDL3_AUDIO)
+    session_->set_microphone_backend(std::make_unique<Sdl3Microphone>());
+#endif
+    session_->configure_live_microphone(configuration_.microphone);
     if (replaced_reserved_binding) {
         save_configuration_state();
     }
@@ -2544,6 +2551,8 @@ void MapperBusGuiController::update_input_test_status() {
 
     input_backend_->poll();
     input_test_label_->set_text(input_test_status_text());
+    if (live_microphone_status_)
+        live_microphone_status_->set_text(session_->live_microphone().status());
 }
 
 void MapperBusGuiController::update_settings_save_status(std::string text) {
@@ -2620,6 +2629,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_dialog_shell(
 }
 
 std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content() {
+    live_microphone_status_.reset();
     auto page = Box::vertical(16.0F);
     page->set_horizontal_size_policy(nk::SizePolicy::Expanding);
     if (settings_page_ == SettingsPage::General) {
@@ -2758,6 +2768,67 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
         bindings->append(
             SecondaryText::create("Microphone: hold to simulate sound with RF Famicom wiring."));
         page->append(bindings);
+
+        auto microphone_group = SettingsGroup::create("Live microphone");
+        auto capture_switch = nk::Switch::create();
+        capture_switch->set_active(configuration_.microphone.enabled);
+        (void)capture_switch->on_toggled().connect([this](bool enabled) {
+            configuration_.microphone.enabled = enabled;
+            session_->configure_live_microphone(configuration_.microphone);
+            save_configuration_state();
+            refresh_settings_dialog_sections();
+        });
+        microphone_group->add(
+            pref_row("Capture input",
+                     capture_switch,
+                     "Uses host sound as microphone activity during RF Famicom play."));
+        std::vector<std::string> device_names{""};
+        auto devices = session_->live_microphone().devices();
+        if (devices)
+            device_names.insert(device_names.end(), devices->begin(), devices->end());
+        if (!configuration_.microphone.device.empty() &&
+            std::ranges::find(device_names, configuration_.microphone.device) == device_names.end())
+            device_names.push_back(configuration_.microphone.device);
+        auto capture_device_labels = device_names;
+        capture_device_labels[0] = "System default";
+        auto device_combo = nk::ComboBox::create();
+        device_combo->set_items(capture_device_labels);
+        const auto selected = std::ranges::find(device_names, configuration_.microphone.device);
+        device_combo->set_selected_index(static_cast<int>(selected - device_names.begin()));
+        (void)device_combo->on_selection_changed().connect([this, device_names](int index) {
+            if (index < 0 || static_cast<std::size_t>(index) >= device_names.size())
+                return;
+            configuration_.microphone.device = device_names[static_cast<std::size_t>(index)];
+            session_->configure_live_microphone(configuration_.microphone);
+            save_configuration_state();
+            refresh_settings_dialog_sections();
+        });
+        microphone_group->add(pref_row("Input device", device_combo));
+        auto sensitivity = nk::Slider::create();
+        sensitivity->ensure_accessible().set_name("Microphone sensitivity");
+        sensitivity->set_range(1.0, 100.0);
+        sensitivity->set_step(1.0);
+        sensitivity->set_value(configuration_.microphone.sensitivity);
+        (void)sensitivity->on_value_changed().connect([this](double value) {
+            configuration_.microphone.sensitivity =
+                std::clamp(static_cast<int>(std::lround(value)), 1, 100);
+            session_->configure_live_microphone(configuration_.microphone);
+            save_configuration_state();
+        });
+        microphone_group->add(pref_row("Sensitivity",
+                                       FixedWidthSlot::create(180.0F, sensitivity),
+                                       "Raise to detect quieter sounds."));
+        auto retry = nk::Button::create("Retry / Refresh Devices");
+        (void)retry->on_clicked().connect([this] {
+            session_->live_microphone().retry();
+            refresh_settings_dialog_sections();
+        });
+        microphone_group->add(pref_row("Connection", retry));
+        page->append(microphone_group);
+        live_microphone_status_ = SecondaryText::create(session_->live_microphone().status());
+        page->append(live_microphone_status_);
+        if (!devices)
+            page->append(SecondaryText::create(devices.error()));
 
         auto turbo_group = SettingsGroup::create("Turbo");
         auto turbo_speed = nk::SegmentedControl::create();

@@ -5,6 +5,7 @@
 #include <fstream>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "app/configuration.hpp"
 
@@ -315,7 +316,30 @@ TEST_CASE("Microphone bindings persist and legacy keys keep their meaning",
     std::filesystem::remove_all(path.parent_path());
 }
 
+TEST_CASE("Live microphone defaults stay disabled and sensitivity is bounded",
+          "[configuration][microphone]") {
+    const auto path = temporary_config_path();
+    const auto defaults = load_mapperbus_configuration_from_file(path).microphone;
+    CHECK_FALSE(defaults.enabled);
+    CHECK(defaults.device.empty());
+    CHECK(defaults.sensitivity == 50);
+    std::filesystem::create_directories(path.parent_path());
+    for (const auto& [token, expected] :
+         {std::pair{"bad", 50}, {"0", 1}, {"101", 100}, {"72", 72}}) {
+        {
+            std::ofstream file(path);
+            file << "[microphone]\nenabled=invalid\nsensitivity=" << token << '\n';
+        }
+        const auto loaded = load_mapperbus_configuration_from_file(path);
+        CHECK_FALSE(loaded.microphone.enabled);
+        CHECK(loaded.microphone.sensitivity == expected);
+        CHECK(loaded.microphone.device.empty());
+    }
+    std::filesystem::remove_all(path.parent_path());
+}
+
 TEST_CASE("MapperBus configuration round-trips universal settings", "[app][configuration]") {
+    // Capture preferences are host settings, separate from machine snapshots.
     MapperBusConfiguration configuration;
     configuration.audio.sample_rate = 48000;
     configuration.audio.resampling = core::ResamplingMode::CubicHermite;
@@ -333,6 +357,7 @@ TEST_CASE("MapperBus configuration round-trips universal settings", "[app][confi
     configuration.frontend.audio_muted = true;
     configuration.frontend.audio_volume_percent = 40;
     configuration.frontend.region = RegionPreference::Pal;
+    configuration.microphone = {.enabled = true, .device = "Input #1; \"USB\"", .sensitivity = 72};
     configuration.input.controller_timing = core::ControllerTiming::RfFamicom;
     configuration.input.controller_wiring = core::ControllerWiring::RfFamicom;
     configuration.input.keyboard_bindings[platform::button_index(core::Button::A)] = 44;
@@ -364,6 +389,9 @@ TEST_CASE("MapperBus configuration round-trips universal settings", "[app][confi
     REQUIRE(loaded.frontend.audio_muted);
     REQUIRE(loaded.frontend.audio_volume_percent == 40);
     REQUIRE(loaded.frontend.region == RegionPreference::Pal);
+    CHECK(loaded.microphone.enabled);
+    CHECK(loaded.microphone.device == configuration.microphone.device);
+    CHECK(loaded.microphone.sensitivity == 72);
     REQUIRE(loaded.input.controller_timing == core::ControllerTiming::RfFamicom);
     REQUIRE(loaded.input.controller_wiring == core::ControllerWiring::RfFamicom);
     REQUIRE(loaded.input.keyboard_bindings[platform::button_index(core::Button::A)] == 44);

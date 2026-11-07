@@ -9,6 +9,7 @@
 #include <string_view>
 #include <vector>
 
+#include "app/live_microphone.hpp"
 #include "app/state_storage.hpp"
 #include "core/apu/audio_settings.hpp"
 #include "core/types.hpp"
@@ -61,6 +62,7 @@ struct MapperBusConfiguration {
     int version = kMapperBusConfigurationVersion;
     std::string fds_bios_path;
     core::AudioSettings audio;
+    LiveMicrophoneSettings microphone;
     MapperBusInputConfiguration input;
     MapperBusFrontendConfiguration frontend;
     /// Recently opened ROMs, newest first, at most five entries.

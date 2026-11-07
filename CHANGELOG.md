@@ -9,6 +9,11 @@ Versioning.
 
 ### Added
 
+- Optional live Famicom microphone capture with device selection, sensitivity,
+  retry/status controls, shared preferences, SDL3 overrides, and macOS purpose
+  metadata. Pause and snapshot loads discard capture buffers; bound simulation
+  remains available. Captured sound is neither saved nor mixed into audio.
+
 - Six pinned AccuracyCoin DMA register/controller checks with synthetic
   decoder, continuous-read, strobe-phase, and snapshot regressions.
 

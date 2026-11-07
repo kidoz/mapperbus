@@ -18,6 +18,7 @@ xbrz_sources = files(
 sdl3_sources = files(
     'sdl3_video.cpp',
     'sdl3_audio.cpp',
+    'sdl3_microphone.cpp',
     'sdl3_input.cpp',
     'gpu_upscaler.cpp',
     'gpu_fsr_upscaler.cpp',

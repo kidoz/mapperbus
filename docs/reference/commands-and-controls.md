@@ -118,7 +118,7 @@ Both override the saved storage preference without persisting that override.
 
 Source: [SDL3 input](../../src/frontends/sdl3/sdl3_input.cpp).
 
-## Digital Famicom microphone
+## Famicom microphone
 
 With RF Famicom controller wiring selected, hold **M** to simulate microphone
 activity. GUI Settings → Input → Microphone changes the keyboard or gamepad
@@ -127,7 +127,27 @@ player one, unbound in player two, and no gamepad assignment. Older custom
 bindings take precedence over a new conflicting default. SDL3 also accepts
 `--gamepad-map mic=rightshoulder` or `--gamepad2-map microphone=rightshoulder`.
 The signal is independent of controller strobing and works only through RF
-wiring. Live audio capture and microphone audio mixing are separate features.
+wiring.
+
+Optional live capture is off by default. In GUI Settings → Input → Live
+microphone, enable Capture input, choose an input device, and raise Sensitivity
+for quieter sounds. Capture runs during unpaused RF Famicom play. Pause and
+snapshot loads discard capture buffers; device failures release live activity
+and show an error until Retry / Refresh Devices or a setting change. Keyboard
+and gamepad simulation remain available. Captured sound is neither saved nor
+mixed into game audio.
+
+The SDL3 executable accepts these process-local overrides:
+
+```text
+--live-microphone
+--no-live-microphone
+--microphone-device NAME
+--microphone-sensitivity N
+```
+
+Use `default` for the system input and an integer from 1 to 100 for sensitivity.
+The headless CLI does not open capture. See [capture preferences](configuration.md#live-microphone-capture).
 
 ## Headless CLI
 

@@ -17,7 +17,7 @@ endif
 mapperbus_gui_cpp_args = ['-DMAPPERBUS_VERSION="' + meson.project_version() + '"']
 
 if sdl3_audio_dep.found()
-    mapperbus_gui_sources += files('../sdl3/sdl3_audio.cpp')
+    mapperbus_gui_sources += files('../sdl3/sdl3_audio.cpp', '../sdl3/sdl3_microphone.cpp')
     mapperbus_gui_deps += sdl3_audio_dep
     mapperbus_gui_cpp_args += ['-DMAPPERBUS_HAVE_SDL3_AUDIO', '-DMAPPERBUS_HAVE_SDL3_GAMEPAD']
 endif
@@ -41,6 +41,8 @@ mapperbus_gui_exe = executable(mapperbus_gui_target_name,
     cpp_args : mapperbus_gui_cpp_args,
     install : true,
     install_rpath : mapperbus_gui_install_rpath,
+    link_args : mapperbus_microphone_link_args,
+    link_depends : mapperbus_microphone_link_depends,
 )
 
 # GNOME / FreeDesktop integration assets. The .desktop entry and hicolor icon

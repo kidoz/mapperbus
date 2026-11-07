@@ -325,6 +325,18 @@ void apply_setting(MapperBusConfiguration& configuration,
         configuration.input.controller_wiring = wiring.value_or(core::ControllerWiring::Nes);
         return;
     }
+    if (full_key == "microphone.enabled") {
+        configuration.microphone.enabled = parse_bool_setting(value, false, full_key);
+        return;
+    }
+    if (full_key == "microphone.device") {
+        configuration.microphone.device = value;
+        return;
+    }
+    if (full_key == "microphone.sensitivity") {
+        configuration.microphone.sensitivity = std::clamp(parse_int(value, 50, full_key), 1, 100);
+        return;
+    }
     if (full_key.starts_with("recent.rom_")) {
         const std::string suffix(full_key.substr(std::strlen("recent.rom_")));
         const auto slot = parse_int_value(suffix);
@@ -798,6 +810,11 @@ core::Result<void> save_mapperbus_configuration_to_file(const MapperBusConfigura
          << '\n';
     file << "controller_wiring=" << controller_wiring_token(configuration.input.controller_wiring)
          << "\n\n";
+
+    file << "[microphone]\n";
+    file << "enabled=" << (configuration.microphone.enabled ? "true" : "false") << '\n';
+    file << "device=" << quote_config_value(configuration.microphone.device) << '\n';
+    file << "sensitivity=" << std::clamp(configuration.microphone.sensitivity, 1, 100) << "\n\n";
 
     file << "[audio]\n";
     file << "sample_rate=" << configuration.audio.sample_rate << '\n';

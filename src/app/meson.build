@@ -6,7 +6,7 @@ libarchive_dep = dependency('libarchive',
 )
 
 mapperbus_app_lib = static_library('mapperbus-app',
-    files('app.cpp', 'configuration.cpp', 'emulation_session.cpp', 'session_actions.cpp', 'state_storage.cpp', 'rom_source.cpp'),
+    files('app.cpp', 'configuration.cpp', 'emulation_session.cpp', 'session_actions.cpp', 'state_storage.cpp', 'rom_source.cpp', 'live_microphone.cpp'),
     dependencies : [mapperbus_core_dep, libarchive_dep],
 )
 
@@ -20,6 +20,8 @@ if get_option('enable_sdl3')
     executable('mapperbus-sdl3',
         files('main.cpp') + mapperbus_icon_resources,
         dependencies : [mapperbus_sdl3_dep, mapperbus_app_dep],
+        link_args : mapperbus_microphone_link_args,
+        link_depends : mapperbus_microphone_link_depends,
         install : true,
     )
 endif

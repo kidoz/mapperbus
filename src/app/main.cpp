@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <charconv>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -15,6 +16,7 @@
 #include "frontends/sdl3/gpu_upscaler.hpp"
 #include "frontends/sdl3/sdl3_audio.hpp"
 #include "frontends/sdl3/sdl3_input.hpp"
+#include "frontends/sdl3/sdl3_microphone.hpp"
 #include "frontends/sdl3/sdl3_video.hpp"
 #include "platform/video/fsr1.hpp"
 #include "platform/video/xbrz.hpp"
@@ -106,6 +108,12 @@ int main(int argc, char* argv[]) {
         mapperbus::core::logger::info(
             "  --controller-timing T nes-av-famicom (default) or rf-famicom");
         mapperbus::core::logger::info("  --controller-wiring W nes (default) or rf-famicom");
+        mapperbus::core::logger::info(
+            "  --live-microphone     enable host microphone activity for RF wiring");
+        mapperbus::core::logger::info("  --no-live-microphone  disable host capture for this run");
+        mapperbus::core::logger::info("  --microphone-device N recording device name, or default");
+        mapperbus::core::logger::info(
+            "  --microphone-sensitivity N 1-100; higher detects quieter sound");
         mapperbus::core::logger::info("  --filter-profile P    nes or famicom (default: nes)");
         mapperbus::core::logger::info("  --stereo              enable pseudo-stereo output");
         mapperbus::core::logger::info("  --dither              enable TPDF dithering");
@@ -144,6 +152,7 @@ int main(int argc, char* argv[]) {
     std::string_view rom_member;
     std::string fds_bios;
     auto mapperbus_config = mapperbus::app::load_mapperbus_configuration();
+    auto microphone_settings = mapperbus_config.microphone;
     auto controller_timing = mapperbus_config.input.controller_timing;
     auto controller_wiring = mapperbus_config.input.controller_wiring;
     auto state_storage = mapperbus_config.save_states;
@@ -230,6 +239,28 @@ int main(int argc, char* argv[]) {
             fds_bios = argv[++i];
         } else if (std::strcmp(argv[i], "--entry") == 0 && i + 1 < argc) {
             rom_member = argv[++i];
+        } else if (std::strcmp(argv[i], "--live-microphone") == 0) {
+            microphone_settings.enabled = true;
+        } else if (std::strcmp(argv[i], "--no-live-microphone") == 0) {
+            microphone_settings.enabled = false;
+        } else if (std::strcmp(argv[i], "--microphone-device") == 0 && i + 1 < argc) {
+            const std::string_view device(argv[++i]);
+            microphone_settings.device = device == "default" ? "" : std::string(device);
+        } else if (std::strcmp(argv[i], "--microphone-sensitivity") == 0) {
+            const std::string_view value = i + 1 < argc ? argv[++i] : "";
+            int sensitivity = 0;
+            const auto parsed =
+                std::from_chars(value.data(), value.data() + value.size(), sensitivity);
+            if (parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size() ||
+                sensitivity < 1 || sensitivity > 100) {
+                mapperbus::core::logger::error(
+                    "--microphone-sensitivity requires an integer from 1 to 100");
+                return EXIT_FAILURE;
+            }
+            microphone_settings.sensitivity = sensitivity;
+        } else if (std::strcmp(argv[i], "--microphone-device") == 0) {
+            mapperbus::core::logger::error("--microphone-device requires a device name");
+            return EXIT_FAILURE;
         } else if (std::strcmp(argv[i], "--controller-timing") == 0) {
             const auto timing =
                 i + 1 < argc ? mapperbus::app::parse_controller_timing(argv[++i]) : std::nullopt;
@@ -296,6 +327,8 @@ int main(int argc, char* argv[]) {
     app.session().set_fds_bios_path(fds_bios);
     app.session().set_controller_timing(controller_timing);
     app.session().set_controller_wiring(controller_wiring);
+    app.session().set_microphone_backend(std::make_unique<mapperbus::frontend::Sdl3Microphone>());
+    app.session().configure_live_microphone(microphone_settings);
     auto result = app.initialize(rom_path, rom_member);
     if (!result) {
         mapperbus::core::logger::error("{}", result.error());

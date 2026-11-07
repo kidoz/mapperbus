@@ -171,6 +171,7 @@ class MapperBusGuiController {
     std::shared_ptr<ContentSlot> settings_footer_slot_;
     std::shared_ptr<nk::ScrollArea> settings_scroll_area_;
     std::shared_ptr<SecondaryText> input_test_label_;
+    std::shared_ptr<SecondaryText> live_microphone_status_;
     std::shared_ptr<SecondaryText> settings_save_label_;
     std::string settings_save_status_ = "Saved automatically";
     SettingsPage settings_page_ = SettingsPage::Input;

@@ -6,6 +6,7 @@
 #include <string_view>
 #include <vector>
 
+#include "app/live_microphone.hpp"
 #include "app/state_storage.hpp"
 #include "app/turbo_input.hpp"
 #include "core/apu/audio_settings.hpp"
@@ -62,6 +63,20 @@ class EmulationSession {
     }
     void set_controller_wiring(core::ControllerWiring wiring) {
         emulator_.set_controller_wiring(wiring);
+        if (wiring != core::ControllerWiring::RfFamicom)
+            live_microphone_.suspend();
+    }
+    void set_microphone_backend(std::unique_ptr<platform::MicrophoneBackend> backend) {
+        live_microphone_.set_backend(std::move(backend));
+    }
+    void configure_live_microphone(LiveMicrophoneSettings settings) {
+        live_microphone_.configure(std::move(settings));
+    }
+    [[nodiscard]] LiveMicrophone& live_microphone() {
+        return live_microphone_;
+    }
+    [[nodiscard]] const LiveMicrophone& live_microphone() const {
+        return live_microphone_;
     }
     void set_turbo_period(int frames) {
         turbo_input_.set_period(frames);
@@ -146,6 +161,7 @@ class EmulationSession {
     std::unique_ptr<platform::AudioBackend> audio_;
     std::unique_ptr<platform::InputBackend> input_;
     TurboInput turbo_input_;
+    LiveMicrophone live_microphone_;
     bool initialized_ = false;
     bool running_ = false;
     bool paused_ = false;
