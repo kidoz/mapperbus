@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <catch2/catch_test_macros.hpp>
 #include <cstdint>
 #include <cstdlib>
@@ -8,6 +9,7 @@
 #include <string_view>
 #include <vector>
 
+#include "../support/xbrz_cases.hpp"
 #include "frontends/sdl3/gpu_common.hpp"
 #include "frontends/sdl3/gpu_fsr_upscaler.hpp"
 #include "frontends/sdl3/gpu_upscaler.hpp"
@@ -117,46 +119,113 @@ TEST_CASE("GPU xBRZ preserves colors across partial workgroups", "[sdl3][gpu]") 
     }
 }
 
-TEST_CASE("GPU xBRZ rotates every binary neighborhood consistently at every scale", "[sdl3][gpu][xbrz]") {
+TEST_CASE("GPU xBRZ rotates binary and multicolor neighborhoods at every scale",
+          "[sdl3][gpu][xbrz]") {
+    using namespace mapperbus::tests::xbrz;
     SdlVideoScope sdl;
     require_gpu_device();
 
-    // Put all 512 possible 3x3 neighborhoods into one texture. Each has a
-    // one-pixel border; the remaining tiles stay black.
-    constexpr int kWidth = 120;
-    std::vector<uint32_t> source(static_cast<std::size_t>(kWidth) * kWidth, 0xFF000000U);
-    for (int mask = 0; mask < 512; ++mask) {
-        const int origin_x = (mask % 24) * 5 + 1;
-        const int origin_y = (mask / 24) * 5 + 1;
-        for (int y = 0; y < 3; ++y) {
-            for (int x = 0; x < 3; ++x) {
-                if ((static_cast<unsigned>(mask) & (1U << static_cast<unsigned>(y * 3 + x))) !=
-                    0U) {
-                    source[(origin_y + y) * kWidth + origin_x + x] = 0xFFFFFFFFU;
+    for (bool multicolor : {false, true}) {
+        for (int factor : {2, 3, 4, 5, 6}) {
+            auto source = neighborhood_atlas(multicolor);
+            GpuUpscaler upscaler(factor);
+            Pixels output(source.size() * factor * factor);
+            upscaler.scale(source, kAtlasWidth, kAtlasWidth, output);
+            INFO(SDL_GetError());
+            REQUIRE(upscaler.is_gpu_available());
+            auto expected = output;
+            for (int turn = 1; turn <= 3; ++turn) {
+                source = rotate_clockwise(source, kAtlasWidth);
+                expected = rotate_clockwise(expected, kAtlasWidth * factor);
+                upscaler.scale(source, kAtlasWidth, kAtlasWidth, output);
+                const auto mismatch = std::mismatch(output.begin(), output.end(), expected.begin());
+                const auto offset = mismatch.first - output.begin();
+                CAPTURE(multicolor, factor, turn, offset);
+                if (mismatch.first != output.end()) {
+                    const int sx = static_cast<int>(offset) % (kAtlasWidth * factor) / factor;
+                    const int sy = static_cast<int>(offset) / (kAtlasWidth * factor) / factor;
+                    std::array<uint32_t, 9> neighborhood{};
+                    for (int y = 0; y < 3; ++y) {
+                        for (int x = 0; x < 3; ++x) {
+                            neighborhood[y * 3 + x] =
+                                source[std::clamp(sy + y - 1, 0, kAtlasWidth - 1) * kAtlasWidth +
+                                       std::clamp(sx + x - 1, 0, kAtlasWidth - 1)];
+                        }
+                    }
+                    CAPTURE(sx, sy, neighborhood, *mismatch.first, *mismatch.second);
+                    REQUIRE(mismatch.first == output.end());
                 }
+                REQUIRE(mismatch.first == output.end());
             }
         }
     }
-    const auto rotate = [](const std::vector<uint32_t>& pixels, int width) {
-        std::vector<uint32_t> rotated(pixels.size());
-        for (int y = 0; y < width; ++y) {
-            for (int x = 0; x < width; ++x) {
-                rotated[x * width + width - 1 - y] = pixels[y * width + x];
-            }
-        }
-        return rotated;
-    };
+}
+
+TEST_CASE("GPU xBRZ matches hand-calculated corner and line blocks", "[sdl3][gpu][xbrz]") {
+    using namespace mapperbus::tests::xbrz;
+    SdlVideoScope sdl;
+    require_gpu_device();
 
     for (int factor : {2, 3, 4, 5, 6}) {
-        CAPTURE(factor);
         GpuUpscaler upscaler(factor);
-        std::vector<uint32_t> output(source.size() * factor * factor);
-        upscaler.scale(source, kWidth, kWidth, output);
-        INFO(SDL_GetError());
-        REQUIRE(upscaler.is_gpu_available());
-        const auto expected = rotate(output, kWidth * factor);
-        upscaler.scale(rotate(source, kWidth), kWidth, kWidth, output);
-        REQUIRE(std::equal(output.begin(), output.end(), expected.begin()));
+        for (const auto& patch : golden_patches()) {
+            auto source = patch.source;
+            int sx = patch.x;
+            int sy = patch.y;
+            Pixels expected;
+            for (char symbol : patch.gpu[factor - 2]) {
+                expected.push_back(golden_color(symbol));
+            }
+            REQUIRE(expected.size() == static_cast<std::size_t>(factor * factor));
+            Pixels output(source.size() * factor * factor);
+            for (int turn = 0; turn < 4; ++turn) {
+                upscaler.scale(source, 3, 3, output);
+                INFO(SDL_GetError());
+                REQUIRE(upscaler.is_gpu_available());
+                for (int y = 0; y < factor; ++y) {
+                    for (int x = 0; x < factor; ++x) {
+                        CAPTURE(patch.name, factor, turn, x, y);
+                        REQUIRE(output[(sy * factor + y) * (3 * factor) + sx * factor + x] ==
+                                expected[y * factor + x]);
+                    }
+                }
+                source = rotate_clockwise(source, 3);
+                expected = rotate_clockwise(expected, factor);
+                const int next_x = 2 - sy;
+                sy = sx;
+                sx = next_x;
+            }
+        }
+    }
+}
+
+TEST_CASE("GPU xBRZ respects the exact color tolerance", "[sdl3][gpu][xbrz]") {
+    using namespace mapperbus::tests::xbrz;
+    SdlVideoScope sdl;
+    require_gpu_device();
+    for (int factor : {2, 3, 4, 5, 6}) {
+        GpuUpscaler upscaler(factor);
+        for (uint32_t grey : {8U, 10U, 11U}) {
+            Pixels source(9, 0xFF000000U);
+            const auto center = 0xFF000000U | grey * 0x010101U;
+            source[4] = center;
+            Pixels output(source.size() * factor * factor);
+            upscaler.scale(source, 3, 3, output);
+            REQUIRE(upscaler.is_gpu_available());
+            // Grey distances are exactly 3*grey. At or below 30, even the
+            // corners remain unchanged; just above 30, a 3:1 blend gives 8.
+            const auto expected = grey <= 10U ? center : 0xFF080808U;
+            CAPTURE(factor, grey);
+            REQUIRE(output[factor * (3 * factor) + factor] == expected);
+            if (grey <= 10U) {
+                for (int y = 0; y < 3 * factor; ++y) {
+                    for (int x = 0; x < 3 * factor; ++x) {
+                        REQUIRE(output[y * (3 * factor) + x] ==
+                                source[(y / factor) * 3 + x / factor]);
+                    }
+                }
+            }
+        }
     }
 }
 

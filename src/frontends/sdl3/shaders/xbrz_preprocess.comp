@@ -14,14 +14,16 @@ layout(set = 0, binding = 0) uniform texture2D src;
 layout(rgba8, set = 1, binding = 0) uniform writeonly image2D blend_info;
 
 float color_dist(vec4 a, vec4 b) {
-    float dr = a.r - b.r;
-    float dg = a.g - b.g;
-    float db = a.b - b.b;
-    float rmean = (a.r + b.r) * 0.5;
-    float wr = (rmean >= 0.5) ? 3.0 : 2.0;
-    float wg = 4.0;
-    float wb = (rmean >= 0.5) ? 2.0 : 3.0;
-    return sqrt(wr * dr * dr + wg * dg * dg + wb * db * db);
+    // Recover byte channels before measuring distance. Integer squared terms
+    // keep equal gradients equal even when the compiler contracts float math.
+    ivec3 ca = ivec3(round(a.rgb * 255.0));
+    ivec3 cb = ivec3(round(b.rgb * 255.0));
+    ivec3 delta = ca - cb;
+    int wr = (ca.r + cb.r >= 256) ? 3 : 2;
+    int wb = (ca.r + cb.r >= 256) ? 2 : 3;
+    int distance_squared = wr * delta.r * delta.r + 4 * delta.g * delta.g + wb * delta.b * delta.b;
+    precise float distance = sqrt(float(distance_squared));
+    return distance;
 }
 
 vec4 sample_src(int x, int y, int w, int h) {
@@ -32,13 +34,13 @@ vec4 sample_src(int x, int y, int w, int h) {
 
 int detect_edge(vec4 center, vec4 diag, vec4 ortho1, vec4 ortho2,
                 vec4 ext1, vec4 ext2, vec4 ext3, vec4 ext4) {
-    float tolerance = 30.0 / 255.0;
+    float tolerance = 30.0;
     float dominant_threshold = 3.6;
 
     if (color_dist(center, diag) < tolerance) return 0;
 
-    float diag_grad = color_dist(center, diag) + color_dist(ext1, ext2);
-    float ortho_grad = color_dist(ortho1, ortho2) + color_dist(ext3, ext4);
+    precise float diag_grad = color_dist(center, diag) + color_dist(ext1, ext2);
+    precise float ortho_grad = color_dist(ortho1, ortho2) + color_dist(ext3, ext4);
 
     if (diag_grad < ortho_grad) return 0;
     if (diag_grad > ortho_grad * dominant_threshold) return 2;
@@ -74,7 +76,7 @@ void main() {
         float d = color_dist(H, D);
         float dv = color_dist(H, G);
         float dh_val = color_dist(H, E);
-        blend_tl = d > 30.0/255.0 &&
+        blend_tl = d > 30.0 &&
                    (dv < d * steep_threshold || dh_val < d * steep_threshold);
     }
     bool blend_tr = false;
@@ -82,7 +84,7 @@ void main() {
         float d = color_dist(H, F);
         float dv = color_dist(H, I);
         float dh_val = color_dist(H, E);
-        blend_tr = d > 30.0/255.0 &&
+        blend_tr = d > 30.0 &&
                    (dv < d * steep_threshold || dh_val < d * steep_threshold);
     }
     bool blend_bl = false;
@@ -90,7 +92,7 @@ void main() {
         float d = color_dist(H, J);
         float dv = color_dist(H, G);
         float dh_val = color_dist(H, K);
-        blend_bl = d > 30.0/255.0 &&
+        blend_bl = d > 30.0 &&
                    (dv < d * steep_threshold || dh_val < d * steep_threshold);
     }
     bool blend_br = false;
@@ -98,7 +100,7 @@ void main() {
         float d = color_dist(H, L);
         float dv = color_dist(H, I);
         float dh_val = color_dist(H, K);
-        blend_br = d > 30.0/255.0 &&
+        blend_br = d > 30.0 &&
                    (dv < d * steep_threshold || dh_val < d * steep_threshold);
     }
 

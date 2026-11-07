@@ -14,12 +14,13 @@ layout(set = 0, binding = 0) uniform texture2D src;
 layout(set = 0, binding = 1) uniform texture2D blend_info;
 layout(rgba8, set = 1, binding = 0) uniform writeonly image2D dst;
 
-vec4 blend_3_1(vec4 a, vec4 b) {
-    return mix(b, a, 0.75);
-}
-
-vec4 blend_7_1(vec4 a, vec4 b) {
-    return mix(b, a, 0.875);
+// Evaluate the same footprint in coordinates reflected from each corner.
+// Odd scales share their middle edge pixel between adjacent corners.
+int corner_weight(int x, int y, int scale, int blend_type, bool enabled) {
+    if (!enabled) return 0;
+    if (x == 0 && y == 0) return 2;
+    if ((x == 0 || y == 0) && 2 * x < scale && 2 * y < scale && blend_type == 2) return 1;
+    return 0;
 }
 
 vec4 sample_src(int x, int y, int w, int h) {
@@ -49,38 +50,20 @@ void main() {
     vec4 metadata = texelFetch(blend_info, ivec2(sx, sy), 0);
     int blends = int(round(metadata.r * 255.0));
     int active_corners = int(round(metadata.g * 255.0));
-    float mid = float(scale) * 0.5;
-    float px = float(sub_x);
-    float py = float(sub_y);
-    vec4 result = H;
-
-    if (px < mid && py < mid && (active_corners & 1) != 0) {
-        if (sub_x == 0 && sub_y == 0) {
-            result = blend_3_1(H, D);
-        } else if ((sub_x == 0 || sub_y == 0) && (blends & 3) == 2) {
-            result = blend_7_1(H, D);
-        }
-    }
-    if (px >= mid && py < mid && (active_corners & 2) != 0) {
-        if (sub_x == scale-1 && sub_y == 0) {
-            result = blend_3_1(H, F);
-        } else if ((sub_x == scale-1 || sub_y == 0) && ((blends >> 2) & 3) == 2) {
-            result = blend_7_1(H, F);
-        }
-    }
-    if (px < mid && py >= mid && (active_corners & 4) != 0) {
-        if (sub_x == 0 && sub_y == scale-1) {
-            result = blend_3_1(H, J);
-        } else if ((sub_x == 0 || sub_y == scale-1) && ((blends >> 4) & 3) == 2) {
-            result = blend_7_1(H, J);
-        }
-    }
-    if (px >= mid && py >= mid && (active_corners & 8) != 0) {
-        if (sub_x == scale-1 && sub_y == scale-1) {
-            result = blend_3_1(H, L);
-        } else if ((sub_x == scale-1 || sub_y == scale-1) && ((blends >> 6) & 3) == 2) {
-            result = blend_7_1(H, L);
-        }
-    }
-    imageStore(dst, ivec2(gid.xy), result);
+    // Sum exact eighths before converting to UNORM. This also keeps rounding
+    // independent of the order in which overlapping corners are visited.
+    ivec4 center = ivec4(round(H * 255.0));
+    ivec4 result = center * 8;
+    result += corner_weight(sub_x, sub_y, scale, (blends & 3), (active_corners & 1) != 0) *
+              (ivec4(round(D * 255.0)) - center);
+    result += corner_weight(scale - 1 - sub_x, sub_y,
+                            scale, ((blends >> 2) & 3), (active_corners & 2) != 0) *
+              (ivec4(round(F * 255.0)) - center);
+    result += corner_weight(sub_x, scale - 1 - sub_y,
+                            scale, ((blends >> 4) & 3), (active_corners & 4) != 0) *
+              (ivec4(round(J * 255.0)) - center);
+    result += corner_weight(scale - 1 - sub_x, scale - 1 - sub_y,
+                            scale, ((blends >> 6) & 3), (active_corners & 8) != 0) *
+              (ivec4(round(L * 255.0)) - center);
+    imageStore(dst, ivec2(gid.xy), vec4(result) / (8.0 * 255.0));
 }

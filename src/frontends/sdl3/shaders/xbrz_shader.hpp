@@ -19,14 +19,15 @@ struct Params {
 };
 
 float color_dist(float4 a, float4 b) {
-    float dr = a.r - b.r;
-    float dg = a.g - b.g;
-    float db = a.b - b.b;
-    float rmean = (a.r + b.r) * 0.5;
-    float wr = (rmean >= 0.5) ? 3.0 : 2.0;
-    float wg = 4.0;
-    float wb = (rmean >= 0.5) ? 2.0 : 3.0;
-    return sqrt(wr * dr * dr + wg * dg * dg + wb * db * db);
+    // Recover byte channels before measuring distance. Integer squared terms
+    // keep equal gradients equal even when the compiler contracts float math.
+    int3 ca = int3(round(a.rgb * 255.0));
+    int3 cb = int3(round(b.rgb * 255.0));
+    int3 delta = ca - cb;
+    int wr = (ca.r + cb.r >= 256) ? 3 : 2;
+    int wb = (ca.r + cb.r >= 256) ? 2 : 3;
+    int distance_squared = wr * delta.r * delta.r + 4 * delta.g * delta.g + wb * delta.b * delta.b;
+    return precise::sqrt(float(distance_squared));
 }
 
 float4 sample_src(texture2d<float, access::read> src, int x, int y, int w, int h) {
@@ -37,7 +38,7 @@ float4 sample_src(texture2d<float, access::read> src, int x, int y, int w, int h
 
 int detect_edge(float4 center, float4 diag, float4 ortho1, float4 ortho2,
                 float4 ext1, float4 ext2, float4 ext3, float4 ext4) {
-    float tolerance = 30.0 / 255.0;
+    float tolerance = 30.0;
     float dominant_threshold = 3.6;
 
     if (color_dist(center, diag) < tolerance) return 0;
@@ -83,7 +84,7 @@ kernel void xbrz_preprocess(
         float d = color_dist(H, D);
         float dv = color_dist(H, G);
         float dh_val = color_dist(H, E);
-        blend_tl = d > 30.0/255.0 &&
+        blend_tl = d > 30.0 &&
                    (dv < d * steep_threshold || dh_val < d * steep_threshold);
     }
     bool blend_tr = false;
@@ -91,7 +92,7 @@ kernel void xbrz_preprocess(
         float d = color_dist(H, F);
         float dv = color_dist(H, I);
         float dh_val = color_dist(H, E);
-        blend_tr = d > 30.0/255.0 &&
+        blend_tr = d > 30.0 &&
                    (dv < d * steep_threshold || dh_val < d * steep_threshold);
     }
     bool blend_bl = false;
@@ -99,7 +100,7 @@ kernel void xbrz_preprocess(
         float d = color_dist(H, J);
         float dv = color_dist(H, G);
         float dh_val = color_dist(H, K);
-        blend_bl = d > 30.0/255.0 &&
+        blend_bl = d > 30.0 &&
                    (dv < d * steep_threshold || dh_val < d * steep_threshold);
     }
     bool blend_br = false;
@@ -107,7 +108,7 @@ kernel void xbrz_preprocess(
         float d = color_dist(H, L);
         float dv = color_dist(H, I);
         float dh_val = color_dist(H, K);
-        blend_br = d > 30.0/255.0 &&
+        blend_br = d > 30.0 &&
                    (dv < d * steep_threshold || dh_val < d * steep_threshold);
     }
 
@@ -129,12 +130,13 @@ struct Params {
     int padding;
 };
 
-float4 blend_3_1(float4 a, float4 b) {
-    return mix(b, a, 0.75);
-}
-
-float4 blend_7_1(float4 a, float4 b) {
-    return mix(b, a, 0.875);
+// Evaluate the same footprint in coordinates reflected from each corner.
+// Odd scales share their middle edge pixel between adjacent corners.
+int corner_weight(int x, int y, int scale, int blend_type, bool enabled) {
+    if (!enabled) return 0;
+    if (x == 0 && y == 0) return 2;
+    if ((x == 0 || y == 0) && 2 * x < scale && 2 * y < scale && blend_type == 2) return 1;
+    return 0;
 }
 
 float4 sample_src(texture2d<float, access::read> src, int x, int y, int w, int h) {
@@ -169,40 +171,22 @@ kernel void xbrz_upscale(
     float4 metadata = blend_info.read(uint2(sx, sy));
     int blends = int(round(metadata.r * 255.0));
     int active = int(round(metadata.g * 255.0));
-    float mid = float(scale) * 0.5;
-    float px = float(sub_x);
-    float py = float(sub_y);
-    float4 result = H;
-
-    if (px < mid && py < mid && (active & 1) != 0) {
-        if (sub_x == 0 && sub_y == 0) {
-            result = blend_3_1(H, D);
-        } else if ((sub_x == 0 || sub_y == 0) && (blends & 3) == 2) {
-            result = blend_7_1(H, D);
-        }
-    }
-    if (px >= mid && py < mid && (active & 2) != 0) {
-        if (sub_x == scale-1 && sub_y == 0) {
-            result = blend_3_1(H, F);
-        } else if ((sub_x == scale-1 || sub_y == 0) && ((blends >> 2) & 3) == 2) {
-            result = blend_7_1(H, F);
-        }
-    }
-    if (px < mid && py >= mid && (active & 4) != 0) {
-        if (sub_x == 0 && sub_y == scale-1) {
-            result = blend_3_1(H, J);
-        } else if ((sub_x == 0 || sub_y == scale-1) && ((blends >> 4) & 3) == 2) {
-            result = blend_7_1(H, J);
-        }
-    }
-    if (px >= mid && py >= mid && (active & 8) != 0) {
-        if (sub_x == scale-1 && sub_y == scale-1) {
-            result = blend_3_1(H, L);
-        } else if ((sub_x == scale-1 || sub_y == scale-1) && ((blends >> 6) & 3) == 2) {
-            result = blend_7_1(H, L);
-        }
-    }
-    dst.write(result, gid);
+    // Sum exact eighths before converting to UNORM. This also keeps rounding
+    // independent of the order in which overlapping corners are visited.
+    int4 center = int4(round(H * 255.0));
+    int4 result = center * 8;
+    result += corner_weight(sub_x, sub_y, scale, (blends & 3), (active & 1) != 0) *
+              (int4(round(D * 255.0)) - center);
+    result += corner_weight(scale - 1 - sub_x, sub_y,
+                            scale, ((blends >> 2) & 3), (active & 2) != 0) *
+              (int4(round(F * 255.0)) - center);
+    result += corner_weight(sub_x, scale - 1 - sub_y,
+                            scale, ((blends >> 4) & 3), (active & 4) != 0) *
+              (int4(round(J * 255.0)) - center);
+    result += corner_weight(scale - 1 - sub_x, scale - 1 - sub_y,
+                            scale, ((blends >> 6) & 3), (active & 8) != 0) *
+              (int4(round(L * 255.0)) - center);
+    dst.write(float4(result) / (8.0 * 255.0), gid);
 }
 )MSL";
 
@@ -218,14 +202,16 @@ Texture2D<float4> src : register(t0, space0);
 RWTexture2D<float4> blend_info : register(u0, space1);
 
 float color_dist(float4 a, float4 b) {
-    float dr = a.r - b.r;
-    float dg = a.g - b.g;
-    float db = a.b - b.b;
-    float rmean = (a.r + b.r) * 0.5;
-    float wr = (rmean >= 0.5) ? 3.0 : 2.0;
-    float wg = 4.0;
-    float wb = (rmean >= 0.5) ? 2.0 : 3.0;
-    return sqrt(wr * dr * dr + wg * dg * dg + wb * db * db);
+    // Recover byte channels before measuring distance. Integer squared terms
+    // keep equal gradients equal even when the compiler contracts float math.
+    int3 ca = (int3)round(a.rgb * 255.0);
+    int3 cb = (int3)round(b.rgb * 255.0);
+    int3 delta = ca - cb;
+    int wr = (ca.r + cb.r >= 256) ? 3 : 2;
+    int wb = (ca.r + cb.r >= 256) ? 2 : 3;
+    int distance_squared = wr * delta.r * delta.r + 4 * delta.g * delta.g + wb * delta.b * delta.b;
+    precise float distance = sqrt(float(distance_squared));
+    return distance;
 }
 
 float4 sample_src(int x, int y, int w, int h) {
@@ -236,13 +222,13 @@ float4 sample_src(int x, int y, int w, int h) {
 
 int detect_edge(float4 center, float4 diag, float4 ortho1, float4 ortho2,
                 float4 ext1, float4 ext2, float4 ext3, float4 ext4) {
-    float tolerance = 30.0 / 255.0;
+    float tolerance = 30.0;
     float dominant_threshold = 3.6;
 
     if (color_dist(center, diag) < tolerance) return 0;
 
-    float diag_grad = color_dist(center, diag) + color_dist(ext1, ext2);
-    float ortho_grad = color_dist(ortho1, ortho2) + color_dist(ext3, ext4);
+    precise float diag_grad = color_dist(center, diag) + color_dist(ext1, ext2);
+    precise float ortho_grad = color_dist(ortho1, ortho2) + color_dist(ext3, ext4);
 
     if (diag_grad < ortho_grad) return 0;
     if (diag_grad > ortho_grad * dominant_threshold) return 2;
@@ -278,7 +264,7 @@ void xbrz_preprocess(uint3 gid : SV_DispatchThreadID) {
         float d = color_dist(H, D);
         float dv = color_dist(H, G);
         float dh_val = color_dist(H, E);
-        blend_tl = d > 30.0/255.0 &&
+        blend_tl = d > 30.0 &&
                    (dv < d * steep_threshold || dh_val < d * steep_threshold);
     }
     bool blend_tr = false;
@@ -286,7 +272,7 @@ void xbrz_preprocess(uint3 gid : SV_DispatchThreadID) {
         float d = color_dist(H, F);
         float dv = color_dist(H, I);
         float dh_val = color_dist(H, E);
-        blend_tr = d > 30.0/255.0 &&
+        blend_tr = d > 30.0 &&
                    (dv < d * steep_threshold || dh_val < d * steep_threshold);
     }
     bool blend_bl = false;
@@ -294,7 +280,7 @@ void xbrz_preprocess(uint3 gid : SV_DispatchThreadID) {
         float d = color_dist(H, J);
         float dv = color_dist(H, G);
         float dh_val = color_dist(H, K);
-        blend_bl = d > 30.0/255.0 &&
+        blend_bl = d > 30.0 &&
                    (dv < d * steep_threshold || dh_val < d * steep_threshold);
     }
     bool blend_br = false;
@@ -302,7 +288,7 @@ void xbrz_preprocess(uint3 gid : SV_DispatchThreadID) {
         float d = color_dist(H, L);
         float dv = color_dist(H, I);
         float dh_val = color_dist(H, K);
-        blend_br = d > 30.0/255.0 &&
+        blend_br = d > 30.0 &&
                    (dv < d * steep_threshold || dh_val < d * steep_threshold);
     }
 
@@ -325,12 +311,13 @@ Texture2D<float4> src : register(t0, space0);
 Texture2D<float4> blend_info : register(t1, space0);
 RWTexture2D<float4> dst : register(u0, space1);
 
-float4 blend_3_1(float4 a, float4 b) {
-    return lerp(b, a, 0.75);
-}
-
-float4 blend_7_1(float4 a, float4 b) {
-    return lerp(b, a, 0.875);
+// Evaluate the same footprint in coordinates reflected from each corner.
+// Odd scales share their middle edge pixel between adjacent corners.
+int corner_weight(int x, int y, int scale, int blend_type, bool enabled) {
+    if (!enabled) return 0;
+    if (x == 0 && y == 0) return 2;
+    if ((x == 0 || y == 0) && 2 * x < scale && 2 * y < scale && blend_type == 2) return 1;
+    return 0;
 }
 
 float4 sample_src(int x, int y, int w, int h) {
@@ -360,40 +347,22 @@ void xbrz_upscale(uint3 gid : SV_DispatchThreadID) {
     float4 metadata = blend_info.Load(int3(sx, sy, 0));
     int blends = (int)round(metadata.r * 255.0);
     int active = (int)round(metadata.g * 255.0);
-    float mid = (float)scale * 0.5;
-    float px = (float)sub_x;
-    float py = (float)sub_y;
-    float4 result = H;
-
-    if (px < mid && py < mid && (active & 1) != 0) {
-        if (sub_x == 0 && sub_y == 0) {
-            result = blend_3_1(H, D);
-        } else if ((sub_x == 0 || sub_y == 0) && (blends & 3) == 2) {
-            result = blend_7_1(H, D);
-        }
-    }
-    if (px >= mid && py < mid && (active & 2) != 0) {
-        if (sub_x == scale-1 && sub_y == 0) {
-            result = blend_3_1(H, F);
-        } else if ((sub_x == scale-1 || sub_y == 0) && ((blends >> 2) & 3) == 2) {
-            result = blend_7_1(H, F);
-        }
-    }
-    if (px < mid && py >= mid && (active & 4) != 0) {
-        if (sub_x == 0 && sub_y == scale-1) {
-            result = blend_3_1(H, J);
-        } else if ((sub_x == 0 || sub_y == scale-1) && ((blends >> 4) & 3) == 2) {
-            result = blend_7_1(H, J);
-        }
-    }
-    if (px >= mid && py >= mid && (active & 8) != 0) {
-        if (sub_x == scale-1 && sub_y == scale-1) {
-            result = blend_3_1(H, L);
-        } else if ((sub_x == scale-1 || sub_y == scale-1) && ((blends >> 6) & 3) == 2) {
-            result = blend_7_1(H, L);
-        }
-    }
-    dst[gid.xy] = result;
+    // Sum exact eighths before converting to UNORM. This also keeps rounding
+    // independent of the order in which overlapping corners are visited.
+    int4 center = (int4)round(H * 255.0);
+    int4 result = center * 8;
+    result += corner_weight(sub_x, sub_y, scale, (blends & 3), (active & 1) != 0) *
+              ((int4)round(D * 255.0) - center);
+    result += corner_weight(scale - 1 - sub_x, sub_y,
+                            scale, ((blends >> 2) & 3), (active & 2) != 0) *
+              ((int4)round(F * 255.0) - center);
+    result += corner_weight(sub_x, scale - 1 - sub_y,
+                            scale, ((blends >> 4) & 3), (active & 4) != 0) *
+              ((int4)round(J * 255.0) - center);
+    result += corner_weight(scale - 1 - sub_x, scale - 1 - sub_y,
+                            scale, ((blends >> 6) & 3), (active & 8) != 0) *
+              ((int4)round(L * 255.0) - center);
+    dst[gid.xy] = (float4)result / (8.0 * 255.0);
 }
 )HLSL";
 // clang-format on
