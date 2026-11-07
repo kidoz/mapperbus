@@ -5,20 +5,12 @@
 #include <utility>
 #include <vector>
 
+#include "../support/xbrz_cases.hpp"
 #include "platform/video/xbrz.hpp"
 
 namespace {
-using Pixels = std::vector<std::uint32_t>;
-
-Pixels rotate_clockwise(const Pixels& source, int width) {
-    Pixels rotated(source.size());
-    for (int y = 0; y < width; ++y) {
-        for (int x = 0; x < width; ++x) {
-            rotated[x * width + width - 1 - y] = source[y * width + x];
-        }
-    }
-    return rotated;
-}
+using mapperbus::tests::xbrz::Pixels;
+using mapperbus::tests::xbrz::rotate_clockwise;
 
 Pixels scale(const Pixels& source, int width, int factor) {
     Pixels output(source.size() * factor * factor);
@@ -61,14 +53,61 @@ TEST_CASE("xBRZ treats rotated binary neighborhoods consistently at every scale"
         }
         for (int factor : {2, 3, 4, 5, 6}) {
             CAPTURE(factor);
-            const auto expected =
-                rotate_clockwise(scale(source, kWidth, factor), kWidth * factor);
+            const auto expected = rotate_clockwise(scale(source, kWidth, factor), kWidth * factor);
             const auto actual = scale(rotate_clockwise(source, kWidth), kWidth, factor);
             for (int y = 2 * factor; y < 3 * factor; ++y) {
                 for (int x = 2 * factor; x < 3 * factor; ++x) {
                     CAPTURE(x, y);
                     REQUIRE(actual[y * kWidth * factor + x] == expected[y * kWidth * factor + x]);
                 }
+            }
+        }
+    }
+}
+
+TEST_CASE("xBRZ rotates deterministic multicolor neighborhoods at every scale", "[xbrz]") {
+    using namespace mapperbus::tests::xbrz;
+    for (int factor : {2, 3, 4, 5, 6}) {
+        auto source = neighborhood_atlas(true);
+        auto expected = scale(source, kAtlasWidth, factor);
+        for (int turn = 1; turn <= 3; ++turn) {
+            source = rotate_clockwise(source, kAtlasWidth);
+            expected = rotate_clockwise(expected, kAtlasWidth * factor);
+            const auto actual = scale(source, kAtlasWidth, factor);
+            const auto mismatch = std::mismatch(actual.begin(), actual.end(), expected.begin());
+            const auto offset = mismatch.first - actual.begin();
+            CAPTURE(factor, turn, offset);
+            REQUIRE(mismatch.first == actual.end());
+        }
+    }
+}
+
+TEST_CASE("xBRZ matches hand-calculated corner and line blocks", "[xbrz]") {
+    using namespace mapperbus::tests::xbrz;
+    for (const auto& patch : golden_patches()) {
+        for (int factor : {2, 3, 4, 5, 6}) {
+            auto source = patch.source;
+            int sx = patch.x;
+            int sy = patch.y;
+            Pixels expected;
+            for (char symbol : patch.cpu[factor - 2]) {
+                expected.push_back(golden_color(symbol));
+            }
+            REQUIRE(expected.size() == static_cast<std::size_t>(factor * factor));
+            for (int turn = 0; turn < 4; ++turn) {
+                const auto output = scale(source, 3, factor);
+                for (int y = 0; y < factor; ++y) {
+                    for (int x = 0; x < factor; ++x) {
+                        CAPTURE(patch.name, factor, turn, x, y);
+                        REQUIRE(output[(sy * factor + y) * (3 * factor) + sx * factor + x] ==
+                                expected[y * factor + x]);
+                    }
+                }
+                source = rotate_clockwise(source, 3);
+                expected = rotate_clockwise(expected, factor);
+                const int next_x = 2 - sy;
+                sy = sx;
+                sx = next_x;
             }
         }
     }
@@ -125,6 +164,17 @@ TEST_CASE("xBRZ borders match an explicitly edge-padded image", "[xbrz]") {
                 }
             }
         }
+    }
+}
+
+TEST_CASE("xBRZ rejects unsupported standalone scale factors without writing", "[xbrz]") {
+    const Pixels source(1, 0xFF80A0C0U);
+    const Pixels untouched(144, 0x12345678U);
+    for (int factor : {-1, 0, 1, 7, 12}) {
+        CAPTURE(factor);
+        Pixels output = untouched;
+        mapperbus::platform::xbrz_scale(factor, source, 1, 1, output);
+        REQUIRE(output == untouched);
     }
 }
 

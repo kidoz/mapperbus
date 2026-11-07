@@ -1,6 +1,7 @@
 #include "platform/video/xbrz.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 
@@ -55,12 +56,46 @@ constexpr uint32_t blend(uint32_t a, uint32_t b, int weight_a, int weight_total)
 constexpr uint32_t blend_3_1(uint32_t a, uint32_t b) {
     return blend(a, b, 3, 4);
 }
-constexpr uint32_t blend_7_1(uint32_t a, uint32_t b) {
-    return blend(a, b, 7, 8);
-}
-constexpr uint32_t blend_5_3(uint32_t a, uint32_t b) {
-    return blend(a, b, 5, 8);
-}
+
+// Corner contributions can overlap at 3x and above. Accumulate their exact
+// eighths before rounding so neither corner order nor rotation changes a pixel.
+class BlendBlock {
+  public:
+    void add(int offset, uint32_t color, int weight) {
+        auto& pixel = pixels_[offset];
+        pixel.r += weight * red(color);
+        pixel.g += weight * green(color);
+        pixel.b += weight * blue(color);
+        pixel.weight += weight;
+    }
+
+    void write(uint32_t* dst, int stride, int base, int scale, uint32_t center) const {
+        for (int y = 0; y < scale; ++y) {
+            for (int x = 0; x < scale; ++x) {
+                const auto& pixel = pixels_[y * scale + x];
+                uint32_t result = center;
+                if (pixel.weight != 0) {
+                    // The current stencils contribute at most 4/8 to a pixel.
+                    const int remaining = 8 - pixel.weight;
+                    const auto r = static_cast<uint32_t>((remaining * red(center) + pixel.r) / 8);
+                    const auto g = static_cast<uint32_t>((remaining * green(center) + pixel.g) / 8);
+                    const auto b = static_cast<uint32_t>((remaining * blue(center) + pixel.b) / 8);
+                    result = 0xFF000000U | (r << 16U) | (g << 8U) | b;
+                }
+                dst[base + y * stride + x] = result;
+            }
+        }
+    }
+
+  private:
+    struct Pixel {
+        int r = 0;
+        int g = 0;
+        int b = 0;
+        int weight = 0;
+    };
+    std::array<Pixel, 36> pixels_{}; // Maximum 6x6 output block.
+};
 
 // --- Blend types ---
 enum class BlendType : uint8_t {
@@ -247,12 +282,7 @@ void scale_pixel_3x(uint32_t* dst,
                     const XbrzConfig& cfg) {
     int base = dy * 3 * dst_w + dx * 3;
 
-    // Fill 3x3 with center
-    for (int row = 0; row < 3; ++row) {
-        for (int col = 0; col < 3; ++col) {
-            dst[base + row * dst_w + col] = center;
-        }
-    }
+    BlendBlock blends;
 
     // Corner blending for 3x3
     auto blend_corner = [&](int corner_offset,
@@ -273,23 +303,24 @@ void scale_pixel_3x(uint32_t* dst,
         bool steep = dv < d * cfg.steep_direction_threshold;
         bool shallow = dh < d * cfg.steep_direction_threshold;
 
-        dst[base + corner_offset] = blend_3_1(center, diag);
+        blends.add(corner_offset, diag, 2);
         if (steep && bt == BlendType::Dominant) {
-            dst[base + edge_v_offset] = blend_7_1(center, diag);
+            blends.add(edge_v_offset, diag, 1);
         }
         if (shallow && bt == BlendType::Dominant) {
-            dst[base + edge_h_offset] = blend_7_1(center, diag);
+            blends.add(edge_h_offset, diag, 1);
         }
     };
 
     // TL corner
-    blend_corner(0, k.D, k.G, k.E, dst_w, 1, get_tl(blend_info));
+    blend_corner(0, k.D, k.G, k.E, 3, 1, get_tl(blend_info));
     // TR corner
-    blend_corner(2, k.F, k.I, k.E, dst_w + 2, 1, get_tr(blend_info));
+    blend_corner(2, k.F, k.I, k.E, 5, 1, get_tr(blend_info));
     // BL corner
-    blend_corner(2 * dst_w, k.J, k.G, k.K, dst_w, 2 * dst_w + 1, get_bl(blend_info));
+    blend_corner(6, k.J, k.G, k.K, 3, 7, get_bl(blend_info));
     // BR corner
-    blend_corner(2 * dst_w + 2, k.L, k.I, k.K, dst_w + 2, 2 * dst_w + 1, get_br(blend_info));
+    blend_corner(8, k.L, k.I, k.K, 5, 7, get_br(blend_info));
+    blends.write(dst, dst_w, base, 3, center);
 }
 
 void scale_pixel_4x(uint32_t* dst,
@@ -302,11 +333,7 @@ void scale_pixel_4x(uint32_t* dst,
                     const XbrzConfig& cfg) {
     int base = dy * 4 * dst_w + dx * 4;
 
-    for (int row = 0; row < 4; ++row) {
-        for (int col = 0; col < 4; ++col) {
-            dst[base + row * dst_w + col] = center;
-        }
-    }
+    BlendBlock blends;
 
     auto blend_corner_4 = [&](int c0,
                               int c1,
@@ -323,7 +350,7 @@ void scale_pixel_4x(uint32_t* dst,
         if (d < cfg.equal_color_tolerance)
             return;
 
-        dst[base + c0] = blend_3_1(center, diag);
+        blends.add(c0, diag, 2);
 
         double dv = color_distance(center, ortho_v);
         double dh = color_distance(center, ortho_h);
@@ -331,39 +358,24 @@ void scale_pixel_4x(uint32_t* dst,
         bool shallow = dh < d * cfg.steep_direction_threshold;
 
         if (steep || bt == BlendType::Dominant) {
-            dst[base + c1] = blend_5_3(center, diag);
-            dst[base + e1] = blend_7_1(center, diag);
+            blends.add(c1, diag, 3);
+            blends.add(e1, diag, 1);
         }
         if (shallow || bt == BlendType::Dominant) {
-            dst[base + c2] = blend_5_3(center, diag);
-            dst[base + e2] = blend_7_1(center, diag);
+            blends.add(c2, diag, 3);
+            blends.add(e2, diag, 1);
         }
     };
 
     // TL
-    blend_corner_4(0, dst_w, 1, 2 * dst_w, 2, k.D, k.G, k.E, get_tl(blend_info));
+    blend_corner_4(0, 4, 1, 8, 2, k.D, k.G, k.E, get_tl(blend_info));
     // TR
-    blend_corner_4(3, dst_w + 3, 2, 2 * dst_w + 3, 1, k.F, k.I, k.E, get_tr(blend_info));
+    blend_corner_4(3, 7, 2, 11, 1, k.F, k.I, k.E, get_tr(blend_info));
     // BL
-    blend_corner_4(3 * dst_w,
-                   2 * dst_w,
-                   3 * dst_w + 1,
-                   dst_w,
-                   3 * dst_w + 2,
-                   k.J,
-                   k.G,
-                   k.K,
-                   get_bl(blend_info));
+    blend_corner_4(12, 8, 13, 4, 14, k.J, k.G, k.K, get_bl(blend_info));
     // BR
-    blend_corner_4(3 * dst_w + 3,
-                   2 * dst_w + 3,
-                   3 * dst_w + 2,
-                   dst_w + 3,
-                   3 * dst_w + 1,
-                   k.L,
-                   k.I,
-                   k.K,
-                   get_br(blend_info));
+    blend_corner_4(15, 11, 14, 7, 13, k.L, k.I, k.K, get_br(blend_info));
+    blends.write(dst, dst_w, base, 4, center);
 }
 
 // Generic fallback for 5x and 6x (uses 4x logic with additional center fill)
@@ -378,11 +390,7 @@ void scale_pixel_generic(uint32_t* dst,
                          const XbrzConfig& cfg) {
     int base = dy * n * dst_w + dx * n;
 
-    for (int row = 0; row < n; ++row) {
-        for (int col = 0; col < n; ++col) {
-            dst[base + row * dst_w + col] = center;
-        }
-    }
+    BlendBlock blends;
 
     // Corner blending (adaptive: blend more pixels for larger scales)
     auto blend_generic = [&](int corner_r,
@@ -400,7 +408,7 @@ void scale_pixel_generic(uint32_t* dst,
             return;
 
         // Corner pixel
-        dst[base + corner_r * dst_w + corner_c] = blend_3_1(center, diag);
+        blends.add(corner_r * n + corner_c, diag, 2);
 
         // Adjacent edge pixels
         double dv = color_distance(center, ortho_v);
@@ -409,15 +417,15 @@ void scale_pixel_generic(uint32_t* dst,
         bool shallow = dh < d * cfg.steep_direction_threshold;
 
         if (steep || bt == BlendType::Dominant) {
-            dst[base + (corner_r + dr) * dst_w + corner_c] = blend_5_3(center, diag);
+            blends.add((corner_r + dr) * n + corner_c, diag, 3);
             if (corner_r + 2 * dr >= 0 && corner_r + 2 * dr < n) {
-                dst[base + (corner_r + 2 * dr) * dst_w + corner_c] = blend_7_1(center, diag);
+                blends.add((corner_r + 2 * dr) * n + corner_c, diag, 1);
             }
         }
         if (shallow || bt == BlendType::Dominant) {
-            dst[base + corner_r * dst_w + corner_c + dc] = blend_5_3(center, diag);
+            blends.add(corner_r * n + corner_c + dc, diag, 3);
             if (corner_c + 2 * dc >= 0 && corner_c + 2 * dc < n) {
-                dst[base + corner_r * dst_w + corner_c + 2 * dc] = blend_7_1(center, diag);
+                blends.add(corner_r * n + corner_c + 2 * dc, diag, 1);
             }
         }
     };
@@ -426,6 +434,7 @@ void scale_pixel_generic(uint32_t* dst,
     blend_generic(0, n - 1, 1, -1, k.F, k.I, k.E, get_tr(blend_info));
     blend_generic(n - 1, 0, -1, 1, k.J, k.G, k.K, get_bl(blend_info));
     blend_generic(n - 1, n - 1, -1, -1, k.L, k.I, k.K, get_br(blend_info));
+    blends.write(dst, dst_w, base, n, center);
 }
 
 } // namespace
@@ -452,6 +461,9 @@ void xbrz_scale(int scale_factor,
                 int src_height,
                 std::span<uint32_t> target,
                 const XbrzConfig& config) {
+    if (scale_factor < 2 || scale_factor > 6) {
+        return;
+    }
     int dst_w = src_width * scale_factor;
     const auto* input = source.data();
     auto* output = target.data();

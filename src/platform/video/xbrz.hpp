@@ -34,7 +34,8 @@ class XbrzUpscaler : public Upscaler {
     std::vector<uint8_t> blend_result_; // Preprocessing buffer
 };
 
-// Standalone function for direct use without the interface
+// Standalone function for direct use without the interface.
+// Supported factors are 2 through 6; other factors leave the target untouched.
 void xbrz_scale(int scale_factor,
                 std::span<const std::uint32_t> source,
                 int src_width,
