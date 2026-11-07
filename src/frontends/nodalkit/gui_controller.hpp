@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <nk/platform/application.h>
 #include <nk/platform/window.h>
@@ -21,6 +22,7 @@
 #include <string_view>
 #include <vector>
 
+#include "app/async_configuration_save.hpp"
 #include "app/async_disk_export.hpp"
 #include "app/async_rom_loader.hpp"
 #include "app/async_state_io.hpp"
@@ -51,7 +53,9 @@ class MapperBusGuiController {
   public:
     MapperBusGuiController(nk::Application& app,
                            nk::Window& window,
-                           app::AsyncDiskExport::Write disk_export_write = app::write_disk_export);
+                           app::AsyncDiskExport::Write disk_export_write = app::write_disk_export,
+                           app::AsyncConfigurationSave::Write configuration_write =
+                               app::save_mapperbus_configuration_to_file);
 
     void open_initial_rom(std::string_view rom_path);
 
@@ -150,10 +154,20 @@ class MapperBusGuiController {
     void update_preview_surface(const std::uint32_t* data, int width, int height);
     void update_configuration_from_state();
     void save_configuration_state();
+    void poll_configuration_saves();
+    void refresh_configuration_save_status();
+    void retry_configuration_save();
+    void begin_configuration_change(app::MapperBusConfiguration proposed,
+                                    std::function<void()> apply,
+                                    std::string success_message = {});
+    void show_configuration_change(bool failed);
+    void dismiss_configuration_change();
+    void discard_configuration_change();
     void change_controller_hardware(const app::ControllerHardwareOverrides& change);
     void remember_game_controller_hardware(bool remember);
-    bool save_controller_hardware_change(app::MapperBusConfiguration proposed,
-                                         const app::ControllerHardwareSettings& settings);
+    void save_controller_hardware_change(app::MapperBusConfiguration proposed,
+                                         const app::ControllerHardwareSettings& settings,
+                                         std::string success_message = {});
     void open_rebind_dialog(RebindDevice device, platform::InputAction button);
     void close_rebind_dialog();
     void cancel_rebind_dialog();
@@ -186,6 +200,16 @@ class MapperBusGuiController {
     GuiAudioBackend* audio_backend_ = nullptr;
     NodalKitInput* input_backend_ = nullptr;
     app::MapperBusConfiguration configuration_;
+    app::AsyncConfigurationSave configuration_saver_;
+    struct PendingConfigurationChange {
+        std::uint64_t revision;
+        app::MapperBusConfiguration proposed;
+        std::function<void()> apply;
+        std::string success_message;
+    };
+    std::optional<PendingConfigurationChange> configuration_change_;
+    bool configuration_save_deferred_ = false;
+    std::shared_ptr<nk::Dialog> configuration_change_dialog_;
     std::unique_ptr<app::EmulationSession> session_;
     std::unique_ptr<app::SessionActions> actions_;
     core::FrameBuffer blank_frame_{};
@@ -208,6 +232,9 @@ class MapperBusGuiController {
     bool close_previously_paused_ = false;
     bool close_saving_ = false;
     bool close_authorized_ = false;
+    bool close_data_saved_ = false;
+    bool close_configuration_submitted_ = false;
+    bool close_waiting_configuration_ = false;
     app::BackgroundTask<void> close_save_task_;
     std::shared_ptr<nk::Dialog> close_save_dialog_;
     std::string announced_disk_save_error_;
@@ -274,6 +301,7 @@ class MapperBusGuiController {
     std::shared_ptr<SecondaryText> input_test_label_;
     std::shared_ptr<nk::Label> live_microphone_status_;
     std::shared_ptr<nk::Label> settings_save_label_;
+    std::shared_ptr<nk::Button> settings_save_retry_;
     std::string settings_save_status_ = "Saved automatically";
     SettingsPage settings_page_ = SettingsPage::Input;
     SettingsPage settings_built_page_ = SettingsPage::Input;

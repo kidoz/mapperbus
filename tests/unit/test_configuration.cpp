@@ -1,14 +1,20 @@
 #include <algorithm>
 #include <catch2/catch_test_macros.hpp>
 #include <chrono>
+#include <condition_variable>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
+#include <thread>
 #include <utility>
 
+#include "app/async_configuration_save.hpp"
 #include "app/configuration.hpp"
+#include "core/binary_file.hpp"
 
 namespace mapperbus::app {
 namespace {
@@ -983,5 +989,240 @@ TEST_CASE("FDS BIOS configuration round trips quoted paths", "[app][configuratio
     REQUIRE(save_mapperbus_configuration_to_file(config, path));
     CHECK(load_mapperbus_configuration_from_file(path).fds_bios_path == config.fds_bios_path);
     std::filesystem::remove_all(path.parent_path());
+}
+
+namespace {
+struct ConfigurationFixture {
+    std::filesystem::path path = temporary_config_path();
+    ~ConfigurationFixture() {
+        std::error_code error;
+        std::filesystem::remove_all(path.parent_path(), error);
+    }
+};
+struct ConfigurationGate {
+    std::mutex mutex;
+    std::condition_variable changed;
+    bool entered = false;
+    bool released = false;
+    bool finished = false;
+    void block() {
+        std::unique_lock lock(mutex);
+        entered = true;
+        changed.notify_all();
+        changed.wait(lock, [this] { return released; });
+    }
+    bool wait(bool ConfigurationGate::* flag) {
+        std::unique_lock lock(mutex);
+        return changed.wait_for(
+            lock, std::chrono::seconds(5), [this, flag] { return this->*flag; });
+    }
+    void release() {
+        const std::lock_guard lock(mutex);
+        released = true;
+        changed.notify_all();
+    }
+    void finish() {
+        const std::lock_guard lock(mutex);
+        finished = true;
+        changed.notify_all();
+    }
+};
+struct ReleaseConfiguration {
+    std::shared_ptr<ConfigurationGate> gate;
+    ~ReleaseConfiguration() {
+        gate->release();
+    }
+};
+ConfigurationSaveCompletion wait_configuration(AsyncConfigurationSave& saving) {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (auto result = saving.poll())
+            return std::move(*result);
+        std::this_thread::yield();
+    }
+    return {0, std::unexpected("Timed out waiting for configuration save")};
+}
+} // namespace
+
+TEST_CASE("Background settings saves own inputs and coalesce rapid edits to the latest revision",
+          "[app][configuration][async]") {
+    ConfigurationFixture fixture;
+    auto gate = std::make_shared<ConfigurationGate>();
+    const ReleaseConfiguration cleanup{gate};
+    auto written = std::make_shared<std::vector<int>>();
+    AsyncConfigurationSave saving(fixture.path,
+                                  [gate, written](const auto& config, const auto& path) {
+                                      if (written->empty())
+                                          gate->block();
+                                      written->push_back(config.frontend.audio_volume_percent);
+                                      return save_mapperbus_configuration_to_file(config, path);
+                                  });
+    MapperBusConfiguration config;
+    config.frontend.audio_volume_percent = 10;
+    const auto first = saving.submit(config);
+    REQUIRE(gate->wait(&ConfigurationGate::entered));
+    config.frontend.audio_volume_percent = 20;
+    (void)saving.submit(config);
+    config.frontend.audio_volume_percent = 30;
+    config.state_slots[std::string(64, 'b')] = 8;
+    const auto latest = saving.submit(config);
+    config.frontend.audio_volume_percent = 99;
+    CHECK(saving.busy());
+    CHECK(saving.unsaved());
+    CHECK_FALSE(saving.poll());
+    gate->release();
+    auto old = wait_configuration(saving);
+    REQUIRE(old.result);
+    CHECK(old.revision == first);
+    CHECK(saving.busy());
+    CHECK(saving.unsaved());
+    auto final = wait_configuration(saving);
+    REQUIRE(final.result);
+    CHECK(final.revision == latest);
+    CHECK_FALSE(saving.busy());
+    CHECK_FALSE(saving.unsaved());
+    CHECK(saving.error().empty());
+    CHECK(*written == std::vector<int>{10, 30});
+    const auto loaded = load_mapperbus_configuration_from_file(fixture.path);
+    CHECK(loaded.frontend.audio_volume_percent == 30);
+    CHECK(loaded.state_slots.at(std::string(64, 'b')) == 8);
+}
+
+TEST_CASE("Failed settings writes preserve the old file and Retry uses newer edits",
+          "[app][configuration][async]") {
+    ConfigurationFixture fixture;
+    MapperBusConfiguration config;
+    REQUIRE(save_mapperbus_configuration_to_file(config, fixture.path));
+    auto original = core::read_binary_file_capped(fixture.path.string(), 100000, "config");
+    REQUIRE(original);
+    auto gate = std::make_shared<ConfigurationGate>();
+    const ReleaseConfiguration cleanup{gate};
+    auto calls = std::make_shared<int>(0);
+    AsyncConfigurationSave saving(
+        fixture.path, [gate, calls](const auto& proposed, const auto& path) -> core::Result<void> {
+            if (++*calls == 1) {
+                gate->block();
+                return std::unexpected("Injected settings write failure");
+            }
+            return save_mapperbus_configuration_to_file(proposed, path);
+        });
+    config.frontend.audio_volume_percent = 10;
+    const auto first = saving.submit(config);
+    REQUIRE(gate->wait(&ConfigurationGate::entered));
+    config.frontend.audio_volume_percent = 20;
+    (void)saving.submit(config);
+    gate->release();
+    auto failed = wait_configuration(saving);
+    REQUIRE_FALSE(failed.result);
+    CHECK(failed.revision == first);
+    CHECK_FALSE(saving.busy());
+    CHECK(saving.unsaved());
+    CHECK_FALSE(saving.error().empty());
+    auto retained = core::read_binary_file_capped(fixture.path.string(), 100000, "config");
+    REQUIRE(retained);
+    CHECK(*retained == *original);
+    config.frontend.audio_volume_percent = 30;
+    const auto latest = saving.submit(config);
+    CHECK_FALSE(saving.busy()); // Failure stays latched until explicit Retry.
+    CHECK_FALSE(saving.poll());
+    saving.retry();
+    auto retried = wait_configuration(saving);
+    REQUIRE(retried.result);
+    CHECK(retried.revision == latest);
+    CHECK_FALSE(saving.unsaved());
+    CHECK(load_mapperbus_configuration_from_file(fixture.path).frontend.audio_volume_percent == 30);
+    CHECK(*calls == 2);
+}
+
+TEST_CASE("A settings proposal follows older saves and can be retried or discarded after failure",
+          "[app][configuration][async][transaction]") {
+    ConfigurationFixture fixture;
+    MapperBusConfiguration live;
+    live.frontend.audio_volume_percent = 60;
+    auto gate = std::make_shared<ConfigurationGate>();
+    const ReleaseConfiguration cleanup{gate};
+    auto calls = std::make_shared<int>(0);
+    AsyncConfigurationSave saving(
+        fixture.path, [gate, calls](const auto& proposed, const auto& path) -> core::Result<void> {
+            const auto call = ++*calls;
+            if (call == 1)
+                gate->block();
+            if (call == 2 || call == 4)
+                return std::unexpected("Rejected proposal");
+            return save_mapperbus_configuration_to_file(proposed, path);
+        });
+    (void)saving.submit(live);
+    REQUIRE(gate->wait(&ConfigurationGate::entered));
+    auto proposed = live;
+    proposed.input.controller_mode = core::ControllerMode::FourScore;
+    proposed.save_states.directory = fixture.path.parent_path() / "new-states";
+    const auto transaction = saving.submit(proposed);
+    CHECK(live.input.controller_mode == core::ControllerMode::Standard);
+    gate->release();
+    REQUIRE(wait_configuration(saving).result);
+    auto failed = wait_configuration(saving);
+    CHECK(failed.revision == transaction);
+    REQUIRE_FALSE(failed.result);
+    CHECK(load_mapperbus_configuration_from_file(fixture.path).input.controller_mode ==
+          core::ControllerMode::Standard);
+    saving.retry();
+    auto committed = wait_configuration(saving);
+    REQUIRE(committed.result);
+    CHECK(committed.revision == transaction);
+    live = proposed; // The matching receipt is the UI's only apply seam.
+    CHECK(load_mapperbus_configuration_from_file(fixture.path).save_states.directory ==
+          live.save_states.directory);
+    proposed.input.controller_mode = core::ControllerMode::Standard;
+    (void)saving.submit(proposed);
+    REQUIRE_FALSE(wait_configuration(saving).result);
+    saving.replace_failed(live);
+    REQUIRE(wait_configuration(saving).result);
+    CHECK_FALSE(saving.unsaved());
+    CHECK(load_mapperbus_configuration_from_file(fixture.path).input.controller_mode ==
+          core::ControllerMode::FourScore);
+}
+
+TEST_CASE("Configuration workers can outlive their owner without accessing live settings",
+          "[app][configuration][async]") {
+    ConfigurationFixture fixture;
+    auto gate = std::make_shared<ConfigurationGate>();
+    const ReleaseConfiguration cleanup{gate};
+    MapperBusConfiguration live;
+    live.frontend.audio_volume_percent = 35;
+    {
+        AsyncConfigurationSave saving(fixture.path, [gate](const auto& proposed, const auto& path) {
+            gate->block();
+            auto saved = save_mapperbus_configuration_to_file(proposed, path);
+            gate->finish();
+            return saved;
+        });
+        (void)saving.submit(live);
+        REQUIRE(gate->wait(&ConfigurationGate::entered));
+    }
+    live.frontend.audio_volume_percent = 90;
+    gate->release();
+    REQUIRE(gate->wait(&ConfigurationGate::finished));
+    CHECK(load_mapperbus_configuration_from_file(fixture.path).frontend.audio_volume_percent == 35);
+}
+
+TEST_CASE("Default background settings failures retain existing configuration bytes",
+          "[app][configuration][async]") {
+    ConfigurationFixture fixture;
+    MapperBusConfiguration config;
+    REQUIRE(save_mapperbus_configuration_to_file(config, fixture.path));
+    const auto original = core::read_binary_file_capped(fixture.path.string(), 100000, "config");
+    REQUIRE(original);
+    std::filesystem::create_directory(fixture.path.string() + ".tmp");
+    AsyncConfigurationSave saving(fixture.path);
+    config.frontend.audio_volume_percent = 25;
+    (void)saving.submit(config);
+    REQUIRE_FALSE(wait_configuration(saving).result);
+    auto retained = core::read_binary_file_capped(fixture.path.string(), 100000, "config");
+    REQUIRE(retained);
+    CHECK(*retained == *original);
+    std::filesystem::remove(fixture.path.string() + ".tmp");
+    saving.retry();
+    REQUIRE(wait_configuration(saving).result);
+    CHECK(load_mapperbus_configuration_from_file(fixture.path).frontend.audio_volume_percent == 25);
 }
 } // namespace mapperbus::app

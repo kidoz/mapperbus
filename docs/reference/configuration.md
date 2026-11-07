@@ -21,6 +21,24 @@ When `mapperbus.conf` is absent, the loader can read a sibling legacy
 
 ## Parsing and persistence
 
+The NodalKit GUI saves settings in the background. Rapid edits keep only the
+latest pending configuration behind the active write. Settings shows **Saving
+settings…**, **Saved automatically**, or a failure with **Retry Settings Save**.
+Ordinary settings take effect while their save is pending; failed writes retain
+the previous file and keep newer edits available for Retry.
+
+Controller hardware, remembered player assignments, gamepad assignment, and
+validated save-folder changes wait for saving before they apply. **Saving
+Settings** cannot be cancelled once writing starts. A failed proposal offers
+**Retry** or **Keep Current Settings**. Discarding a proposal retains the active
+settings. If a controller disconnects before assignment is applied, reconnect it
+and run Assign Gamepads again.
+
+Normal Close ROM and Quit wait for settings writes as well as game progress.
+A save failure keeps the application open with **Keep Open** and **Retry**.
+The file format and synchronous configuration APIs used by other frontends are
+unchanged.
+
 - Sections use `[section]`; settings use `key=value`.
 - Blank lines and lines starting with `#` or `;` are ignored. Unquoted values
   end at either comment character. Section and key names use the spellings below.

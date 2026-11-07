@@ -53,9 +53,13 @@ or close the chooser while checking; late results from a closed chooser are disc
 **Apply Storage Location** validates the proposed folder in the background,
 including a temporary write check. Done remains available during validation.
 The current location changes only after validation and settings persistence
-succeed. Failure keeps the current location and your proposed path for correction.
-Existing state files stay where they are. Closing the chooser cancels the proposed
-change; validation may already have created the proposed empty folder.
+succeed. After validation, the chooser closes and **Saving Settings** shows while
+the configuration is written in the background. That write cannot be cancelled.
+Failure keeps the current location and retains the proposal for **Retry** or
+**Keep Current Settings**. To edit a rejected path, keep the current settings and
+open the chooser again. Existing state files stay where they are. Closing the
+chooser during validation cancels the proposal; validation may already have
+created the proposed empty folder. Quit waits for an active settings write.
 
 Folder opening also runs in the background, so the game and window remain
 responsive while the system file manager starts. An explicit folder-opening

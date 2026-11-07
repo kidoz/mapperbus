@@ -1005,10 +1005,13 @@ class FileOperationDialog final : public nk::Dialog {
 
 } // namespace
 
-MapperBusGuiController::MapperBusGuiController(nk::Application& app,
-                                               nk::Window& window,
-                                               app::AsyncDiskExport::Write disk_export_write)
+MapperBusGuiController::MapperBusGuiController(
+    nk::Application& app,
+    nk::Window& window,
+    app::AsyncDiskExport::Write disk_export_write,
+    app::AsyncConfigurationSave::Write configuration_write)
     : app_(app), window_(window), configuration_(app::load_mapperbus_configuration()),
+      configuration_saver_(app::mapperbus_configuration_path(), std::move(configuration_write)),
       disk_export_(std::move(disk_export_write)),
       settings_page_(static_cast<SettingsPage>(configuration_.frontend.settings_page_index)),
       preview_scale_option_(preview_scale_for_index(configuration_.frontend.preview_scale_index)) {
@@ -1086,6 +1089,8 @@ MapperBusGuiController::MapperBusGuiController(nk::Application& app,
         poll_rom_load();
         poll_state_operation();
         poll_disk_export();
+        if (!machine_worker_active())
+            poll_configuration_saves();
         poll_session_close();
         if (!machine_worker_active()) {
             session_->poll_disk_saves();
@@ -2258,7 +2263,7 @@ void MapperBusGuiController::choose_state_slot() {
     state_storage_directory_ = directory;
     content->append(SecondaryText::create("Folder overrides take priority over Location."));
     auto location_status =
-        nk::Label::create("Current location is unchanged until validation succeeds.");
+        nk::Label::create("Current location is unchanged until validation and saving succeed.");
     location_status->set_wrapping(true);
     state_location_status_ = location_status;
     content->append(location_status);
@@ -2267,7 +2272,8 @@ void MapperBusGuiController::choose_state_slot() {
     const auto apply_storage = [this] {
         const auto mode_control = state_storage_mode_.lock();
         const auto directory_control = state_storage_directory_.lock();
-        if (!mode_control || !directory_control || storage_tasks_.preparing())
+        if (!mode_control || !directory_control || storage_tasks_.preparing() ||
+            configuration_change_)
             return;
         app::StateStorageSettings settings;
         settings.mode = mode_control->selected_index() == 1 ? app::StateStorageMode::Portable
@@ -2340,7 +2346,7 @@ void MapperBusGuiController::request_state_slot_scan() {
 }
 
 void MapperBusGuiController::update_state_storage_controls() {
-    const bool checking = storage_tasks_.preparing();
+    const bool checking = storage_tasks_.preparing() || configuration_change_.has_value();
     if (auto mode = state_storage_mode_.lock())
         mode->set_sensitive(!checking);
     if (auto directory = state_storage_directory_.lock())
@@ -2384,19 +2390,15 @@ void MapperBusGuiController::poll_state_storage() {
             update_configuration_from_state();
             auto proposed = configuration_;
             proposed.save_states = (**completed).settings;
-            if (auto saved = app::save_mapperbus_configuration(proposed); !saved) {
-                if (status)
-                    status->set_text("Could not save storage settings: " + saved.error());
-            } else {
-                configuration_ = std::move(proposed);
-                auto& prepared = **completed;
-                session_->set_prepared_state_storage(std::move(prepared.settings),
-                                                     std::move(prepared.directory));
-                if (status)
-                    status->set_text(
-                        "Storage location updated. Existing files stay in their current folders.");
-                request_state_slot_scan();
-            }
+            auto prepared = std::move(**completed);
+            // Validation is complete; the noncancellable save owns this proposal.
+            state_slot_dialog_->close();
+            begin_configuration_change(
+                std::move(proposed),
+                [this, prepared = std::move(prepared)] {
+                    session_->set_prepared_state_storage(prepared.settings, prepared.directory);
+                },
+                "Storage location updated. Existing files stay in their current folders.");
         }
         update_state_storage_controls();
     }
@@ -2622,6 +2624,10 @@ void MapperBusGuiController::request_session_close(bool quit) {
     close_intent_ = quit;
     close_ready_ = false;
     close_captured_ = false;
+    close_data_saved_ = false;
+    close_configuration_submitted_ = false;
+    close_waiting_configuration_ = false;
+    dismiss_configuration_change();
     if (disk_export_.busy()) {
         if (auto status = disk_export_status_.lock())
             status->set_text(quit ? "Finishing disk export before quitting…"
@@ -2693,8 +2699,8 @@ void MapperBusGuiController::show_close_error(std::string error) {
     auto label = nk::Label::create(std::move(error));
     label->set_wrapping(true);
     content->append(label);
-    auto help = nk::Label::create("Your game remains open. Fix the save location and retry, or "
-                                  "keep the game open to recover your progress.");
+    auto help = nk::Label::create("MapperBus remains open. Fix the save location and retry, or "
+                                  "keep the application open to recover your changes.");
     help->set_wrapping(true);
     content->append(help);
     close_save_dialog_ = nk::Dialog::create("Could Not Save Progress");
@@ -2712,12 +2718,18 @@ void MapperBusGuiController::show_close_error(std::string error) {
                     return;
                 dismiss_close_dialog();
                 if (response == nk::DialogResponse::Accept) {
-                    start_close_save();
+                    if (!configuration_saver_.error().empty())
+                        retry_configuration_save();
+                    close_data_saved_ = false;
+                    close_configuration_submitted_ = false;
                 } else {
                     close_intent_.reset();
                     close_ready_ = false;
+                    if (close_captured_)
+                        session_->set_paused(close_previously_paused_);
                     close_captured_ = false;
-                    session_->set_paused(close_previously_paused_);
+                    close_data_saved_ = false;
+                    close_configuration_submitted_ = false;
                     frame_accumulator_ = std::chrono::nanoseconds{0};
                     last_tick_time_ = std::chrono::steady_clock::now();
                     refresh_ui();
@@ -2742,21 +2754,66 @@ void MapperBusGuiController::poll_session_close() {
             show_close_error(completed->error());
             return;
         }
+        close_data_saved_ = true;
         dismiss_close_dialog();
-        save_configuration_state();
-        if (*close_intent_) {
-            session_->emulator().set_persistence_enabled(false);
-            close_authorized_ = true;
-            window_.request_close();
-        } else {
-            close_intent_.reset();
-            close_ready_ = false;
-            close_captured_ = false;
-            finish_close_rom();
-        }
-    } else if (close_ready_ && !loading_request_ && !pending_state_operation_ &&
-               !disk_export_.busy() && !close_save_dialog_) {
+    }
+    if (!close_ready_ || loading_request_ || pending_state_operation_ || disk_export_.busy())
+        return;
+    if (close_waiting_configuration_) {
+        if (configuration_saver_.busy())
+            return;
+        close_waiting_configuration_ = false;
+        dismiss_close_dialog();
+    }
+    if (close_save_dialog_) // An error waits for Keep Open or Retry.
+        return;
+    const auto wait_for_settings = [this] {
+        auto content = Box::vertical(12.0F);
+        auto spinner = nk::Spinner::create();
+        spinner->set_spinning(true);
+        content->append(spinner);
+        auto label = nk::Label::create(*close_intent_ ? "Saving settings before quitting…"
+                                                      : "Saving settings before closing the game…");
+        label->set_wrapping(true);
+        content->append(label);
+        close_save_dialog_ = std::make_shared<FileOperationDialog>("Saving Settings", false);
+        close_save_dialog_->set_content(FixedWidthSlot::create(440.0F, content));
+        close_save_dialog_->present(window_);
+        close_waiting_configuration_ = true;
+    };
+    // Proposed hardware/storage must commit before an exclusive machine writer.
+    if (configuration_change_) {
+        if (!configuration_saver_.error().empty())
+            show_close_error("Could not save settings: " + configuration_saver_.error());
+        else
+            wait_for_settings();
+        return;
+    }
+    if (!close_data_saved_) {
         start_close_save();
+        return;
+    }
+    if (!close_configuration_submitted_) {
+        save_configuration_state();
+        close_configuration_submitted_ = true;
+    }
+    if (configuration_saver_.busy()) {
+        wait_for_settings();
+        return;
+    }
+    if (!configuration_saver_.error().empty()) {
+        show_close_error("Could not save settings: " + configuration_saver_.error());
+        return;
+    }
+    if (*close_intent_) {
+        session_->emulator().set_persistence_enabled(false);
+        close_authorized_ = true;
+        window_.request_close();
+    } else {
+        close_intent_.reset();
+        close_ready_ = false;
+        close_captured_ = false;
+        finish_close_rom();
     }
 }
 
@@ -2864,31 +2921,156 @@ void MapperBusGuiController::update_configuration_from_state() {
 
 void MapperBusGuiController::save_configuration_state() {
     update_configuration_from_state();
-    auto result = app::save_mapperbus_configuration(configuration_);
-    if (!result) {
-        const std::string message = "Could not save settings: " + result.error();
-        set_message(message);
-        update_settings_save_status(message);
-        return;
-    }
-    update_settings_save_status("Saved automatically");
+    if (configuration_change_)
+        configuration_save_deferred_ = true;
+    else
+        (void)configuration_saver_.submit(configuration_);
+    refresh_configuration_save_status();
 }
 
-bool MapperBusGuiController::save_controller_hardware_change(
-    app::MapperBusConfiguration proposed, const app::ControllerHardwareSettings& settings) {
-    if (auto saved = app::save_mapperbus_configuration(proposed); !saved) {
-        const auto message = "Could not save controller settings: " + saved.error();
-        set_message(message);
-        refresh_settings_dialog_sections();
-        update_settings_save_status(message);
-        return false;
+void MapperBusGuiController::refresh_configuration_save_status() {
+    const auto& error = configuration_saver_.error();
+    update_settings_save_status(!error.empty()                ? "Failed to save settings: " + error
+                                : configuration_saver_.busy() ? "Saving settings…"
+                                                              : "Saved automatically");
+    if (settings_save_retry_) {
+        settings_save_retry_->set_visible(!error.empty());
+        settings_save_retry_->set_sensitive(!configuration_saver_.busy());
     }
-    configuration_ = std::move(proposed);
-    app::apply_controller_hardware(session_->emulator(), settings);
-    refresh_ui();
+}
+
+void MapperBusGuiController::retry_configuration_save() {
+    if (!configuration_change_) {
+        update_configuration_from_state();
+        (void)configuration_saver_.submit(configuration_);
+    }
+    configuration_saver_.retry();
+    refresh_configuration_save_status();
+    if (configuration_change_ && !close_intent_)
+        show_configuration_change(false);
+}
+
+void MapperBusGuiController::dismiss_configuration_change() {
+    auto dialog = std::exchange(configuration_change_dialog_, {});
+    if (dialog && dialog->is_presented())
+        dialog->close();
+}
+
+void MapperBusGuiController::show_configuration_change(bool failed) {
+    dismiss_configuration_change();
+    auto content = Box::vertical(12.0F);
+    if (!failed) {
+        auto spinner = nk::Spinner::create();
+        spinner->set_spinning(true);
+        content->append(spinner);
+    }
+    auto message = nk::Label::create(failed ? "Could not save the proposed settings: " +
+                                                  configuration_saver_.error()
+                                            : "Saving settings before applying this change…");
+    message->set_wrapping(true);
+    content->append(message);
+    if (failed) {
+        auto help = nk::Label::create("The previous settings remain active. Fix the save location "
+                                      "and retry, or keep the current settings.");
+        help->set_wrapping(true);
+        content->append(help);
+        configuration_change_dialog_ = nk::Dialog::create("Could Not Save Settings");
+        configuration_change_dialog_->add_button("Keep Current Settings",
+                                                 nk::DialogResponse::Cancel);
+        configuration_change_dialog_->add_button("Retry", nk::DialogResponse::Accept);
+        configuration_change_dialog_->set_default_response(nk::DialogResponse::Cancel);
+        (void)configuration_change_dialog_->on_response().connect(
+            [this](nk::DialogResponse response) {
+                if (!configuration_change_dialog_)
+                    return;
+                auto dialog = configuration_change_dialog_;
+                app_.event_loop().post(
+                    [this, dialog, response] {
+                        if (configuration_change_dialog_ != dialog)
+                            return;
+                        dismiss_configuration_change();
+                        if (response == nk::DialogResponse::Accept)
+                            retry_configuration_save();
+                        else
+                            discard_configuration_change();
+                    },
+                    "mapperbus.configuration-response");
+            });
+    } else {
+        configuration_change_dialog_ =
+            std::make_shared<FileOperationDialog>("Saving Settings", false);
+    }
+    configuration_change_dialog_->set_content(FixedWidthSlot::create(480.0F, content));
+    configuration_change_dialog_->present(settings_host_window());
+}
+
+void MapperBusGuiController::begin_configuration_change(app::MapperBusConfiguration proposed,
+                                                        std::function<void()> apply,
+                                                        std::string success_message) {
+    if (configuration_change_ || close_intent_)
+        return;
+    const auto revision = configuration_saver_.submit(proposed);
+    configuration_change_ = PendingConfigurationChange{
+        revision, std::move(proposed), std::move(apply), std::move(success_message)};
+    configuration_save_deferred_ = false;
+    // An explicit new proposal is also an explicit retry of failed storage.
+    configuration_saver_.retry();
+    refresh_configuration_save_status();
+    app_.event_loop().post(
+        [this, revision] {
+            if (configuration_change_ && configuration_change_->revision == revision &&
+                !close_intent_)
+                show_configuration_change(!configuration_saver_.error().empty());
+        },
+        "mapperbus.configuration-start");
+}
+
+void MapperBusGuiController::discard_configuration_change() {
+    if (configuration_saver_.busy())
+        return;
+    dismiss_configuration_change();
+    configuration_change_.reset();
+    configuration_save_deferred_ = false;
+    update_configuration_from_state();
+    configuration_saver_.replace_failed(configuration_);
+    refresh_configuration_save_status();
     refresh_settings_dialog_sections();
-    update_settings_save_status("Saved automatically");
-    return true;
+    refresh_ui();
+}
+
+void MapperBusGuiController::poll_configuration_saves() {
+    auto completed = configuration_saver_.poll();
+    if (completed && configuration_change_ &&
+        completed->revision == configuration_change_->revision && completed->result) {
+        dismiss_configuration_change();
+        auto change = std::move(*configuration_change_);
+        configuration_change_.reset();
+        configuration_ = std::move(change.proposed);
+        change.apply();
+        if (!change.success_message.empty())
+            set_message(std::move(change.success_message));
+        if (std::exchange(configuration_save_deferred_, false))
+            save_configuration_state();
+        refresh_ui();
+        refresh_settings_dialog_sections();
+    }
+    if (configuration_change_ && !configuration_saver_.error().empty() && !close_intent_ &&
+        (!configuration_change_dialog_ || !configuration_change_dialog_->is_presented() ||
+         dynamic_cast<FileOperationDialog*>(configuration_change_dialog_.get())))
+        show_configuration_change(true);
+    if (completed && !completed->result)
+        set_message("Could not save settings: " + completed->result.error());
+    refresh_configuration_save_status();
+}
+
+void MapperBusGuiController::save_controller_hardware_change(
+    app::MapperBusConfiguration proposed,
+    const app::ControllerHardwareSettings& settings,
+    std::string success_message) {
+    begin_configuration_change(
+        std::move(proposed),
+        [this, settings] { app::apply_controller_hardware(session_->emulator(), settings); },
+        std::move(success_message));
 }
 
 void MapperBusGuiController::change_controller_hardware(
@@ -2905,7 +3087,7 @@ void MapperBusGuiController::change_controller_hardware(
     // in the running machine; unrelated saved preferences remain intact too.
     auto active = app::controller_hardware(session_->emulator());
     change.apply_to(active);
-    (void)save_controller_hardware_change(std::move(proposed), active);
+    save_controller_hardware_change(std::move(proposed), active);
 }
 
 void MapperBusGuiController::remember_game_controller_hardware(bool remember) {
@@ -2921,9 +3103,10 @@ void MapperBusGuiController::remember_game_controller_hardware(bool remember) {
         proposed.game_controllers.erase(identity);
         settings = app::controller_hardware(proposed.input);
     }
-    if (save_controller_hardware_change(std::move(proposed), settings))
-        set_message(remember ? "Controller hardware remembered for this game."
-                             : "Using global controller hardware defaults.");
+    save_controller_hardware_change(std::move(proposed),
+                                    settings,
+                                    remember ? "Controller hardware remembered for this game."
+                                             : "Using global controller hardware defaults.");
 }
 
 void MapperBusGuiController::remember_game_assignments(bool remember) {
@@ -2941,19 +3124,10 @@ void MapperBusGuiController::remember_game_assignments(bool remember) {
     } else {
         proposed.game_gamepads.erase(identity);
     }
-    if (auto saved = app::save_mapperbus_configuration(proposed); !saved) {
-        const auto message = "Could not save player assignments: " + saved.error();
-        set_message(message);
-        refresh_settings_dialog_sections();
-        update_settings_save_status(message);
-        return;
-    }
-    configuration_ = std::move(proposed);
-    input_backend_->set_gamepad_assignments(
-        app::gamepad_assignments_for_game(configuration_, identity));
-    refresh_ui();
-    refresh_settings_dialog_sections();
-    update_settings_save_status("Saved automatically");
+    begin_configuration_change(std::move(proposed), [this, identity] {
+        input_backend_->set_gamepad_assignments(
+            app::gamepad_assignments_for_game(configuration_, identity));
+    });
 }
 
 void MapperBusGuiController::open_gamepad_assignment() {
@@ -3013,6 +3187,8 @@ void MapperBusGuiController::open_gamepad_assignment() {
             if (response == nk::DialogResponse::Accept) {
                 (void)input_backend_->consume_gamepad_assignment_changes();
                 set_message("Gamepads assigned. Button bindings retained.");
+            } else if (response == nk::DialogResponse::Custom) {
+                set_message("Saving controller assignments…");
             } else {
                 set_message("Gamepad assignment cancelled.");
             }
@@ -3058,35 +3234,44 @@ void MapperBusGuiController::poll_gamepad_assignment() {
     }
     if (!gamepad_assignment_->ready())
         return;
-    std::string save_error;
-    const auto commit = [this,
-                         &save_error](std::span<const platform::GamepadInputConfig> proposed) {
-        auto updated = configuration_;
-        for (std::size_t player = 0; player < gamepad_assignment_profiles_.size(); ++player)
-            app::remember_gamepad_profile(updated,
-                                          session_->game_identity(),
-                                          gamepad_assignment_profiles_[player],
-                                          proposed[player]);
-        if (auto saved = app::save_mapperbus_configuration(updated); !saved) {
-            save_error = "Could not save gamepad assignments: " + saved.error();
+    if (configuration_change_)
+        return;
+    std::optional<app::MapperBusConfiguration> proposal;
+    // Stage and validate devices using the existing atomic assignment seam,
+    // but reject live commit until the owned configuration write succeeds.
+    (void)input_backend_->assign_gamepads(
+        gamepad_assignment_profiles_,
+        gamepad_assignment_->assignments(),
+        [this, &proposal](auto profiles) {
+            auto updated = configuration_;
+            for (std::size_t player = 0; player < gamepad_assignment_profiles_.size(); ++player)
+                app::remember_gamepad_profile(updated,
+                                              session_->game_identity(),
+                                              gamepad_assignment_profiles_[player],
+                                              profiles[player]);
+            proposal = std::move(updated);
             return false;
-        }
-        configuration_ = std::move(updated);
-        return true;
-    };
+        });
     const auto dialog = gamepad_assignment_dialog_;
-    if (input_backend_->assign_gamepads(
-            gamepad_assignment_profiles_, gamepad_assignment_->assignments(), commit)) {
-        dialog->close(nk::DialogResponse::Accept);
-    } else {
+    if (!proposal) {
         dialog->close(nk::DialogResponse::Cancel);
-        const auto message = save_error.empty() ? "A controller changed before assignment. "
-                                                  "Existing assignments were kept; try again."
-                                                : save_error;
-        set_message(message);
-        if (!save_error.empty())
-            update_settings_save_status(message);
+        set_message(
+            "A controller changed before assignment. Existing assignments were kept; try again.");
+        return;
     }
+    const auto profiles = gamepad_assignment_profiles_;
+    const auto chosen_span = gamepad_assignment_->assignments();
+    const std::vector<SDL_JoystickID> chosen(chosen_span.begin(), chosen_span.end());
+    dialog->close(nk::DialogResponse::Custom);
+    begin_configuration_change(std::move(*proposal), [this, profiles, chosen] {
+        if (input_backend_->assign_gamepads(profiles, chosen)) {
+            (void)input_backend_->consume_gamepad_assignment_changes();
+            set_message("Gamepads assigned. Button bindings retained.");
+        } else {
+            set_message("Settings saved, but a controller disconnected before assignment. "
+                        "Reconnect it and run Assign Gamepads again.");
+        }
+    });
 #endif
 }
 
@@ -3455,10 +3640,8 @@ void MapperBusGuiController::update_input_monitor() {
 
 void MapperBusGuiController::update_settings_save_status(std::string text) {
     settings_save_status_ = std::move(text);
-    if (settings_save_label_) {
+    if (settings_save_label_ && settings_save_label_->text() != settings_save_status_)
         settings_save_label_->set_text(settings_save_status_);
-        settings_save_label_->set_visible(settings_save_status_ != "Saved automatically");
-    }
 }
 
 std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_dialog_shell() {
@@ -4166,8 +4349,12 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_footer_conten
     settings_save_label_ = nk::Label::create(settings_save_status_);
     settings_save_label_->set_wrapping(true);
     settings_save_label_->set_horizontal_size_policy(nk::SizePolicy::Expanding);
-    settings_save_label_->set_visible(settings_save_status_ != "Saved automatically");
     container->append(settings_save_label_);
+    settings_save_retry_ = nk::Button::create("Retry Settings Save");
+    settings_save_retry_->set_visible(!configuration_saver_.error().empty());
+    settings_save_retry_->set_sensitive(!configuration_saver_.busy());
+    (void)settings_save_retry_->on_clicked().connect([this] { retry_configuration_save(); });
+    container->append(settings_save_retry_);
 
     auto footer = Box::horizontal(12.0F);
     footer->set_horizontal_size_policy(nk::SizePolicy::Expanding);
@@ -4355,6 +4542,7 @@ void MapperBusGuiController::open_settings_dialog() {
                 settings_scroll_area_.reset();
                 input_test_label_.reset();
                 settings_save_label_.reset();
+                settings_save_retry_.reset();
                 settings_dialog_.reset();
                 refresh_ui();
                 focus_game_surface();
@@ -4386,8 +4574,9 @@ nk::Window& MapperBusGuiController::settings_host_window() {
 }
 
 bool MapperBusGuiController::modal_dialog_presented() const {
-    return close_intent_.has_value() || loading_request_.has_value() || choosing_disk_export_ ||
-           disk_export_.busy() || (disk_export_dialog_ && disk_export_dialog_->is_presented()) ||
+    return configuration_change_.has_value() || close_intent_.has_value() ||
+           loading_request_.has_value() || choosing_disk_export_ || disk_export_.busy() ||
+           (disk_export_dialog_ && disk_export_dialog_->is_presented()) ||
            pending_state_operation_.has_value() ||
            (input_monitor_dialog_ && input_monitor_dialog_->is_presented()) ||
            (gamepad_assignment_dialog_ && gamepad_assignment_dialog_->is_presented()) ||
@@ -4399,8 +4588,9 @@ bool MapperBusGuiController::modal_dialog_presented() const {
 }
 
 void MapperBusGuiController::handle_menu_action(std::string_view action) {
-    if ((close_intent_ || loading_request_ || pending_state_operation_ || choosing_disk_export_ ||
-         disk_export_.busy() || (disk_export_dialog_ && disk_export_dialog_->is_presented())) &&
+    if ((configuration_change_ || close_intent_ || loading_request_ || pending_state_operation_ ||
+         choosing_disk_export_ || disk_export_.busy() ||
+         (disk_export_dialog_ && disk_export_dialog_->is_presented())) &&
         action != "file.quit")
         return;
     if ((gamepad_assignment_dialog_ || input_monitor_dialog_) && action != "file.quit")
