@@ -26,6 +26,7 @@
 #include "app/session_actions.hpp"
 #include "frontends/nodalkit/gui_audio_backend.hpp"
 #include "frontends/nodalkit/gui_widgets.hpp"
+#include "frontends/nodalkit/input_monitor_dialog.hpp"
 #include "frontends/nodalkit/nodalkit_input.hpp"
 #include "platform/video/upscaler.hpp"
 
@@ -133,6 +134,9 @@ class MapperBusGuiController {
     void apply_gamepad_rebind(platform::InputAction button, platform::GamepadControl control);
     void apply_audio_settings_change(std::string message);
     void update_input_test_status();
+    void open_input_monitor();
+    void close_input_monitor();
+    void update_input_monitor();
     void update_settings_save_status(std::string text);
 
     /// True while a sheet/dialog (settings, rebind, archive, state slot) is presented. Session
@@ -179,6 +183,10 @@ class MapperBusGuiController {
     std::shared_ptr<nk::Dialog> settings_dialog_;
     std::unique_ptr<nk::Window> settings_window_;
     std::shared_ptr<nk::Dialog> rebind_dialog_;
+    std::shared_ptr<InputMonitorDialog> input_monitor_dialog_;
+    std::array<std::shared_ptr<nk::Label>, platform::kInputProfileCount> input_monitor_labels_{};
+    bool resume_after_input_monitor_ = false;
+    std::chrono::steady_clock::time_point input_monitor_last_poll_{};
     std::shared_ptr<nk::Dialog> gamepad_assignment_dialog_;
     std::shared_ptr<nk::Label> gamepad_assignment_status_;
     std::array<std::shared_ptr<nk::Label>, 4> gamepad_assignment_labels_{};

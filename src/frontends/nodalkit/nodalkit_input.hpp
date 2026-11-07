@@ -16,6 +16,7 @@
 #include "frontends/sdl3/gamepad_selection.hpp"
 #endif
 
+#include "frontends/nodalkit/input_monitor.hpp"
 #include "platform/input/gamepad_config.hpp"
 #include "platform/input/input_backend.hpp"
 
@@ -155,6 +156,28 @@ class NodalKitPlayerInput {
 #else
         return false;
 #endif
+    }
+
+    [[nodiscard]] InputMonitorProfile monitor_profile() const {
+        InputMonitorProfile result;
+        result.device_index = gamepad_config_.gamepad_index;
+        result.device_name = gamepad_config_.identity.name;
+#ifdef MAPPERBUS_HAVE_SDL3_GAMEPAD
+        result.connection = !gamepad_config_.enabled ? InputMonitorConnection::Disabled
+                            : !gamepad_initialized_  ? InputMonitorConnection::Unavailable
+                            : gamepad_connected()    ? InputMonitorConnection::Connected
+                            : gamepad_config_.identity.ambiguous
+                                ? InputMonitorConnection::NeedsAssignment
+                                : InputMonitorConnection::Disconnected;
+        if (result.connection == InputMonitorConnection::Connected) {
+            result.device_id = SDL_GetGamepadID(selection_.gamepad());
+            if (const auto* name = SDL_GetGamepadName(selection_.gamepad()))
+                result.device_name = std::string(name).substr(0, 256);
+        }
+#endif
+        for (auto action : platform::input_actions())
+            result.held[button_index(action)] = is_action_pressed(action);
+        return result;
     }
 
     [[nodiscard]] int gamepad_device_count() {
@@ -556,6 +579,16 @@ class NodalKitInput : public platform::InputBackend {
                players_[player].is_action_pressed(action);
     }
 
+    [[nodiscard]] auto monitor_profiles() const {
+        std::array<InputMonitorProfile, platform::kInputProfileCount> result;
+        for (int player = 0; player < platform::kInputProfileCount; ++player) {
+            result[player] = players_[player].monitor_profile();
+            if (assignment_capture_)
+                result[player].held.fill(false);
+        }
+        return result;
+    }
+
     bool consume_gamepad_assignment_changes() {
         if (assignment_capture_)
             return false;
@@ -583,13 +616,7 @@ class NodalKitInput : public platform::InputBackend {
                                                                       core::Byte attached) {
         if (mode == core::ControllerMode::HoriFourPlayer)
             return {2, 3, 4, 5};
-        if (mode == core::ControllerMode::FourScore)
-            return {0, 1, 2, 3};
-        std::vector<int> profiles{0, 1};
-        for (int port = 0; port < 2; ++port)
-            if (attached & (1U << port))
-                profiles.push_back(port + 2);
-        return profiles;
+        return active_controller_profiles(mode, attached);
     }
 
     void set_assignment_capture(bool active) {

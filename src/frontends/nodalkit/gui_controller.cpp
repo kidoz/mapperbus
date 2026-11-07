@@ -777,15 +777,6 @@ std::string file_dialog_error_text(nk::FileDialogError error) {
     }
 }
 
-std::string input_profile_name(int player, core::ControllerMode mode) {
-    if (mode == core::ControllerMode::HoriFourPlayer)
-        return player < 2 ? "Built-in " + std::to_string(player + 1)
-                          : "Hori " + std::to_string(player - 1);
-    return player < 2 || mode == core::ControllerMode::FourScore
-               ? "Player " + std::to_string(player + 1)
-               : "External " + std::to_string(player - 1);
-}
-
 std::string button_name(platform::InputAction button) {
     switch (button) {
     case platform::InputAction::Microphone:
@@ -1093,6 +1084,7 @@ MapperBusGuiController::MapperBusGuiController(nk::Application& app, nk::Window&
         poll_gamepad_assignment();
         poll_pending_rebind();
         update_input_test_status();
+        update_input_monitor();
 
         const auto now = std::chrono::steady_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(now - last_tick_time_);
@@ -1728,7 +1720,7 @@ void MapperBusGuiController::browse_for_rom() {
 }
 
 void MapperBusGuiController::attempt_open(std::string rom_path, std::string member) {
-    if (gamepad_assignment_dialog_)
+    if (gamepad_assignment_dialog_ || input_monitor_dialog_)
         return;
     if ((state_slot_dialog_ && state_slot_dialog_->is_presented()) ||
         (archive_dialog_ && archive_dialog_->is_presented()) ||
@@ -2369,7 +2361,7 @@ void MapperBusGuiController::remember_game_controller_hardware(bool remember) {
 
 void MapperBusGuiController::open_gamepad_assignment() {
 #ifdef MAPPERBUS_HAVE_SDL3_GAMEPAD
-    if (gamepad_assignment_dialog_ || rebind_dialog_)
+    if (gamepad_assignment_dialog_ || rebind_dialog_ || input_monitor_dialog_)
         return;
     refresh_ui();
     update_configuration_from_state();
@@ -2756,7 +2748,8 @@ void MapperBusGuiController::apply_audio_settings_change(std::string message) {
 }
 
 void MapperBusGuiController::update_input_test_status() {
-    if (!input_test_label_ || (settings_window_ && !settings_window_->is_visible())) {
+    if (!input_test_label_ || input_monitor_dialog_ ||
+        (settings_window_ && !settings_window_->is_visible())) {
         return;
     }
 
@@ -2764,6 +2757,100 @@ void MapperBusGuiController::update_input_test_status() {
     input_test_label_->set_text(input_test_status_text());
     if (live_microphone_status_)
         live_microphone_status_->set_text(session_->live_microphone().status());
+}
+
+void MapperBusGuiController::open_input_monitor() {
+    if (input_monitor_dialog_ || gamepad_assignment_dialog_ || rebind_dialog_)
+        return;
+    const auto snapshot = actions_->snapshot();
+    resume_after_input_monitor_ = snapshot.has_cartridge && !snapshot.paused;
+    if (resume_after_input_monitor_)
+        actions_->pause();
+    auto dialog = InputMonitorDialog::create();
+    input_monitor_dialog_ = dialog;
+    dialog->set_presentation_style(nk::DialogPresentationStyle::Sheet);
+    dialog->set_minimum_panel_width(500.0F);
+    dialog->set_default_response(nk::DialogResponse::Close);
+    dialog->add_button("Done", nk::DialogResponse::Close);
+    auto content = Box::vertical(10.0F);
+    auto help =
+        nk::Label::create("Test keyboard and gamepad bindings for every active controller. "
+                          "Held bindings are shown before turbo pulses and hardware filtering. "
+                          "A running game pauses until this panel closes.");
+    help->set_wrapping(true);
+    content->append(help);
+    auto rows = Box::vertical(10.0F);
+    for (auto& label : input_monitor_labels_) {
+        label = nk::Label::create();
+        label->set_wrapping(true);
+        label->set_horizontal_size_policy(nk::SizePolicy::Expanding);
+        label->set_visible(false);
+        rows->append(label);
+    }
+    auto scroll = rectangular_scroll_area();
+    scroll->set_h_scroll_policy(nk::ScrollPolicy::Never);
+    scroll->set_v_scroll_policy(nk::ScrollPolicy::Automatic);
+    scroll->set_content(rows);
+    const auto count =
+        active_controller_profiles(snapshot.controller_mode, snapshot.expansion_controllers).size();
+    content->append(BoundedHeightSlot::create(
+        400.0F, FixedHeightSlot::create(56.0F * static_cast<float>(count), scroll)));
+    dialog->set_content(content);
+    (void)dialog->on_response().connect(
+        [this, weak_dialog = std::weak_ptr<nk::Dialog>(dialog)](nk::DialogResponse) {
+            const auto closed = weak_dialog.lock();
+            if (!closed || input_monitor_dialog_ != closed)
+                return;
+            input_monitor_dialog_.reset();
+            input_monitor_labels_.fill(nullptr);
+            if (resume_after_input_monitor_)
+                actions_->resume();
+            resume_after_input_monitor_ = false;
+            refresh_ui();
+            if (settings_tabs_)
+                settings_tabs_->grab_focus();
+        });
+    input_monitor_last_poll_ = {};
+    update_input_monitor();
+    refresh_ui();
+    dialog->present(settings_host_window());
+    dialog->grab_focus();
+}
+
+void MapperBusGuiController::close_input_monitor() {
+    if (input_monitor_dialog_) {
+        const auto dialog = input_monitor_dialog_;
+        dialog->close(nk::DialogResponse::Close);
+    }
+}
+
+void MapperBusGuiController::update_input_monitor() {
+    if (!input_monitor_dialog_)
+        return;
+    const auto now = std::chrono::steady_clock::now();
+    if (now - input_monitor_last_poll_ < std::chrono::milliseconds(33))
+        return;
+    input_monitor_last_poll_ = now;
+    if (!settings_host_window().is_focused())
+        input_monitor_dialog_->clear_keys();
+    input_backend_->poll();
+    const auto snapshot = actions_->snapshot();
+    auto profiles = input_backend_->monitor_profiles();
+    for (int player = 0; player < platform::kInputProfileCount; ++player)
+        for (auto action : platform::input_actions()) {
+            const auto key = input_backend_->player_input(player).binding(action);
+            if (!NodalKitInput::is_reserved_game_key(key) &&
+                input_monitor_dialog_->key_pressed(key))
+                profiles[player].held[platform::button_index(action)] = true;
+        }
+    const auto rows =
+        input_monitor_rows(snapshot.controller_mode, snapshot.expansion_controllers, profiles);
+    for (std::size_t index = 0; index < input_monitor_labels_.size(); ++index) {
+        const auto& label = input_monitor_labels_[index];
+        label->set_visible(index < rows.size());
+        if (index < rows.size() && label->text() != rows[index].text)
+            label->set_text(rows[index].text);
+    }
 }
 
 void MapperBusGuiController::update_settings_save_status(std::string text) {
@@ -3049,6 +3136,11 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
                                           " controllers in player order.");
         assign_by_button->ensure_accessible().set_name("Assign Gamepads by Button");
         setup_group->add(by_button_row);
+        auto monitor = nk::Button::create("Test All Controllers…");
+        (void)monitor->on_clicked().connect([this] { open_input_monitor(); });
+        setup_group->add(
+            pref_row("Input monitor", monitor, "See devices, held bindings and shared gamepads."));
+        monitor->ensure_accessible().set_name("Test All Controllers");
         page->append(setup_group);
 
         auto bindings = Box::vertical(6.0F);
@@ -3610,6 +3702,7 @@ void MapperBusGuiController::open_settings_dialog() {
             });
             (void)settings_window_->on_close_requested().connect([this] {
                 cancel_gamepad_assignment();
+                close_input_monitor();
                 if (rebind_dialog_) {
                     cancel_rebind_dialog();
                 }
@@ -3639,6 +3732,7 @@ void MapperBusGuiController::open_settings_dialog() {
                     return;
                 }
                 cancel_gamepad_assignment();
+                close_input_monitor();
                 settings_tabs_.reset();
                 settings_page_slot_.reset();
                 settings_footer_slot_.reset();
@@ -3656,6 +3750,10 @@ void MapperBusGuiController::open_settings_dialog() {
 }
 
 void MapperBusGuiController::close_settings() {
+    if (input_monitor_dialog_) {
+        close_input_monitor();
+        return;
+    }
     if (gamepad_assignment_dialog_) {
         cancel_gamepad_assignment();
         return;
@@ -3672,7 +3770,8 @@ nk::Window& MapperBusGuiController::settings_host_window() {
 }
 
 bool MapperBusGuiController::modal_dialog_presented() const {
-    return (gamepad_assignment_dialog_ && gamepad_assignment_dialog_->is_presented()) ||
+    return (input_monitor_dialog_ && input_monitor_dialog_->is_presented()) ||
+           (gamepad_assignment_dialog_ && gamepad_assignment_dialog_->is_presented()) ||
            (settings_dialog_ && settings_dialog_->is_presented()) ||
            (rebind_dialog_ && rebind_dialog_->is_presented()) ||
            (state_slot_dialog_ && state_slot_dialog_->is_presented()) ||
@@ -3681,7 +3780,7 @@ bool MapperBusGuiController::modal_dialog_presented() const {
 }
 
 void MapperBusGuiController::handle_menu_action(std::string_view action) {
-    if (gamepad_assignment_dialog_ && action != "file.quit")
+    if ((gamepad_assignment_dialog_ || input_monitor_dialog_) && action != "file.quit")
         return;
     if (((archive_dialog_ && archive_dialog_->is_presented()) ||
          (fds_dialog_ && fds_dialog_->is_presented())) &&

@@ -198,6 +198,36 @@ can be assigned for the current session; their usual remembered-identity limits
 apply after reconnect/restart. Physical testing is separate from automated
 virtual-controller checks. Builds without gamepad support disable the button.
 
+### Multiplayer input monitor
+
+Choose **Settings → Input → Test All Controllers…** to view the active inputs
+in one panel. Standard shows Players 1/2 and attached External 1/2 pads; Four
+Score shows Players 1–4; Hori shows both built-in pads plus Hori 1–4. These six
+Hori inputs do not imply six-player support in a game.
+
+Each row shows the assigned gamepad slot and device name, connection state and
+held keyboard/gamepad bindings. States distinguish connected, disconnected,
+disabled, unavailable and needing reassignment. Held bindings include Turbo A/B
+and Microphone; the monitor shows them before turbo pulses and hardware filters,
+including RF pad 2's Start/Select restriction. It does not show live microphone
+sound or the controller's serial report.
+
+If two active roles use the same connected physical gamepad, both rows say
+**Shared gamepad with…**. This is informational: some games intentionally alias
+built-in and external inputs. Use **Assign by Button…** if the sharing is
+unintended. Identical model names, disconnected devices and inactive roles do
+not create sharing notices; live device identity determines sharing.
+
+Opening pauses a running game; closing restores its prior pause state. Return
+and Space can be tested while the panel itself has focus. Escape closes it;
+Tab moves focus to **Done**, which also supports keyboard activation. Keyboard
+capture stays local to the monitor and clears on focus loss. Keyboard testing
+also works in builds without gamepad support. Long device names or small
+windows can scroll while Done remains available.
+
+The monitor updates about 30 times per second and changes no mappings, hardware
+preferences, turbo phases or snapshots. Normal device discovery remains active.
+
 ### Hori 4 Players Adapter
 
 Select `hori-4-player` for the Famicom adapter's four-controller serial mode.

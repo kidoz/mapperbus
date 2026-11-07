@@ -9,6 +9,9 @@ Versioning.
 
 ### Added
 
+- Multiplayer input monitor with all active roles, live held bindings and
+  device status, shared-gamepad notices, local keyboard capture and pause recovery.
+
 - Button-based gamepad assignment for Standard and Four Score, including only
   attached Standard expansion pads, with ordered roles and atomic save/application.
 

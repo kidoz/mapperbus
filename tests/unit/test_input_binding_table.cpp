@@ -11,6 +11,7 @@
 
 #include "frontends/nodalkit/gui_widgets.hpp"
 #include "frontends/nodalkit/input_binding_table.hpp"
+#include "frontends/nodalkit/input_monitor_dialog.hpp"
 #include "frontends/nodalkit/nodalkit_input.hpp"
 
 namespace {
@@ -332,4 +333,50 @@ TEST_CASE("NodalKit microphone key is bindable without sending controller button
     CHECK(input.is_action_pressed(1, InputAction::Microphone));
     window.dispatch_key_event({.type = nk::KeyEvent::Type::Release, .key = nk::KeyCode::M});
     CHECK_FALSE(input.is_action_pressed(1, InputAction::Microphone));
+}
+
+TEST_CASE("Monitor captures Return and Space locally without closing or leaking game keys",
+          "[gui][input][monitor]") {
+    using namespace mapperbus::frontend;
+    nk::Window window({.title = "Monitor keyboard", .width = 600, .height = 600});
+    auto dialog = InputMonitorDialog::create();
+    dialog->add_button("Done", nk::DialogResponse::Close);
+    dialog->present(window);
+    dialog->grab_focus();
+    for (const auto key : {nk::KeyCode::Return, nk::KeyCode::Space, nk::KeyCode::X}) {
+        window.dispatch_key_event({.type = nk::KeyEvent::Type::Press, .key = key});
+        CHECK(dialog->is_presented());
+        CHECK(dialog->key_pressed(key));
+        CHECK_FALSE(window.is_key_pressed(key));
+        window.dispatch_key_event({.type = nk::KeyEvent::Type::Release, .key = key});
+        CHECK_FALSE(dialog->key_pressed(key));
+    }
+    window.dispatch_key_event({.type = nk::KeyEvent::Type::Press, .key = nk::KeyCode::X});
+    REQUIRE(dialog->key_pressed(nk::KeyCode::X));
+    window.dispatch_window_event({.type = nk::WindowEvent::Type::FocusOut});
+    CHECK_FALSE(dialog->key_pressed(nk::KeyCode::X));
+    window.dispatch_window_event({.type = nk::WindowEvent::Type::FocusIn});
+    dialog->grab_focus();
+    window.dispatch_key_event({.type = nk::KeyEvent::Type::Press, .key = nk::KeyCode::Escape});
+    CHECK_FALSE(dialog->is_presented());
+    dialog->present(window);
+    dialog->grab_focus();
+    window.dispatch_key_event({.type = nk::KeyEvent::Type::Press, .key = nk::KeyCode::Tab});
+    window.dispatch_key_event({.type = nk::KeyEvent::Type::Press, .key = nk::KeyCode::Return});
+    CHECK_FALSE(dialog->is_presented()); // Tab to Done still supports keyboard-only dismissal.
+}
+
+TEST_CASE("Monitor keeps keyboard testing available without gamepad support",
+          "[gui][input][monitor]") {
+    using namespace mapperbus;
+    nk::Window window({.title = "Monitor without SDL", .width = 600, .height = 300});
+    frontend::NodalKitInput input(window, {}, {});
+    window.dispatch_key_event({.type = nk::KeyEvent::Type::Press, .key = nk::KeyCode::X});
+    const auto profiles = input.monitor_profiles();
+    CHECK(profiles[0].connection == frontend::InputMonitorConnection::Unavailable);
+    CHECK(profiles[0].held[platform::button_index(platform::InputAction::A)]);
+    const auto rows = frontend::input_monitor_rows(core::ControllerMode::Standard, 0, profiles);
+    REQUIRE(rows.size() == 2);
+    CHECK(rows[0].text.find("unavailable") != std::string::npos);
+    CHECK(rows[0].text.find("Holding: A") != std::string::npos);
 }

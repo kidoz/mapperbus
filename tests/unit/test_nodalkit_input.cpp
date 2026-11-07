@@ -12,6 +12,107 @@
 namespace mapperbus::frontend {
 namespace {
 
+TEST_CASE("Input monitor shows active roles and live shared instances without changing profiles",
+          "[gui][input][monitor]") {
+    tests::IdentityGamepads pads;
+    for (int pad = 0; pad < 4; ++pad)
+        pads.attach(pad, pad); // Same name, different live IDs: names never imply sharing.
+    std::array<platform::GamepadInputConfig, 6> configs;
+    constexpr std::array kDevices = {0, 1, 0, 3, 2, 1};
+    for (int player = 0; player < 6; ++player)
+        configs[player].gamepad_index = kDevices[player];
+    nk::Window window({.title = "Input monitor", .width = 600, .height = 300});
+    NodalKitInput input(window, configs);
+    input.poll();
+    (void)input.consume_gamepad_assignment_changes();
+    const auto baseline = input.monitor_profiles();
+    pads.press(0, true);
+    REQUIRE(SDL_SetJoystickVirtualButton(pads.joysticks[1], SDL_GAMEPAD_BUTTON_SOUTH, true));
+    input.poll();
+    const auto held = input.monitor_profiles();
+    CHECK(held[0].held[platform::button_index(platform::InputAction::A)]);
+    CHECK(held[2].held[platform::button_index(platform::InputAction::A)]);
+    CHECK(held[1].held[platform::button_index(platform::InputAction::B)]);
+    CHECK(held[0].device_id == held[2].device_id);
+    CHECK(held[0].device_id != held[1].device_id);
+    CHECK(held[0].device_name == held[1].device_name);
+    using core::ControllerMode;
+    auto rows = input_monitor_rows(ControllerMode::Standard, 0, held);
+    REQUIRE(rows.size() == 2);
+    CHECK_FALSE(rows[0].shared_device); // An inactive External 1 must not produce a notice.
+    CHECK(rows[0].text.find("Holding: A") != std::string::npos);
+    CHECK(rows[1].text.find("Holding: B") != std::string::npos);
+    rows = input_monitor_rows(ControllerMode::Standard, 2, held);
+    REQUIRE(rows.size() == 3);
+    CHECK(rows[2].profile == 3);
+    CHECK(rows[2].text.starts_with("External 2"));
+    CHECK_FALSE(rows[0].shared_device);
+    rows = input_monitor_rows(ControllerMode::FourScore, 0, held);
+    REQUIRE(rows.size() == 4);
+    CHECK(rows[0].shared_device);
+    CHECK(rows[0].text.find("Shared gamepad with Player 3") != std::string::npos);
+    CHECK(rows[2].text.find("Shared gamepad with Player 1") != std::string::npos);
+    CHECK_FALSE(rows[1].shared_device);
+    rows = input_monitor_rows(ControllerMode::HoriFourPlayer, 0, held);
+    REQUIRE(rows.size() == 6);
+    CHECK(rows[0].text.starts_with("Built-in 1"));
+    CHECK(rows[0].text.find("Shared gamepad with Hori 1") != std::string::npos);
+    CHECK(rows[5].text.starts_with("Hori 4"));
+    CHECK(rows[5].text.find("Shared gamepad with Built-in 2") != std::string::npos);
+    CHECK(input.monitor_profiles() == held); // Rendering is read-only, including held inputs.
+    CHECK_FALSE(input.consume_gamepad_assignment_changes());
+    input.player_input(2).set_gamepad_enabled(false);
+    input.poll();
+    rows = input_monitor_rows(ControllerMode::FourScore, 0, input.monitor_profiles());
+    CHECK_FALSE(rows[0].shared_device);
+    CHECK(rows[2].text.find("disabled") != std::string::npos);
+    pads.detach(0);
+    input.poll();
+    auto disconnected = input.monitor_profiles();
+    CHECK(disconnected[0].device_id == 0);
+    CHECK(disconnected[0].connection == InputMonitorConnection::Disconnected);
+    CHECK_FALSE(disconnected[0].held[platform::button_index(platform::InputAction::A)]);
+    CHECK(disconnected[0].device_name == baseline[0].device_name);
+    rows = input_monitor_rows(ControllerMode::FourScore, 3, disconnected);
+    CHECK_FALSE(rows[0].shared_device);
+    CHECK(rows[0].text.find("Disconnected") != std::string::npos);
+    pads.attach(0, 0);
+    input.poll();
+    CHECK(input.monitor_profiles()[0].connection == InputMonitorConnection::Connected);
+    input.set_assignment_capture(true);
+    for (const auto& profile : input.monitor_profiles())
+        CHECK(std::ranges::none_of(profile.held, [](bool active) { return active; }));
+}
+
+TEST_CASE("Monitor role lists, unavailable devices and ambiguous identities are explicit",
+          "[gui][input][monitor]") {
+    using core::ControllerMode;
+    CHECK(active_controller_profiles(ControllerMode::Standard, 0) == std::vector<int>{0, 1});
+    CHECK(active_controller_profiles(ControllerMode::Standard, 1) == std::vector<int>{0, 1, 2});
+    CHECK(active_controller_profiles(ControllerMode::Standard, 2) == std::vector<int>{0, 1, 3});
+    CHECK(active_controller_profiles(ControllerMode::Standard, 3) == std::vector<int>{0, 1, 2, 3});
+    CHECK(active_controller_profiles(ControllerMode::FourScore, 3) == std::vector<int>{0, 1, 2, 3});
+    CHECK(active_controller_profiles(ControllerMode::HoriFourPlayer, 0) ==
+          std::vector<int>{0, 1, 2, 3, 4, 5});
+    std::array<InputMonitorProfile, 6> profiles;
+    profiles[0].connection = InputMonitorConnection::NeedsAssignment;
+    profiles[0].device_name = "Saved identical controller";
+    profiles[0].held[platform::button_index(platform::InputAction::TurboA)] = true;
+    profiles[1].connection = InputMonitorConnection::Disabled;
+    profiles[1].held[platform::button_index(platform::InputAction::Microphone)] = true;
+    const auto before = profiles;
+    auto rows = input_monitor_rows(ControllerMode::Standard, 3, profiles);
+    REQUIRE(rows.size() == 4);
+    CHECK(rows[0].text.find("Needs reassignment") != std::string::npos);
+    CHECK(rows[0].text.find("Holding: Turbo A") != std::string::npos);
+    CHECK(rows[1].text.find("Holding: Microphone") != std::string::npos);
+    CHECK(rows[2].text.find("Gamepad support unavailable") != std::string::npos);
+    CHECK(rows[3].text.find("Holding: None") != std::string::npos);
+    for (const auto& row : rows)
+        CHECK_FALSE(row.shared_device); // Zero IDs and inactive connections are never shared.
+    CHECK(profiles == before);
+}
+
 TEST_CASE("Hori wizard cancels safely and commits all four assignments only after save succeeds",
           "[gui][input][assignment]") {
     tests::IdentityGamepads pads;
