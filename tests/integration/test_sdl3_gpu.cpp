@@ -15,7 +15,6 @@
 
 namespace mapperbus::frontend {
 namespace {
-
 struct SdlVideoScope {
     ~SdlVideoScope() {
         SDL_QuitSubSystem(SDL_INIT_VIDEO);
@@ -97,7 +96,7 @@ TEST_CASE("GPU xBRZ preserves colors across partial workgroups", "[sdl3][gpu]") 
     // Odd dimensions exercise bounds checks in the final 16x16 workgroup.
     constexpr int kWidth = 7;
     constexpr int kHeight = 5;
-    for (int factor : {2, 3, 6}) {
+    for (int factor : {2, 3, 4, 5, 6}) {
         GpuUpscaler upscaler(factor);
         std::vector<uint32_t> source(kWidth * kHeight);
         std::vector<uint32_t> target(source.size() * factor * factor, 0);
