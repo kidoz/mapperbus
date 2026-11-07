@@ -25,6 +25,22 @@ automatically; loading one reports an error and preserves the current machine.
 selects and remembers that slot. On keyboards that reserve function keys for
 system actions, hold Fn as well.
 
+## Background operations in the GUI
+
+The NodalKit GUI pauses the game while saving or loading and shows a progress
+sheet. File lookup, reads, FDS disk persistence and snapshot writes run in the
+background. When finished, the game returns to its previous running or paused
+state. Successful loads apply the validated snapshot; failed or cancelled loads
+preserve the current machine and selected slot.
+
+**Cancel** (or Escape) abandons a load immediately. A late read cannot apply its
+snapshot. Saves cannot be cancelled once started, so a delayed write cannot race
+a newer save to the same slot. Quit remains available while an operation is
+pending; quitting can interrupt an unfinished save. Normal write failures leave
+the previous slot file intact. If an OS read stays blocked, up to four state
+operations may remain outstanding; further attempts report that earlier work is
+still waiting.
+
 ## Locate or change the save folder
 
 Use **Open States Folder** in the GUI's slot menu or chooser to open the loaded
@@ -60,7 +76,7 @@ slots 2–10. A present but invalid central file reports an error instead of
 falling back. Legacy files are never moved or deleted. Pressing `F5` after an
 import writes a new snapshot to the configured location.
 
-New version-7 snapshots (and supported version-4/5/6 snapshots) validate the media
+Current snapshots (and supported older versions) validate the media
 SHA-256 before changing the machine. New snapshots preserve FDS audio latches and
 DRAM watchdog state. Older snapshots reconstruct missing audio state and leave
 the watchdog disabled until the next `$4023` write.

@@ -1,13 +1,8 @@
 #include "app/async_rom_loader.hpp"
 
-#include <atomic>
-#include <exception>
-#include <mutex>
-#include <thread>
 #include <utility>
 
 #include "app/rom_source.hpp"
-#include "core/mappers/mapper_registry.hpp"
 
 namespace mapperbus::app {
 
@@ -42,64 +37,14 @@ core::Result<PreparedRom> prepare_rom(const RomLoadRequest& request) {
     return media;
 }
 
-struct AsyncRomLoader::Job {
-    std::mutex mutex;
-    bool abandoned = false;
-    std::optional<core::Result<PreparedRom>> result;
-};
-
-struct AsyncRomLoader::Workers {
-    std::atomic<int> count{0};
-    std::shared_ptr<const core::MapperRegistry> registry = core::MapperRegistry::retain();
-};
-
-AsyncRomLoader::AsyncRomLoader(Prepare prepare)
-    : prepare_(std::move(prepare)), workers_(std::make_shared<Workers>()) {}
-
-AsyncRomLoader::~AsyncRomLoader() {
-    if (job_) {
-        const std::lock_guard lock(job_->mutex);
-        job_->abandoned = true;
-    }
-}
+AsyncRomLoader::AsyncRomLoader(Prepare prepare) : prepare_(std::move(prepare)) {}
 
 core::Result<void> AsyncRomLoader::launch(std::function<core::Result<PreparedRom>()> task,
                                           Phase phase) {
-    if (job_)
-        return std::unexpected("A ROM operation is already in progress");
-    // Stuck OS reads cannot be forcibly interrupted portably. Bound abandoned
-    // jobs so repeated Cancel/Open cannot create unbounded threads or buffers.
-    auto job = std::make_shared<Job>();
-    constexpr int kMaxWorkers = 4;
-    if (workers_->count.fetch_add(1) >= kMaxWorkers) {
-        --workers_->count;
-        return std::unexpected("Previous file operations are still waiting. Try again later.");
-    }
-    try {
-        std::thread([job, workers = workers_, task = std::move(task)] {
-            auto result = [&]() -> core::Result<PreparedRom> {
-                try {
-                    return task();
-                } catch (const std::exception& error) {
-                    return std::unexpected("ROM operation failed: " + std::string(error.what()));
-                } catch (...) {
-                    return std::unexpected("ROM operation failed unexpectedly");
-                }
-            }();
-            {
-                const std::lock_guard lock(job->mutex);
-                if (!job->abandoned)
-                    job->result = std::move(result);
-            }
-            --workers->count;
-        }).detach();
-    } catch (const std::exception& error) {
-        --workers_->count;
-        return std::unexpected("Cannot start ROM operation: " + std::string(error.what()));
-    }
-    job_ = std::move(job);
-    phase_ = phase;
-    return {};
+    auto started = task_.start(std::move(task), phase == Phase::Loading);
+    if (started)
+        phase_ = phase;
+    return started;
 }
 
 core::Result<void> AsyncRomLoader::start(RomLoadRequest request) {
@@ -118,28 +63,15 @@ core::Result<void> AsyncRomLoader::save_current(std::shared_ptr<core::Emulator> 
 }
 
 std::optional<core::Result<PreparedRom>> AsyncRomLoader::poll() {
-    if (!job_)
-        return std::nullopt;
-    std::optional<core::Result<PreparedRom>> result;
-    {
-        const std::lock_guard lock(job_->mutex);
-        if (!job_->result)
-            return std::nullopt;
-        result = std::move(job_->result);
-    }
-    job_.reset();
-    phase_ = Phase::Idle;
+    auto result = task_.poll();
+    if (result)
+        phase_ = Phase::Idle;
     return result;
 }
 
 bool AsyncRomLoader::cancel() {
-    if (phase_ != Phase::Loading)
+    if (!task_.cancel())
         return false;
-    {
-        const std::lock_guard lock(job_->mutex);
-        job_->abandoned = true;
-    }
-    job_.reset();
     phase_ = Phase::Idle;
     return true;
 }

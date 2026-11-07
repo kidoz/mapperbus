@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "app/background_task.hpp"
 #include "app/state_storage.hpp"
 #include "core/emulator.hpp"
 
@@ -40,7 +41,7 @@ class AsyncRomLoader {
     using Prepare = std::function<core::Result<PreparedRom>(const RomLoadRequest&)>;
 
     explicit AsyncRomLoader(Prepare prepare = prepare_rom);
-    ~AsyncRomLoader();
+    ~AsyncRomLoader() = default;
     AsyncRomLoader(const AsyncRomLoader&) = delete;
     AsyncRomLoader& operator=(const AsyncRomLoader&) = delete;
 
@@ -55,13 +56,10 @@ class AsyncRomLoader {
     }
 
   private:
-    struct Job;
-    struct Workers;
     [[nodiscard]] core::Result<void> launch(std::function<core::Result<PreparedRom>()> task,
                                             Phase phase);
     Prepare prepare_;
-    std::shared_ptr<Workers> workers_;
-    std::shared_ptr<Job> job_;
+    BackgroundTask<PreparedRom> task_;
     Phase phase_ = Phase::Idle;
 };
 

@@ -2,6 +2,7 @@
 
 #include <array>
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -121,6 +122,8 @@ class EmulationSession {
     [[nodiscard]] std::string game_identity() const;
     core::Result<void> save_state(int slot = 0);
     core::Result<void> load_state(int slot = 0);
+    /// Applies already-read bytes transactionally, with no filesystem access.
+    core::Result<void> load_state_data(std::span<const core::Byte> data, bool allow_legacy = false);
     [[nodiscard]] std::string state_path_for_slot(int slot = 0) const;
     /// Prefer the configured directory; only a missing file falls back to the legacy sibling.
     [[nodiscard]] core::Result<std::string> state_load_path_for_slot(int slot = 0) const;

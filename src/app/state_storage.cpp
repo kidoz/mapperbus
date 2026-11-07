@@ -91,6 +91,24 @@ std::filesystem::path state_directory_for_game(const StateStorageSettings& setti
     return root / (safe_game_name(rom) + suffix);
 }
 
+core::Result<StateLoadPath> resolve_state_load_path(const std::filesystem::path& primary,
+                                                    const std::filesystem::path& legacy) {
+    std::error_code error;
+    if (std::filesystem::exists(primary, error))
+        return StateLoadPath{primary.string(), false};
+    if (error)
+        return std::unexpected("Cannot access save-state file: " + primary.string() + ": " +
+                               error.message());
+    if (!legacy.empty()) {
+        if (std::filesystem::exists(legacy, error))
+            return StateLoadPath{legacy.string(), true};
+        if (error)
+            return std::unexpected("Cannot access legacy save-state file: " + legacy.string() +
+                                   ": " + error.message());
+    }
+    return StateLoadPath{primary.string(), false};
+}
+
 core::Result<void> ensure_state_directory(const std::filesystem::path& directory) {
     std::error_code error;
     std::filesystem::create_directories(directory, error);

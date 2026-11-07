@@ -8,7 +8,7 @@ libarchive_dep = dependency('libarchive',
 app_threads_dep = dependency('threads')
 
 mapperbus_app_lib = static_library('mapperbus-app',
-    files('app.cpp', 'configuration.cpp', 'emulation_session.cpp', 'session_actions.cpp', 'state_storage.cpp', 'rom_source.cpp', 'async_rom_loader.cpp', 'live_microphone.cpp'),
+    files('app.cpp', 'configuration.cpp', 'emulation_session.cpp', 'session_actions.cpp', 'state_storage.cpp', 'rom_source.cpp', 'async_rom_loader.cpp', 'async_state_io.cpp', 'live_microphone.cpp'),
     dependencies : [mapperbus_core_dep, libarchive_dep, app_threads_dep],
 )
 

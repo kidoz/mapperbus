@@ -50,6 +50,7 @@ extern char** environ;
 
 #include "app/rom_source.hpp"
 #include "core/binary_file.hpp"
+#include "core/logger.hpp"
 #include "core/mappers/mapper_registry.hpp"
 #include "frontends/nodalkit/gui_close_policy.hpp"
 #include "frontends/nodalkit/input_binding_table.hpp"
@@ -1006,18 +1007,18 @@ gamepad_capture_controls() {
     return controls;
 }
 
-// Saving the outgoing game is an atomic handoff step; its worker owns the
-// paused machine. Keep the sheet visible until it finishes (including Escape).
-class RomLoadingDialog final : public nk::Dialog {
+// A saving worker owns the paused machine. Keep its sheet visible until
+// completion, including when Escape or Return reaches the dialog itself.
+class FileOperationDialog final : public nk::Dialog {
   public:
-    explicit RomLoadingDialog(bool saving)
-        : nk::Dialog(saving ? "Saving Current Game" : "Opening ROM", {}), saving_(saving) {}
+    FileOperationDialog(std::string title, bool cancellable)
+        : nk::Dialog(std::move(title), {}), cancellable_(cancellable) {}
     bool handle_key_event(const nk::KeyEvent& event) override {
-        return saving_ || nk::Dialog::handle_key_event(event);
+        return !cancellable_ || nk::Dialog::handle_key_event(event);
     }
 
   private:
-    bool saving_;
+    bool cancellable_;
 };
 
 } // namespace
@@ -1097,7 +1098,8 @@ MapperBusGuiController::MapperBusGuiController(nk::Application& app, nk::Window&
     last_tick_time_ = std::chrono::steady_clock::now();
     tick_handle_ = app_.event_loop().set_interval(std::chrono::milliseconds(1), [this] {
         poll_rom_load();
-        if (loading_request_) {
+        poll_state_operation();
+        if (loading_request_ || pending_state_operation_) {
             last_tick_time_ = std::chrono::steady_clock::now();
             frame_accumulator_ = std::chrono::nanoseconds{0};
             return;
@@ -1350,7 +1352,7 @@ void MapperBusGuiController::wire_ui() {
     guard_window_close(
         window_,
         [this]() -> core::Result<void> {
-            if (rom_loader_.phase() == app::AsyncRomLoader::Phase::Saving)
+            if (machine_worker_active())
                 return {};
             return session_->flush_disk_changes();
         },
@@ -1410,7 +1412,7 @@ void MapperBusGuiController::clear_preview() {
 }
 
 void MapperBusGuiController::refresh_preview() {
-    if (rom_loader_.phase() == app::AsyncRomLoader::Phase::Saving)
+    if (machine_worker_active())
         return;
     const auto& frame = session_->emulator().frame_buffer();
     update_preview_surface(
@@ -1489,7 +1491,7 @@ void MapperBusGuiController::refresh_welcome_view() {
 }
 
 void MapperBusGuiController::refresh_ui() {
-    if (rom_loader_.phase() == app::AsyncRomLoader::Phase::Saving)
+    if (machine_worker_active())
         return;
     const bool assignments_changed = input_backend_->consume_gamepad_assignment_changes();
     const bool devices_changed = input_backend_->consume_gamepad_inventory_changes();
@@ -1575,7 +1577,7 @@ void MapperBusGuiController::refresh_ui() {
 }
 
 void MapperBusGuiController::update_native_menu() {
-    if (rom_loader_.phase() == app::AsyncRomLoader::Phase::Saving)
+    if (machine_worker_active())
         return;
     if (!app_.supports_native_app_menu() || native_menu_slot_ == active_state_slot_) {
         return;
@@ -1587,7 +1589,7 @@ void MapperBusGuiController::update_native_menu() {
 }
 
 void MapperBusGuiController::update_native_toolbar() {
-    if (rom_loader_.phase() == app::AsyncRomLoader::Phase::Saving)
+    if (machine_worker_active())
         return;
     if (app_.system_preferences().platform_family != nk::PlatformFamily::MacOS) {
         return;
@@ -1657,7 +1659,7 @@ void MapperBusGuiController::set_message(std::string message) {
 }
 
 void MapperBusGuiController::rebuild_header_menu() {
-    if (rom_loader_.phase() == app::AsyncRomLoader::Phase::Saving)
+    if (machine_worker_active())
         return;
     if (!header_menu_) {
         return;
@@ -1803,7 +1805,8 @@ void MapperBusGuiController::present_rom_loading(bool saving) {
         nk::Label::create(std::filesystem::path(loading_request_->path).filename().string());
     filename->set_wrapping(true);
     content->append(filename);
-    loading_dialog_ = std::make_shared<RomLoadingDialog>(saving);
+    loading_dialog_ = std::make_shared<FileOperationDialog>(
+        saving ? "Saving Current Game" : "Opening ROM", !saving);
     loading_dialog_->set_content(FixedWidthSlot::create(440.0F, content));
     if (!saving)
         loading_dialog_->add_button("Cancel", nk::DialogResponse::Cancel);
@@ -2240,40 +2243,130 @@ void MapperBusGuiController::open_states_folder() {
 #endif
 }
 
-void MapperBusGuiController::save_session_state(int slot) {
-    if (!actions_->snapshot().has_cartridge) {
-        set_message("No ROM loaded to save state from.");
+bool MapperBusGuiController::machine_worker_active() const {
+    return rom_loader_.phase() == app::AsyncRomLoader::Phase::Saving ||
+           state_io_.phase() == app::AsyncStateIO::Phase::Saving;
+}
+
+void MapperBusGuiController::begin_state_operation(int slot, bool save) {
+    if (modal_dialog_presented())
+        return;
+    if (!session_->has_cartridge()) {
+        set_message(save ? "No ROM loaded to save state from."
+                         : "No ROM loaded to load state into.");
         return;
     }
-
-    const auto result = actions_->save_state(slot);
-    if (result) {
-        select_state_slot(slot);
+    if (slot < 0 || slot >= app::kSaveStateSlotCount) {
+        set_message("Choose a state slot between 1 and 10.");
+        return;
     }
-    set_message(result ? "Saved state to " + basename_for_display(actions_->state_path(slot)) + "."
-                       : result.error());
+    update_configuration_from_state();
+    close_settings();
+    pending_state_operation_ =
+        PendingStateOperation{slot, save, session_->paused(), session_->state_path_for_slot(slot)};
+    session_->set_paused(true);
+
+    auto content = Box::vertical(12.0F);
+    auto spinner = nk::Spinner::create();
+    spinner->set_spinning(true);
+    content->append(spinner);
+    auto label = nk::Label::create(save ? "Saving the paused game. Please wait…"
+                                        : "Reading the selected save-state…");
+    label->set_wrapping(true);
+    content->append(label);
+    content->append(nk::Label::create("Slot " + std::to_string(slot + 1)));
+    state_operation_dialog_ =
+        std::make_shared<FileOperationDialog>(save ? "Saving State" : "Loading State", !save);
+    state_operation_dialog_->set_content(FixedWidthSlot::create(440.0F, content));
+    if (!save)
+        state_operation_dialog_->add_button("Cancel", nk::DialogResponse::Cancel);
+    (void)state_operation_dialog_->on_response().connect([this](nk::DialogResponse) {
+        if (!state_operation_dialog_ || !state_io_.cancel())
+            return;
+        auto dialog = state_operation_dialog_;
+        app_.event_loop().post(
+            [this, dialog] {
+                if (state_operation_dialog_ == dialog)
+                    finish_state_operation("Loading state cancelled.", false);
+            },
+            "mapperbus.state-cancel");
+    });
+    state_operation_dialog_->present(window_);
+    // Publish Paused before the writer takes exclusive machine access.
+    refresh_ui();
+
+    core::Result<void> started;
+    if (save) {
+        started = state_io_.save(session_->emulator_handle(), pending_state_operation_->path);
+    } else {
+        app::StateLoadRequest request{pending_state_operation_->path, {}};
+        if (session_->current_rom_member().empty() && !session_->emulator().is_fds())
+            request.legacy = app::legacy_state_path(session_->current_rom_path(), slot);
+        started = state_io_.load(std::move(request));
+    }
+    if (!started)
+        finish_state_operation(started.error(), false);
+}
+
+void MapperBusGuiController::dismiss_state_operation() {
+    auto dialog = std::exchange(state_operation_dialog_, {});
+    if (dialog && dialog->is_presented())
+        dialog->close();
+}
+
+void MapperBusGuiController::finish_state_operation(std::string message, bool success) {
+    const auto operation = std::move(*pending_state_operation_);
+    pending_state_operation_.reset();
+    dismiss_state_operation();
+    session_->set_paused(operation.previously_paused);
+    frame_accumulator_ = std::chrono::nanoseconds{0};
+    last_tick_time_ = std::chrono::steady_clock::now();
+    if (success) {
+        select_state_slot(operation.slot);
+        if (!operation.save) {
+            refresh_preview();
+            refresh_settings_dialog_sections();
+        }
+    }
+    set_message(std::move(message));
     refresh_ui();
     focus_game_surface();
 }
 
-void MapperBusGuiController::load_session_state(int slot) {
-    if (!actions_->snapshot().has_cartridge) {
-        set_message("No ROM loaded to load state into.");
+void MapperBusGuiController::poll_state_operation() {
+    auto completed = state_io_.poll();
+    if (!completed)
+        return;
+    if (!*completed) {
+        finish_state_operation("Failed to " +
+                                   std::string(pending_state_operation_->save ? "save" : "load") +
+                                   " state: " + completed->error(),
+                               false);
         return;
     }
-
-    const auto path = session_->state_load_path_for_slot(slot);
-    const auto result = actions_->load_state(slot);
-    if (result) {
-        select_state_slot(slot);
-        refresh_preview();
-        set_message("Loaded state from " + basename_for_display(path.value_or("")) + ".");
-        refresh_settings_dialog_sections();
-    } else {
-        set_message(result.error());
+    auto& loaded = **completed;
+    if (!pending_state_operation_->save) {
+        if (loaded.legacy)
+            core::logger::warn(
+                "Importing a legacy sibling state; old versions cannot verify ROM identity: {}",
+                loaded.path);
+        if (auto applied = session_->load_state_data(loaded.data, loaded.legacy); !applied) {
+            finish_state_operation("Failed to load state: " + applied.error(), false);
+            return;
+        }
     }
-    refresh_ui();
-    focus_game_surface();
+    finish_state_operation(
+        std::string(pending_state_operation_->save ? "Saved state to " : "Loaded state from ") +
+            basename_for_display(loaded.path) + ".",
+        true);
+}
+
+void MapperBusGuiController::save_session_state(int slot) {
+    begin_state_operation(slot, true);
+}
+
+void MapperBusGuiController::load_session_state(int slot) {
+    begin_state_operation(slot, false);
 }
 
 void MapperBusGuiController::apply_region_preference() {
@@ -2400,7 +2493,7 @@ void MapperBusGuiController::update_preview_surface(const std::uint32_t* data,
 }
 
 void MapperBusGuiController::update_configuration_from_state() {
-    if (rom_loader_.phase() == app::AsyncRomLoader::Phase::Saving)
+    if (machine_worker_active())
         return;
     for (int player = 0; player < platform::kInputProfileCount; ++player) {
         const auto& input = input_backend_->player_input(player);
@@ -3763,7 +3856,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_footer_conten
 }
 
 void MapperBusGuiController::refresh_settings_dialog_sections() {
-    if (rom_loader_.phase() == app::AsyncRomLoader::Phase::Saving)
+    if (machine_worker_active())
         return;
     if (!settings_dialog_ && !settings_window_) {
         return;
@@ -3941,7 +4034,7 @@ nk::Window& MapperBusGuiController::settings_host_window() {
 }
 
 bool MapperBusGuiController::modal_dialog_presented() const {
-    return loading_request_.has_value() ||
+    return loading_request_.has_value() || pending_state_operation_.has_value() ||
            (input_monitor_dialog_ && input_monitor_dialog_->is_presented()) ||
            (gamepad_assignment_dialog_ && gamepad_assignment_dialog_->is_presented()) ||
            (settings_dialog_ && settings_dialog_->is_presented()) ||
@@ -3952,7 +4045,7 @@ bool MapperBusGuiController::modal_dialog_presented() const {
 }
 
 void MapperBusGuiController::handle_menu_action(std::string_view action) {
-    if (loading_request_ && action != "file.quit")
+    if ((loading_request_ || pending_state_operation_) && action != "file.quit")
         return;
     if ((gamepad_assignment_dialog_ || input_monitor_dialog_) && action != "file.quit")
         return;
@@ -3991,7 +4084,7 @@ void MapperBusGuiController::handle_menu_action(std::string_view action) {
         return;
     }
     if (action == "file.quit") {
-        if (rom_loader_.phase() != app::AsyncRomLoader::Phase::Saving) {
+        if (!machine_worker_active()) {
             if (auto saved = session_->flush_disk_changes(); !saved) {
                 set_message(saved.error());
                 return;

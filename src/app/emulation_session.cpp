@@ -5,6 +5,7 @@
 
 #include "app/async_rom_loader.hpp"
 #include "app/rom_source.hpp"
+#include "core/binary_file.hpp"
 #include "core/logger.hpp"
 
 namespace mapperbus::app {
@@ -355,27 +356,13 @@ core::Result<std::string> EmulationSession::state_load_path_for_slot(int slot) c
     if (!rom_loaded_ || slot < 0 || slot >= kSaveStateSlotCount) {
         return std::unexpected(std::string("Load a ROM and choose a slot between 1 and 10"));
     }
-    auto primary = state_path_for_slot(slot);
-    std::error_code error;
-    if (std::filesystem::exists(primary, error)) {
-        return primary;
-    }
-    if (error) {
-        return std::unexpected("Cannot access save-state file: " + primary + ": " +
-                               error.message());
-    }
-    if (!current_rom_member_.empty() || emulator_->is_fds()) {
-        return primary;
-    }
-    auto legacy = legacy_state_path(current_rom_path_, slot).string();
-    if (std::filesystem::exists(legacy, error)) {
-        return legacy;
-    }
-    if (error) {
-        return std::unexpected("Cannot access legacy save-state file: " + legacy + ": " +
-                               error.message());
-    }
-    return primary;
+    const auto legacy = current_rom_member_.empty() && !emulator_->is_fds()
+                            ? legacy_state_path(current_rom_path_, slot)
+                            : std::filesystem::path{};
+    auto resolved = resolve_state_load_path(state_path_for_slot(slot), legacy);
+    if (!resolved)
+        return std::unexpected(resolved.error());
+    return std::move(resolved->path);
 }
 
 core::Result<void> EmulationSession::save_state(int slot) {
@@ -403,12 +390,23 @@ core::Result<void> EmulationSession::load_state(int slot) {
         core::logger::warn(
             "Importing a legacy sibling state; old versions cannot verify ROM identity: {}", *path);
     }
-    auto result = emulator_->load_state_from_file(*path, legacy);
-    if (result) {
-        suspend_live_microphone();
-        turbo_input_.reset();
-    }
-    return result;
+    auto data =
+        core::read_binary_file_capped(*path, core::Emulator::kMaxStateBytes, "save-state file");
+    if (!data)
+        return std::unexpected(data.error());
+    return load_state_data(*data, legacy);
+}
+
+core::Result<void> EmulationSession::load_state_data(std::span<const core::Byte> data,
+                                                     bool allow_legacy) {
+    if (!rom_loaded_)
+        return std::unexpected("No ROM loaded to load state into");
+    if (!emulator_->load_state(data, allow_legacy))
+        return std::unexpected("Save-state is invalid or does not match the loaded ROM");
+    suspend_live_microphone();
+    turbo_input_.reset();
+    reset_audio_fill_ratio_history();
+    return {};
 }
 
 core::Result<void> EmulationSession::set_upscaler(std::unique_ptr<platform::Upscaler> upscaler) {

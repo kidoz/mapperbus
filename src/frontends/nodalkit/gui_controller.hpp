@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "app/async_rom_loader.hpp"
+#include "app/async_state_io.hpp"
 #include "app/configuration.hpp"
 #include "app/emulation_session.hpp"
 #include "app/session_actions.hpp"
@@ -108,6 +109,11 @@ class MapperBusGuiController {
     void select_state_slot(int slot);
     void choose_state_slot();
     void open_states_folder();
+    [[nodiscard]] bool machine_worker_active() const;
+    void begin_state_operation(int slot, bool save);
+    void poll_state_operation();
+    void finish_state_operation(std::string message, bool success);
+    void dismiss_state_operation();
     void save_session_state(int slot);
     void load_session_state(int slot);
     void close_current_rom();
@@ -169,6 +175,15 @@ class MapperBusGuiController {
     std::optional<app::RomLoadRequest> loading_request_;
     std::shared_ptr<nk::Dialog> loading_dialog_;
     bool paused_before_rom_load_ = false;
+    struct PendingStateOperation {
+        int slot;
+        bool save;
+        bool previously_paused;
+        std::string path;
+    };
+    app::AsyncStateIO state_io_;
+    std::optional<PendingStateOperation> pending_state_operation_;
+    std::shared_ptr<nk::Dialog> state_operation_dialog_;
 
     std::shared_ptr<Box> root_;
     std::shared_ptr<ContentSlot> main_slot_;

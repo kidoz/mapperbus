@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <string>
 #include <string_view>
 
 #include "core/types.hpp"
@@ -23,6 +24,13 @@ struct StateStorageSettings {
 [[nodiscard]] std::filesystem::path state_directory_for_game(const StateStorageSettings& settings,
                                                              const std::filesystem::path& rom,
                                                              std::string_view identity);
+struct StateLoadPath {
+    std::string path;
+    bool legacy = false;
+};
+/// A present/erroring primary never falls back. An empty legacy path disables import.
+[[nodiscard]] core::Result<StateLoadPath> resolve_state_load_path(
+    const std::filesystem::path& primary, const std::filesystem::path& legacy = {});
 [[nodiscard]] core::Result<void> ensure_state_directory(const std::filesystem::path& directory);
 [[nodiscard]] std::filesystem::path legacy_state_path(const std::filesystem::path& rom, int slot);
 
