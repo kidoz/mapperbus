@@ -59,12 +59,16 @@ kernel void fsr1_easu(
     float4 result = float4(0.0);
     float total_weight = 0.0;
 
+    float weights_x[4];
+    float weights_y[4];
+    for (int i = -1; i <= 2; ++i) {
+        weights_x[i + 1] = lanczos2_weight(float(i) - (src_x - float(ix)));
+        weights_y[i + 1] = lanczos2_weight(float(i) - (src_y - float(iy)));
+    }
+
     for (int y = -1; y <= 2; ++y) {
         for (int x = -1; x <= 2; ++x) {
-            float dx = float(x) - (src_x - float(ix));
-            float dy = float(y) - (src_y - float(iy));
-            
-            float weight = lanczos2_weight(dx) * lanczos2_weight(dy);
+            float weight = weights_x[x + 1] * weights_y[y + 1];
             
             result += sample_src(src, ix + x, iy + y, sw, sh) * weight;
             total_weight += weight;
@@ -197,12 +201,16 @@ void fsr1_easu(uint3 gid : SV_DispatchThreadID) {
     float4 result = float4(0.0, 0.0, 0.0, 0.0);
     float total_weight = 0.0;
 
+    float weights_x[4];
+    float weights_y[4];
+    for (int i = -1; i <= 2; ++i) {
+        weights_x[i + 1] = lanczos2_weight((float)i - (src_x - (float)ix));
+        weights_y[i + 1] = lanczos2_weight((float)i - (src_y - (float)iy));
+    }
+
     for (int y = -1; y <= 2; ++y) {
         for (int x = -1; x <= 2; ++x) {
-            float dx = (float)x - (src_x - (float)ix);
-            float dy = (float)y - (src_y - (float)iy);
-            
-            float weight = lanczos2_weight(dx) * lanczos2_weight(dy);
+            float weight = weights_x[x + 1] * weights_y[y + 1];
             
             result += sample_src(ix + x, iy + y, sw, sh) * weight;
             total_weight += weight;
