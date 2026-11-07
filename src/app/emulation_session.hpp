@@ -116,6 +116,12 @@ class EmulationSession {
 
     /// Ten content-identified state files (indices 0–9), centralized by default.
     void set_state_storage(const StateStorageSettings& settings);
+    /// Installs a location already resolved/validated off-thread; performs no I/O.
+    void set_prepared_state_storage(StateStorageSettings settings,
+                                    std::filesystem::path directory) {
+        state_storage_ = std::move(settings);
+        state_directory_ = std::move(directory);
+    }
     [[nodiscard]] const std::filesystem::path& state_directory() const {
         return state_directory_;
     }

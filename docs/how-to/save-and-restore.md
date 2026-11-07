@@ -44,7 +44,22 @@ still waiting.
 ## Locate or change the save folder
 
 Use **Open States Folder** in the GUI's slot menu or chooser to open the loaded
-game's folder. Default locations are:
+game's folder. Slot availability is checked in the background: the chooser shows
+**Checking…**, then **Saved**, **Empty**, or **Unavailable**. You can select a slot
+or close the chooser while checking; late results from a closed chooser are discarded.
+
+**Apply Storage Location** validates the proposed folder in the background,
+including a temporary write check. Done remains available during validation.
+The current location changes only after validation and settings persistence
+succeed. Failure keeps the current location and your proposed path for correction.
+Existing state files stay where they are. Closing the chooser cancels the proposed
+change; validation may already have created the proposed empty folder.
+
+Folder opening also runs in the background, so the game and window remain
+responsive while the system file manager starts. An explicit folder-opening
+request may finish after the chooser closes.
+
+Default locations are:
 
 | Platform | State root |
 |---|---|

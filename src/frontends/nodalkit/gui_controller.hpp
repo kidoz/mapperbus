@@ -26,6 +26,7 @@
 #include "app/configuration.hpp"
 #include "app/emulation_session.hpp"
 #include "app/session_actions.hpp"
+#include "app/state_storage_tasks.hpp"
 #include "frontends/nodalkit/gui_audio_backend.hpp"
 #include "frontends/nodalkit/gui_widgets.hpp"
 #include "frontends/nodalkit/input_monitor_dialog.hpp"
@@ -40,6 +41,7 @@ namespace nk {
 class Headerbar;
 class Label;
 class ScrollArea;
+class Spinner;
 } // namespace nk
 
 namespace mapperbus::frontend {
@@ -109,6 +111,9 @@ class MapperBusGuiController {
     void select_state_slot(int slot);
     void choose_state_slot();
     void open_states_folder();
+    void request_state_slot_scan();
+    void poll_state_storage();
+    void update_state_storage_controls();
     [[nodiscard]] bool machine_worker_active() const;
     void begin_state_operation(int slot, bool save);
     void poll_state_operation();
@@ -202,6 +207,14 @@ class MapperBusGuiController {
     std::shared_ptr<nk::Dialog> archive_dialog_;
     std::shared_ptr<nk::Dialog> fds_dialog_;
     std::weak_ptr<nk::ComboBox> state_slot_control_;
+    app::StateStorageTasks storage_tasks_;
+    std::weak_ptr<nk::Label> state_slots_status_;
+    std::weak_ptr<nk::Label> state_location_status_;
+    std::weak_ptr<nk::Spinner> state_storage_spinner_;
+    std::weak_ptr<nk::ComboBox> state_storage_mode_;
+    std::weak_ptr<nk::TextField> state_storage_directory_;
+    std::weak_ptr<nk::Button> state_storage_apply_;
+    std::weak_ptr<nk::Button> state_storage_open_;
     std::shared_ptr<nk::ContextMenu> header_menu_;
     std::vector<std::string> header_menu_actions_;
     std::shared_ptr<PreviewCanvas> preview_;

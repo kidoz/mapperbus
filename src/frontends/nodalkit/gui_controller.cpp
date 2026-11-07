@@ -12,24 +12,6 @@
 #include <functional>
 #include <nk/widgets/spinner.h>
 
-#if defined(_WIN32)
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <shellapi.h>
-#include <windows.h>
-#else
-#include <cerrno>
-#include <cstring>
-#include <spawn.h>
-#include <sys/wait.h>
-#if defined(__APPLE__)
-#include <crt_externs.h>
-#else
-extern char** environ;
-#endif
-#endif
-
 #if __has_include(<nk/actions/shortcut_registry.h>)
 #include <nk/actions/shortcut_registry.h>
 #define MAPPERBUS_HAVE_NODALKIT_SHORTCUTS 1
@@ -1104,6 +1086,7 @@ MapperBusGuiController::MapperBusGuiController(nk::Application& app, nk::Window&
             frame_accumulator_ = std::chrono::nanoseconds{0};
             return;
         }
+        poll_state_storage();
         poll_gamepad_assignment();
         poll_pending_rebind();
         update_input_test_status();
@@ -2109,34 +2092,21 @@ void MapperBusGuiController::choose_state_slot() {
     }
     auto combo = nk::ComboBox::create();
     state_slot_control_ = combo;
-    const auto update_slots = [this, weak_combo = std::weak_ptr<nk::ComboBox>(combo)] {
-        auto control = weak_combo.lock();
-        if (!control)
-            return;
-        std::vector<std::string> labels;
-        labels.reserve(app::kSaveStateSlotCount);
-        for (int slot = 0; slot < app::kSaveStateSlotCount; ++slot) {
-            const auto path = session_->state_load_path_for_slot(slot);
-            std::error_code error;
-            const bool saved = path && std::filesystem::is_regular_file(*path, error);
-            const bool unavailable =
-                !path || (error && error != std::errc::no_such_file_or_directory);
-            labels.push_back("Slot " + std::to_string(slot + 1) +
-                             (unavailable ? " — Unavailable"
-                              : saved     ? " — Saved"
-                                          : " — Empty"));
-        }
-        control->set_items(std::move(labels));
-        control->set_selected_index(active_state_slot_);
-    };
-    update_slots();
-    combo->set_selected_index(active_state_slot_);
     (void)combo->on_selection_changed().connect([this](int slot) { select_state_slot(slot); });
     auto group = SettingsGroup::create("Save states");
     group->set_horizontal_size_policy(nk::SizePolicy::Expanding);
     group->add(pref_row("Slot", combo));
     auto content = Box::vertical(12.0F);
     content->append(group);
+    auto scan_row = Box::horizontal(12.0F);
+    auto spinner = nk::Spinner::create();
+    state_storage_spinner_ = spinner;
+    scan_row->append(spinner);
+    auto slots_status = nk::Label::create("Checking slots…");
+    slots_status->set_wrapping(true);
+    state_slots_status_ = slots_status;
+    scan_row->append(slots_status);
+    content->append(scan_row);
     content->append(SecondaryText::create("Remembered for this game. F5 saves; F7 loads."));
     auto storage_group = SettingsGroup::create("Storage");
     storage_group->set_horizontal_size_policy(nk::SizePolicy::Expanding);
@@ -2145,45 +2115,41 @@ void MapperBusGuiController::choose_state_slot() {
     mode->set_selected_index(
         configuration_.save_states.mode == app::StateStorageMode::Portable ? 1 : 0);
     storage_group->add(pref_row("Location", mode));
+    state_storage_mode_ = mode;
     content->append(storage_group);
     auto directory = nk::TextField::create(configuration_.save_states.directory.string());
     directory->set_horizontal_size_policy(nk::SizePolicy::Expanding);
     directory->set_placeholder("Optional absolute folder override");
     directory->ensure_accessible().set_name("Save-state folder override");
     content->append(directory);
+    state_storage_directory_ = directory;
     content->append(SecondaryText::create("Folder overrides take priority over Location."));
+    auto location_status =
+        nk::Label::create("Current location is unchanged until validation succeeds.");
+    location_status->set_wrapping(true);
+    state_location_status_ = location_status;
+    content->append(location_status);
     auto apply = nk::Button::create("Apply Storage Location");
-    const auto apply_storage = [this,
-                                weak_mode = std::weak_ptr<nk::ComboBox>(mode),
-                                weak_directory = std::weak_ptr<nk::TextField>(directory),
-                                update_slots] {
-        const auto mode_control = weak_mode.lock();
-        const auto directory_control = weak_directory.lock();
-        if (!mode_control || !directory_control)
+    state_storage_apply_ = apply;
+    const auto apply_storage = [this] {
+        const auto mode_control = state_storage_mode_.lock();
+        const auto directory_control = state_storage_directory_.lock();
+        if (!mode_control || !directory_control || storage_tasks_.preparing())
             return;
         app::StateStorageSettings settings;
         settings.mode = mode_control->selected_index() == 1 ? app::StateStorageMode::Portable
                                                             : app::StateStorageMode::UserData;
         settings.directory = std::filesystem::path(directory_control->text());
-        if (!settings.directory.empty() && !settings.directory.is_absolute()) {
-            set_message("Choose an absolute save-state folder path.");
-            return;
-        }
-        const auto folder = app::state_directory_for_game(
-            settings, actions_->snapshot().rom_path, session_->game_identity());
-        if (auto created = app::ensure_state_directory(folder); !created) {
-            set_message(created.error());
-            return;
-        }
-        configuration_.save_states = settings;
-        session_->set_state_storage(settings);
-        save_configuration_state();
-        update_slots();
-        set_message("Save-state location updated. Existing files stay in their current folders.");
+        auto started = storage_tasks_.prepare(
+            std::move(settings), session_->current_rom_path(), session_->game_identity());
+        if (auto status = state_location_status_.lock())
+            status->set_text(started ? "Checking storage location…" : started.error());
+        update_state_storage_controls();
     };
     (void)apply->on_clicked().connect(apply_storage);
     (void)directory->on_activate().connect(apply_storage);
     auto open_folder = nk::Button::create("Open States Folder");
+    state_storage_open_ = open_folder;
     (void)open_folder->on_clicked().connect([this] { open_states_folder(); });
     auto storage_actions = Box::horizontal(12.0F);
     storage_actions->append(apply);
@@ -2193,12 +2159,21 @@ void MapperBusGuiController::choose_state_slot() {
     state_slot_dialog_->set_content(FixedWidthSlot::create(440.0F, content));
     state_slot_dialog_->add_button("Done", nk::DialogResponse::Close);
     (void)state_slot_dialog_->on_response().connect([this](nk::DialogResponse) {
+        // Invalidate results immediately; widget retirement waits for dispatch.
+        storage_tasks_.cancel_chooser();
         auto dialog = state_slot_dialog_;
         app_.event_loop().post(
             [this, dialog] {
                 if (state_slot_dialog_ == dialog) {
                     state_slot_dialog_.reset();
                     state_slot_control_.reset();
+                    state_slots_status_.reset();
+                    state_location_status_.reset();
+                    state_storage_spinner_.reset();
+                    state_storage_mode_.reset();
+                    state_storage_directory_.reset();
+                    state_storage_apply_.reset();
+                    state_storage_open_.reset();
                 }
                 focus_game_surface();
                 update_native_toolbar();
@@ -2206,51 +2181,108 @@ void MapperBusGuiController::choose_state_slot() {
             "mapperbus.state-slot-close");
     });
     state_slot_dialog_->present(window_);
+    request_state_slot_scan();
+    update_state_storage_controls();
     combo->grab_focus();
     update_native_toolbar();
 }
 
+void MapperBusGuiController::request_state_slot_scan() {
+    auto control = state_slot_control_.lock();
+    if (!control)
+        return;
+    auto started = storage_tasks_.scan(
+        {session_->state_directory(),
+         session_->current_rom_path(),
+         session_->current_rom_member().empty() && !session_->emulator().is_fds()});
+    std::vector<std::string> labels;
+    for (int slot = 0; slot < app::kSaveStateSlotCount; ++slot)
+        labels.push_back("Slot " + std::to_string(slot + 1) +
+                         (started ? " — Checking…" : " — Unavailable"));
+    control->set_items(std::move(labels));
+    control->set_selected_index(active_state_slot_);
+    if (auto status = state_slots_status_.lock())
+        status->set_text(started ? "Checking slots…" : started.error());
+    update_state_storage_controls();
+}
+
+void MapperBusGuiController::update_state_storage_controls() {
+    const bool checking = storage_tasks_.preparing();
+    if (auto mode = state_storage_mode_.lock())
+        mode->set_sensitive(!checking);
+    if (auto directory = state_storage_directory_.lock())
+        directory->set_sensitive(!checking);
+    if (auto apply = state_storage_apply_.lock())
+        apply->set_sensitive(!checking);
+    if (auto open = state_storage_open_.lock())
+        open->set_sensitive(!checking && !storage_tasks_.opening());
+    if (auto spinner = state_storage_spinner_.lock()) {
+        const bool busy = storage_tasks_.scanning() || checking;
+        spinner->set_spinning(busy);
+        spinner->set_visible(busy);
+    }
+}
+
+void MapperBusGuiController::poll_state_storage() {
+    if (auto completed = storage_tasks_.poll_slots()) {
+        if (auto control = state_slot_control_.lock()) {
+            std::vector<std::string> labels;
+            for (int slot = 0; slot < app::kSaveStateSlotCount; ++slot) {
+                const auto status = *completed ? (**completed)[static_cast<std::size_t>(slot)]
+                                               : app::StateSlotStatus::Unavailable;
+                labels.push_back("Slot " + std::to_string(slot + 1) +
+                                 (status == app::StateSlotStatus::Saved   ? " — Saved"
+                                  : status == app::StateSlotStatus::Empty ? " — Empty"
+                                                                          : " — Unavailable"));
+            }
+            control->set_items(std::move(labels));
+            control->set_selected_index(active_state_slot_);
+        }
+        if (auto status = state_slots_status_.lock())
+            status->set_text(*completed ? "Slots checked." : completed->error());
+        update_state_storage_controls();
+    }
+    if (auto completed = storage_tasks_.poll_location()) {
+        auto status = state_location_status_.lock();
+        if (!*completed) {
+            if (status)
+                status->set_text(completed->error());
+        } else if (state_slot_dialog_ && state_slot_dialog_->is_presented()) {
+            update_configuration_from_state();
+            auto proposed = configuration_;
+            proposed.save_states = (**completed).settings;
+            if (auto saved = app::save_mapperbus_configuration(proposed); !saved) {
+                if (status)
+                    status->set_text("Could not save storage settings: " + saved.error());
+            } else {
+                configuration_ = std::move(proposed);
+                auto& prepared = **completed;
+                session_->set_prepared_state_storage(std::move(prepared.settings),
+                                                     std::move(prepared.directory));
+                if (status)
+                    status->set_text(
+                        "Storage location updated. Existing files stay in their current folders.");
+                request_state_slot_scan();
+            }
+        }
+        update_state_storage_controls();
+    }
+    if (auto completed = storage_tasks_.poll_open()) {
+        set_message(*completed ? "States folder opened." : completed->error());
+        update_state_storage_controls();
+    }
+}
+
 void MapperBusGuiController::open_states_folder() {
-    if (!actions_->snapshot().has_cartridge) {
+    if (!session_->has_cartridge()) {
         set_message("Open a ROM to view its save-state folder.");
         return;
     }
-    const auto directory = session_->state_directory();
-    if (auto created = app::ensure_state_directory(directory); !created) {
-        set_message(created.error());
+    if (storage_tasks_.preparing())
         return;
-    }
-#if defined(_WIN32)
-    const auto result = reinterpret_cast<std::intptr_t>(
-        ShellExecuteW(nullptr, L"open", directory.c_str(), nullptr, nullptr, SW_SHOWNORMAL));
-    if (result <= 32)
-        set_message("Unable to open states folder: " + directory.string());
-#else
-#if defined(__APPLE__)
-    std::string opener = "open";
-    char** environment = *_NSGetEnviron();
-#else
-    std::string opener = "xdg-open";
-    char** environment = environ;
-#endif
-    auto path = directory.string();
-    std::array<char*, 3> arguments{opener.data(), path.data(), nullptr};
-    pid_t pid = 0;
-    const int result =
-        posix_spawnp(&pid, opener.c_str(), nullptr, nullptr, arguments.data(), environment);
-    if (result != 0) {
-        set_message("Unable to open states folder: " + std::string(std::strerror(result)));
-        return;
-    }
-    int status = 0;
-    pid_t waited = 0;
-    do {
-        waited = waitpid(pid, &status, 0);
-    } while (waited < 0 && errno == EINTR);
-    if (waited < 0 || !WIFEXITED(status) || WEXITSTATUS(status) != 0) {
-        set_message("Unable to open states folder: " + path);
-    }
-#endif
+    auto started = storage_tasks_.open(session_->state_directory());
+    set_message(started ? "Opening states folder…" : started.error());
+    update_state_storage_controls();
 }
 
 bool MapperBusGuiController::machine_worker_active() const {

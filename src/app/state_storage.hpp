@@ -24,6 +24,11 @@ struct StateStorageSettings {
 [[nodiscard]] std::filesystem::path state_directory_for_game(const StateStorageSettings& settings,
                                                              const std::filesystem::path& rom,
                                                              std::string_view identity);
+/// Strict variant for changing storage: directory lookup errors must not select a new folder.
+[[nodiscard]] core::Result<std::filesystem::path> checked_state_directory_for_game(
+    const StateStorageSettings& settings,
+    const std::filesystem::path& rom,
+    std::string_view identity);
 struct StateLoadPath {
     std::string path;
     bool legacy = false;

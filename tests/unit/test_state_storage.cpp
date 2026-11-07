@@ -15,6 +15,7 @@
 #include "app/configuration.hpp"
 #include "app/emulation_session.hpp"
 #include "app/state_storage.hpp"
+#include "app/state_storage_tasks.hpp"
 #include "core/binary_file.hpp"
 #include "core/mappers/mapper_registry.hpp"
 #include "core/state/state.hpp"
@@ -517,6 +518,253 @@ TEST_CASE("Async FDS persistence failures retain dirty data and the previous sta
     REQUIRE(retained);
     CHECK(*retained == previous);
     session.emulator().set_persistence_enabled(false);
+}
+
+namespace {
+template <typename Poll> auto wait_for_storage(Poll poll) {
+    using Result = typename decltype(poll())::value_type;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (auto result = poll())
+            return std::move(*result);
+        std::this_thread::yield();
+    }
+    return Result(std::unexpected("Timed out waiting for storage job"));
+}
+} // namespace
+
+TEST_CASE("Slot scans distinguish saved empty and unavailable files without loading bytes",
+          "[app][state][storage][async]") {
+    StateFixture fixture;
+    REQUIRE(fixture.session.open_rom(fixture.rom.string()));
+    const auto directory = fixture.session.state_directory();
+    std::filesystem::create_directories(directory);
+    fixture.write(directory / "slot-0.state", {1, 2, 3}); // Metadata only, not validation.
+    std::filesystem::create_directory(directory / "slot-2.state");
+    fixture.write(legacy_state_path(fixture.rom, 3), {4});
+    auto scanned = scan_state_slots({directory, fixture.rom, true});
+    REQUIRE(scanned);
+    CHECK((*scanned)[0] == StateSlotStatus::Saved);
+    CHECK((*scanned)[1] == StateSlotStatus::Empty);
+    CHECK((*scanned)[2] == StateSlotStatus::Unavailable);
+    CHECK((*scanned)[3] == StateSlotStatus::Saved);
+    auto without_legacy = scan_state_slots({directory, fixture.rom, false});
+    REQUIRE(without_legacy);
+    CHECK((*without_legacy)[3] == StateSlotStatus::Empty);
+    // A present directory never falls back to a legacy regular file.
+    fixture.write(legacy_state_path(fixture.rom, 2), {4});
+    REQUIRE(scan_state_slots({directory, fixture.rom, true})->at(2) ==
+            StateSlotStatus::Unavailable);
+    StateStorageTasks tasks;
+    REQUIRE(tasks.scan({directory, fixture.rom, true}));
+    auto background = wait_for_storage([&] { return tasks.poll_slots(); });
+    REQUIRE(background);
+    CHECK(*background == *scanned);
+}
+
+TEST_CASE("Storage preparation validates and installs a writable content-identified folder",
+          "[app][state][storage][async]") {
+    StateFixture fixture;
+    auto& session = fixture.session;
+    REQUIRE(session.open_rom(fixture.rom.string()));
+    const auto original = session.state_directory();
+    const auto before = session.emulator().save_state();
+    StateStorageSettings settings{StateStorageMode::UserData, fixture.root / "new states"};
+    const auto retained = settings.directory / ("renamed--" + session.game_identity());
+    std::filesystem::create_directories(retained);
+    fixture.write(retained / "keep.state", {1, 2, 3});
+    StateStorageTasks tasks;
+    REQUIRE(tasks.prepare(settings, fixture.rom, session.game_identity()));
+    auto prepared = wait_for_storage([&] { return tasks.poll_location(); });
+    REQUIRE(prepared);
+    CHECK(prepared->directory == retained);
+    CHECK(session.state_directory() == original); // Preparation alone never commits.
+    CHECK(session.emulator().save_state() == before);
+    int files = 0;
+    for (const auto& entry : std::filesystem::directory_iterator(retained)) {
+        CHECK(entry.path().filename() == "keep.state");
+        ++files;
+    }
+    CHECK(files == 1); // No leftover write probe.
+    session.set_prepared_state_storage(prepared->settings, prepared->directory);
+    REQUIRE(session.save_state(4));
+    CHECK(std::filesystem::is_regular_file(retained / "slot-4.state"));
+    CHECK(session.emulator().save_state() == before);
+}
+
+TEST_CASE("Invalid or unavailable storage proposals leave the active folder intact",
+          "[app][state][storage][async]") {
+    StateFixture fixture;
+    REQUIRE(fixture.session.open_rom(fixture.rom.string()));
+    const auto original = fixture.session.state_directory();
+    StateStorageSettings settings;
+    SECTION("relative path") {
+        settings.directory = "relative";
+    }
+    SECTION("existing file blocks root") {
+        settings.directory = fixture.root / "file";
+        fixture.write(settings.directory, {1});
+    }
+    SECTION("file blocks a parent") {
+        fixture.write(fixture.root / "file", {1});
+        settings.directory = fixture.root / "file" / "states";
+    }
+    StateStorageTasks tasks;
+    REQUIRE(tasks.prepare(settings, fixture.rom, fixture.session.game_identity()));
+    auto prepared = wait_for_storage([&] { return tasks.poll_location(); });
+    CHECK_FALSE(prepared);
+    CHECK(fixture.session.state_directory() == original);
+}
+
+TEST_CASE("Existing read-only state folders fail writability validation",
+          "[app][state][storage][async]") {
+    StateFixture fixture;
+    REQUIRE(fixture.session.open_rom(fixture.rom.string()));
+    StateStorageSettings settings{StateStorageMode::UserData, fixture.root / "readonly"};
+    const auto directory =
+        state_directory_for_game(settings, fixture.rom, fixture.session.game_identity());
+    std::filesystem::create_directories(directory);
+    std::filesystem::permissions(
+        directory, std::filesystem::perms::owner_read | std::filesystem::perms::owner_exec);
+    auto result = prepare_state_storage(settings, fixture.rom, fixture.session.game_identity());
+    // Privileged runners may bypass filesystem mode bits.
+    std::ofstream probe(directory / "privilege-check", std::ios::out | std::ios::noreplace);
+    if (!probe) {
+        CHECK_FALSE(result);
+    } else {
+        WARN("Read-only folder check requires an unprivileged process");
+        probe.close();
+        std::filesystem::remove(directory / "privilege-check");
+    }
+    std::filesystem::permissions(directory, std::filesystem::perms::owner_all);
+}
+
+TEST_CASE("Closing chooser work discards blocked scans and location results",
+          "[app][state][storage][async]") {
+    auto scan_gate = std::make_shared<StateIOGate>();
+    auto location_gate = std::make_shared<StateIOGate>();
+    const ReleaseStateIO cleanup_scan{scan_gate};
+    const ReleaseStateIO cleanup_location{location_gate};
+    StateStorageTasks tasks(
+        [scan_gate](const StateSlotScanRequest& request) -> core::Result<StateSlotStatuses> {
+            if (request.directory != "new") {
+                scan_gate->block();
+                scan_gate->finish();
+            }
+            StateSlotStatuses result;
+            result.fill(request.directory == "new" ? StateSlotStatus::Saved
+                                                   : StateSlotStatus::Empty);
+            return result;
+        },
+        [location_gate](const StateStorageSettings& settings,
+                        const auto&,
+                        const auto&) -> core::Result<PreparedStateStorage> {
+            if (settings.directory != "new") {
+                location_gate->block();
+                location_gate->finish();
+            }
+            return PreparedStateStorage{settings, settings.directory};
+        });
+    REQUIRE(tasks.scan({"old", {}, false}));
+    REQUIRE(tasks.prepare({StateStorageMode::UserData, "old"}, {}, "old"));
+    REQUIRE(scan_gate->wait(&StateIOGate::entered));
+    REQUIRE(location_gate->wait(&StateIOGate::entered));
+    tasks.cancel_chooser();
+    CHECK_FALSE(tasks.scanning());
+    CHECK_FALSE(tasks.preparing());
+    CHECK_FALSE(tasks.poll_slots());
+    CHECK_FALSE(tasks.poll_location());
+    // A reopened chooser starts fresh without waiting for either old OS call.
+    REQUIRE(tasks.scan({"new", {}, false}));
+    REQUIRE(tasks.prepare({StateStorageMode::UserData, "new"}, {}, "new"));
+    auto scanned = wait_for_storage([&] { return tasks.poll_slots(); });
+    auto prepared = wait_for_storage([&] { return tasks.poll_location(); });
+    REQUIRE(scanned);
+    REQUIRE(prepared);
+    CHECK(scanned->front() == StateSlotStatus::Saved);
+    CHECK(prepared->directory == "new");
+    scan_gate->release();
+    location_gate->release();
+    REQUIRE(scan_gate->wait(&StateIOGate::finished));
+    REQUIRE(location_gate->wait(&StateIOGate::finished));
+    CHECK_FALSE(tasks.poll_slots());
+    CHECK_FALSE(tasks.poll_location());
+}
+
+TEST_CASE("Folder opening reports completion and cannot block chooser cancellation or teardown",
+          "[app][state][storage][async]") {
+    auto gate = std::make_shared<StateIOGate>();
+    const ReleaseStateIO cleanup{gate};
+    auto tasks = std::make_unique<StateStorageTasks>(
+        scan_state_slots, prepare_state_storage, [gate](const auto&) -> core::Result<void> {
+            gate->block();
+            gate->finish();
+            return {};
+        });
+    REQUIRE(tasks->open("folder"));
+    REQUIRE(gate->wait(&StateIOGate::entered));
+    CHECK(tasks->opening());
+    CHECK_FALSE(tasks->open("another-folder"));
+    tasks->cancel_chooser();
+    CHECK(tasks->opening());
+    tasks.reset(); // Does not join the blocked launcher/reaper.
+    gate->release();
+    REQUIRE(gate->wait(&StateIOGate::finished));
+
+    StateStorageTasks failure(
+        scan_state_slots, prepare_state_storage, [](const auto&) -> core::Result<void> {
+            return std::unexpected("launcher unavailable");
+        });
+    REQUIRE(failure.open("folder"));
+    auto opened = wait_for_storage([&] { return failure.poll_open(); });
+    REQUIRE_FALSE(opened);
+    CHECK(opened.error() == "launcher unavailable");
+    CHECK_FALSE(failure.opening());
+}
+
+TEST_CASE("Repeated abandoned chooser jobs remain bounded", "[app][state][storage][async]") {
+    auto gate = std::make_shared<StateIOGate>();
+    const ReleaseStateIO cleanup{gate};
+    StateStorageTasks tasks(
+        [gate](const auto&) -> core::Result<StateSlotStatuses> {
+            gate->block();
+            return StateSlotStatuses{};
+        },
+        [gate](const StateStorageSettings& settings,
+               const auto&,
+               const auto&) -> core::Result<PreparedStateStorage> {
+            gate->block();
+            return PreparedStateStorage{settings, settings.directory};
+        });
+    for (int attempt = 0; attempt < 4; ++attempt) {
+        REQUIRE(tasks.scan({"blocked", {}, false}));
+        REQUIRE(tasks.prepare({}, {}, "blocked"));
+        tasks.cancel_chooser();
+    }
+    CHECK_FALSE(tasks.scan({"blocked", {}, false}));
+    CHECK_FALSE(tasks.prepare({}, {}, "blocked"));
+    CHECK_FALSE(tasks.scanning());
+    CHECK_FALSE(tasks.preparing());
+}
+
+TEST_CASE("Strict location lookup reports inaccessible roots rather than choosing another folder",
+          "[app][state][storage][async]") {
+    StateFixture fixture;
+    REQUIRE(fixture.session.open_rom(fixture.rom.string()));
+    const auto root = fixture.root / "inaccessible";
+    StateStorageSettings settings{StateStorageMode::UserData, root};
+    std::filesystem::create_directories(root / ("existing--" + fixture.session.game_identity()));
+    std::filesystem::permissions(root, std::filesystem::perms::none);
+    std::error_code probe_error;
+    const auto probe = std::filesystem::directory_iterator(root, probe_error);
+    auto prepared = prepare_state_storage(settings, fixture.rom, fixture.session.game_identity());
+    if (probe_error) {
+        CHECK_FALSE(prepared);
+        CHECK(prepared.error().starts_with("Cannot check save-state folder"));
+    } else {
+        WARN("Inaccessible directory check requires an unprivileged process");
+    }
+    std::filesystem::permissions(root, std::filesystem::perms::owner_all);
 }
 
 } // namespace mapperbus::app

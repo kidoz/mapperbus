@@ -63,9 +63,11 @@ bool valid_game_identity(std::string_view identity) {
            });
 }
 
-std::filesystem::path state_directory_for_game(const StateStorageSettings& settings,
-                                               const std::filesystem::path& rom,
-                                               std::string_view identity) {
+namespace {
+core::Result<std::filesystem::path> locate_state_directory(const StateStorageSettings& settings,
+                                                           const std::filesystem::path& rom,
+                                                           std::string_view identity,
+                                                           bool strict) {
     const auto root = !settings.directory.empty() ? settings.directory
                       : settings.mode == StateStorageMode::Portable
                           ? std::filesystem::absolute(rom).parent_path() / "mapperbus-states"
@@ -84,11 +86,29 @@ std::filesystem::path state_directory_for_game(const StateStorageSettings& setti
         }
         iterator.increment(error);
     }
+    if (strict && error && error != std::errc::no_such_file_or_directory)
+        return std::unexpected("Cannot check save-state folder: " + root.string() + ": " +
+                               error.message());
     if (!matches.empty()) {
         std::ranges::sort(matches);
         return matches.front();
     }
     return root / (safe_game_name(rom) + suffix);
+}
+
+} // namespace
+
+std::filesystem::path state_directory_for_game(const StateStorageSettings& settings,
+                                               const std::filesystem::path& rom,
+                                               std::string_view identity) {
+    return *locate_state_directory(settings, rom, identity, false);
+}
+
+core::Result<std::filesystem::path> checked_state_directory_for_game(
+    const StateStorageSettings& settings,
+    const std::filesystem::path& rom,
+    std::string_view identity) {
+    return locate_state_directory(settings, rom, identity, true);
 }
 
 core::Result<StateLoadPath> resolve_state_load_path(const std::filesystem::path& primary,
