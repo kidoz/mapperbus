@@ -89,6 +89,10 @@ RAM. User configuration describes host preferences such as input mappings and
 audio settings. Keeping these separate means a UI preference does not become
 part of cartridge hardware state.
 
+Version 18 adds Four Score routing and two 24-bit reports in the bus. It reads
+the existing four host button bytes; standard Controller serialization is
+unchanged. Older states select Standard mode.
+
 Version 17 adds two external standard controller reports and their independent
 D1 attachments. The bus shares strobe/read clocks with the built-in pads; host
 profiles remain frontend state. Versions 3–16 import with external pads detached.

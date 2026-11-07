@@ -56,7 +56,7 @@ for dependencies, platform details, and reconfiguring an existing build.
 - CPU and GPU xBRZ and FSR 1 upscaling, using Metal or Vulkan where available.
 - BLEP resampling, selectable audio filters, dynamic rate control, dithering,
   and pseudo-stereo output.
-- Four keyboard/gamepad profiles for built-in and external Famicom controllers,
+- Four keyboard/gamepad profiles for built-in/Famicom pads and NES Four Score,
   save states, battery saves,
   and shared frontend configuration.
 

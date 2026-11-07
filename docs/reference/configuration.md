@@ -93,6 +93,32 @@ NES wiring, including version 14 snapshots that selected RF timing. Loading a
 snapshot changes the active selection without rewriting the configuration;
 a new GUI ROM open reapplies both preferences.
 
+## Controller mode
+
+`[input] controller_mode` accepts `standard` (default) or `four-score`.
+Missing or invalid values select Standard. GUI Settings → General → Hardware
+exposes **Controller mode**; CLI and SDL3 accept `--controller-mode` with the
+same tokens as a process-local override.
+
+Four Score uses the four existing input profiles as Players 1–4. Profiles 3/4
+keep their `input.player3`/`input.player4` sections and default device indices
+2/3; their keys start unbound. GUI profile labels become **Player 3/4** in this
+mode. The same bindings return as **External 1/2** in Standard mode.
+
+Four Score sends all four pads on D0 and suppresses external D1 reports. The
+Famicom attachment switches are disabled while this mode is active; their saved
+values are retained for switching back. All adapter pads include Start/Select,
+including when RF built-in wiring is selected. Wiring and NTSC timing remain
+independent choices; NES wiring with NES/AV timing is the normal Four Score setup.
+Games must support the adapter's four-player report. Host turbo actions remain
+available; Hori and adapter-specific physical turbo circuitry are outside this mode.
+
+Reset retains mode. Version 18 snapshots restore mode and partially read reports;
+older snapshots select Standard while retaining any v17 Famicom attachments.
+Loading a snapshot leaves the saved startup preference unchanged. Opening another
+GUI game reapplies that preference. A mode change ends any held read once and
+initializes a fresh adapter report; reapplying the same mode preserves its position.
+
 ## External Famicom controllers
 
 `[input] expansion1_attached` and `expansion2_attached` are independent booleans,
@@ -110,8 +136,8 @@ the built-in profiles. SDL3 also accepts `--gamepad3`, `--gamepad4`,
 
 These are standard eight-button pads on D1 of `$4016`/`$4017`. Built-in pads
 remain on D0; external pad 2 includes Start/Select even with RF wiring. Games
-must read D1 to use them. Four Score and Hori adapter signatures are outside this
-implementation. See [serial behavior](dma-timing.md#external-standard-pads).
+must read D1 to use them. Four Score is available through the separate controller mode above; Hori
+adapter signatures are not implemented. See [serial behavior](dma-timing.md#external-standard-pads).
 
 Reset retains attachments. Version 17 snapshots restore attachments and partially
 shifted reports; versions 3–16 import with external pads detached. Snapshot loads

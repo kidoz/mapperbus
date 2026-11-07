@@ -22,6 +22,7 @@ the corresponding values for this process. Scaling and region use their own star
 | `--resampling MODE` | `blip`, `cubic` | `blip` |
 | `--filter-mode MODE` | `accurate`, `enhanced`, `unfiltered` | `accurate` |
 | `--filter-profile P` | `nes`, `famicom` | `nes` |
+| `--controller-mode M` | `standard`, `four-score` | Saved preference, fresh default Standard |
 | `--controller-wiring W` | `nes`, `rf-famicom` | Saved preference, fresh default NES |
 | `--expansion-controllers P` | `none`, `1`, `2`, `both` | Attach external Famicom pads; fresh default `none` |
 | `--controller-timing T` | `nes-av-famicom`, `rf-famicom` | Saved preference, fresh default NES/AV Famicom |
@@ -35,8 +36,8 @@ the corresponding values for this process. Scaling and region use their own star
 | `--gamepad-map MAP` | Comma-separated `NES=SDL` pairs | Override named player 1 bindings |
 | `--gamepad2 N` | Nonnegative SDL gamepad index | Override player 2 device; default index is 1 |
 | `--gamepad2-map MAP` | Same mapping format | Override named player 2 bindings |
-| `--gamepad3 N`, `--gamepad4 N` | Nonnegative SDL gamepad index | External 1/2; default indices 2/3 |
-| `--gamepad3-map MAP`, `--gamepad4-map MAP` | Same mapping format | Override external pad bindings |
+| `--gamepad3 N`, `--gamepad4 N` | Nonnegative SDL gamepad index | Profiles 3/4 (external pads or Four Score); default indices 2/3 |
+| `--gamepad3-map MAP`, `--gamepad4-map MAP` | Same mapping format | Override profile 3/4 bindings |
 
 CPU xBRZ is selected when `--scale` is supplied without a mode flag. If multiple
 mode flags are supplied, precedence is `--gpu-fsr`, then `--fsr`, then `--gpu`.
@@ -47,6 +48,14 @@ and exits with failure. The parser does not consistently reject unknown flags
 or invalid values; use the documented spellings.
 
 Source: [SDL3 composition root](../../src/app/main.cpp).
+
+### Four Score
+
+Select `--controller-mode four-score` in SDL3/CLI or **Four Score** in GUI
+Settings → General → Hardware → Controller mode. Input settings show Players
+1–4. SDL3 `--gamepad3`/`--gamepad4` and their mapping options select the two
+additional host devices. Famicom D1 attachments resume when returning to Standard.
+See [controller mode](configuration.md#controller-mode) for persistence and limits.
 
 ### Gamepad mapping tokens
 
@@ -171,7 +180,7 @@ and volume accepts 0–100. The headless CLI does not open capture. See
 ## Headless CLI
 
 ```text
-./buildDir/src/frontends/cli/mapperbus-cli <rom-file|archive> [--entry NAME] [--fds-bios PATH] [--frames N] [--controller-timing T] [--controller-wiring W] [--expansion-controllers none|1|2|both]
+./buildDir/src/frontends/cli/mapperbus-cli <rom-file|archive> [--entry NAME] [--fds-bios PATH] [--frames N] [--controller-timing T] [--controller-wiring W] [--controller-mode standard|four-score] [--expansion-controllers none|1|2|both]
 ```
 
 Loads NES/FDS media, resets the emulator, executes 60 frames by default, and

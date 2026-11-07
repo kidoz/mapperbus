@@ -9,6 +9,10 @@ Versioning.
 
 ### Added
 
+- Four Score four-player mode with 24-bit reports and signatures, GUI/CLI/shared
+  configuration selection, existing four-profile bindings, DMA timing, and
+  version-18 snapshots with legacy import.
+
 - Two independently attached standard Famicom expansion controllers with four
   keyboard/gamepad profiles, GUI attachment switches, SDL3/CLI overrides, shared
   serial/DMA timing, and version-17 snapshots with legacy import.

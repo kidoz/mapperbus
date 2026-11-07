@@ -164,6 +164,31 @@ strobes, and truncated reports reject with full rollback. Versions 3–16 import
 with detached, cleared external pads and the restored effective strobe. Host
 bindings and device selection remain outside snapshots.
 
+### Four Score
+
+`ControllerMode::FourScore` routes the four host pad profiles onto D0. Per the
+[NESdev four-player adapter protocol](https://www.nesdev.org/wiki/Four_player_adapters),
+`$4016` returns player 1, player 3, then `$10`; `$4017` returns player 2,
+player 4, then `$20`. Each byte is read least-significant bit first. Reads after
+bit 23 return ones. High strobe exposes live A of the first pad on each port;
+falling strobe captures all four current button bytes, including updates made
+while high. All four pads have eight buttons, independently of RF built-in masking.
+
+D1 attachments are gated off in Four Score mode without changing their stored
+mask. Controller timing, open-bus wiring and the RF microphone remain separate.
+Adapter reports use the same output-enable releases and sampled OUT0 strobe as
+standard pads, including aliased DMC/OAM reads and held-read snapshot boundaries.
+Changing mode releases the old output-enable once and starts fresh; reapplying
+it does not reset serial position. Reset retains the mode.
+
+Version 18 appends nine bus bytes after the v17 attachment mask: mode (0 Standard,
+1 Four Score) and two 32-bit containers holding the current 24-bit shift reports.
+Reports shift in ones and never set their upper eight bits. Standard mode stores
+both containers as `$FFFFFF`. Unknown modes, high report bits, inconsistent
+inactive reports and truncation reject with full rollback. Versions 3–17 import
+Standard mode; v17 retains its D1 mask and external controller state. The v17
+five-byte external controller tail remains in place after cartridge state.
+
 ### Digital microphone
 
 The [standard-controller reference](https://www.nesdev.org/wiki/Standard_controller)

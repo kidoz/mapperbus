@@ -79,7 +79,18 @@ operations, and [Configuration](configuration.md) for frontend preferences.
 Two standard expansion pads are supported on D1, alongside the built-in D0
 controllers. Enable them in Settings → General → Hardware and bind **External
 1/2** under Input, or use the SDL3 options in
-[Commands and controls](commands-and-controls.md). Games must read D1; this does
-not provide Four Score or Hori adapter protocols. Serial timing, DMA behavior,
+[Commands and controls](commands-and-controls.md). Games must read D1. Hori adapter
+signatures are not implemented; Four Score is available as a separate mode below. Serial timing, DMA behavior,
 and version-17 snapshot replay have synthetic regression coverage, including
 four virtual SDL gamepads read by an original diagnostic ROM.
+
+## Four Score
+
+Four Score four-player serial mode is supported using the existing four host
+profiles. Select it in General → Hardware → Controller mode or with
+`--controller-mode four-score`. It provides 24-bit reports with the two adapter
+signatures and post-report ones. Synthetic coverage includes all regional clock
+paths, NES/AV and RF timing, both wiring choices, strobe behavior, CPU/DMC/OAM
+reads, snapshot replay/rollback and v17 import. An original 6502 diagnostic reads
+all four virtual SDL gamepads and both signatures into CPU RAM. This coverage
+does not certify compatibility with every commercial Four Score game.
