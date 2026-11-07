@@ -132,6 +132,13 @@ test_state_storage = executable('test-state-storage',
 )
 test('state-storage', test_state_storage)
 
+test_xbrz = executable('test-xbrz',
+    'unit/test_xbrz.cpp',
+    '../src/platform/video/xbrz.cpp',
+    include_directories : mapperbus_inc,
+    dependencies : catch2_dep,
+)
+test('xbrz', test_xbrz)
 
 if get_option('enable_nodalkit_gui')
     test_gui_close = executable('test-gui-close',

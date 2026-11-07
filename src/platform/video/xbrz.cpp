@@ -1,6 +1,8 @@
 #include "platform/video/xbrz.hpp"
 
 #include <algorithm>
+#include <cmath>
+#include <cstddef>
 
 namespace mapperbus::platform {
 
@@ -19,12 +21,10 @@ constexpr uint8_t blue(uint32_t c) {
 }
 
 // --- Perceptual color distance (weighted RGB, redmean approximation) ---
-// Returns the SQUARED distance as an integer. All call sites only compare
-// magnitudes (which corner is closest, whether a corner matches), so the
-// sqrt is unnecessary — squared distance preserves ordering and avoids
-// ~1M sqrt+double-multiply chains per frame.
+// Gradients add distances and compare their ratios, so squared distances
+// would change edge decisions as well as the units of the color tolerance.
 
-constexpr int color_distance(uint32_t a, uint32_t b) {
+double color_distance(uint32_t a, uint32_t b) {
     if (a == b)
         return 0;
     int dr = static_cast<int>(red(a)) - static_cast<int>(red(b));
@@ -37,7 +37,7 @@ constexpr int color_distance(uint32_t a, uint32_t b) {
     int wr = (rmean >= 128) ? 3 : 2;
     int wg = 4;
     int wb = (rmean >= 128) ? 2 : 3;
-    return wr * dr * dr + wg * dg * dg + wb * db * db;
+    return std::sqrt(static_cast<double>(wr * dr * dr + wg * dg * dg + wb * db * db));
 }
 
 // --- Pixel blending ---
@@ -105,23 +105,26 @@ struct Kernel {
     uint32_t J, K, L; // Bottom row
 };
 
-uint32_t sample(std::span<const uint32_t> src, int w, int h, int x, int y) {
-    x = std::clamp(x, 0, w - 1);
-    y = std::clamp(y, 0, h - 1);
-    return src[y * w + x];
-}
-
-Kernel read_kernel(std::span<const uint32_t> src, int w, int h, int x, int y) {
+Kernel read_kernel(const uint32_t* src, int w, int h, int x, int y) {
+    // Clamp each row/column once rather than repeating both clamps for all
+    // nine samples. These pointers stay within the source image, including
+    // one-pixel-wide or one-pixel-high inputs.
+    const int left = std::max(x - 1, 0);
+    const int right = std::min(x + 1, w - 1);
+    const auto stride = static_cast<std::ptrdiff_t>(w);
+    const auto* top = src + std::max(y - 1, 0) * stride;
+    const auto* middle = src + y * stride;
+    const auto* bottom = src + std::min(y + 1, h - 1) * stride;
     return {
-        .D = sample(src, w, h, x - 1, y - 1),
-        .E = sample(src, w, h, x, y - 1),
-        .F = sample(src, w, h, x + 1, y - 1),
-        .G = sample(src, w, h, x - 1, y),
-        .H = sample(src, w, h, x, y),
-        .I = sample(src, w, h, x + 1, y),
-        .J = sample(src, w, h, x - 1, y + 1),
-        .K = sample(src, w, h, x, y + 1),
-        .L = sample(src, w, h, x + 1, y + 1),
+        .D = top[left],
+        .E = top[x],
+        .F = top[right],
+        .G = middle[left],
+        .H = middle[x],
+        .I = middle[right],
+        .J = bottom[left],
+        .K = bottom[x],
+        .L = bottom[right],
     };
 }
 
@@ -163,24 +166,19 @@ uint8_t preprocess_pixel(const Kernel& k, const XbrzConfig& cfg) {
         return BlendType::Normal;
     };
 
-    // Bottom-right corner: H vs L
-    BlendType br = corner_blend(k.H, k.L, k.I, k.K, k.F, k.K, k.G, k.E);
-
-    // Bottom-left corner: H vs J
-    BlendType bl = corner_blend(k.H, k.J, k.G, k.K, k.E, k.K, k.I, k.F);
-
-    // Top-right corner: H vs F
-    BlendType tr = corner_blend(k.H, k.F, k.E, k.I, k.D, k.I, k.L, k.G);
-
-    // Top-left corner: H vs D
+    // Rotate the entire top-left neighborhood clockwise for each corner,
+    // including both context pairs used in the gradient comparison.
     BlendType tl = corner_blend(k.H, k.D, k.G, k.E, k.D, k.E, k.F, k.I);
+    BlendType tr = corner_blend(k.H, k.F, k.E, k.I, k.F, k.I, k.L, k.K);
+    BlendType br = corner_blend(k.H, k.L, k.I, k.K, k.L, k.K, k.J, k.G);
+    BlendType bl = corner_blend(k.H, k.J, k.K, k.G, k.J, k.G, k.D, k.E);
 
     return pack_blend(tl, tr, bl, br);
 }
 
 // --- Scale pixel: produce NxN output pixels from one source pixel ---
 
-void scale_pixel_2x(std::span<uint32_t> dst,
+void scale_pixel_2x(uint32_t* dst,
                     int dst_w,
                     int dx,
                     int dy,
@@ -239,7 +237,7 @@ void scale_pixel_2x(std::span<uint32_t> dst,
     }
 }
 
-void scale_pixel_3x(std::span<uint32_t> dst,
+void scale_pixel_3x(uint32_t* dst,
                     int dst_w,
                     int dx,
                     int dy,
@@ -294,7 +292,7 @@ void scale_pixel_3x(std::span<uint32_t> dst,
     blend_corner(2 * dst_w + 2, k.L, k.I, k.K, dst_w + 2, 2 * dst_w + 1, get_br(blend_info));
 }
 
-void scale_pixel_4x(std::span<uint32_t> dst,
+void scale_pixel_4x(uint32_t* dst,
                     int dst_w,
                     int dx,
                     int dy,
@@ -369,7 +367,7 @@ void scale_pixel_4x(std::span<uint32_t> dst,
 }
 
 // Generic fallback for 5x and 6x (uses 4x logic with additional center fill)
-void scale_pixel_generic(std::span<uint32_t> dst,
+void scale_pixel_generic(uint32_t* dst,
                          int dst_w,
                          int dx,
                          int dy,
@@ -455,26 +453,28 @@ void xbrz_scale(int scale_factor,
                 std::span<uint32_t> target,
                 const XbrzConfig& config) {
     int dst_w = src_width * scale_factor;
+    const auto* input = source.data();
+    auto* output = target.data();
 
     for (int y = 0; y < src_height; ++y) {
         for (int x = 0; x < src_width; ++x) {
-            auto k = read_kernel(source, src_width, src_height, x, y);
+            auto k = read_kernel(input, src_width, src_height, x, y);
             uint8_t blend_info = preprocess_pixel(k, config);
             uint32_t center = k.H;
 
             switch (scale_factor) {
             case 2:
-                scale_pixel_2x(target, dst_w, x, y, center, k, blend_info, config);
+                scale_pixel_2x(output, dst_w, x, y, center, k, blend_info, config);
                 break;
             case 3:
-                scale_pixel_3x(target, dst_w, x, y, center, k, blend_info, config);
+                scale_pixel_3x(output, dst_w, x, y, center, k, blend_info, config);
                 break;
             case 4:
-                scale_pixel_4x(target, dst_w, x, y, center, k, blend_info, config);
+                scale_pixel_4x(output, dst_w, x, y, center, k, blend_info, config);
                 break;
             default:
                 scale_pixel_generic(
-                    target, dst_w, x, y, scale_factor, center, k, blend_info, config);
+                    output, dst_w, x, y, scale_factor, center, k, blend_info, config);
                 break;
             }
         }
