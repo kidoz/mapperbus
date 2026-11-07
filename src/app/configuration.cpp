@@ -11,6 +11,7 @@
 #include <string_view>
 #include <system_error>
 
+#include "core/emulator.hpp"
 #include "core/logger.hpp"
 
 namespace mapperbus::app {
@@ -249,6 +250,33 @@ void apply_setting(MapperBusConfiguration& configuration,
                    std::string_view section,
                    std::string_view key,
                    std::string_view value) {
+    constexpr std::string_view kGameControllersPrefix = "game_controllers.";
+    if (section.starts_with(kGameControllersPrefix)) {
+        const auto identity = section.substr(kGameControllersPrefix.size());
+        if (!valid_game_identity(identity))
+            return;
+        ControllerHardwareOverrides parsed;
+        if (key == "controller_mode")
+            parsed.mode = parse_controller_mode(value);
+        else if (key == "controller_wiring")
+            parsed.wiring = parse_controller_wiring(value);
+        else if (key == "controller_timing")
+            parsed.timing = parse_controller_timing(value);
+        else if (key == "expansion_controllers")
+            parsed.expansion_controllers = parse_expansion_controllers(value);
+        if (!parsed.empty()) {
+            auto& target = configuration.game_controllers[std::string(identity)];
+            if (parsed.mode)
+                target.mode = parsed.mode;
+            if (parsed.wiring)
+                target.wiring = parsed.wiring;
+            if (parsed.timing)
+                target.timing = parsed.timing;
+            if (parsed.expansion_controllers)
+                target.expansion_controllers = parsed.expansion_controllers;
+        }
+        return;
+    }
     if (section == "state_slots") {
         const auto slot = parse_int_value(value);
         if (valid_game_identity(key) && slot && *slot >= 0 && *slot < kSaveStateSlotCount) {
@@ -965,6 +993,24 @@ core::Result<void> save_mapperbus_configuration_to_file(const MapperBusConfigura
         file << '\n';
     }
 
+    for (const auto& [identity, hardware] : configuration.game_controllers) {
+        if (!valid_game_identity(identity) || hardware.empty())
+            continue;
+        file << "[game_controllers." << identity << "]\n";
+        if (hardware.mode)
+            file << "controller_mode=" << controller_mode_token(*hardware.mode) << '\n';
+        if (hardware.wiring)
+            file << "controller_wiring=" << controller_wiring_token(*hardware.wiring) << '\n';
+        if (hardware.timing)
+            file << "controller_timing=" << controller_timing_token(*hardware.timing) << '\n';
+        if (hardware.expansion_controllers) {
+            constexpr std::array kExpansionTokens = {"none", "1", "2", "both"};
+            file << "expansion_controllers="
+                 << kExpansionTokens[*hardware.expansion_controllers & 3] << '\n';
+        }
+        file << '\n';
+    }
+
     file << "[input.turbo]\nperiod_frames=" << configuration.input.turbo_period_frames << "\n\n";
     for (int player = 0; player < platform::kInputProfileCount; ++player) {
         const auto& keyboard = configuration.input.keyboard_profile(player);
@@ -1012,6 +1058,74 @@ core::Result<void> save_mapperbus_configuration_to_file(const MapperBusConfigura
     }
 
     return {};
+}
+
+bool ControllerHardwareOverrides::empty() const {
+    return !mode && !wiring && !timing && !expansion_controllers;
+}
+
+void ControllerHardwareOverrides::apply_to(ControllerHardwareSettings& settings) const {
+    if (mode)
+        settings.mode = *mode;
+    if (wiring)
+        settings.wiring = *wiring;
+    if (timing)
+        settings.timing = *timing;
+    if (expansion_controllers)
+        settings.expansion_controllers = *expansion_controllers & 3;
+}
+
+ControllerHardwareSettings controller_hardware(const MapperBusInputConfiguration& input) {
+    return {input.controller_mode,
+            input.controller_wiring,
+            input.controller_timing,
+            input.expansion_controllers};
+}
+
+ControllerHardwareSettings controller_hardware(const core::Emulator& emulator) {
+    return {emulator.controller_mode(),
+            emulator.controller_wiring(),
+            emulator.controller_timing(),
+            emulator.expansion_controllers()};
+}
+
+void set_controller_hardware(MapperBusInputConfiguration& input,
+                             const ControllerHardwareSettings& settings) {
+    input.controller_mode = settings.mode;
+    input.controller_wiring = settings.wiring;
+    input.controller_timing = settings.timing;
+    input.expansion_controllers = settings.expansion_controllers & 3;
+}
+
+void apply_controller_hardware(core::Emulator& emulator,
+                               const ControllerHardwareSettings& settings) {
+    emulator.set_controller_timing(settings.timing);
+    emulator.set_controller_wiring(settings.wiring);
+    emulator.set_expansion_controllers(settings.expansion_controllers);
+    emulator.set_controller_mode(settings.mode);
+}
+
+ControllerHardwareSettings controller_hardware_for_game(
+    const MapperBusConfiguration& configuration,
+    std::string_view identity,
+    const ControllerHardwareOverrides& overrides) {
+    auto settings = controller_hardware(configuration.input);
+    const auto entry = configuration.game_controllers.find(std::string(identity));
+    if (valid_game_identity(identity) && entry != configuration.game_controllers.end())
+        entry->second.apply_to(settings);
+    overrides.apply_to(settings);
+    return settings;
+}
+
+void remember_controller_hardware(MapperBusConfiguration& configuration,
+                                  std::string_view identity,
+                                  const ControllerHardwareSettings& settings) {
+    if (valid_game_identity(identity))
+        configuration.game_controllers[std::string(identity)] = {
+            settings.mode,
+            settings.wiring,
+            settings.timing,
+            static_cast<core::Byte>(settings.expansion_controllers & 3)};
 }
 
 int selected_state_slot(const MapperBusConfiguration& configuration, std::string_view identity) {

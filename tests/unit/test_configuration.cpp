@@ -49,6 +49,114 @@ TEST_CASE("Linux configuration ignores invalid XDG paths", "[app][configuration]
            ("mapperbus-config-test-" + std::to_string(stamp)) / "mapperbus.conf";
 }
 
+TEST_CASE("Per-game controller hardware survives saves without changing defaults or host inputs",
+          "[app][configuration][game-controllers]") {
+    MapperBusConfiguration configuration;
+    const std::string first(64, 'a');
+    const std::string second(64, 'b');
+    const auto global = controller_hardware(configuration.input);
+    const ControllerHardwareSettings hori{core::ControllerMode::HoriFourPlayer,
+                                          core::ControllerWiring::RfFamicom,
+                                          core::ControllerTiming::RfFamicom,
+                                          3};
+    const ControllerHardwareSettings external{core::ControllerMode::Standard,
+                                              core::ControllerWiring::RfFamicom,
+                                              core::ControllerTiming::NesAvFamicom,
+                                              1};
+    remember_controller_hardware(configuration, first, hori);
+    remember_controller_hardware(configuration, second, external);
+    remember_controller_hardware(configuration, "invalid", hori);
+    REQUIRE(configuration.game_controllers.size() == 2);
+    CHECK(controller_hardware(configuration.input) == global);
+    CHECK(controller_hardware_for_game(configuration, first) == hori);
+    CHECK(controller_hardware_for_game(configuration, second) == external);
+    CHECK(controller_hardware_for_game(configuration, std::string(64, 'c')) == global);
+    CHECK(controller_hardware_for_game(configuration, "") == global);
+
+    // Explicit zeros are real overrides, and CLI options replace only their field.
+    ControllerHardwareOverrides cli;
+    cli.mode = core::ControllerMode::Standard;
+    cli.expansion_controllers = 0;
+    auto expected = hori;
+    expected.mode = core::ControllerMode::Standard;
+    expected.expansion_controllers = 0;
+    CHECK(controller_hardware_for_game(configuration, first, cli) == expected);
+    cli.wiring = core::ControllerWiring::Nes;
+    cli.timing = core::ControllerTiming::NesAvFamicom;
+    CHECK(controller_hardware_for_game(configuration, first, cli) == global);
+    CHECK(controller_hardware_for_game(configuration, first) == hori);
+
+    for (int player = 0; player < platform::kInputProfileCount; ++player) {
+        configuration.input.keyboard_profile(player)[0] = 70 + player;
+        configuration.input.gamepad_profile(player).gamepad_index = 5 - player;
+        configuration.input.gamepad_profile(player).axis_deadzone = 1000 + player;
+    }
+    const auto path = temporary_config_path();
+    REQUIRE(save_mapperbus_configuration_to_file(configuration, path));
+    auto restored = load_mapperbus_configuration_from_file(path);
+    CHECK(restored.version == kMapperBusConfigurationVersion);
+    CHECK(restored.game_controllers == configuration.game_controllers);
+    CHECK(controller_hardware(restored.input) == global);
+    for (int player = 0; player < platform::kInputProfileCount; ++player) {
+        CHECK(restored.input.keyboard_profile(player) ==
+              configuration.input.keyboard_profile(player));
+        const auto& actual = restored.input.gamepad_profile(player);
+        const auto& expected_gamepad = configuration.input.gamepad_profile(player);
+        CHECK(actual.enabled == expected_gamepad.enabled);
+        CHECK(actual.gamepad_index == expected_gamepad.gamepad_index);
+        CHECK(actual.axis_deadzone == expected_gamepad.axis_deadzone);
+        CHECK(actual.bindings == expected_gamepad.bindings);
+        CHECK(actual.identity == expected_gamepad.identity);
+    }
+
+    // Removing one game returns it to current global settings, including after restart.
+    auto new_global = global;
+    new_global.mode = core::ControllerMode::FourScore;
+    set_controller_hardware(restored.input, new_global);
+    restored.game_controllers.erase(first);
+    REQUIRE(save_mapperbus_configuration_to_file(restored, path));
+    restored = load_mapperbus_configuration_from_file(path);
+    CHECK(controller_hardware_for_game(restored, first) == new_global);
+    CHECK(controller_hardware_for_game(restored, second) == external);
+    std::filesystem::remove_all(path.parent_path());
+}
+
+TEST_CASE("Partial game controller records inherit globals and reject malformed fields",
+          "[app][configuration][game-controllers]") {
+    const std::string first(64, 'a');
+    const std::string invalid_only(64, 'b');
+    const std::string zero(64, 'c');
+    const auto path = temporary_config_path();
+    std::filesystem::create_directories(path.parent_path());
+    std::ofstream file(path);
+    // Globals appear later deliberately; missing fields inherit their final values.
+    file << "[game_controllers." << first << "]\ncontroller_mode=hori-4-player\n"
+         << "controller_wiring=broken\ncontroller_timing=broken\nexpansion_controllers=3\n"
+         << "unknown=ignored\n[game_controllers." << invalid_only << "]\n"
+         << "controller_mode=broken\nunknown=ignored\n"
+         << "[game_controllers.invalid]\ncontroller_mode=four-score\n"
+         << "[game_controllers." << zero << "]\nexpansion_controllers=none\n"
+         << "[input]\ncontroller_wiring=rf-famicom\ncontroller_timing=rf-famicom\n"
+         << "expansion1_attached=true\nexpansion2_attached=true\n";
+    file.close();
+    auto restored = load_mapperbus_configuration_from_file(path);
+    REQUIRE(restored.game_controllers.size() == 2);
+    auto expected = controller_hardware(restored.input);
+    expected.mode = core::ControllerMode::HoriFourPlayer;
+    CHECK(controller_hardware_for_game(restored, first) == expected);
+    CHECK_FALSE(restored.game_controllers.contains(invalid_only));
+    CHECK(controller_hardware_for_game(restored, zero).expansion_controllers == 0);
+    // Invalid in-memory keys and empty overrides cannot create durable records.
+    restored.game_controllers["invalid"] = {.mode = core::ControllerMode::FourScore};
+    restored.game_controllers[invalid_only] = {};
+    REQUIRE(save_mapperbus_configuration_to_file(restored, path));
+    const auto reread = load_mapperbus_configuration_from_file(path);
+    CHECK(reread.game_controllers.size() == 2);
+    CHECK_FALSE(reread.game_controllers.at(first).wiring.has_value());
+    CHECK(controller_hardware_for_game(reread, first) == expected);
+    std::filesystem::remove_all(path.parent_path());
+}
+
 TEST_CASE("Gamepad identities roundtrip with quoted serials and legacy defaults",
           "[app][configuration][identity]") {
     MapperBusConfiguration configuration;

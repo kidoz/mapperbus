@@ -9,8 +9,11 @@ Executable paths below assume a build directory named `buildDir`.
 ```
 
 Fresh-install defaults are listed below. Saved audio, gamepad settings, and
-controller hardware preferences are loaded first. Command-line options override
-the corresponding values for this process. Scaling and region use their own startup defaults.
+controller hardware defaults are loaded first. Saved per-game hardware settings
+then apply by content identity. Command-line options override the corresponding
+values for this process. See
+[per-game hardware](configuration.md#remember-hardware-for-a-game). Scaling and
+region use their own startup defaults.
 
 | Option | Value | Default / behavior |
 |---|---|---|

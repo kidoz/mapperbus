@@ -1780,10 +1780,9 @@ void MapperBusGuiController::attempt_open(std::string rom_path, std::string memb
     touch_recent_rom(configuration_, rom_path, session_->current_rom_member());
     save_configuration_state();
     detected_region_ = actions_->snapshot().region;
-    actions_->set_controller_timing(configuration_.input.controller_timing);
-    actions_->set_controller_wiring(configuration_.input.controller_wiring);
-    actions_->set_expansion_controllers(configuration_.input.expansion_controllers);
-    actions_->set_controller_mode(configuration_.input.controller_mode);
+    app::apply_controller_hardware(
+        session_->emulator(),
+        app::controller_hardware_for_game(configuration_, session_->game_identity()));
     apply_region_preference();
     refresh_settings_dialog_sections();
     actions_->step_frame();
@@ -2211,11 +2210,14 @@ void MapperBusGuiController::close_current_rom() {
         return;
     }
     actions_->close_rom();
+    app::apply_controller_hardware(session_->emulator(),
+                                   app::controller_hardware(configuration_.input));
     detected_region_.reset();
     frame_accumulator_ = std::chrono::nanoseconds{0};
     clear_preview();
     set_message("Closed current ROM.");
     refresh_ui();
+    refresh_settings_dialog_sections();
     focus_game_surface();
 }
 
@@ -2311,6 +2313,58 @@ void MapperBusGuiController::save_configuration_state() {
         return;
     }
     update_settings_save_status("Saved automatically");
+}
+
+bool MapperBusGuiController::save_controller_hardware_change(
+    app::MapperBusConfiguration proposed, const app::ControllerHardwareSettings& settings) {
+    if (auto saved = app::save_mapperbus_configuration(proposed); !saved) {
+        const auto message = "Could not save controller settings: " + saved.error();
+        set_message(message);
+        refresh_settings_dialog_sections();
+        update_settings_save_status(message);
+        return false;
+    }
+    configuration_ = std::move(proposed);
+    app::apply_controller_hardware(session_->emulator(), settings);
+    refresh_ui();
+    refresh_settings_dialog_sections();
+    update_settings_save_status("Saved automatically");
+    return true;
+}
+
+void MapperBusGuiController::change_controller_hardware(
+    const app::ControllerHardwareOverrides& change) {
+    update_configuration_from_state();
+    auto proposed = configuration_;
+    const auto identity = session_->game_identity();
+    auto saved = app::controller_hardware_for_game(proposed, identity, change);
+    if (proposed.game_controllers.contains(identity))
+        app::remember_controller_hardware(proposed, identity, saved);
+    else
+        app::set_controller_hardware(proposed.input, saved);
+    // A state may have restored different hardware. Only the edited field changes
+    // in the running machine; unrelated saved preferences remain intact too.
+    auto active = app::controller_hardware(session_->emulator());
+    change.apply_to(active);
+    (void)save_controller_hardware_change(std::move(proposed), active);
+}
+
+void MapperBusGuiController::remember_game_controller_hardware(bool remember) {
+    const auto identity = session_->game_identity();
+    if (identity.empty())
+        return;
+    update_configuration_from_state();
+    auto proposed = configuration_;
+    auto settings = app::controller_hardware(session_->emulator());
+    if (remember)
+        app::remember_controller_hardware(proposed, identity, settings);
+    else {
+        proposed.game_controllers.erase(identity);
+        settings = app::controller_hardware(proposed.input);
+    }
+    if (save_controller_hardware_change(std::move(proposed), settings))
+        set_message(remember ? "Controller hardware remembered for this game."
+                             : "Using global controller hardware defaults.");
 }
 
 void MapperBusGuiController::open_gamepad_assignment() {
@@ -2710,6 +2764,7 @@ void MapperBusGuiController::update_settings_save_status(std::string text) {
     settings_save_status_ = std::move(text);
     if (settings_save_label_) {
         settings_save_label_->set_text(settings_save_status_);
+        settings_save_label_->set_visible(settings_save_status_ != "Saved automatically");
     }
 }
 
@@ -2787,19 +2842,32 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
         input_test_label_.reset();
         auto hardware_group = SettingsGroup::create("Hardware");
         hardware_group->set_horizontal_size_policy(nk::SizePolicy::Expanding);
+        const auto identity = session_->game_identity();
+        const bool remembered = configuration_.game_controllers.contains(identity);
+        auto remember = nk::Switch::create();
+        remember->set_active(remembered);
+        remember->set_sensitive(!identity.empty());
+        remember->ensure_accessible().set_name("Remember for this game");
+        (void)remember->on_toggled().connect(
+            [this](bool active) { remember_game_controller_hardware(active); });
+        hardware_group->add(pref_row(
+            "Remember for this game",
+            remember,
+            identity.empty() ? "Open a game to save its controller hardware settings."
+            : remembered
+                ? "Changes below apply only to this game. Turn off to use global defaults."
+                : "Changes below update global defaults. Turn on to save only for this game."));
         const bool adapter = actions_->snapshot().controller_mode != core::ControllerMode::Standard;
         auto mode_combo = nk::ComboBox::create();
         mode_combo->set_items({"Standard", "Four Score", "Hori 4 Players"});
         mode_combo->set_selected_index(static_cast<int>(actions_->snapshot().controller_mode));
         mode_combo->ensure_accessible().set_name("Controller mode");
         (void)mode_combo->on_selection_changed().connect([this](int index) {
-            configuration_.input.controller_mode = index == 2 ? core::ControllerMode::HoriFourPlayer
-                                                   : index == 1 ? core::ControllerMode::FourScore
-                                                                : core::ControllerMode::Standard;
-            actions_->set_controller_mode(configuration_.input.controller_mode);
-            save_configuration_state();
-            refresh_ui();
-            refresh_settings_dialog_sections();
+            app::ControllerHardwareOverrides change;
+            change.mode = index == 2   ? core::ControllerMode::HoriFourPlayer
+                          : index == 1 ? core::ControllerMode::FourScore
+                                       : core::ControllerMode::Standard;
+            change_controller_hardware(change);
         });
         hardware_group->add(
             pref_row("Controller mode", mode_combo, "NES Four Score or Famicom Hori adapter."));
@@ -2809,13 +2877,10 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
             actions_->snapshot().controller_wiring == core::ControllerWiring::RfFamicom ? 1 : 0);
         wiring_combo->ensure_accessible().set_name("Controller wiring");
         (void)wiring_combo->on_selection_changed().connect([this](int index) {
-            configuration_.input.controller_wiring =
+            app::ControllerHardwareOverrides change;
+            change.wiring =
                 index == 1 ? core::ControllerWiring::RfFamicom : core::ControllerWiring::Nes;
-            actions_->set_controller_wiring(configuration_.input.controller_wiring);
-            save_configuration_state();
-            set_message(index == 1 ? "Controller wiring set to original RF Famicom."
-                                   : "Controller wiring set to NES.");
-            refresh_ui();
+            change_controller_hardware(change);
         });
         hardware_group->add(pref_row(
             "Controller wiring", wiring_combo, "RF built-in pad 2 has no Start or Select."));
@@ -2825,14 +2890,10 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
             actions_->snapshot().controller_timing == core::ControllerTiming::RfFamicom ? 1 : 0);
         timing_combo->ensure_accessible().set_name("Controller timing");
         (void)timing_combo->on_selection_changed().connect([this](int index) {
-            configuration_.input.controller_timing = index == 1
-                                                         ? core::ControllerTiming::RfFamicom
-                                                         : core::ControllerTiming::NesAvFamicom;
-            actions_->set_controller_timing(configuration_.input.controller_timing);
-            save_configuration_state();
-            set_message(index == 1 ? "Controller timing set to original RF Famicom."
-                                   : "Controller timing set to NES / AV Famicom.");
-            refresh_ui();
+            app::ControllerHardwareOverrides change;
+            change.timing = index == 1 ? core::ControllerTiming::RfFamicom
+                                       : core::ControllerTiming::NesAvFamicom;
+            change_controller_hardware(change);
         });
         hardware_group->add(
             pref_row("Controller timing", timing_combo, "Controller ports in NTSC mode."));
@@ -2840,14 +2901,14 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
             auto attached = nk::Switch::create();
             attached->set_sensitive(!adapter);
             attached->set_active((actions_->snapshot().expansion_controllers & (1U << port)) != 0);
+            attached->ensure_accessible().set_name("External controller " +
+                                                   std::to_string(port + 1));
             (void)attached->on_toggled().connect([this, port](bool active) {
                 const auto mask = static_cast<core::Byte>(1U << port);
                 auto ports = actions_->snapshot().expansion_controllers;
                 ports = active ? static_cast<core::Byte>(ports | mask)
                                : static_cast<core::Byte>(ports & ~mask);
-                configuration_.input.expansion_controllers = ports;
-                actions_->set_expansion_controllers(ports);
-                save_configuration_state();
+                change_controller_hardware({.expansion_controllers = ports});
             });
             hardware_group->add(
                 pref_row("External controller " + std::to_string(port + 1),
@@ -3384,7 +3445,11 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_footer_conten
     auto container = Box::vertical(6.0F);
     container->set_horizontal_size_policy(nk::SizePolicy::Expanding);
 
-    settings_save_label_.reset();
+    settings_save_label_ = nk::Label::create(settings_save_status_);
+    settings_save_label_->set_wrapping(true);
+    settings_save_label_->set_horizontal_size_policy(nk::SizePolicy::Expanding);
+    settings_save_label_->set_visible(settings_save_status_ != "Saved automatically");
+    container->append(settings_save_label_);
 
     auto footer = Box::horizontal(12.0F);
     footer->set_horizontal_size_policy(nk::SizePolicy::Expanding);

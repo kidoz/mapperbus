@@ -15,6 +15,10 @@
 #include "core/types.hpp"
 #include "platform/input/gamepad_config.hpp"
 
+namespace mapperbus::core {
+class Emulator;
+} // namespace mapperbus::core
+
 namespace mapperbus::app {
 
 inline constexpr int kMapperBusConfigurationVersion = 1;
@@ -94,6 +98,26 @@ struct RecentRomEntry {
     std::string archive_member = {};
 };
 
+/// Machine controller hardware only; host bindings and devices stay shared.
+struct ControllerHardwareSettings {
+    core::ControllerMode mode = core::ControllerMode::Standard;
+    core::ControllerWiring wiring = core::ControllerWiring::Nes;
+    core::ControllerTiming timing = core::ControllerTiming::NesAvFamicom;
+    core::Byte expansion_controllers = 0;
+    bool operator==(const ControllerHardwareSettings&) const = default;
+};
+
+/// Missing or invalid fields inherit defaults. Also used for process-local CLI overrides.
+struct ControllerHardwareOverrides {
+    std::optional<core::ControllerMode> mode = std::nullopt;
+    std::optional<core::ControllerWiring> wiring = std::nullopt;
+    std::optional<core::ControllerTiming> timing = std::nullopt;
+    std::optional<core::Byte> expansion_controllers = std::nullopt;
+    [[nodiscard]] bool empty() const;
+    void apply_to(ControllerHardwareSettings& settings) const;
+    bool operator==(const ControllerHardwareOverrides&) const = default;
+};
+
 struct MapperBusConfiguration {
     int version = kMapperBusConfigurationVersion;
     std::string fds_bios_path;
@@ -106,7 +130,24 @@ struct MapperBusConfiguration {
     StateStorageSettings save_states;
     /// Selected zero-based state slot, keyed by the ROM content SHA-256.
     std::map<std::string, int> state_slots;
+    /// Optional hardware preferences keyed by the same content identity as states.
+    std::map<std::string, ControllerHardwareOverrides> game_controllers;
 };
+
+[[nodiscard]] ControllerHardwareSettings controller_hardware(
+    const MapperBusInputConfiguration& input);
+[[nodiscard]] ControllerHardwareSettings controller_hardware(const core::Emulator& emulator);
+void set_controller_hardware(MapperBusInputConfiguration& input,
+                             const ControllerHardwareSettings& settings);
+void apply_controller_hardware(core::Emulator& emulator,
+                               const ControllerHardwareSettings& settings);
+[[nodiscard]] ControllerHardwareSettings controller_hardware_for_game(
+    const MapperBusConfiguration& configuration,
+    std::string_view identity,
+    const ControllerHardwareOverrides& overrides = {});
+void remember_controller_hardware(MapperBusConfiguration& configuration,
+                                  std::string_view identity,
+                                  const ControllerHardwareSettings& settings);
 
 [[nodiscard]] int selected_state_slot(const MapperBusConfiguration& configuration,
                                       std::string_view identity);

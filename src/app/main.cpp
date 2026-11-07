@@ -162,10 +162,7 @@ int main(int argc, char* argv[]) {
     std::string fds_bios;
     auto mapperbus_config = mapperbus::app::load_mapperbus_configuration();
     auto microphone_settings = mapperbus_config.microphone;
-    auto controller_timing = mapperbus_config.input.controller_timing;
-    auto controller_wiring = mapperbus_config.input.controller_wiring;
-    auto controller_mode = mapperbus_config.input.controller_mode;
-    auto expansion_controllers = mapperbus_config.input.expansion_controllers;
+    mapperbus::app::ControllerHardwareOverrides controller_overrides;
     auto state_storage = mapperbus_config.save_states;
     fds_bios = mapperbus_config.fds_bios_path;
     mapperbus::core::AudioSettings audio_settings = mapperbus_config.audio;
@@ -284,7 +281,7 @@ int main(int argc, char* argv[]) {
                     "--controller-mode requires standard, four-score, or hori-4-player");
                 return EXIT_FAILURE;
             }
-            controller_mode = *mode;
+            controller_overrides.mode = *mode;
         } else if (std::strcmp(argv[i], "--expansion-controllers") == 0) {
             const auto ports = i + 1 < argc ? mapperbus::app::parse_expansion_controllers(argv[++i])
                                             : std::nullopt;
@@ -293,7 +290,7 @@ int main(int argc, char* argv[]) {
                     "--expansion-controllers requires none, 1, 2, or both");
                 return EXIT_FAILURE;
             }
-            expansion_controllers = *ports;
+            controller_overrides.expansion_controllers = *ports;
         } else if (std::strcmp(argv[i], "--state-dir") == 0 && i + 1 < argc) {
             state_storage.directory = argv[++i];
             if (!state_storage.directory.is_absolute()) {
@@ -352,7 +349,7 @@ int main(int argc, char* argv[]) {
                     "--controller-timing requires nes-av-famicom or rf-famicom");
                 return EXIT_FAILURE;
             }
-            controller_timing = *timing;
+            controller_overrides.timing = *timing;
         } else if (std::strcmp(argv[i], "--controller-wiring") == 0) {
             const auto wiring =
                 i + 1 < argc ? mapperbus::app::parse_controller_wiring(argv[++i]) : std::nullopt;
@@ -360,7 +357,7 @@ int main(int argc, char* argv[]) {
                 mapperbus::core::logger::error("--controller-wiring requires nes or rf-famicom");
                 return EXIT_FAILURE;
             }
-            controller_wiring = *wiring;
+            controller_overrides.wiring = *wiring;
         } else if (std::strcmp(argv[i], "--region") == 0 && i + 1 < argc) {
             region_override = argv[++i];
         } else {
@@ -406,10 +403,6 @@ int main(int argc, char* argv[]) {
     app.session().set_turbo_period(mapperbus_config.input.turbo_period_frames);
     app.session().set_state_storage(state_storage);
     app.session().set_fds_bios_path(fds_bios);
-    app.session().set_controller_timing(controller_timing);
-    app.session().set_controller_wiring(controller_wiring);
-    app.session().set_controller_mode(controller_mode);
-    app.session().set_expansion_controllers(expansion_controllers);
     app.session().set_microphone_backend(std::make_unique<mapperbus::frontend::Sdl3Microphone>());
     app.session().configure_live_microphone(microphone_settings);
     auto result = app.initialize(rom_path, rom_member);
@@ -417,6 +410,11 @@ int main(int argc, char* argv[]) {
         mapperbus::core::logger::error("{}", result.error());
         return EXIT_FAILURE;
     }
+
+    mapperbus::app::apply_controller_hardware(
+        app.session().emulator(),
+        mapperbus::app::controller_hardware_for_game(
+            mapperbus_config, app.session().game_identity(), controller_overrides));
 
     sdl_input->set_active_slot(
         mapperbus::app::selected_state_slot(mapperbus_config, app.session().game_identity()));

@@ -9,6 +9,10 @@ Versioning.
 
 ### Added
 
+- Per-game controller hardware preferences shared by GUI, SDL3 and CLI, matched
+  by content across raw/archive ROMs, with a Remember for this game switch,
+  global fallback, CLI precedence and recoverable save errors.
+
 - Hori four-controller assignment wizard using fresh button presses, duplicate
   detection, disconnect recovery, and atomic save/application with safe Cancel.
 

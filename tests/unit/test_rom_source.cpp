@@ -11,6 +11,7 @@
 
 #include "../support/fds_image.hpp"
 #include "../support/rom_archive.hpp"
+#include "app/configuration.hpp"
 #include "app/emulation_session.hpp"
 #include "app/rom_source.hpp"
 #include "core/binary_file.hpp"
@@ -182,6 +183,64 @@ TEST_CASE("Archived and raw copies reuse identified states without sibling impor
     CHECK_FALSE(load_rom_source(session.emulator(), raw.string(), "unexpected.nes"));
 }
 
+TEST_CASE("Controller game preferences follow content across raw, ZIP and 7z sources",
+          "[app][archive][game-controllers]") {
+    ArchiveFixture fixture;
+    const auto raw = fixture.root / "game.nes";
+    const auto bytes = make_rom();
+    REQUIRE(core::write_binary_file_atomic(raw.string(), bytes, "test ROM"));
+    EmulationSession session(std::make_unique<platform::NullVideo>(),
+                             std::make_unique<platform::NullAudio>(),
+                             std::make_unique<platform::NullInput>());
+    MapperBusConfiguration configuration;
+    REQUIRE(session.open_rom(raw.string()));
+    const auto identity = session.game_identity();
+    const ControllerHardwareSettings hori{core::ControllerMode::HoriFourPlayer,
+                                          core::ControllerWiring::RfFamicom,
+                                          core::ControllerTiming::RfFamicom,
+                                          3};
+    remember_controller_hardware(configuration, identity, hori);
+    const auto config_path = fixture.root / "mapperbus.conf";
+    REQUIRE(save_mapperbus_configuration_to_file(configuration, config_path));
+    configuration = load_mapperbus_configuration_from_file(config_path);
+    apply_controller_hardware(session.emulator(),
+                              controller_hardware_for_game(configuration, identity));
+    CHECK(controller_hardware(session.emulator()) == hori);
+    const auto snapshot = session.emulator().save_state();
+    const auto preferences = configuration.game_controllers;
+
+    for (bool seven_zip : {false, true}) {
+        const auto archive = fixture.root / (seven_zip ? "renamed.7z" : "renamed.zip");
+        write_archive(
+            archive, {{"other.nes", make_rom(17)}, {"folder/renamed.nes", bytes}}, seven_zip);
+        REQUIRE(session.open_rom(archive.string(), "folder/renamed.nes"));
+        CHECK(session.game_identity() == identity);
+        apply_controller_hardware(
+            session.emulator(),
+            controller_hardware_for_game(configuration, session.game_identity()));
+        CHECK(controller_hardware(session.emulator()) == hori);
+        session.reset();
+        CHECK(controller_hardware(session.emulator()) == hori);
+
+        REQUIRE(session.open_rom(archive.string(), "other.nes"));
+        REQUIRE(session.game_identity() != identity);
+        apply_controller_hardware(
+            session.emulator(),
+            controller_hardware_for_game(configuration, session.game_identity()));
+        CHECK(controller_hardware(session.emulator()) == controller_hardware(configuration.input));
+        const auto before_failure = session.emulator().save_state();
+        REQUIRE_FALSE(session.open_rom(archive.string(), "missing.nes"));
+        CHECK(session.emulator().save_state() == before_failure);
+
+        REQUIRE(session.open_rom(raw.string()));
+        apply_controller_hardware(session.emulator(), controller_hardware(configuration.input));
+        REQUIRE(session.emulator().load_state(snapshot));
+        CHECK(controller_hardware(session.emulator()) == hori);
+        CHECK(configuration.game_controllers == preferences);
+        CHECK(controller_hardware(configuration.input) == ControllerHardwareSettings{});
+    }
+}
+
 TEST_CASE("Archives reject invalid media and preserve the active session", "[app][archive]") {
     ArchiveFixture fixture;
     EmulationSession session(std::make_unique<platform::NullVideo>(),
@@ -299,6 +358,12 @@ TEST_CASE("FDS archive sources share disk identity, BIOS validation, and side co
     session.set_fds_bios_path(bios.string());
     REQUIRE(session.open_rom(raw.string()));
     const auto identity = session.emulator().content_hash();
+    MapperBusConfiguration configuration;
+    const ControllerHardwareSettings rf{core::ControllerMode::Standard,
+                                        core::ControllerWiring::RfFamicom,
+                                        core::ControllerTiming::RfFamicom,
+                                        1};
+    remember_controller_hardware(configuration, session.game_identity(), rf);
     REQUIRE(session.insert_disk_side(1));
     CHECK(session.emulator().fds().current_side() == 1);
     REQUIRE(session.eject_disk());
@@ -317,6 +382,10 @@ TEST_CASE("FDS archive sources share disk identity, BIOS validation, and side co
         REQUIRE(session.open_rom(path.string()));
         CHECK(session.current_rom_member() == "Game.FDS");
         CHECK(session.emulator().content_hash() == identity);
+        apply_controller_hardware(
+            session.emulator(),
+            controller_hardware_for_game(configuration, session.game_identity()));
+        CHECK(controller_hardware(session.emulator()) == rf);
         REQUIRE(session.load_state());
     }
     const auto before = session.emulator().save_state();

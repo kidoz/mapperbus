@@ -14,10 +14,7 @@ int main(int argc, char* argv[]) {
     std::string member;
     const auto configuration = mapperbus::app::load_mapperbus_configuration();
     auto bios = configuration.fds_bios_path;
-    auto controller_timing = configuration.input.controller_timing;
-    auto controller_wiring = configuration.input.controller_wiring;
-    auto controller_mode = configuration.input.controller_mode;
-    auto expansion_controllers = configuration.input.expansion_controllers;
+    mapperbus::app::ControllerHardwareOverrides controller_overrides;
     int frames = 60;
     for (int index = 1; index < argc; ++index) {
         const std::string_view argument(argv[index]);
@@ -37,7 +34,7 @@ int main(int argc, char* argv[]) {
                         "--controller-timing requires nes-av-famicom or rf-famicom");
                     return EXIT_FAILURE;
                 }
-                controller_timing = *timing;
+                controller_overrides.timing = *timing;
             } else if (argument == "--controller-wiring") {
                 const auto wiring = mapperbus::app::parse_controller_wiring(value);
                 if (!wiring) {
@@ -45,7 +42,7 @@ int main(int argc, char* argv[]) {
                         "--controller-wiring requires nes or rf-famicom");
                     return EXIT_FAILURE;
                 }
-                controller_wiring = *wiring;
+                controller_overrides.wiring = *wiring;
             } else if (argument == "--controller-mode") {
                 const auto mode = mapperbus::app::parse_controller_mode(value);
                 if (!mode) {
@@ -53,7 +50,7 @@ int main(int argc, char* argv[]) {
                         "--controller-mode requires standard, four-score, or hori-4-player");
                     return EXIT_FAILURE;
                 }
-                controller_mode = *mode;
+                controller_overrides.mode = *mode;
             } else if (argument == "--expansion-controllers") {
                 const auto ports = mapperbus::app::parse_expansion_controllers(value);
                 if (!ports) {
@@ -61,7 +58,7 @@ int main(int argc, char* argv[]) {
                         "--expansion-controllers requires none, 1, 2, or both");
                     return EXIT_FAILURE;
                 }
-                expansion_controllers = *ports;
+                controller_overrides.expansion_controllers = *ports;
             } else {
                 const auto parsed =
                     std::from_chars(value.data(), value.data() + value.size(), frames);
@@ -90,15 +87,17 @@ int main(int argc, char* argv[]) {
     }
     mapperbus::core::register_builtin_mappers();
     mapperbus::core::Emulator emulator;
-    emulator.set_controller_timing(controller_timing);
-    emulator.set_controller_wiring(controller_wiring);
-    emulator.set_controller_mode(controller_mode);
-    emulator.set_expansion_controllers(expansion_controllers);
     auto result = mapperbus::app::load_rom_source(emulator, path, member, bios);
     if (!result) {
         mapperbus::core::logger::error("{}", result.error());
         return EXIT_FAILURE;
     }
+    mapperbus::app::apply_controller_hardware(
+        emulator,
+        mapperbus::app::controller_hardware_for_game(
+            configuration,
+            mapperbus::core::sha256_hex(emulator.content_hash()),
+            controller_overrides));
     emulator.reset();
     for (int frame = 0; frame < frames; ++frame)
         emulator.step_frame();

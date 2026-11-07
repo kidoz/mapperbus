@@ -70,8 +70,8 @@ It affects NTSC read edges only, independently of region and CPU revision.
 
 Snapshots restore the timing saved with the machine; versions before 14 select
 NES/AV Famicom. Loading a snapshot does not overwrite the preference in the
-configuration file. A new GUI ROM open reapplies the saved preference. Reset
-retains the active machine selection. See [DMA timing](dma-timing.md).
+configuration file. A new GUI ROM open reapplies the resolved global or per-game
+preference. Reset retains the active machine selection. See [DMA timing](dma-timing.md).
 
 ## Controller wiring
 
@@ -91,7 +91,7 @@ on the next strobe. Reset retains the selection.
 Snapshot version 15 stores wiring independently of timing. Older snapshots load
 NES wiring, including version 14 snapshots that selected RF timing. Loading a
 snapshot changes the active selection without rewriting the configuration;
-a new GUI ROM open reapplies both preferences.
+a new GUI ROM open reapplies the resolved global or per-game preferences.
 
 ## Controller mode
 
@@ -116,8 +116,50 @@ available; Hori and adapter-specific physical turbo circuitry are outside this m
 Reset retains mode. Version 18 snapshots restore mode and partially read reports;
 older snapshots select Standard while retaining any v17 Famicom attachments.
 Loading a snapshot leaves the saved startup preference unchanged. Opening another
-GUI game reapplies that preference. A mode change ends any held read once and
-initializes a fresh adapter report; reapplying the same mode preserves its position.
+GUI game applies its remembered hardware settings, or the global defaults. A mode
+change ends any held read once and initializes a fresh adapter report; reapplying the same mode preserves its position.
+
+### Remember hardware for a game
+
+In **Settings → General → Hardware**, turn on **Remember for this game** while
+a game is loaded. It saves the active controller mode, wiring, timing and both
+Standard-mode expansion attachments. Later changes in this group update that
+game's preferences. With the switch off, changes update global defaults. The
+switch is disabled without a loaded game.
+
+Turn it off to remove the game's override and immediately apply global defaults.
+Button bindings, keyboard controls, gamepad assignments, deadzones, turbo and
+microphone preferences remain shared. A save failure retains the previous
+preferences and running hardware, and shows an error in Settings.
+
+All three frontends resolve controller hardware in this order: global `[input]`
+defaults, saved game overrides, then explicit CLI options for the current process.
+Preferences are keyed by the same content SHA-256 as save states. Byte-identical
+NES ROMs match across names, locations, raw files, ZIP and 7z members; different
+ROMs in one archive remain independent. FDS uses the existing combined BIOS/disk
+identity, so changing the BIOS can select a different record.
+
+Each optional version-1 section is `[game_controllers.<64 lowercase hex digits>]`:
+
+```ini
+[game_controllers.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa]
+controller_mode=hori-4-player
+controller_wiring=rf-famicom
+controller_timing=rf-famicom
+expansion_controllers=none
+```
+
+The hash above is an example; the GUI writes the loaded game's actual identity.
+`expansion_controllers` accepts `none`, `1`, `2`, or `both`. Missing or invalid
+fields inherit global defaults; unknown keys, invalid identities and empty
+records are ignored. The GUI saves all four hardware fields when remembering a
+game. Older versions ignore these additive sections; the file version stays 1.
+
+Opening a game resolves its preferences before the first frame. Reset retains
+active hardware. Loading a save state restores that state's hardware without
+rewriting either global or game preferences. Explicit edits change the selected
+hardware field; **Remember for this game** captures all active fields. Closing a
+GUI game returns the hardware controls to global defaults.
 
 ### Hori 4 Players Adapter
 

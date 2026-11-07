@@ -118,6 +118,10 @@ class MapperBusGuiController {
     void update_preview_surface(const std::uint32_t* data, int width, int height);
     void update_configuration_from_state();
     void save_configuration_state();
+    void change_controller_hardware(const app::ControllerHardwareOverrides& change);
+    void remember_game_controller_hardware(bool remember);
+    bool save_controller_hardware_change(app::MapperBusConfiguration proposed,
+                                         const app::ControllerHardwareSettings& settings);
     void open_rebind_dialog(RebindDevice device, platform::InputAction button);
     void close_rebind_dialog();
     void cancel_rebind_dialog();
@@ -189,7 +193,7 @@ class MapperBusGuiController {
     std::shared_ptr<nk::ScrollArea> settings_scroll_area_;
     std::shared_ptr<SecondaryText> input_test_label_;
     std::shared_ptr<nk::Label> live_microphone_status_;
-    std::shared_ptr<SecondaryText> settings_save_label_;
+    std::shared_ptr<nk::Label> settings_save_label_;
     std::string settings_save_status_ = "Saved automatically";
     SettingsPage settings_page_ = SettingsPage::Input;
     SettingsPage settings_built_page_ = SettingsPage::Input;
