@@ -106,8 +106,9 @@ built-ins and RF microphone behavior. The original six-gamepad ROM test reads
 all reports and identification bits through the emulated CPU. Bus tests cover
 strobe, both read timings, wiring masks, microphone/open bus, NTSC DMC/OAM and
 post-report ones; state tests cover independent partial reports, held reads,
-rollback and version-18 imports. Commercial Hori game compatibility and physical
-adapter electrical behavior have not been independently certified.
+rollback and version-18 imports. The Wit's regression below exercises a commercial
+game's Hori detection and all four players. This does not establish compatibility
+with every Hori title or certify physical-adapter electrical behavior.
 
 ## Bomberman II (Japan)
 
@@ -140,3 +141,32 @@ The archive must contain `Bomberman II (Japan).nes` with SHA-256
 `9bc9051b174ec4743df78a3086df6577c55258d705c9c9c451be63152c9badf1`.
 No licensed ROM data is included in the repository; ordinary CI skips this test
 without the asset environment variable.
+
+## Wit's (Japan)
+
+Select **Hori 4 Players** and the game's **MULTI VS MODE**. Give **Hori 1–4**
+separate keyboard bindings or gamepad assignments. For four host gamepads, assign
+device indices **0, 1, 2, 3** to those roles; their fresh defaults are **2, 3, 4, 5**.
+Wit's also accepts the built-in pads as aliases of its first two players.
+
+```sh
+./buildDir/src/app/mapperbus-sdl3 "tmp/Wit's (Japan).zip" \
+  --controller-mode hori-4-player --controller-wiring rf-famicom \
+  --controller-timing rf-famicom \
+  --gamepad3 0 --gamepad4 1 --gamepad5 2 --gamepad6 3
+```
+
+The opt-in controller regression loads the ZIP through libarchive and verifies
+the unmodified game's adapter detection: Standard selects no serial adapter,
+Four Score selects its D0 path, and Hori selects its D1 path with both correct
+signatures. In a four-player round, each Hori pad changes only its own decoded
+input and rider's board quadrant. Built-in aliases and simultaneous distinct
+four-pad input survive snapshot replay. Both controller timing options are
+covered. This is automated core/game validation, rather than a physical
+four-controller hardware certification.
+
+Use the same `MAPPERBUS_CONTROLLER_TEST_ASSETS` command above. The archive must
+contain `Wit's (Japan).nes` with SHA-256
+`34352cb9090fd00d1d677308dd3adbdfd4e76622de21bb48dffbffe19df9f195`.
+To run only this game, add `--test-args='[wits]'` to the Meson command. Licensed
+game bytes remain outside the repository.

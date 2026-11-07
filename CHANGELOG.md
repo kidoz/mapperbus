@@ -9,6 +9,9 @@ Versioning.
 
 ### Added
 
+- Opt-in Japanese Wit's ZIP regression for Hori signature detection, four
+  independent player controls, built-in aliases, and multiplayer snapshot replay.
+
 - Opt-in Japanese Bomberman II ZIP regression for independent three-player
   controls and snapshot replay in Standard and Hori modes.
 

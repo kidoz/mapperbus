@@ -214,7 +214,7 @@ test_controller_compatibility = executable('test-controller-compatibility',
     dependencies : [mapperbus_app_dep, catch2_dep],
 )
 test('controller-compatibility', test_controller_compatibility,
-    args : ['--allow-running-no-tests'], timeout : 120)
+    args : ['--allow-running-no-tests'], timeout : 240)
 
 test_fds_compatibility = executable('test-fds-compatibility',
     'integration/test_fds_compatibility.cpp',
