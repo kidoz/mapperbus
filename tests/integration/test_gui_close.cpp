@@ -5,8 +5,10 @@
 #include <nk/platform/events.h>
 #include <nk/platform/window.h>
 #include <string>
+#include <thread>
 
 #include "../support/fds_image.hpp"
+#include "app/background_task.hpp"
 #include "core/binary_file.hpp"
 #include "core/emulator.hpp"
 #include "frontends/nodalkit/gui_close_policy.hpp"
@@ -94,4 +96,66 @@ TEST_CASE("Native window close preserves unsaved FDS progress until storage reco
     REQUIRE(restored.load_fds(bios, original, save.string()));
     CHECK(restored.content_hash() == identity);
     CHECK(std::ranges::equal(restored.fds().disk_image(), changed));
+}
+
+TEST_CASE(
+    "Deferred native Close remains visible on pending or failed persistence and permits Retry",
+    "[gui][fds][async]") {
+    Fixture fixture;
+    const auto disk = mapperbus::tests::make_fds_image(2);
+    const auto path = fixture.root / "unavailable" / "progress.fds-save";
+    auto emulator = std::make_shared<mapperbus::core::Emulator>();
+    REQUIRE(emulator->load_fds(mapperbus::tests::make_fds_bios(), disk, path.string()));
+    auto changed = disk;
+    changed[75] = 42;
+    REQUIRE(emulator->fds().apply_disk_changes(changed));
+    const auto snapshot = emulator->save_state();
+    REQUIRE(emulator->fds().apply_disk_changes(disk));
+    REQUIRE(emulator->load_state(snapshot));
+    REQUIRE(emulator->fds().dirty());
+    nk::Window window({.title = "Deferred FDS Close", .width = 320, .height = 240});
+    mapperbus::app::BackgroundTask<void> saving;
+    bool authorized = false;
+    bool pending = false;
+    int closed = 0;
+    mapperbus::frontend::guard_async_window_close(
+        window,
+        [&] { return authorized; },
+        [&] {
+            if (!pending) {
+                REQUIRE(
+                    saving.start([emulator] { return emulator->flush_persistent_data(); }, false));
+                pending = true;
+            }
+        });
+    (void)window.on_close_requested().connect([&] { ++closed; });
+    window.present();
+    nk::WindowEvent close{};
+    close.type = nk::WindowEvent::Type::Close;
+    const auto complete = [&]() -> mapperbus::core::Result<void> {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        while (std::chrono::steady_clock::now() < deadline) {
+            if (auto result = saving.poll()) {
+                pending = false;
+                return std::move(*result);
+            }
+            std::this_thread::yield();
+        }
+        return std::unexpected("Timed out waiting for close save");
+    };
+    window.dispatch_window_event(close);
+    CHECK(window.is_visible());
+    CHECK(closed == 0);
+    CHECK_FALSE(complete());
+    CHECK(emulator->fds().dirty());
+    CHECK(window.is_visible());
+    std::filesystem::create_directory(path.parent_path());
+    window.dispatch_window_event(close); // Retry requests another checked save.
+    CHECK(window.is_visible());
+    REQUIRE(complete());
+    authorized = true;
+    window.request_close();
+    CHECK_FALSE(window.is_visible());
+    CHECK(closed == 1);
+    CHECK_FALSE(emulator->fds().dirty());
 }

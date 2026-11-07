@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "app/async_disk_save.hpp"
 #include "app/background_task.hpp"
 #include "core/emulator.hpp"
 
@@ -38,7 +39,8 @@ class AsyncStateIO {
     [[nodiscard]] core::Result<void> load(StateLoadRequest request);
     /// Saving owns the paused machine until completion, including through teardown.
     [[nodiscard]] core::Result<void> save(std::shared_ptr<core::Emulator> emulator,
-                                          std::string path);
+                                          std::string path,
+                                          PersistenceFence fence = {});
     [[nodiscard]] std::optional<core::Result<LoadedState>> poll();
     bool cancel();
     [[nodiscard]] Phase phase() const {

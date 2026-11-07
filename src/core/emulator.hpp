@@ -19,6 +19,11 @@
 
 namespace mapperbus::core {
 
+struct DiskSaveSnapshot {
+    std::string path;
+    std::vector<Byte> data;
+};
+
 class Emulator {
   public:
     Emulator();
@@ -56,6 +61,10 @@ class Emulator {
                                         std::span<const Byte> disk,
                                         const std::string& changes_path = {});
     [[nodiscard]] Result<void> flush_disk_changes();
+    /// Capture/acknowledge on the emulation thread; write the owned bytes elsewhere.
+    [[nodiscard]] std::optional<DiskSaveSnapshot> disk_save_snapshot();
+    /// Only call after these exact bytes were saved successfully. Newer edits stay dirty.
+    void acknowledge_disk_save(const DiskSaveSnapshot& saved);
     [[nodiscard]] Result<void> export_disk(const std::string& path);
     [[nodiscard]] bool is_fds() const {
         return cartridge_ && cartridge_->header().mapper_number == 20;

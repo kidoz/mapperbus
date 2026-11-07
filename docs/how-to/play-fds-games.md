@@ -54,11 +54,17 @@ Disks open writable. Game writes are saved separately under
 uses raw side bytes without an optional `.fds` header, so raw and archived
 copies share disk progress. The original image or archive is preserved.
 
-MapperBus saves changes periodically when the drive is idle, and before side
-changes, state saves, game switches, closing, and normal exit. A persistence
-failure is reported; closing or replacing the game through the GUI preserves
-the session until saving succeeds. Fix the storage problem or export the disk
-before exiting. Do not interrupt an in-game disk write.
+MapperBus saves changes periodically when the drive is idle. In the NodalKit GUI,
+disk writes run in the background while play continues; side changes also queue a
+save. Newer changes remain pending until their own save succeeds. Disk Controls
+shows save status and offers **Retry Disk Save** after a failure. Fix the storage
+problem, then retry or export the disk to recover progress.
+
+State saves, game switches, **Close ROM**, and normal Quit wait for existing disk
+writes before saving current progress. The GUI shows **Saving Progress** while
+closing; a save failure keeps the game open with **Keep Open** and **Retry**.
+SDL3 and CLI retain synchronous disk saves. Do not interrupt an in-game disk
+write or force-quit while persistence is pending.
 
 Use **Export Modified Disk…** to write a headerless `.fds` copy containing the
 current changes. Choose a new destination. The `.fds-save` file is MapperBus's

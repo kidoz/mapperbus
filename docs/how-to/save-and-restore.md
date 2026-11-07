@@ -36,10 +36,12 @@ preserve the current machine and selected slot.
 **Cancel** (or Escape) abandons a load immediately. A late read cannot apply its
 snapshot. Saves cannot be cancelled once started, so a delayed write cannot race
 a newer save to the same slot. Quit remains available while an operation is
-pending; quitting can interrupt an unfinished save. Normal write failures leave
-the previous slot file intact. If an OS read stays blocked, up to four state
-operations may remain outstanding; further attempts report that earlier work is
-still waiting.
+pending; Quit waits for an existing save before saving progress and closing.
+A failed state save cancels that close request and keeps the game open. Disk or
+battery persistence failures offer **Keep Open** and **Retry**. Normal write
+failures leave the previous slot file intact. If an OS read stays blocked, up to
+four state operations may remain outstanding; further attempts report that
+earlier work is still waiting.
 
 ## Locate or change the save folder
 

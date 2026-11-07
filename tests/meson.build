@@ -143,7 +143,7 @@ test('xbrz', test_xbrz)
 if get_option('enable_nodalkit_gui')
     test_gui_close = executable('test-gui-close',
         'integration/test_gui_close.cpp',
-        dependencies : [mapperbus_core_dep, nodalkit_dep, catch2_dep],
+        dependencies : [mapperbus_app_dep, nodalkit_dep, catch2_dep],
     )
     test('gui-close', test_gui_close)
 

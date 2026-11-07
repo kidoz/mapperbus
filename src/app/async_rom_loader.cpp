@@ -52,9 +52,12 @@ core::Result<void> AsyncRomLoader::start(RomLoadRequest request) {
                   Phase::Loading);
 }
 
-core::Result<void> AsyncRomLoader::save_current(std::shared_ptr<core::Emulator> current) {
+core::Result<void> AsyncRomLoader::save_current(std::shared_ptr<core::Emulator> current,
+                                                PersistenceFence fence) {
     return launch(
-        [current = std::move(current)]() -> core::Result<PreparedRom> {
+        [current = std::move(current), fence = std::move(fence)]() -> core::Result<PreparedRom> {
+            if (fence)
+                fence();
             if (auto saved = current->flush_persistent_data(); !saved)
                 return std::unexpected("Cannot save the current game: " + saved.error());
             return PreparedRom{};

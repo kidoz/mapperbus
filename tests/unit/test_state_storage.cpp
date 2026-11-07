@@ -11,6 +11,7 @@
 #include "../support/fds_image.hpp"
 #include "../support/legacy_state.hpp"
 #include "../support/test_rom.hpp"
+#include "app/async_disk_save.hpp"
 #include "app/async_state_io.hpp"
 #include "app/configuration.hpp"
 #include "app/emulation_session.hpp"
@@ -765,6 +766,269 @@ TEST_CASE("Strict location lookup reports inaccessible roots rather than choosin
         WARN("Inaccessible directory check requires an unprivileged process");
     }
     std::filesystem::permissions(root, std::filesystem::perms::owner_all);
+}
+
+namespace {
+std::optional<core::Result<core::DiskSaveSnapshot>> wait_disk(AsyncDiskSave& saver) {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (auto result = saver.poll())
+            return result;
+        std::this_thread::yield();
+    }
+    return std::nullopt;
+}
+} // namespace
+
+TEST_CASE("Background FDS writes coalesce newer changes without racing the machine",
+          "[app][fds][async]") {
+    StateFixture fixture;
+    const auto disk = tests::make_fds_image(2);
+    const auto path = fixture.root / "progress.fds-save";
+    core::Emulator machine;
+    REQUIRE(machine.load_fds(tests::make_fds_bios(), disk, path.string()));
+    auto gate = std::make_shared<StateIOGate>();
+    const ReleaseStateIO cleanup{gate};
+    auto written = std::make_shared<std::vector<core::Byte>>();
+    AsyncDiskSave saver([gate, written](const core::DiskSaveSnapshot& snapshot) {
+        if (written->empty())
+            gate->block();
+        written->push_back(snapshot.data.at(72 + 75));
+        return AsyncDiskSave::write_snapshot(snapshot);
+    });
+    change_fds_payload(machine.fds(), 42);
+    REQUIRE(saver.submit(*machine.disk_save_snapshot()));
+    REQUIRE(gate->wait(&StateIOGate::entered));
+    change_fds_payload(machine.fds(), 43);
+    REQUIRE(saver.submit(*machine.disk_save_snapshot()));
+    change_fds_payload(machine.fds(), 44);
+    REQUIRE(saver.submit(*machine.disk_save_snapshot()));
+    gate->release();
+    auto first = wait_disk(saver);
+    REQUIRE(first);
+    REQUIRE(*first);
+    CHECK(saver.busy());
+    CHECK(machine.fds().dirty());
+    auto last = wait_disk(saver);
+    REQUIRE(last);
+    REQUIRE(*last);
+    REQUIRE_FALSE(saver.busy());
+    machine.acknowledge_disk_save(**last);
+    CHECK_FALSE(machine.fds().dirty());
+    CHECK(*written == std::vector<core::Byte>{42, 44});
+    core::Emulator restored;
+    REQUIRE(restored.load_fds(tests::make_fds_bios(), disk, path.string()));
+    CHECK(restored.fds().disk_image()[75] == 44);
+}
+
+TEST_CASE("A reverted FDS edit stays dirty while a queued different snapshot can overwrite it",
+          "[app][fds][async]") {
+    StateFixture fixture;
+    core::Emulator machine;
+    REQUIRE(machine.load_fds(
+        tests::make_fds_bios(), tests::make_fds_image(2), (fixture.root / "disk.save").string()));
+    auto gate = std::make_shared<StateIOGate>();
+    const ReleaseStateIO cleanup{gate};
+    auto first_write = std::make_shared<bool>(true);
+    AsyncDiskSave saver([gate, first_write](const auto& snapshot) {
+        if (*first_write) {
+            *first_write = false;
+            gate->block();
+        }
+        return AsyncDiskSave::write_snapshot(snapshot);
+    });
+    change_fds_payload(machine.fds(), 42);
+    REQUIRE(saver.submit(*machine.disk_save_snapshot()));
+    REQUIRE(gate->wait(&StateIOGate::entered));
+    change_fds_payload(machine.fds(), 43);
+    REQUIRE(saver.submit(*machine.disk_save_snapshot()));
+    change_fds_payload(machine.fds(), 42);
+    gate->release();
+    auto saved = wait_disk(saver);
+    REQUIRE(saved);
+    REQUIRE(*saved);
+    REQUIRE(saver.busy()); // Do not acknowledge an intermediate write.
+    CHECK(machine.fds().dirty());
+    saved = wait_disk(saver);
+    REQUIRE(saved);
+    REQUIRE(*saved);
+    REQUIRE_FALSE(saver.busy());
+    machine.acknowledge_disk_save(**saved);
+    CHECK(machine.fds().dirty());
+    REQUIRE(saver.submit(*machine.disk_save_snapshot()));
+    saved = wait_disk(saver);
+    REQUIRE(saved);
+    REQUIRE(*saved);
+    machine.acknowledge_disk_save(**saved);
+    CHECK_FALSE(machine.fds().dirty());
+}
+
+TEST_CASE("Failed background disk writes retain dirty data and explicit Retry uses fresh bytes",
+          "[app][fds][async]") {
+    StateFixture fixture;
+    core::Emulator machine;
+    const auto path = fixture.root / "disk.save";
+    REQUIRE(machine.load_fds(tests::make_fds_bios(), tests::make_fds_image(2), path.string()));
+    change_fds_payload(machine.fds(), 42);
+    const auto first = machine.disk_save_snapshot();
+    REQUIRE(first);
+    REQUIRE(AsyncDiskSave::write_snapshot(*first));
+    const auto old =
+        core::read_binary_file_capped(path.string(), 2 * core::Fds::kMaxDiskImageBytes, "old save");
+    REQUIRE(old);
+    std::filesystem::create_directory(path.string() + ".tmp");
+    change_fds_payload(machine.fds(), 43);
+    AsyncDiskSave saver;
+    REQUIRE(saver.submit(*machine.disk_save_snapshot()));
+    auto failed = wait_disk(saver);
+    REQUIRE(failed);
+    REQUIRE_FALSE(*failed);
+    CHECK_FALSE(saver.error().empty());
+    CHECK(machine.fds().dirty());
+    CHECK_FALSE(saver.submit(*machine.disk_save_snapshot()));
+    auto retained = core::read_binary_file_capped(path.string(), old->size(), "old save");
+    REQUIRE(retained);
+    CHECK(*retained == *old);
+    std::filesystem::remove(path.string() + ".tmp");
+    change_fds_payload(machine.fds(), 44);
+    saver.clear_error();
+    REQUIRE(saver.submit(*machine.disk_save_snapshot()));
+    auto saved = wait_disk(saver);
+    REQUIRE(saved);
+    REQUIRE(*saved);
+    machine.acknowledge_disk_save(**saved);
+    CHECK_FALSE(machine.fds().dirty());
+    CHECK(saver.error().empty());
+}
+
+TEST_CASE("Exclusive persistence waits for the earlier snapshot before saving current data",
+          "[app][fds][async]") {
+    StateFixture fixture;
+    const auto disk = tests::make_fds_image(2);
+    const auto path = fixture.root / "disk.save";
+    auto machine = std::make_shared<core::Emulator>();
+    REQUIRE(machine->load_fds(tests::make_fds_bios(), disk, path.string()));
+    auto gate = std::make_shared<StateIOGate>();
+    const ReleaseStateIO cleanup{gate};
+    AsyncDiskSave saver([gate](const auto& snapshot) {
+        gate->block();
+        return AsyncDiskSave::write_snapshot(snapshot);
+    });
+    change_fds_payload(machine->fds(), 42);
+    REQUIRE(saver.submit(*machine->disk_save_snapshot()));
+    REQUIRE(gate->wait(&StateIOGate::entered));
+    change_fds_payload(machine->fds(), 43);
+    REQUIRE(saver.submit(*machine->disk_save_snapshot()));
+    auto fence = saver.begin_handoff();
+    BackgroundTask<void> closing;
+    REQUIRE(closing.start(
+        [machine, fence] {
+            fence();
+            return machine->flush_persistent_data();
+        },
+        false));
+    CHECK_FALSE(closing.poll());
+    CHECK_FALSE(saver.poll());
+    gate->release();
+    auto completed = wait_for_storage([&] { return closing.poll(); });
+    REQUIRE(completed);
+    saver.finish_handoff(completed);
+    CHECK_FALSE(saver.busy());
+    CHECK_FALSE(machine->fds().dirty());
+    core::Emulator restored;
+    REQUIRE(restored.load_fds(tests::make_fds_bios(), disk, path.string()));
+    CHECK(restored.fds().disk_image()[75] == 43);
+}
+
+TEST_CASE("The GUI session keeps advancing while an FDS autosave is blocked",
+          "[app][fds][async][session]") {
+    StateFixture fixture;
+    auto gate = std::make_shared<StateIOGate>();
+    EmulationSession session(std::make_unique<platform::NullVideo>(),
+                             std::make_unique<platform::NullAudio>(),
+                             std::make_unique<platform::NullInput>(),
+                             core::AudioSettings{},
+                             [gate](const auto& snapshot) {
+                                 gate->block();
+                                 return AsyncDiskSave::write_snapshot(snapshot);
+                             });
+    const ReleaseStateIO cleanup{gate}; // Release before the session drains teardown.
+    session.set_state_storage(fixture.settings);
+    REQUIRE(session.open_rom(fixture.rom.string()));
+    const auto disk = tests::make_fds_image(2);
+    const auto path = fixture.root / "disk.save";
+    REQUIRE(session.emulator().load_fds(tests::make_fds_bios(), disk, path.string()));
+    session.emulator().reset();
+    for (int frame = 0; frame < 60; ++frame)
+        session.emulator().step_frame();
+    change_fds_payload(session.emulator().fds(), 42);
+    session.enable_background_disk_saves();
+    for (int frame = 0; frame < 120; ++frame)
+        REQUIRE(session.tick() == TickResult::FrameAdvanced);
+    REQUIRE(gate->wait(&StateIOGate::entered));
+    CHECK(session.disk_save_pending());
+    const auto cycles = session.emulator().cpu().cycles();
+    REQUIRE(session.tick() == TickResult::FrameAdvanced);
+    CHECK(session.emulator().cpu().cycles() > cycles);
+    change_fds_payload(session.emulator().fds(), 43);
+    auto fence = session.begin_background_persistence();
+    AsyncStateIO states;
+    const auto snapshot = fixture.root / "latest.state";
+    REQUIRE(states.save(session.emulator_handle(), snapshot.string(), std::move(fence)));
+    CHECK_FALSE(states.poll());
+    gate->release();
+    auto saved = wait_for_state(states);
+    REQUIRE(saved);
+    session.finish_background_persistence({});
+    CHECK_FALSE(session.disk_save_pending());
+    CHECK_FALSE(session.emulator().fds().dirty());
+    core::Emulator restored;
+    REQUIRE(restored.load_fds(tests::make_fds_bios(), disk, path.string()));
+    CHECK(restored.fds().disk_image()[75] == 43);
+    REQUIRE(restored.load_state_from_file(snapshot.string()));
+    CHECK(restored.fds().disk_image()[75] == 43);
+    // A later state-file failure must not be reported as a failed disk flush.
+    change_fds_payload(session.emulator().fds(), 44);
+    std::filesystem::create_directory(snapshot.string() + ".tmp");
+    auto second_fence = session.begin_background_persistence();
+    REQUIRE(states.save(session.emulator_handle(), snapshot.string(), std::move(second_fence)));
+    auto failed_state = wait_for_state(states);
+    REQUIRE_FALSE(failed_state);
+    session.finish_background_persistence(std::unexpected(failed_state.error()));
+    CHECK_FALSE(session.emulator().fds().dirty());
+    CHECK(session.disk_save_error().empty());
+}
+
+TEST_CASE("An exclusive-save start failure keeps tracking the original snapshot writer",
+          "[app][fds][async]") {
+    StateFixture fixture;
+    core::Emulator machine;
+    REQUIRE(machine.load_fds(
+        tests::make_fds_bios(), tests::make_fds_image(2), (fixture.root / "disk.save").string()));
+    auto gate = std::make_shared<StateIOGate>();
+    const ReleaseStateIO cleanup{gate};
+    AsyncDiskSave saver([gate](const auto& snapshot) {
+        gate->block();
+        return AsyncDiskSave::write_snapshot(snapshot);
+    });
+    change_fds_payload(machine.fds(), 42);
+    REQUIRE(saver.submit(*machine.disk_save_snapshot()));
+    REQUIRE(gate->wait(&StateIOGate::entered));
+    auto unused_fence = saver.begin_handoff();
+    saver.cancel_handoff(); // Simulate failing to create the exclusive worker.
+    REQUIRE(saver.busy());
+    change_fds_payload(machine.fds(), 43);
+    REQUIRE(saver.submit(*machine.disk_save_snapshot()));
+    gate->release();
+    auto first = wait_disk(saver);
+    REQUIRE(first);
+    REQUIRE(*first);
+    REQUIRE(saver.busy());
+    auto final = wait_disk(saver);
+    REQUIRE(final);
+    REQUIRE(*final);
+    machine.acknowledge_disk_save(**final);
+    CHECK_FALSE(machine.fds().dirty());
 }
 
 } // namespace mapperbus::app

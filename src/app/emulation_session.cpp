@@ -16,12 +16,19 @@ constexpr std::size_t kAudioStagingSamples = 8192;
 EmulationSession::EmulationSession(std::unique_ptr<platform::VideoBackend> video,
                                    std::unique_ptr<platform::AudioBackend> audio,
                                    std::unique_ptr<platform::InputBackend> input,
-                                   const core::AudioSettings& audio_settings)
+                                   const core::AudioSettings& audio_settings,
+                                   AsyncDiskSave::Write disk_write)
     : audio_settings_(audio_settings), emulator_(std::make_shared<core::Emulator>(audio_settings)),
       video_(std::move(video)), audio_(std::move(audio)), input_(std::move(input)),
-      audio_staging_(kAudioStagingSamples) {}
+      disk_saver_(std::move(disk_write)), audio_staging_(kAudioStagingSamples) {}
 
 EmulationSession::~EmulationSession() {
+    // GUI Close/Quit already drained persistence. Synchronous consumers still
+    // serialize teardown against a snapshot writer if they opted in directly.
+    if (background_disk_saves_) {
+        if (auto saved = flush_disk_changes(); !saved)
+            core::logger::error("{}", saved.error());
+    }
     suspend_live_microphone();
     if (audio_) {
         audio_->shutdown();
@@ -69,6 +76,10 @@ core::Result<void> EmulationSession::open_rom(const std::string& rom_path,
         }
     }
 
+    if (background_disk_saves_) {
+        if (auto saved = flush_disk_changes(); !saved)
+            return saved;
+    }
     auto result = load_rom_source(*emulator_, rom_path, member, fds_bios_path_);
     if (!result) {
         return std::unexpected(result.error());
@@ -115,7 +126,7 @@ core::Result<void> EmulationSession::insert_disk_side(int side) {
         return std::unexpected("No FDS game is loaded");
     if (side < 0 || side >= emulator_->fds().side_count())
         return std::unexpected("Invalid disk side");
-    if (auto saved = flush_disk_changes(); !saved)
+    if (auto saved = background_disk_saves_ ? request_disk_save() : flush_disk_changes(); !saved)
         return saved;
     emulator_->fds().insert_side(side);
     return {};
@@ -123,7 +134,7 @@ core::Result<void> EmulationSession::insert_disk_side(int side) {
 core::Result<void> EmulationSession::eject_disk() {
     if (!emulator_->is_fds())
         return std::unexpected("No FDS game is loaded");
-    if (auto saved = flush_disk_changes(); !saved)
+    if (auto saved = background_disk_saves_ ? request_disk_save() : flush_disk_changes(); !saved)
         return saved;
     emulator_->fds().eject();
     return {};
@@ -139,9 +150,47 @@ core::Result<void> EmulationSession::export_disk(const std::string& path) {
 }
 
 core::Result<void> EmulationSession::flush_disk_changes() {
+    auto fence = disk_saver_.begin_handoff();
+    fence();
     auto result = emulator_->flush_disk_changes();
-    disk_save_error_ = result ? std::string{} : result.error();
+    finish_background_persistence(result);
     return result;
+}
+
+void EmulationSession::finish_background_persistence(const core::Result<void>& result) {
+    core::Result<void> disk_result;
+    if (!result && emulator_->is_fds() && emulator_->fds().dirty())
+        disk_result = std::unexpected(result.error());
+    disk_saver_.finish_handoff(disk_result);
+    disk_save_error_ = disk_saver_.error();
+}
+
+void EmulationSession::poll_disk_saves() {
+    if (auto result = disk_saver_.poll()) {
+        // An older write must not clear dirty data while another snapshot can
+        // still overwrite it (including a game that changed A -> B -> A).
+        if (*result && !disk_saver_.busy())
+            emulator_->acknowledge_disk_save(**result);
+        disk_save_error_ = disk_saver_.error();
+    }
+}
+
+core::Result<void> EmulationSession::request_disk_save() {
+    if (auto snapshot = emulator_->disk_save_snapshot()) {
+        auto result = disk_saver_.submit(std::move(*snapshot));
+        if (!result)
+            disk_save_error_ = result.error();
+        return result;
+    }
+    return {};
+}
+
+core::Result<void> EmulationSession::retry_disk_save() {
+    if (disk_saver_.busy())
+        return std::unexpected("A disk save is already in progress");
+    disk_saver_.clear_error();
+    disk_save_error_.clear();
+    return request_disk_save();
 }
 
 void EmulationSession::close_rom() {
@@ -168,6 +217,8 @@ void EmulationSession::close_rom() {
 }
 
 TickResult EmulationSession::tick() {
+    if (background_disk_saves_)
+        poll_disk_saves();
     if (!running_) {
         suspend_live_microphone();
         return TickResult::Stopped;
@@ -200,9 +251,14 @@ TickResult EmulationSession::tick() {
     if (++disk_save_frames_ >= 120) {
         disk_save_frames_ = 0;
         if (!emulator_->fds().disk_active()) {
-            auto saved = flush_disk_changes();
-            if (!saved)
-                core::logger::error("{}", saved.error());
+            if (background_disk_saves_) {
+                if (disk_save_error_.empty())
+                    (void)request_disk_save();
+            } else {
+                auto saved = flush_disk_changes();
+                if (!saved)
+                    core::logger::error("{}", saved.error());
+            }
         }
     }
     submit_current_frame();

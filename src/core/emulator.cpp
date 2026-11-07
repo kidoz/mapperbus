@@ -228,21 +228,34 @@ Result<void> Emulator::load_fds(std::span<const Byte> bios,
 }
 
 Result<void> Emulator::flush_disk_changes() {
-    if (!persistence_enabled_)
+    auto snapshot = disk_save_snapshot();
+    if (!snapshot)
         return {};
+    auto result = write_binary_file_atomic(snapshot->path, snapshot->data, "FDS disk save");
+    if (result)
+        fds_.mark_clean();
+    return result;
+}
+
+std::optional<DiskSaveSnapshot> Emulator::disk_save_snapshot() {
+    if (!persistence_enabled_)
+        return std::nullopt;
     fds_.synchronize_disk();
     if (!is_fds() || !fds_.dirty() || disk_changes_path_.empty())
-        return {};
+        return std::nullopt;
     std::vector<Byte> data{'M', 'B', 'F', 'D', 1, 0, 0, 0};
     data.insert(data.end(), disk_hash_.begin(), disk_hash_.end());
     const auto payload = fds_.disk_image();
     const auto digest = rom_sha256(payload);
     data.insert(data.end(), digest.begin(), digest.end());
     data.insert(data.end(), payload.begin(), payload.end());
-    auto result = write_binary_file_atomic(disk_changes_path_, data, "FDS disk save");
-    if (result)
+    return DiskSaveSnapshot{disk_changes_path_, std::move(data)};
+}
+
+void Emulator::acknowledge_disk_save(const DiskSaveSnapshot& saved) {
+    auto current = disk_save_snapshot();
+    if (current && current->path == saved.path && current->data == saved.data)
         fds_.mark_clean();
-    return result;
 }
 
 Result<void> Emulator::export_disk(const std::string& path) {

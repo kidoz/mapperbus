@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <condition_variable>
 #include <exception>
 #include <functional>
 #include <memory>
@@ -53,6 +54,8 @@ template <typename T> class BackgroundTask {
                     const std::lock_guard lock(job->mutex);
                     if (!job->abandoned)
                         job->result = std::move(result);
+                    job->done = true;
+                    job->completed.notify_all();
                 }
                 // Release captured machines before returning the worker permit;
                 // their destructors may perform persistence during shutdown.
@@ -90,9 +93,22 @@ template <typename T> class BackgroundTask {
         return true;
     }
 
+    /// Invoke on a worker before another writer takes ownership of the same file.
+    /// The fence owns completion state, never the task owner or frontend.
+    [[nodiscard]] std::function<void()> completion_fence() const {
+        return [job = job_] {
+            if (job) {
+                std::unique_lock lock(job->mutex);
+                job->completed.wait(lock, [&] { return job->done; });
+            }
+        };
+    }
+
   private:
     struct Job {
         std::mutex mutex;
+        std::condition_variable completed;
+        bool done = false;
         bool abandoned = false;
         std::optional<core::Result<T>> result;
     };

@@ -1049,6 +1049,7 @@ MapperBusGuiController::MapperBusGuiController(nk::Application& app, nk::Window&
                                                        std::move(audio),
                                                        std::move(input),
                                                        configuration_.audio);
+    session_->enable_background_disk_saves();
     actions_ = std::make_unique<app::SessionActions>(*session_);
     session_->set_turbo_period(configuration_.input.turbo_period_frames);
     session_->set_state_storage(configuration_.save_states);
@@ -1081,7 +1082,18 @@ MapperBusGuiController::MapperBusGuiController(nk::Application& app, nk::Window&
     tick_handle_ = app_.event_loop().set_interval(std::chrono::milliseconds(1), [this] {
         poll_rom_load();
         poll_state_operation();
-        if (loading_request_ || pending_state_operation_) {
+        poll_session_close();
+        if (!machine_worker_active()) {
+            session_->poll_disk_saves();
+            const auto& error = session_->disk_save_error();
+            if (error != announced_disk_save_error_) {
+                announced_disk_save_error_ = error;
+                if (!error.empty())
+                    set_message("Failed to save disk progress: " + error +
+                                ". Open Disk Controls to retry.");
+            }
+        }
+        if (close_intent_ || loading_request_ || pending_state_operation_) {
             last_tick_time_ = std::chrono::steady_clock::now();
             frame_accumulator_ = std::chrono::nanoseconds{0};
             return;
@@ -1342,22 +1354,9 @@ void MapperBusGuiController::wire_ui() {
         app_.event_loop().post([this] { refresh_settings_dialog_sections(); },
                                "mapperbus.settings-theme");
     });
-    guard_window_close(
-        window_,
-        [this]() -> core::Result<void> {
-            if (machine_worker_active())
-                return {};
-            return session_->flush_disk_changes();
-        },
-        [this](const std::string& error) {
-            set_message(error);
-            refresh_ui();
-        });
-    (void)window_.on_close_requested().connect([this] {
-        cancel_gamepad_assignment();
-        save_configuration_state();
-        app_.quit(0);
-    });
+    guard_async_window_close(
+        window_, [this] { return close_authorized_; }, [this] { request_session_close(true); });
+    (void)window_.on_close_requested().connect([this] { app_.quit(0); });
     (void)root_->on_drop().connect([this](nk::DragDropEvent& event) {
         if (event.payload == nullptr || !event.payload->has_files()) {
             return;
@@ -1529,8 +1528,17 @@ void MapperBusGuiController::refresh_ui() {
         segments.push_back(snapshot.disk_active ? "Disk active" : "Disk idle");
         if (snapshot.disk_write_protected)
             segments.push_back("Write protected");
-        if (snapshot.disk_dirty)
+        if (session_->disk_save_pending())
+            segments.push_back("Saving disk changes");
+        else if (snapshot.disk_dirty)
             segments.push_back("Unsaved disk changes");
+        if (auto status = disk_save_status_.lock())
+            status->set_text(!session_->disk_save_error().empty() ? session_->disk_save_error()
+                             : session_->disk_save_pending()      ? "Saving disk changes…"
+                             : snapshot.disk_dirty ? "Unsaved disk changes remain in memory."
+                                                   : "Disk persistence is up to date.");
+        if (auto retry = disk_save_retry_.lock())
+            retry->set_sensitive(!session_->disk_save_pending());
         if (!session_->disk_save_error().empty())
             segments.push_back("Disk save failed");
     }
@@ -1777,8 +1785,12 @@ void MapperBusGuiController::attempt_open(std::string rom_path, std::string memb
     if (session_->has_cartridge()) {
         // Save before reading replacement persistence, including reopening the same game.
         present_rom_loading(true);
-        if (auto started = rom_loader_.save_current(session_->emulator_handle()); !started)
+        auto fence = session_->begin_background_persistence();
+        if (auto started = rom_loader_.save_current(session_->emulator_handle(), std::move(fence));
+            !started) {
+            session_->cancel_background_persistence();
             abandon_rom_load(started.error());
+        }
     } else {
         start_rom_read();
     }
@@ -1848,6 +1860,12 @@ void MapperBusGuiController::poll_rom_load() {
     auto completed = rom_loader_.poll();
     if (!completed)
         return;
+    if (phase == app::AsyncRomLoader::Phase::Saving) {
+        core::Result<void> saved;
+        if (!*completed)
+            saved = std::unexpected(completed->error());
+        session_->finish_background_persistence(saved);
+    }
     if (!*completed) {
         if (phase == app::AsyncRomLoader::Phase::Loading) {
             remove_recent_rom(configuration_, loading_request_->path, loading_request_->member);
@@ -1859,6 +1877,10 @@ void MapperBusGuiController::poll_rom_load() {
         return;
     }
     if (phase == app::AsyncRomLoader::Phase::Saving) {
+        if (close_intent_) {
+            abandon_rom_load("Opening ROM cancelled.");
+            return;
+        }
         start_rom_read();
         return;
     }
@@ -1995,6 +2017,18 @@ void MapperBusGuiController::open_disk_controls() {
             refresh_ui();
         });
         content->append(protect);
+        auto save_status = nk::Label::create("");
+        save_status->set_wrapping(true);
+        disk_save_status_ = save_status;
+        content->append(save_status);
+        auto retry = nk::Button::create("Retry Disk Save");
+        disk_save_retry_ = retry;
+        (void)retry->on_clicked().connect([this] {
+            auto saved = session_->retry_disk_save();
+            set_message(saved ? "Disk save requested." : saved.error());
+            refresh_ui();
+        });
+        content->append(retry);
         auto export_button = nk::Button::create("Export Modified Disk…");
         (void)export_button->on_clicked().connect([this] {
             app_.save_file_dialog_async(
@@ -2034,7 +2068,7 @@ void MapperBusGuiController::open_disk_controls() {
             "mapperbus.fds-close");
     });
     fds_dialog_->present(window_);
-    update_native_toolbar();
+    refresh_ui();
 }
 
 void MapperBusGuiController::toggle_pause() {
@@ -2286,7 +2320,7 @@ void MapperBusGuiController::open_states_folder() {
 }
 
 bool MapperBusGuiController::machine_worker_active() const {
-    return rom_loader_.phase() == app::AsyncRomLoader::Phase::Saving ||
+    return close_saving_ || rom_loader_.phase() == app::AsyncRomLoader::Phase::Saving ||
            state_io_.phase() == app::AsyncStateIO::Phase::Saving;
 }
 
@@ -2339,7 +2373,11 @@ void MapperBusGuiController::begin_state_operation(int slot, bool save) {
 
     core::Result<void> started;
     if (save) {
-        started = state_io_.save(session_->emulator_handle(), pending_state_operation_->path);
+        auto fence = session_->begin_background_persistence();
+        started = state_io_.save(
+            session_->emulator_handle(), pending_state_operation_->path, std::move(fence));
+        if (!started)
+            session_->cancel_background_persistence();
     } else {
         app::StateLoadRequest request{pending_state_operation_->path, {}};
         if (session_->current_rom_member().empty() && !session_->emulator().is_fds())
@@ -2379,11 +2417,23 @@ void MapperBusGuiController::poll_state_operation() {
     auto completed = state_io_.poll();
     if (!completed)
         return;
+    if (pending_state_operation_->save) {
+        core::Result<void> saved;
+        if (!*completed)
+            saved = std::unexpected(completed->error());
+        session_->finish_background_persistence(saved);
+    }
     if (!*completed) {
-        finish_state_operation("Failed to " +
-                                   std::string(pending_state_operation_->save ? "save" : "load") +
-                                   " state: " + completed->error(),
-                               false);
+        const bool cancelled_close = pending_state_operation_->save && close_intent_.has_value();
+        if (cancelled_close) {
+            close_intent_.reset();
+            close_ready_ = false;
+            close_captured_ = false;
+        }
+        finish_state_operation(
+            "Failed to " + std::string(pending_state_operation_->save ? "save" : "load") +
+                " state: " + completed->error() + (cancelled_close ? ". Closing cancelled." : ""),
+            false);
         return;
     }
     auto& loaded = **completed;
@@ -2449,12 +2499,166 @@ void MapperBusGuiController::open_dropped_files(const std::vector<std::filesyste
 }
 
 void MapperBusGuiController::close_current_rom() {
-    if (auto saved = session_->flush_disk_changes(); !saved) {
-        set_message(saved.error());
+    if (!session_->has_cartridge()) {
+        set_message("No ROM is open.");
         return;
     }
-    update_configuration_from_state();
+    request_session_close(false);
+}
+
+void MapperBusGuiController::dismiss_close_dialog() {
+    auto dialog = std::exchange(close_save_dialog_, {});
+    if (dialog && dialog->is_presented())
+        dialog->close();
+}
+
+void MapperBusGuiController::request_session_close(bool quit) {
+    if (close_authorized_)
+        return;
+    if (close_intent_) {
+        if (quit)
+            close_intent_ = true;
+        return;
+    }
+    close_intent_ = quit;
+    close_ready_ = false;
+    close_captured_ = false;
+    // Cancel reads immediately. Existing exclusive saves finish before closing.
+    if (state_io_.cancel())
+        finish_state_operation("Loading state cancelled.", false);
+    if (rom_loader_.cancel())
+        abandon_rom_load("Opening ROM cancelled.");
+    if (archive_dialog_ && archive_dialog_->is_presented())
+        archive_dialog_->close(nk::DialogResponse::Cancel);
+    cancel_gamepad_assignment();
+    close_input_monitor();
+    if (rebind_dialog_)
+        cancel_rebind_dialog();
+    close_settings();
+    if (settings_window_ && settings_window_->is_visible())
+        settings_window_->request_close();
+    if (settings_dialog_ && settings_dialog_->is_presented())
+        settings_dialog_->close();
+    if (state_slot_dialog_ && state_slot_dialog_->is_presented())
+        state_slot_dialog_->close();
+    if (fds_dialog_ && fds_dialog_->is_presented())
+        fds_dialog_->close();
+    // Run after the modal-close callbacks have restored their prior pause flags.
+    app_.event_loop().post([this] { close_ready_ = true; }, "mapperbus.close-ready");
+}
+
+void MapperBusGuiController::start_close_save() {
+    if (!close_captured_) {
+        update_configuration_from_state();
+        close_previously_paused_ = session_->paused();
+        close_captured_ = true;
+        session_->set_paused(true);
+    }
+    dismiss_close_dialog();
+    auto content = Box::vertical(12.0F);
+    auto spinner = nk::Spinner::create();
+    spinner->set_spinning(true);
+    content->append(spinner);
+    auto message = nk::Label::create(*close_intent_ ? "Saving progress before quitting…"
+                                                    : "Saving progress before closing the game…");
+    message->set_wrapping(true);
+    content->append(message);
+    close_save_dialog_ = std::make_shared<FileOperationDialog>("Saving Progress", false);
+    close_save_dialog_->set_content(FixedWidthSlot::create(440.0F, content));
+    close_save_dialog_->present(window_);
+    refresh_ui();
+    auto fence = session_->begin_background_persistence();
+    auto started = close_save_task_.start(
+        [machine = session_->emulator_handle(), fence = std::move(fence)] {
+            fence();
+            return machine->flush_persistent_data();
+        },
+        false);
+    close_saving_ = started.has_value();
+    if (!started) {
+        session_->cancel_background_persistence();
+        show_close_error(started.error());
+    }
+}
+
+void MapperBusGuiController::show_close_error(std::string error) {
+    dismiss_close_dialog();
+    auto content = Box::vertical(12.0F);
+    auto label = nk::Label::create(std::move(error));
+    label->set_wrapping(true);
+    content->append(label);
+    auto help = nk::Label::create("Your game remains open. Fix the save location and retry, or "
+                                  "keep the game open to recover your progress.");
+    help->set_wrapping(true);
+    content->append(help);
+    close_save_dialog_ = nk::Dialog::create("Could Not Save Progress");
+    close_save_dialog_->set_content(FixedWidthSlot::create(480.0F, content));
+    close_save_dialog_->add_button("Keep Open", nk::DialogResponse::Cancel);
+    close_save_dialog_->add_button("Retry", nk::DialogResponse::Accept);
+    close_save_dialog_->set_default_response(nk::DialogResponse::Cancel);
+    (void)close_save_dialog_->on_response().connect([this](nk::DialogResponse response) {
+        if (!close_save_dialog_)
+            return;
+        auto dialog = close_save_dialog_;
+        app_.event_loop().post(
+            [this, dialog, response] {
+                if (close_save_dialog_ != dialog)
+                    return;
+                dismiss_close_dialog();
+                if (response == nk::DialogResponse::Accept) {
+                    start_close_save();
+                } else {
+                    close_intent_.reset();
+                    close_ready_ = false;
+                    close_captured_ = false;
+                    session_->set_paused(close_previously_paused_);
+                    frame_accumulator_ = std::chrono::nanoseconds{0};
+                    last_tick_time_ = std::chrono::steady_clock::now();
+                    refresh_ui();
+                    focus_game_surface();
+                }
+            },
+            "mapperbus.close-response");
+    });
+    close_save_dialog_->present(window_);
+}
+
+void MapperBusGuiController::poll_session_close() {
+    if (!close_intent_)
+        return;
+    if (close_saving_) {
+        auto completed = close_save_task_.poll();
+        if (!completed)
+            return;
+        close_saving_ = false;
+        session_->finish_background_persistence(*completed);
+        if (!*completed) {
+            show_close_error(completed->error());
+            return;
+        }
+        dismiss_close_dialog();
+        save_configuration_state();
+        if (*close_intent_) {
+            session_->emulator().set_persistence_enabled(false);
+            close_authorized_ = true;
+            window_.request_close();
+        } else {
+            close_intent_.reset();
+            close_ready_ = false;
+            close_captured_ = false;
+            finish_close_rom();
+        }
+    } else if (close_ready_ && !loading_request_ && !pending_state_operation_ &&
+               !close_save_dialog_) {
+        start_close_save();
+    }
+}
+
+void MapperBusGuiController::finish_close_rom() {
+    // The checked worker already saved all data; retirement must do no I/O.
+    session_->emulator().set_persistence_enabled(false);
     actions_->close_rom();
+    session_->emulator().set_persistence_enabled(true);
     input_backend_->set_gamepad_assignments(app::gamepad_assignments_for_game(configuration_, {}));
     app::apply_controller_hardware(session_->emulator(),
                                    app::controller_hardware(configuration_.input));
@@ -4076,7 +4280,8 @@ nk::Window& MapperBusGuiController::settings_host_window() {
 }
 
 bool MapperBusGuiController::modal_dialog_presented() const {
-    return loading_request_.has_value() || pending_state_operation_.has_value() ||
+    return close_intent_.has_value() || loading_request_.has_value() ||
+           pending_state_operation_.has_value() ||
            (input_monitor_dialog_ && input_monitor_dialog_->is_presented()) ||
            (gamepad_assignment_dialog_ && gamepad_assignment_dialog_->is_presented()) ||
            (settings_dialog_ && settings_dialog_->is_presented()) ||
@@ -4087,7 +4292,7 @@ bool MapperBusGuiController::modal_dialog_presented() const {
 }
 
 void MapperBusGuiController::handle_menu_action(std::string_view action) {
-    if ((loading_request_ || pending_state_operation_) && action != "file.quit")
+    if ((close_intent_ || loading_request_ || pending_state_operation_) && action != "file.quit")
         return;
     if ((gamepad_assignment_dialog_ || input_monitor_dialog_) && action != "file.quit")
         return;
@@ -4126,14 +4331,7 @@ void MapperBusGuiController::handle_menu_action(std::string_view action) {
         return;
     }
     if (action == "file.quit") {
-        if (!machine_worker_active()) {
-            if (auto saved = session_->flush_disk_changes(); !saved) {
-                set_message(saved.error());
-                return;
-            }
-        }
-        save_configuration_state();
-        app_.quit(0);
+        request_session_close(true);
         return;
     }
     if (action == "emu.pause") {

@@ -122,6 +122,12 @@ class MapperBusGuiController {
     void save_session_state(int slot);
     void load_session_state(int slot);
     void close_current_rom();
+    void request_session_close(bool quit);
+    void poll_session_close();
+    void start_close_save();
+    void show_close_error(std::string error);
+    void dismiss_close_dialog();
+    void finish_close_rom();
     void apply_region_preference();
     void confirm_clear_recents();
     void open_dropped_files(const std::vector<std::filesystem::path>& files);
@@ -189,6 +195,17 @@ class MapperBusGuiController {
     app::AsyncStateIO state_io_;
     std::optional<PendingStateOperation> pending_state_operation_;
     std::shared_ptr<nk::Dialog> state_operation_dialog_;
+    std::optional<bool> close_intent_; // false: close ROM, true: quit application
+    bool close_ready_ = false;
+    bool close_captured_ = false;
+    bool close_previously_paused_ = false;
+    bool close_saving_ = false;
+    bool close_authorized_ = false;
+    app::BackgroundTask<void> close_save_task_;
+    std::shared_ptr<nk::Dialog> close_save_dialog_;
+    std::string announced_disk_save_error_;
+    std::weak_ptr<nk::Label> disk_save_status_;
+    std::weak_ptr<nk::Button> disk_save_retry_;
 
     std::shared_ptr<Box> root_;
     std::shared_ptr<ContentSlot> main_slot_;

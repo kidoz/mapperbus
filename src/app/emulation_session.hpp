@@ -7,6 +7,7 @@
 #include <string_view>
 #include <vector>
 
+#include "app/async_disk_save.hpp"
 #include "app/live_microphone.hpp"
 #include "app/state_storage.hpp"
 #include "app/turbo_input.hpp"
@@ -34,7 +35,8 @@ class EmulationSession {
     EmulationSession(std::unique_ptr<platform::VideoBackend> video,
                      std::unique_ptr<platform::AudioBackend> audio,
                      std::unique_ptr<platform::InputBackend> input,
-                     const core::AudioSettings& audio_settings = {});
+                     const core::AudioSettings& audio_settings = {},
+                     AsyncDiskSave::Write disk_write = AsyncDiskSave::write_snapshot);
     ~EmulationSession();
 
     core::Result<void> initialize();
@@ -48,6 +50,22 @@ class EmulationSession {
     }
     void close_rom();
     [[nodiscard]] core::Result<void> flush_disk_changes();
+    /// GUI opts in; synchronous consumers retain their existing save semantics.
+    void enable_background_disk_saves() {
+        background_disk_saves_ = true;
+    }
+    void poll_disk_saves();
+    [[nodiscard]] core::Result<void> retry_disk_save();
+    [[nodiscard]] bool disk_save_pending() const {
+        return disk_saver_.busy();
+    }
+    [[nodiscard]] PersistenceFence begin_background_persistence() {
+        return disk_saver_.begin_handoff();
+    }
+    void finish_background_persistence(const core::Result<void>& result);
+    void cancel_background_persistence() {
+        disk_saver_.cancel_handoff();
+    }
     [[nodiscard]] const std::string& disk_save_error() const {
         return disk_save_error_;
     }
@@ -168,6 +186,7 @@ class EmulationSession {
 
   private:
     void sync_input();
+    core::Result<void> request_disk_save();
     void submit_current_frame();
     void suspend_live_microphone();
     void clear_microphone_playback();
@@ -198,6 +217,8 @@ class EmulationSession {
     std::string current_rom_member_;
     std::string fds_bios_path_;
     std::string disk_save_error_;
+    AsyncDiskSave disk_saver_;
+    bool background_disk_saves_ = false;
     int disk_save_frames_ = 0;
     StateStorageSettings state_storage_;
     std::filesystem::path state_directory_;

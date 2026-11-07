@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "app/async_disk_save.hpp"
 #include "app/background_task.hpp"
 #include "app/state_storage.hpp"
 #include "core/emulator.hpp"
@@ -48,7 +49,8 @@ class AsyncRomLoader {
     [[nodiscard]] core::Result<void> start(RomLoadRequest request);
     /// Caller pauses the machine and stops accessing it until poll completes.
     /// Saving cannot be cancelled; the handle keeps it alive during shutdown.
-    [[nodiscard]] core::Result<void> save_current(std::shared_ptr<core::Emulator> current);
+    [[nodiscard]] core::Result<void> save_current(std::shared_ptr<core::Emulator> current,
+                                                  PersistenceFence fence = {});
     [[nodiscard]] std::optional<core::Result<PreparedRom>> poll();
     bool cancel();
     [[nodiscard]] Phase phase() const {

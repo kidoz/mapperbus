@@ -38,11 +38,16 @@ core::Result<void> AsyncStateIO::load(StateLoadRequest request) {
     return started;
 }
 
-core::Result<void> AsyncStateIO::save(std::shared_ptr<core::Emulator> emulator, std::string path) {
+core::Result<void> AsyncStateIO::save(std::shared_ptr<core::Emulator> emulator,
+                                      std::string path,
+                                      PersistenceFence fence) {
     auto started = task_.start(
         [write = write_,
          emulator = std::move(emulator),
-         path = std::move(path)]() -> core::Result<LoadedState> {
+         path = std::move(path),
+         fence = std::move(fence)]() -> core::Result<LoadedState> {
+            if (fence)
+                fence();
             if (auto saved = write(*emulator, path); !saved)
                 return std::unexpected(saved.error());
             return LoadedState{path, {}, false};

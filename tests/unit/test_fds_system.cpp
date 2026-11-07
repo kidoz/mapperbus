@@ -632,3 +632,33 @@ TEST_CASE("Staged FDS machines discard dirty data without writing persistence",
     }
     CHECK_FALSE(std::filesystem::exists(save));
 }
+
+TEST_CASE("FDS snapshot acknowledgement clears only the bytes that were saved",
+          "[fds][system][save]") {
+    Fixture fixture;
+    const auto original = mapperbus::tests::make_fds_image(2);
+    const auto path = fixture.root / "progress.fds-save";
+    Emulator emulator;
+    REQUIRE(emulator.load_fds(mapperbus::tests::make_fds_bios(), original, path.string()));
+    write_payload_byte(emulator.fds(), 42);
+    auto first = emulator.disk_save_snapshot();
+    REQUIRE(first);
+    CHECK(emulator.fds().dirty());
+    REQUIRE(write_binary_file_atomic(first->path, first->data, "FDS save"));
+    write_payload_byte(emulator.fds(), 43);
+    emulator.acknowledge_disk_save(*first);
+    CHECK(emulator.fds().dirty());
+    auto latest = emulator.disk_save_snapshot();
+    REQUIRE(latest);
+    auto wrong_path = *latest;
+    wrong_path.path += ".other";
+    emulator.acknowledge_disk_save(wrong_path);
+    CHECK(emulator.fds().dirty());
+    REQUIRE(write_binary_file_atomic(latest->path, latest->data, "FDS save"));
+    emulator.acknowledge_disk_save(*latest);
+    CHECK_FALSE(emulator.fds().dirty());
+    CHECK_FALSE(emulator.disk_save_snapshot());
+    Emulator restored;
+    REQUIRE(restored.load_fds(mapperbus::tests::make_fds_bios(), original, path.string()));
+    CHECK(restored.fds().disk_image()[75] == 43);
+}
