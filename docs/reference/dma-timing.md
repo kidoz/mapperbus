@@ -113,14 +113,14 @@ the preference again. PAL/Dendy execution ignores this NTSC timing selection.
 ### Controller data wiring
 
 The separate `ControllerWiring` choice models the connected built-in pads and
-unattached accessory inputs. NES is the default. RF Famicom wiring follows
+accessory inputs. NES is the default. RF Famicom wiring follows
 [NESdev's port input table](https://www.nesdev.org/wiki/Controller_port_registers)
 and [standard-controller report](https://www.nesdev.org/wiki/Standard_controller):
 
 | Read | NES floating mask | RF floating mask | RF driven inputs |
 |---|---|---|---|
-| `$4016` | `$E0` | `$F8` | D0 pad 1; D1 unattached expansion = 0; D2 live digital microphone |
-| `$4017` | `$E0` | `$E0` | D0 pad 2; unattached D1–D4 = 0 |
+| `$4016` | `$E0` | `$F8` | D0 pad 1; D1 external pad 1 (0 when detached); D2 live digital microphone |
+| `$4017` | `$E0` | `$E0` | D0 pad 2; D1 external pad 2 (0 when detached); D2–D4 = 0 |
 
 Normal, untimed, and aliased DMA reads merge only floating bits from the external
 bus. The built-in RF pad 2 latches zero for Select/Start; its other six buttons
@@ -141,6 +141,29 @@ The APU activation diagnostic also requires the separate
 [PPU I/O latch](ppu-timing.md#ppu-io-bus). Its unmodified test executes a prepared
 instruction through PPU open bus; the runner does not bypass its prerequisites.
 
+### External standard pads
+
+Two independently attached standard pads drive D1 at `$4016` and `$4017`,
+following [NESdev's controller protocol](https://www.nesdev.org/wiki/NES_controller)
+and [expansion-port signals](https://www.nesdev.org/wiki/Expansion_port).
+They share OUT0 strobe and the respective port's output enable with the built-in
+D0 pads. Each report shifts A, B, Select, Start, Up, Down, Left, Right and then
+ones. External pad 2 retains all eight buttons with RF wiring. D2 microphone
+activity and floating/open-bus masks are unchanged.
+
+Both serial lines use the same CPU/DMC/OAM clocks and selected read timing.
+Disconnected D1 reads zero. Changing attachment only gates D1; it does not reload
+or clock a report. Virtual external shifters continue following shared strobe
+and clock lines while detached; the next game strobe establishes a fresh report.
+This models direct standard pads, without Four Score or Hori adapter signatures.
+
+Version 17 appends an attachment mask (0–3) to the bus after microphone phase,
+and a five-byte external `Controller` state after cartridge state. Its effective
+strobe must match the built-in controller. Invalid masks/flags, inconsistent
+strobes, and truncated reports reject with full rollback. Versions 3–16 import
+with detached, cleared external pads and the restored effective strobe. Host
+bindings and device selection remain outside snapshots.
+
 ### Digital microphone
 
 The [standard-controller reference](https://www.nesdev.org/wiki/Standard_controller)
@@ -160,10 +183,10 @@ held even if another wiring choice currently gates its output.
 
 GUI and SDL3 keyboard/gamepad profiles map the extra Microphone action to one
 shared core input. M is the player-one keyboard default; other bindings start
-unbound. Session input combines both profiles once per emulated frame and clears
+unbound. Session input combines all four profiles once per emulated frame and clears
 activity on successful ROM open/close. The next host input sync after snapshot
 load retains saved phase if the held value is unchanged, or releases/restarts it
-if host input differs. Optional live capture ORs its activity with both profiles.
+if host input differs. Optional live capture ORs its activity with all four profiles.
 It uses mono float PCM at 16 kHz, a sensitivity-controlled RMS gate, and a 60%
 release threshold. No samples means inactive; nonfinite samples count as zero.
 The pending capture queue is bounded to 2048 samples; old backlogs are discarded.

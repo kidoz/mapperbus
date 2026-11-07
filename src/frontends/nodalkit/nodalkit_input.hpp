@@ -74,6 +74,9 @@ class NodalKitPlayerInput {
         }
 
         gamepad_config_.enabled = enabled;
+#ifdef MAPPERBUS_HAVE_SDL3_GAMEPAD
+        disconnected_peers_.clear();
+#endif
         if (gamepad_config_.enabled) {
             initialize_gamepad_subsystem();
             open_configured_gamepad();
@@ -84,11 +87,10 @@ class NodalKitPlayerInput {
 
     void set_gamepad_index(int index) {
         const int clamped = std::max(0, index);
-        if (gamepad_config_.gamepad_index == clamped) {
-            return;
-        }
-
         gamepad_config_.gamepad_index = clamped;
+#ifdef MAPPERBUS_HAVE_SDL3_GAMEPAD
+        disconnected_peers_.clear();
+#endif
         close_gamepad();
         open_configured_gamepad();
     }
@@ -121,7 +123,7 @@ class NodalKitPlayerInput {
 
     [[nodiscard]] bool gamepad_connected() const {
 #ifdef MAPPERBUS_HAVE_SDL3_GAMEPAD
-        return gamepad_ != nullptr;
+        return gamepad_ != nullptr && SDL_GamepadConnected(gamepad_);
 #else
         return false;
 #endif
@@ -200,8 +202,13 @@ class NodalKitPlayerInput {
         } else if (target_index >= count) {
             status = "Waiting for Gamepad " + std::to_string(target_index + 1) + ". " +
                      std::to_string(count) + " connected.";
+        } else if (gamepad_ == nullptr && !disconnected_peers_.empty()) {
+            status = "Selected gamepad disconnected. Choose Preferred device again if its index "
+                     "changed.";
         } else {
-            const char* name = SDL_GetGamepadNameForID(gamepads[target_index]);
+            const char* name = gamepad_ != nullptr
+                                   ? SDL_GetGamepadName(gamepad_)
+                                   : SDL_GetGamepadNameForID(gamepads[target_index]);
             const std::string device_name =
                 name != nullptr && name[0] != '\0' ? std::string(name) : "selected gamepad";
             status = gamepad_ != nullptr ? "Connected: " + device_name
@@ -246,6 +253,9 @@ class NodalKitPlayerInput {
     }
 
     void reset_default_gamepad_bindings() {
+#ifdef MAPPERBUS_HAVE_SDL3_GAMEPAD
+        disconnected_peers_.clear();
+#endif
         gamepad_config_.bindings = platform::default_gamepad_bindings();
         gamepad_config_.axis_deadzone = 12000;
         gamepad_config_.gamepad_index = default_gamepad_index_;
@@ -368,10 +378,18 @@ class NodalKitPlayerInput {
 
         SDL_UpdateGamepads();
         if (gamepad_ != nullptr && !SDL_GamepadConnected(gamepad_)) {
+            // Use the previous poll's inventory, so a reconnect between polls
+            // is not mistaken for a peer that was connected before removal.
+            disconnected_peers_ = known_gamepads_;
             close_gamepad();
         }
         if (gamepad_ == nullptr) {
             open_configured_gamepad();
+        }
+        int count = 0;
+        if (auto* ids = SDL_GetGamepads(&count)) {
+            known_gamepads_.assign(ids, ids + count);
+            SDL_free(ids);
         }
 #endif
     }
@@ -387,9 +405,13 @@ class NodalKitPlayerInput {
         if (gamepads == nullptr) {
             return;
         }
+        if (known_gamepads_.empty())
+            known_gamepads_.assign(gamepads, gamepads + count);
 
         const int target_index = std::max(0, gamepad_config_.gamepad_index);
-        if (target_index < count) {
+        if (target_index < count &&
+            std::ranges::find(disconnected_peers_, gamepads[target_index]) ==
+                disconnected_peers_.end()) {
             gamepad_ = SDL_OpenGamepad(gamepads[target_index]);
             if (gamepad_ != nullptr) {
                 gamepad_id_ = SDL_GetGamepadID(gamepad_);
@@ -503,6 +525,8 @@ class NodalKitPlayerInput {
 #ifdef MAPPERBUS_HAVE_SDL3_GAMEPAD
     bool gamepad_initialized_ = false;
     SDL_Gamepad* gamepad_ = nullptr;
+    std::vector<SDL_JoystickID> disconnected_peers_;
+    std::vector<SDL_JoystickID> known_gamepads_;
     SDL_JoystickID gamepad_id_ = 0;
 #endif
 };
@@ -513,8 +537,14 @@ class NodalKitInput : public platform::InputBackend {
     NodalKitInput(nk::Window& window,
                   platform::GamepadInputConfig player1,
                   platform::GamepadInputConfig player2)
-        : players_{NodalKitPlayerInput(window, player1, 0),
-                   NodalKitPlayerInput(window, player2, 1)} {}
+        : NodalKitInput(window,
+                        std::array{player1, player2, disabled_profile(2), disabled_profile(3)}) {}
+
+    NodalKitInput(nk::Window& window, std::array<platform::GamepadInputConfig, 4> profiles)
+        : players_{NodalKitPlayerInput(window, profiles[0], 0),
+                   NodalKitPlayerInput(window, profiles[1], 1),
+                   NodalKitPlayerInput(window, profiles[2], 2),
+                   NodalKitPlayerInput(window, profiles[3], 3)} {}
 
     void poll() override {
         for (auto& player : players_) {
@@ -527,7 +557,7 @@ class NodalKitInput : public platform::InputBackend {
     }
 
     bool is_action_pressed(int player, platform::InputAction action) const override {
-        return player >= 0 && player < 2 && players_[player].is_action_pressed(action);
+        return player >= 0 && player < 4 && players_[player].is_action_pressed(action);
     }
 
     bool should_quit() const override {
@@ -547,7 +577,13 @@ class NodalKitInput : public platform::InputBackend {
     }
 
   private:
-    std::array<NodalKitPlayerInput, 2> players_;
+    static platform::GamepadInputConfig disabled_profile(int index) {
+        platform::GamepadInputConfig config;
+        config.enabled = false;
+        config.gamepad_index = index;
+        return config;
+    }
+    std::array<NodalKitPlayerInput, 4> players_;
 };
 
 } // namespace mapperbus::frontend

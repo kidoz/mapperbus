@@ -27,9 +27,41 @@ struct MapperBusInputConfiguration {
     /// Player two starts with unbound keyboard controls and gamepad index 1.
     std::array<int, platform::kInputActionCount> player2_keyboard_bindings{};
     platform::GamepadInputConfig player2_gamepad;
+    /// External pads 1/2 use host profiles 3/4. Bit 0/1 attaches each D1 input.
+    core::Byte expansion_controllers = 0;
+    std::array<std::array<int, platform::kInputActionCount>, 2> expansion_keyboard_bindings{};
+    std::array<platform::GamepadInputConfig, 2> expansion_gamepads{};
     int turbo_period_frames = 4;
 
     MapperBusInputConfiguration();
+    auto& keyboard_profile(int player) {
+        if (player == 0)
+            return keyboard_bindings;
+        if (player == 1)
+            return player2_keyboard_bindings;
+        return expansion_keyboard_bindings.at(player - 2);
+    }
+    const auto& keyboard_profile(int player) const {
+        if (player == 0)
+            return keyboard_bindings;
+        if (player == 1)
+            return player2_keyboard_bindings;
+        return expansion_keyboard_bindings.at(player - 2);
+    }
+    auto& gamepad_profile(int player) {
+        if (player == 0)
+            return gamepad;
+        if (player == 1)
+            return player2_gamepad;
+        return expansion_gamepads.at(player - 2);
+    }
+    const auto& gamepad_profile(int player) const {
+        if (player == 0)
+            return gamepad;
+        if (player == 1)
+            return player2_gamepad;
+        return expansion_gamepads.at(player - 2);
+    }
 };
 
 /// Cartridge region used while playing. Automatic keeps the region the ROM
@@ -99,6 +131,7 @@ void clear_recent_roms(MapperBusConfiguration& configuration);
 [[nodiscard]] const char* controller_timing_token(core::ControllerTiming timing);
 [[nodiscard]] std::optional<core::ControllerWiring> parse_controller_wiring(std::string_view value);
 [[nodiscard]] const char* controller_wiring_token(core::ControllerWiring wiring);
+[[nodiscard]] std::optional<core::Byte> parse_expansion_controllers(std::string_view value);
 [[nodiscard]] inline std::string controller_button_name(core::Button button) {
     return controller_button_name(platform::input_action(button));
 }

@@ -56,7 +56,8 @@ for dependencies, platform details, and reconfiguring an existing build.
 - CPU and GPU xBRZ and FSR 1 upscaling, using Metal or Vulkan where available.
 - BLEP resampling, selectable audio filters, dynamic rate control, dithering,
   and pseudo-stereo output.
-- Configurable two-player keyboard and gamepad input, save states, battery saves,
+- Four keyboard/gamepad profiles for built-in and external Famicom controllers,
+  save states, battery saves,
   and shared frontend configuration.
 
 Input settings in the NodalKit GUI on macOS:

@@ -10,8 +10,8 @@ namespace {
 TEST_CASE("NodalKit gamepads route independent mappings and release disconnected inputs",
           "[gui][input][gamepad]") {
     struct VirtualPads {
-        std::array<SDL_JoystickID, 2> ids{};
-        std::array<SDL_Joystick*, 2> joysticks{};
+        std::array<SDL_JoystickID, 4> ids{};
+        std::array<SDL_Joystick*, 4> joysticks{};
         ~VirtualPads() {
             for (auto* joystick : joysticks) {
                 if (joystick)
@@ -30,9 +30,9 @@ TEST_CASE("NodalKit gamepads route independent mappings and release disconnected
     desc.type = SDL_JOYSTICK_TYPE_GAMEPAD;
     desc.nbuttons = SDL_GAMEPAD_BUTTON_COUNT;
     desc.button_mask = (1U << SDL_GAMEPAD_BUTTON_COUNT) - 1;
-    desc.name = "MapperBus two player test";
-    std::array<platform::GamepadInputConfig, 2> configs;
-    for (int player = 0; player < 2; ++player) {
+    desc.name = "MapperBus four profile test";
+    std::array<platform::GamepadInputConfig, 4> configs;
+    for (int player = 0; player < 4; ++player) {
         pads.ids[player] = SDL_AttachVirtualJoystick(&desc);
         REQUIRE(pads.ids[player] != 0);
         pads.joysticks[player] = SDL_OpenJoystick(pads.ids[player]);
@@ -48,13 +48,39 @@ TEST_CASE("NodalKit gamepads route independent mappings and release disconnected
     }
     using platform::InputAction;
     REQUIRE(platform::apply_gamepad_mapping(configs[1], "a=west,turbo_b=north,microphone=north"));
-    nk::Window window({.title = "Two player gamepads", .width = 600, .height = 300});
-    NodalKitInput input(window, configs[0], configs[1]);
+    REQUIRE(platform::apply_gamepad_mapping(configs[2], "a=north,turbo_a=west"));
+    REQUIRE(platform::apply_gamepad_mapping(configs[3], "a=leftshoulder"));
+    nk::Window window({.title = "Four gamepad profiles", .width = 600, .height = 300});
+    NodalKitInput input(window, configs);
+    REQUIRE(SDL_SetJoystickVirtualButton(pads.joysticks[2], SDL_GAMEPAD_BUTTON_NORTH, true));
+    REQUIRE(
+        SDL_SetJoystickVirtualButton(pads.joysticks[3], SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, true));
     REQUIRE(SDL_SetJoystickVirtualButton(pads.joysticks[0], SDL_GAMEPAD_BUTTON_EAST, true));
     REQUIRE(SDL_SetJoystickVirtualButton(pads.joysticks[1], SDL_GAMEPAD_BUTTON_WEST, true));
     input.poll();
     CHECK(input.is_button_pressed(0, core::Button::A));
     CHECK(input.is_button_pressed(1, core::Button::A));
+    CHECK(input.is_button_pressed(2, core::Button::A));
+    CHECK(input.is_button_pressed(3, core::Button::A));
+    // A complete unplug/replug between polls must accept the replacement ID.
+    SDL_CloseJoystick(pads.joysticks[3]);
+    pads.joysticks[3] = nullptr;
+    REQUIRE(SDL_DetachVirtualJoystick(pads.ids[3]));
+    pads.ids[3] = SDL_AttachVirtualJoystick(&desc);
+    REQUIRE(pads.ids[3] != 0);
+    pads.joysticks[3] = SDL_OpenJoystick(pads.ids[3]);
+    REQUIRE(pads.joysticks[3] != nullptr);
+    REQUIRE(
+        SDL_SetJoystickVirtualButton(pads.joysticks[3], SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, true));
+    input.poll();
+    CHECK(input.player_input(3).gamepad_connected());
+    CHECK(input.is_button_pressed(3, core::Button::A));
+    input.player_input(2).reset_default_gamepad_bindings();
+    CHECK(input.player_input(2).uses_default_gamepad_bindings());
+    input.player_input(2).set_gamepad_index(configs[2].gamepad_index);
+    input.poll();
+    CHECK_FALSE(input.is_button_pressed(2, core::Button::A));
+    CHECK(input.is_button_pressed(3, core::Button::A));
     CHECK_FALSE(input.is_action_pressed(1, InputAction::TurboA));
     CHECK_FALSE(input.is_button_pressed(0, core::Button::B));
     // Capture must read only the selected player's device.
@@ -81,6 +107,22 @@ TEST_CASE("NodalKit gamepads route independent mappings and release disconnected
     CHECK_FALSE(input.is_action_pressed(1, InputAction::TurboB));
     CHECK_FALSE(input.is_action_pressed(1, InputAction::Microphone));
     CHECK_FALSE(input.player_input(1).gamepad_connected());
+    CHECK(input.player_input(1).gamepad_status_text().find("disconnected") != std::string::npos);
+    // Explicitly selecting the compacted index permits adopting its new device.
+    input.player_input(1).set_gamepad_index(configs[1].gamepad_index);
+    input.poll();
+    CHECK(input.player_input(1).gamepad_connected());
+    CHECK(input.is_action_pressed(1, InputAction::Microphone));
+    input.player_input(1).set_gamepad_enabled(false);
+    CHECK_FALSE(input.is_action_pressed(1, InputAction::Microphone));
+    CHECK(input.is_button_pressed(3, core::Button::A));
+    SDL_CloseJoystick(pads.joysticks[3]);
+    pads.joysticks[3] = nullptr;
+    REQUIRE(SDL_DetachVirtualJoystick(pads.ids[3]));
+    pads.ids[3] = 0;
+    input.poll();
+    CHECK_FALSE(input.is_button_pressed(3, core::Button::A));
+    CHECK_FALSE(input.player_input(3).gamepad_connected());
 }
 
 } // namespace

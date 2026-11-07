@@ -518,7 +518,7 @@ class ActionInput : public platform::InputBackend {
     void hold(int player, platform::InputAction action, bool down = true) {
         held[player][platform::button_index(action)] = down;
     }
-    std::array<std::array<bool, platform::kInputActionCount>, 2> held{};
+    std::array<std::array<bool, platform::kInputActionCount>, 4> held{};
     int poll_count = 0;
 };
 
@@ -593,6 +593,38 @@ TEST_CASE("Both input profiles drive one microphone and pause preserves its carr
     held->hold(1, platform::InputAction::Microphone);
     REQUIRE(session.step_frame() == TickResult::FrameAdvanced);
     session.close_rom();
+    CHECK_FALSE(session.emulator().microphone_active());
+}
+
+TEST_CASE("External host profiles have independent turbo phases and a shared microphone action",
+          "[app][session][expansion][turbo]") {
+    core::register_builtin_mappers();
+    auto input = std::make_unique<ActionInput>();
+    auto* held = input.get();
+    held->hold(0, platform::InputAction::A);
+    held->hold(2, platform::InputAction::TurboA);
+    held->hold(3, platform::InputAction::TurboB);
+    held->hold(3, platform::InputAction::Microphone);
+    EmulationSession session(std::make_unique<platform::NullVideo>(),
+                             std::make_unique<TestAudioBackend>(),
+                             std::move(input));
+    REQUIRE(session.load_rom(test_rom_path()));
+    session.set_controller_wiring(core::ControllerWiring::RfFamicom);
+    session.set_expansion_controllers(3);
+    for (int frame = 0; frame < 8; ++frame) {
+        REQUIRE(session.tick() == TickResult::FrameAdvanced);
+        auto& external = session.emulator().expansion_controller();
+        external.write(1);
+        external.write(0);
+        CHECK(external.read(0) == (frame % 4 < 2 ? 1 : 0));
+        CHECK(external.read(1) == 0);
+        CHECK(external.read(1) == (frame % 4 < 2 ? 1 : 0));
+        CHECK(read_controller(session, 0) == 1);
+        CHECK(read_controller(session, 1) == 0);
+        CHECK(session.emulator().microphone_active());
+    }
+    held->hold(3, platform::InputAction::Microphone, false);
+    REQUIRE(session.tick() == TickResult::FrameAdvanced);
     CHECK_FALSE(session.emulator().microphone_active());
 }
 

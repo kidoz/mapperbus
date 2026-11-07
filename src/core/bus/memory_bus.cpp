@@ -27,6 +27,7 @@ void MemoryBus::save_state(StateWriter& writer) const {
     writer.write(controller_wiring_);
     writer.write(static_cast<Byte>(microphone_active_));
     writer.write(microphone_phase_);
+    writer.write(expansion_ports_);
 }
 
 void MemoryBus::load_state(StateReader& reader,
@@ -35,7 +36,8 @@ void MemoryBus::load_state(StateReader& reader,
                            bool has_io_state,
                            bool has_controller_timing,
                            bool has_controller_wiring,
-                           bool has_microphone) {
+                           bool has_microphone,
+                           bool has_expansion_controllers) {
     reader.read_array(ram_);
     reader.read(open_bus_);
     reader.read(dma_cycles_);
@@ -66,6 +68,9 @@ void MemoryBus::load_state(StateReader& reader,
     const auto microphone = has_microphone ? reader.read<Byte>() : Byte{0};
     microphone_active_ = microphone == 1;
     microphone_phase_ = has_microphone ? reader.read<uint16_t>() : uint16_t{0};
+    expansion_ports_ = has_expansion_controllers ? reader.read<Byte>() : Byte{0};
+    if (expansion_ports_ > 3)
+        reader.fail();
     if (microphone > 1 || microphone_phase_ >= kMicrophonePeriodCycles ||
         (!microphone_active_ && microphone_phase_ != 0))
         reader.fail();
@@ -86,6 +91,8 @@ void MemoryBus::restore_legacy_controller() {
 void MemoryBus::set_controller_oe(Byte port) {
     if (controller_oe_ != port && controller_oe_ != 0 && controller_ != nullptr)
         controller_->clock(controller_oe_ - 1);
+    if (controller_oe_ != port && controller_oe_ != 0 && expansion_controller_ != nullptr)
+        expansion_controller_->clock(controller_oe_ - 1);
     controller_oe_ = port;
 }
 
@@ -100,20 +107,28 @@ void MemoryBus::set_controller_wiring(ControllerWiring wiring) {
 void MemoryBus::write_controller_strobe(Byte value) {
     if (controller_ != nullptr)
         controller_->write(value, controller_wiring_ == ControllerWiring::RfFamicom ? 0xF3 : 0xFF);
+    if (expansion_controller_ != nullptr)
+        expansion_controller_->write(value);
 }
 
 Byte MemoryBus::read_controller(int player, Byte external, bool timed) {
-    if (controller_ == nullptr && controller_wiring_ == ControllerWiring::Nes)
+    if (controller_ == nullptr && controller_wiring_ == ControllerWiring::Nes &&
+        expansion_ports_ == 0)
         return external;
     const auto bit = controller_ == nullptr ? Byte{0}
                      : timed && ntsc_io()   ? controller_->peek(player)
                                             : controller_->read(player);
-    // RF $4016 D3/D4 float; D1 is an unattached expansion input and D2
+    const auto expansion_bit = expansion_controller_ == nullptr ? Byte{0}
+                               : timed && ntsc_io() ? expansion_controller_->peek(player)
+                                                    : expansion_controller_->read(player);
+    const Byte expansion =
+        (expansion_ports_ & (1U << player)) != 0 ? static_cast<Byte>(expansion_bit << 1U) : Byte{0};
+    // RF $4016 D3/D4 float; D1 is the external controller input and D2
     // is the live microphone, independent of the pad shifter and strobe.
     const Byte floating =
         controller_wiring_ == ControllerWiring::RfFamicom && player == 0 ? 0xF8 : 0xE0;
     const Byte microphone = player == 0 && microphone_level() ? 4 : 0;
-    return static_cast<Byte>((external & floating) | bit | microphone);
+    return static_cast<Byte>((external & floating) | bit | expansion | microphone);
 }
 
 Byte MemoryBus::read_cpu(Address addr) {

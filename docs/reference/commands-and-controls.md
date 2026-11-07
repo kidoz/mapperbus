@@ -23,6 +23,7 @@ the corresponding values for this process. Scaling and region use their own star
 | `--filter-mode MODE` | `accurate`, `enhanced`, `unfiltered` | `accurate` |
 | `--filter-profile P` | `nes`, `famicom` | `nes` |
 | `--controller-wiring W` | `nes`, `rf-famicom` | Saved preference, fresh default NES |
+| `--expansion-controllers P` | `none`, `1`, `2`, `both` | Attach external Famicom pads; fresh default `none` |
 | `--controller-timing T` | `nes-av-famicom`, `rf-famicom` | Saved preference, fresh default NES/AV Famicom |
 | `--region R` | `ntsc`, `pal`, `dendy` | Automatic detection when omitted |
 | `--stereo` | Flag | Enable pseudo-stereo; fresh default is mono |
@@ -34,6 +35,8 @@ the corresponding values for this process. Scaling and region use their own star
 | `--gamepad-map MAP` | Comma-separated `NES=SDL` pairs | Override named player 1 bindings |
 | `--gamepad2 N` | Nonnegative SDL gamepad index | Override player 2 device; default index is 1 |
 | `--gamepad2-map MAP` | Same mapping format | Override named player 2 bindings |
+| `--gamepad3 N`, `--gamepad4 N` | Nonnegative SDL gamepad index | External 1/2; default indices 2/3 |
+| `--gamepad3-map MAP`, `--gamepad4-map MAP` | Same mapping format | Override external pad bindings |
 
 CPU xBRZ is selected when `--scale` is supplied without a mode flag. If multiple
 mode flags are supplied, precedence is `--gpu-fsr`, then `--fsr`, then `--gpu`.
@@ -48,7 +51,7 @@ Source: [SDL3 composition root](../../src/app/main.cpp).
 ### Gamepad mapping tokens
 
 Input action names are `a`, `b`, `start`, `select`, `up`, `down`, `left`, `right`,
-`turbo_a`, and `turbo_b`. Use `none` as a control value to clear a binding.
+`turbo_a`, `turbo_b`, and `microphone` (alias `mic`). Use `none` as a control value to clear a binding.
 SDL controls include physical face positions `south`, `east`, `west`, `north`,
 aliases `a`, `b`, `x`, `y`, D-pad tokens `dpup`, `dpdown`, `dpleft`, `dpright`,
 and buttons such as `start`, `back`, `leftshoulder`, and `rightshoulder`.
@@ -58,7 +61,9 @@ and `lefty+`.
 Defaults use D-pad directions, A on `east`, B on `south`, Start on `start`,
 Select on `back`, Turbo A on `north`, and Turbo B on `west`. Each player combines
 their keyboard and gamepad state. Player 2 defaults to the second gamepad and
-unbound keyboard controls.
+unbound keyboard controls. External pads use profiles 3/4, default gamepad
+indices 2/3, and unbound keys. Attach them separately with
+`--expansion-controllers` or General → Hardware; games must support D1 input.
 
 Source: [Gamepad configuration](../../src/platform/input/gamepad_config.hpp).
 
@@ -76,7 +81,7 @@ Source: [Gamepad configuration](../../src/platform/input/gamepad_config.hpp).
 
 These are player 1 defaults, overridden by `[input.keyboard]`. Player 2 uses
 `[input.player2.keyboard]` and starts unbound. Code `0` means unbound. Configure
-either player with the selector in GUI Settings → Input.
+any of the four profiles with the selector in GUI Settings → Input.
 
 Hold Turbo A or Turbo B to repeat that button; release to stop. Ordinary A/B
 remain continuous holds, including when their turbo action is also held.
@@ -166,7 +171,7 @@ and volume accepts 0–100. The headless CLI does not open capture. See
 ## Headless CLI
 
 ```text
-./buildDir/src/frontends/cli/mapperbus-cli <rom-file|archive> [--entry NAME] [--fds-bios PATH] [--frames N] [--controller-timing T] [--controller-wiring W]
+./buildDir/src/frontends/cli/mapperbus-cli <rom-file|archive> [--entry NAME] [--fds-bios PATH] [--frames N] [--controller-timing T] [--controller-wiring W] [--expansion-controllers none|1|2|both]
 ```
 
 Loads NES/FDS media, resets the emulator, executes 60 frames by default, and

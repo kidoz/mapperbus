@@ -79,8 +79,15 @@ namespace {
 
 } // namespace
 
+Sdl3FourPlayerInputConfig::Sdl3FourPlayerInputConfig() {
+    keyboards[0] = default_keyboard_bindings();
+    for (int player = 0; player < 4; ++player)
+        players[player].gamepad_index = player;
+}
+
 Sdl3Input::Sdl3Input(Sdl3InputConfig config, std::optional<Sdl3KeyboardBindings> keyboard_bindings)
-    : config_(config), keyboard_bindings_(keyboard_bindings.value_or(default_keyboard_bindings())) {
+    : configs_{config},
+      keyboard_bindings_{keyboard_bindings.value_or(default_keyboard_bindings())} {
     init_gamepad_subsystem();
     open_configured_gamepad();
 }
@@ -88,26 +95,33 @@ Sdl3Input::Sdl3Input(Sdl3InputConfig config, std::optional<Sdl3KeyboardBindings>
 Sdl3Input::Sdl3Input(Sdl3TwoPlayerInputConfig config,
                      std::optional<Sdl3KeyboardBindings> keyboard_bindings,
                      Sdl3KeyboardBindings player2_keyboard_bindings)
-    : config_(config.player1), config2_(config.player2), two_player_(true),
-      keyboard_bindings_(keyboard_bindings.value_or(default_keyboard_bindings())),
-      player2_keyboard_bindings_(player2_keyboard_bindings) {
+    : configs_{config.player1, config.player2},
+      keyboard_bindings_{keyboard_bindings.value_or(default_keyboard_bindings()),
+                         player2_keyboard_bindings},
+      player_count_(2) {
+    init_gamepad_subsystem();
+    open_configured_gamepad();
+}
+
+Sdl3Input::Sdl3Input(Sdl3FourPlayerInputConfig config)
+    : configs_(config.players), keyboard_bindings_(config.keyboards), player_count_(4) {
     init_gamepad_subsystem();
     open_configured_gamepad();
 }
 
 Sdl3Input::~Sdl3Input() {
-    close_gamepad();
-    close_gamepad2();
-    if (gamepad_initialized_) {
+    for (int player = 0; player < player_count_; ++player)
+        close_gamepad(player);
+    if (gamepad_initialized_)
         SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
-    }
 }
 
 void Sdl3Input::init_gamepad_subsystem() {
-    bool want_gamepad = config_.enabled || (two_player_ && config2_.enabled);
-    if (want_gamepad && SDL_InitSubSystem(SDL_INIT_GAMEPAD)) {
+    bool wanted = false;
+    for (int player = 0; player < player_count_; ++player)
+        wanted |= configs_[player].enabled;
+    if (wanted && SDL_InitSubSystem(SDL_INIT_GAMEPAD))
         gamepad_initialized_ = true;
-    }
 }
 
 Sdl3ScalerCommand Sdl3Input::scaler_command_for_scancode(SDL_Scancode scancode) {
@@ -199,66 +213,45 @@ void Sdl3Input::poll() {
         handle_event(event);
     }
 
-    button_state_[0] = keyboard_state(keyboard_bindings_) | gamepad_state();
-    button_state_[1] =
-        two_player_ ? keyboard_state(player2_keyboard_bindings_) | gamepad2_state() : 0;
+    for (int player = 0; player < player_count_; ++player)
+        button_state_[player] = keyboard_state(keyboard_bindings_[player]) | gamepad_state(player);
+    if (!gamepad_initialized_)
+        return;
+    int count = 0;
+    if (auto* ids = SDL_GetGamepads(&count)) {
+        known_gamepads_.assign(ids, ids + count);
+        SDL_free(ids);
+    }
 }
 
 void Sdl3Input::open_configured_gamepad() {
-    if (!gamepad_initialized_) {
+    if (!gamepad_initialized_)
         return;
-    }
-
     int count = 0;
-    SDL_JoystickID* gamepads = SDL_GetGamepads(&count);
-    if (gamepads == nullptr) {
+    auto* ids = SDL_GetGamepads(&count);
+    if (!ids)
         return;
-    }
-
-    // Player 1
-    if (gamepad_ == nullptr && config_.enabled) {
-        const int target_index = std::max(0, config_.gamepad_index);
-        if (target_index < count) {
-            open_gamepad(gamepads[target_index]);
+    if (known_gamepads_.empty())
+        known_gamepads_.assign(ids, ids + count);
+    for (int player = 0; player < player_count_; ++player) {
+        const auto& config = configs_[player];
+        const int index = std::max(0, config.gamepad_index);
+        if (!gamepads_[player] && config.enabled && index < count &&
+            std::ranges::find(disconnected_peers_[player], ids[index]) ==
+                disconnected_peers_[player].end()) {
+            gamepads_[player] = SDL_OpenGamepad(ids[index]);
+            if (gamepads_[player])
+                gamepad_ids_[player] = SDL_GetGamepadID(gamepads_[player]);
         }
     }
-
-    // Player 2 (only in two-player mode)
-    if (two_player_ && gamepad2_ == nullptr && config2_.enabled) {
-        const int target_index = std::max(0, config2_.gamepad_index);
-        if (target_index < count) {
-            gamepad2_ = SDL_OpenGamepad(gamepads[target_index]);
-            if (gamepad2_ != nullptr) {
-                gamepad2_id_ = SDL_GetGamepadID(gamepad2_);
-            }
-        }
-    }
-
-    SDL_free(gamepads);
+    SDL_free(ids);
 }
 
-void Sdl3Input::open_gamepad(SDL_JoystickID instance_id) {
-    close_gamepad();
-    gamepad_ = SDL_OpenGamepad(instance_id);
-    if (gamepad_ != nullptr) {
-        gamepad_id_ = SDL_GetGamepadID(gamepad_);
-    }
-}
-
-void Sdl3Input::close_gamepad() {
-    if (gamepad_ != nullptr) {
-        SDL_CloseGamepad(gamepad_);
-        gamepad_ = nullptr;
-        gamepad_id_ = 0;
-    }
-}
-
-void Sdl3Input::close_gamepad2() {
-    if (gamepad2_ != nullptr) {
-        SDL_CloseGamepad(gamepad2_);
-        gamepad2_ = nullptr;
-        gamepad2_id_ = 0;
-    }
+void Sdl3Input::close_gamepad(int player) {
+    if (gamepads_[player])
+        SDL_CloseGamepad(gamepads_[player]);
+    gamepads_[player] = nullptr;
+    gamepad_ids_[player] = 0;
 }
 
 void Sdl3Input::handle_event(const SDL_Event& event) {
@@ -295,14 +288,13 @@ void Sdl3Input::handle_event(const SDL_Event& event) {
     }
 
     if (event.type == SDL_EVENT_GAMEPAD_REMOVED) {
-        if (event.gdevice.which == gamepad_id_) {
-            close_gamepad();
-            open_configured_gamepad();
+        for (int player = 0; player < player_count_; ++player) {
+            if (event.gdevice.which == gamepad_ids_[player]) {
+                disconnected_peers_[player] = known_gamepads_;
+                close_gamepad(player);
+            }
         }
-        if (event.gdevice.which == gamepad2_id_) {
-            close_gamepad2();
-            open_configured_gamepad();
-        }
+        open_configured_gamepad();
     }
 }
 
@@ -321,75 +313,32 @@ std::uint16_t Sdl3Input::keyboard_state(const Sdl3KeyboardBindings& bindings) co
     return state;
 }
 
-std::uint16_t Sdl3Input::gamepad_state() const {
-    if (gamepad_ == nullptr) {
+std::uint16_t Sdl3Input::gamepad_state(int player) const {
+    if (!gamepads_[player])
         return 0;
-    }
-
     std::uint16_t state = 0;
-    for (const auto nes_button : platform::input_actions()) {
-        if (is_control_pressed(platform::gamepad_control_for_button(config_, nes_button))) {
-            state |= (1U << platform::button_index(nes_button));
-        }
-    }
-
+    for (const auto button : platform::input_actions())
+        if (is_control_pressed(player,
+                               platform::gamepad_control_for_button(configs_[player], button)))
+            state |= (1U << platform::button_index(button));
     return state;
 }
 
-std::uint16_t Sdl3Input::gamepad2_state() const {
-    if (gamepad2_ == nullptr) {
-        return 0;
-    }
-
-    std::uint16_t state = 0;
-    for (const auto nes_button : platform::input_actions()) {
-        if (is_control_pressed2(platform::gamepad_control_for_button(config2_, nes_button))) {
-            state |= (1U << platform::button_index(nes_button));
-        }
-    }
-
-    return state;
-}
-
-bool Sdl3Input::is_control_pressed(const GamepadControl& control) const {
-    if (gamepad_ == nullptr) {
+bool Sdl3Input::is_control_pressed(int player, const GamepadControl& control) const {
+    auto* pad = gamepads_[player];
+    if (!pad)
         return false;
-    }
-
+    const auto deadzone = std::max(1, static_cast<int>(configs_[player].axis_deadzone));
     switch (control.kind) {
-    case platform::GamepadControlKind::None:
+    case GamepadControlKind::None:
         return false;
-    case platform::GamepadControlKind::Button:
-        return SDL_GetGamepadButton(gamepad_, to_sdl_button(control.button));
-    case platform::GamepadControlKind::AxisNegative:
-        return SDL_GetGamepadAxis(gamepad_, to_sdl_axis(control.axis)) <=
-               -std::max(1, static_cast<int>(config_.axis_deadzone));
-    case platform::GamepadControlKind::AxisPositive:
-        return SDL_GetGamepadAxis(gamepad_, to_sdl_axis(control.axis)) >=
-               std::max(1, static_cast<int>(config_.axis_deadzone));
+    case GamepadControlKind::Button:
+        return SDL_GetGamepadButton(pad, to_sdl_button(control.button));
+    case GamepadControlKind::AxisNegative:
+        return SDL_GetGamepadAxis(pad, to_sdl_axis(control.axis)) <= -deadzone;
+    case GamepadControlKind::AxisPositive:
+        return SDL_GetGamepadAxis(pad, to_sdl_axis(control.axis)) >= deadzone;
     }
-
-    return false;
-}
-
-bool Sdl3Input::is_control_pressed2(const GamepadControl& control) const {
-    if (gamepad2_ == nullptr) {
-        return false;
-    }
-
-    switch (control.kind) {
-    case platform::GamepadControlKind::None:
-        return false;
-    case platform::GamepadControlKind::Button:
-        return SDL_GetGamepadButton(gamepad2_, to_sdl_button(control.button));
-    case platform::GamepadControlKind::AxisNegative:
-        return SDL_GetGamepadAxis(gamepad2_, to_sdl_axis(control.axis)) <=
-               -std::max(1, static_cast<int>(config2_.axis_deadzone));
-    case platform::GamepadControlKind::AxisPositive:
-        return SDL_GetGamepadAxis(gamepad2_, to_sdl_axis(control.axis)) >=
-               std::max(1, static_cast<int>(config2_.axis_deadzone));
-    }
-
     return false;
 }
 
@@ -398,7 +347,7 @@ bool Sdl3Input::is_button_pressed(int player, core::Button button) const {
 }
 
 bool Sdl3Input::is_action_pressed(int player, platform::InputAction button) const {
-    if (player < 0 || player > 1)
+    if (player < 0 || player >= player_count_)
         return false;
     return (button_state_[player] & (1U << platform::button_index(button))) != 0;
 }

@@ -89,6 +89,10 @@ RAM. User configuration describes host preferences such as input mappings and
 audio settings. Keeping these separate means a UI preference does not become
 part of cartridge hardware state.
 
+Version 17 adds two external standard controller reports and their independent
+D1 attachments. The bus shares strobe/read clocks with the built-in pads; host
+profiles remain frontend state. Versions 3–16 import with external pads detached.
+
 Snapshots are taken between instructions, after any OAM DMA. CPU bus-cycle and
 active-DMA bookkeeping is transient. Version 13 preserves controller line and
 strobe-request history plus the PPU I/O latch; older states import with idle

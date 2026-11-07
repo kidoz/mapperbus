@@ -4,6 +4,7 @@
 #include <array>
 #include <cstdint>
 #include <optional>
+#include <vector>
 
 #include "platform/input/gamepad_config.hpp"
 #include "platform/input/input_backend.hpp"
@@ -73,6 +74,12 @@ struct Sdl3TwoPlayerInputConfig {
     Sdl3InputConfig player2{};
 };
 
+struct Sdl3FourPlayerInputConfig {
+    std::array<Sdl3InputConfig, 4> players{};
+    std::array<Sdl3KeyboardBindings, 4> keyboards{};
+    Sdl3FourPlayerInputConfig();
+};
+
 class Sdl3Input : public platform::InputBackend {
   public:
     explicit Sdl3Input(Sdl3InputConfig config = {},
@@ -80,6 +87,7 @@ class Sdl3Input : public platform::InputBackend {
     explicit Sdl3Input(Sdl3TwoPlayerInputConfig config,
                        std::optional<Sdl3KeyboardBindings> keyboard_bindings = std::nullopt,
                        Sdl3KeyboardBindings player2_keyboard_bindings = {});
+    explicit Sdl3Input(Sdl3FourPlayerInputConfig config);
     ~Sdl3Input() override;
 
     void poll() override;
@@ -103,28 +111,22 @@ class Sdl3Input : public platform::InputBackend {
   private:
     void init_gamepad_subsystem();
     void open_configured_gamepad();
-    void open_gamepad(SDL_JoystickID instance_id);
-    void close_gamepad();
-    void close_gamepad2();
+    void close_gamepad(int player);
     void handle_event(const SDL_Event& event);
     [[nodiscard]] std::uint16_t keyboard_state(const Sdl3KeyboardBindings& bindings) const;
-    [[nodiscard]] std::uint16_t gamepad_state() const;
-    [[nodiscard]] std::uint16_t gamepad2_state() const;
-    [[nodiscard]] bool is_control_pressed(const GamepadControl& control) const;
-    [[nodiscard]] bool is_control_pressed2(const GamepadControl& control) const;
+    [[nodiscard]] std::uint16_t gamepad_state(int player) const;
+    [[nodiscard]] bool is_control_pressed(int player, const GamepadControl& control) const;
 
-    Sdl3InputConfig config_;
-    Sdl3InputConfig config2_{};
-    bool two_player_ = false;
-    Sdl3KeyboardBindings keyboard_bindings_{};
-    Sdl3KeyboardBindings player2_keyboard_bindings_{};
+    std::array<Sdl3InputConfig, 4> configs_{};
+    std::array<Sdl3KeyboardBindings, 4> keyboard_bindings_{};
+    int player_count_ = 1;
     bool quit_requested_ = false;
     bool gamepad_initialized_ = false;
-    SDL_Gamepad* gamepad_ = nullptr;
-    SDL_Gamepad* gamepad2_ = nullptr;
-    SDL_JoystickID gamepad_id_ = 0;
-    SDL_JoystickID gamepad2_id_ = 0;
-    std::array<std::uint16_t, 2> button_state_{};
+    std::array<SDL_Gamepad*, 4> gamepads_{};
+    std::array<SDL_JoystickID, 4> gamepad_ids_{};
+    std::array<std::vector<SDL_JoystickID>, 4> disconnected_peers_;
+    std::vector<SDL_JoystickID> known_gamepads_;
+    std::array<std::uint16_t, 4> button_state_{};
     Sdl3ScalerCommand pending_scaler_command_{};
     Sdl3SessionCommand pending_session_command_{};
     Sdl3WindowCommand pending_window_command_{};

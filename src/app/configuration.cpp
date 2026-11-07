@@ -325,6 +325,16 @@ void apply_setting(MapperBusConfiguration& configuration,
         configuration.input.controller_wiring = wiring.value_or(core::ControllerWiring::Nes);
         return;
     }
+    for (int port = 0; port < 2; ++port) {
+        if (full_key == "input.expansion" + std::to_string(port + 1) + "_attached") {
+            const auto mask = static_cast<core::Byte>(1U << port);
+            if (parse_bool_setting(value, false, full_key))
+                configuration.input.expansion_controllers |= mask;
+            else
+                configuration.input.expansion_controllers &= static_cast<core::Byte>(~mask);
+            return;
+        }
+    }
     if (full_key == "microphone.enabled") {
         configuration.microphone.enabled = parse_bool_setting(value, false, full_key);
         return;
@@ -441,12 +451,11 @@ void apply_setting(MapperBusConfiguration& configuration,
         configuration.input.turbo_period_frames = period == 2 || period == 6 ? period : 4;
         return;
     }
-    for (int player = 0; player < 2; ++player) {
-        auto& keyboard = player == 0 ? configuration.input.keyboard_bindings
-                                     : configuration.input.player2_keyboard_bindings;
-        auto& gamepad =
-            player == 0 ? configuration.input.gamepad : configuration.input.player2_gamepad;
-        const std::string prefix = player == 0 ? "input." : "input.player2.";
+    for (int player = 0; player < 4; ++player) {
+        auto& keyboard = configuration.input.keyboard_profile(player);
+        auto& gamepad = configuration.input.gamepad_profile(player);
+        const std::string prefix =
+            player == 0 ? "input." : "input.player" + std::to_string(player + 1) + ".";
         if (full_key == prefix + "gamepad.enabled") {
             gamepad.enabled = parse_bool_setting(value, true, full_key);
             return;
@@ -615,8 +624,22 @@ const char* controller_wiring_token(core::ControllerWiring wiring) {
     return wiring == core::ControllerWiring::RfFamicom ? "rf-famicom" : "nes";
 }
 
+std::optional<core::Byte> parse_expansion_controllers(std::string_view value) {
+    if (value == "none")
+        return 0;
+    if (value == "1")
+        return 1;
+    if (value == "2")
+        return 2;
+    if (value == "both")
+        return 3;
+    return std::nullopt;
+}
+
 MapperBusInputConfiguration::MapperBusInputConfiguration() {
     player2_gamepad.gamepad_index = 1;
+    expansion_gamepads[0].gamepad_index = 2;
+    expansion_gamepads[1].gamepad_index = 3;
     for (const auto button : platform::input_actions()) {
         keyboard_bindings[platform::button_index(button)] =
             default_keyboard_code_for_button(button);
@@ -674,8 +697,8 @@ MapperBusConfiguration load_mapperbus_configuration_from_file(const std::filesys
     constexpr auto kExtraActions = std::array{platform::InputAction::TurboA,
                                               platform::InputAction::TurboB,
                                               platform::InputAction::Microphone};
-    std::array<std::array<bool, kExtraActions.size()>, 2> explicit_extra_keyboard{};
-    std::array<std::array<bool, kExtraActions.size()>, 2> explicit_extra_gamepad{};
+    std::array<std::array<bool, kExtraActions.size()>, 4> explicit_extra_keyboard{};
+    std::array<std::array<bool, kExtraActions.size()>, 4> explicit_extra_gamepad{};
 
     std::ifstream file(path);
     if (!file) {
@@ -724,8 +747,9 @@ MapperBusConfiguration load_mapperbus_configuration_from_file(const std::filesys
 
         apply_setting(configuration, section, key, value);
         const auto full_key = scoped_key(section, key);
-        for (int player = 0; player < 2; ++player) {
-            const std::string prefix = player == 0 ? "input." : "input.player2.";
+        for (int player = 0; player < 4; ++player) {
+            const std::string prefix =
+                player == 0 ? "input." : "input.player" + std::to_string(player + 1) + ".";
             for (std::size_t index = 0; index < kExtraActions.size(); ++index) {
                 const auto name = controller_button_name(kExtraActions[index]);
                 if (full_key == prefix + "keyboard." + name)
@@ -738,11 +762,9 @@ MapperBusConfiguration load_mapperbus_configuration_from_file(const std::filesys
 
     // New defaults must not make an older custom binding activate a second
     // action. Explicitly configured duplicates remain the user's choice.
-    for (int player = 0; player < 2; ++player) {
-        auto& keyboard = player == 0 ? configuration.input.keyboard_bindings
-                                     : configuration.input.player2_keyboard_bindings;
-        auto& gamepad =
-            player == 0 ? configuration.input.gamepad : configuration.input.player2_gamepad;
+    for (int player = 0; player < 4; ++player) {
+        auto& keyboard = configuration.input.keyboard_profile(player);
+        auto& gamepad = configuration.input.gamepad_profile(player);
         for (std::size_t index = 0; index < kExtraActions.size(); ++index) {
             const auto action = kExtraActions[index];
             const auto target = platform::button_index(action);
@@ -762,20 +784,22 @@ MapperBusConfiguration load_mapperbus_configuration_from_file(const std::filesys
             }
         }
     }
-    // A keyboard Microphone binding in either profile drives one shared device.
-    // Avoid adding it over an older binding in the other profile as well.
+    // A keyboard Microphone binding in any profile drives one shared device.
+    // Avoid adding it over an older binding in another profile as well.
     const auto mic = platform::button_index(platform::InputAction::Microphone);
-    for (int player = 0; player < 2; ++player) {
-        auto& target = player == 0 ? configuration.input.keyboard_bindings
-                                   : configuration.input.player2_keyboard_bindings;
-        const auto& other = player == 0 ? configuration.input.player2_keyboard_bindings
-                                        : configuration.input.keyboard_bindings;
+    for (int player = 0; player < 4; ++player) {
+        auto& target = configuration.input.keyboard_profile(player);
         if (explicit_extra_keyboard[player][2] || target[mic] == 0)
             continue;
-        for (const auto action : platform::input_actions())
-            if (action != platform::InputAction::Microphone &&
-                target[mic] == other[platform::button_index(action)])
-                target[mic] = 0;
+        for (int other = 0; other < 4; ++other) {
+            if (other == player)
+                continue;
+            for (const auto action : platform::input_actions())
+                if (action != platform::InputAction::Microphone &&
+                    target[mic] ==
+                        configuration.input.keyboard_profile(other)[platform::button_index(action)])
+                    target[mic] = 0;
+        }
     }
     return configuration;
 }
@@ -818,8 +842,12 @@ core::Result<void> save_mapperbus_configuration_to_file(const MapperBusConfigura
     file << "controller_timing=" << controller_timing_token(configuration.input.controller_timing)
          << '\n';
     file << "controller_wiring=" << controller_wiring_token(configuration.input.controller_wiring)
-         << "\n\n";
-
+         << '\n';
+    for (int port = 0; port < 2; ++port)
+        file << "expansion" << port + 1 << "_attached="
+             << ((configuration.input.expansion_controllers & (1U << port)) ? "true" : "false")
+             << '\n';
+    file << '\n';
     file << "[microphone]\n";
     file << "enabled=" << (configuration.microphone.enabled ? "true" : "false") << '\n';
     file << "device=" << quote_config_value(configuration.microphone.device) << '\n';
@@ -876,12 +904,11 @@ core::Result<void> save_mapperbus_configuration_to_file(const MapperBusConfigura
     }
 
     file << "[input.turbo]\nperiod_frames=" << configuration.input.turbo_period_frames << "\n\n";
-    for (int player = 0; player < 2; ++player) {
-        const auto& keyboard = player == 0 ? configuration.input.keyboard_bindings
-                                           : configuration.input.player2_keyboard_bindings;
-        const auto& gamepad =
-            player == 0 ? configuration.input.gamepad : configuration.input.player2_gamepad;
-        const auto* prefix = player == 0 ? "input." : "input.player2.";
+    for (int player = 0; player < 4; ++player) {
+        const auto& keyboard = configuration.input.keyboard_profile(player);
+        const auto& gamepad = configuration.input.gamepad_profile(player);
+        const std::string prefix =
+            player == 0 ? "input." : "input.player" + std::to_string(player + 1) + ".";
         file << '[' << prefix << "keyboard]\n";
         for (const auto button : platform::input_actions()) {
             file << controller_button_name(button) << '='

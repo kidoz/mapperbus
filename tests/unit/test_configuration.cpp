@@ -49,6 +49,54 @@ TEST_CASE("Linux configuration ignores invalid XDG paths", "[app][configuration]
            ("mapperbus-config-test-" + std::to_string(stamp)) / "mapperbus.conf";
 }
 
+TEST_CASE("External controller attachments and host profiles persist independently",
+          "[app][configuration][expansion]") {
+    MapperBusConfiguration configuration;
+    CHECK(configuration.input.expansion_controllers == 0);
+    for (const int player : {2, 3}) {
+        CHECK(configuration.input.gamepad_profile(player).gamepad_index == player);
+        for (const auto key : configuration.input.keyboard_profile(player))
+            CHECK(key == 0);
+        configuration.input.keyboard_profile(player)[platform::button_index(core::Button::A)] =
+            40 + player;
+        auto& gamepad = configuration.input.gamepad_profile(player);
+        gamepad.gamepad_index = 7 + player;
+        gamepad.axis_deadzone = 14000 + player;
+        gamepad.enabled = player == 2;
+        REQUIRE(platform::apply_gamepad_mapping(
+            gamepad, player == 2 ? "a=west,turbo_a=north" : "a=leftx-,microphone=rightshoulder"));
+    }
+    configuration.input.expansion_controllers = 2;
+    const auto path = temporary_config_path();
+    REQUIRE(save_mapperbus_configuration_to_file(configuration, path));
+    const auto restored = load_mapperbus_configuration_from_file(path);
+    CHECK(restored.input.expansion_controllers == 2);
+    for (const int player : {0, 1, 2, 3}) {
+        CHECK(restored.input.keyboard_profile(player) ==
+              configuration.input.keyboard_profile(player));
+        const auto& expected = configuration.input.gamepad_profile(player);
+        const auto& actual = restored.input.gamepad_profile(player);
+        CHECK(actual.gamepad_index == expected.gamepad_index);
+        CHECK(actual.enabled == expected.enabled);
+        CHECK(actual.axis_deadzone == expected.axis_deadzone);
+        for (std::size_t action = 0; action < platform::kInputActionCount; ++action)
+            CHECK(platform::gamepad_control_token(actual.bindings[action]) ==
+                  platform::gamepad_control_token(expected.bindings[action]));
+    }
+    CHECK(parse_expansion_controllers("none") == 0);
+    CHECK(parse_expansion_controllers("1") == 1);
+    CHECK(parse_expansion_controllers("2") == 2);
+    CHECK(parse_expansion_controllers("both") == 3);
+    CHECK_FALSE(parse_expansion_controllers("3"));
+    CHECK_FALSE(parse_expansion_controllers("invalid"));
+    {
+        std::ofstream file(path);
+        file << "[input]\nexpansion1_attached=invalid\nexpansion2_attached=true\n";
+    }
+    CHECK(load_mapperbus_configuration_from_file(path).input.expansion_controllers == 2);
+    std::filesystem::remove_all(path.parent_path());
+}
+
 TEST_CASE("Content-identified slot selections persist independently of recent games",
           "[app][configuration][state]") {
     MapperBusConfiguration configuration;

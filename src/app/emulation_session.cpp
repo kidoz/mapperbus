@@ -432,10 +432,9 @@ void EmulationSession::sync_input() {
                                                             core::ControllerWiring::RfFamicom);
     if (was_recording && !live_microphone_.recording())
         clear_microphone_playback();
-    emulator_.set_microphone_active(
-        live || input_->is_action_pressed(0, platform::InputAction::Microphone) ||
-        input_->is_action_pressed(1, platform::InputAction::Microphone));
-    for (int player = 0; player < 2; ++player) {
+    bool microphone = live;
+    for (int player = 0; player < 4; ++player) {
+        microphone |= input_->is_action_pressed(player, platform::InputAction::Microphone);
         // Consume each turbo action even when ordinary A/B is held, so its
         // phase remains independent of the normal binding.
         const bool turbo_a = turbo_input_.next(
@@ -448,9 +447,12 @@ void EmulationSession::sync_input() {
                 pressed |= turbo_a;
             if (button == Button::B)
                 pressed |= turbo_b;
-            emulator_.controller().set_button_state(player, button, pressed);
+            auto& controller =
+                player < 2 ? emulator_.controller() : emulator_.expansion_controller();
+            controller.set_button_state(player % 2, button, pressed);
         }
     }
+    emulator_.set_microphone_active(microphone);
 }
 
 void EmulationSession::submit_current_frame() {

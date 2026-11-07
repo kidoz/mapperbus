@@ -127,6 +127,15 @@ class Emulator {
     [[nodiscard]] Controller& controller() {
         return controller_;
     }
+    [[nodiscard]] Controller& expansion_controller() {
+        return expansion_controller_;
+    }
+    void set_expansion_controllers(Byte ports) {
+        bus_.set_expansion_controllers(ports);
+    }
+    [[nodiscard]] Byte expansion_controllers() const {
+        return bus_.expansion_controllers();
+    }
     [[nodiscard]] bool has_cartridge() const {
         return cartridge_ != nullptr;
     }
@@ -184,6 +193,7 @@ class Emulator {
     Ppu ppu_;
     Apu apu_;
     Controller controller_;
+    Controller expansion_controller_;
     Fds fds_;
     std::unique_ptr<Cartridge> cartridge_;
 };

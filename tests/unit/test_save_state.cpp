@@ -31,6 +31,113 @@ namespace {
 
 } // namespace
 
+TEST_CASE("Version 17 restores partially shifted external pads and validates their state",
+          "[state][controller][expansion]") {
+    Emulator emulator;
+    emulator.set_controller_wiring(ControllerWiring::RfFamicom);
+    emulator.set_expansion_controllers(3);
+    emulator.expansion_controller().set_button_state(0, Button::Select, true);
+    emulator.expansion_controller().set_button_state(1, Button::Start, true);
+    emulator.expansion_controller().write(1);
+    emulator.expansion_controller().write(0);
+    CHECK((emulator.read_cpu(0x4016) & 2U) == 0);
+    CHECK((emulator.read_cpu(0x4017) & 2U) == 0);
+    const auto before = emulator.save_state();
+    const auto replay = [&] {
+        CHECK((emulator.read_cpu(0x4016) & 2U) == 0);
+        CHECK((emulator.read_cpu(0x4016) & 2U) == 2);
+        CHECK((emulator.read_cpu(0x4017) & 2U) == 0);
+        CHECK((emulator.read_cpu(0x4017) & 2U) == 0);
+        CHECK((emulator.read_cpu(0x4017) & 2U) == 2);
+    };
+    replay();
+    const auto after = emulator.save_state();
+    emulator.set_expansion_controllers(0);
+    REQUIRE(emulator.load_state(before));
+    CHECK(emulator.expansion_controllers() == 3);
+    replay();
+    CHECK(emulator.save_state() == after);
+
+    StateWriter cpu, ppu, apu, bus;
+    emulator.cpu().save_state(cpu);
+    emulator.ppu().save_state(ppu);
+    Apu{}.save_state(apu);
+    MemoryBus{}.save_state(bus);
+    const auto attachment_offset =
+        43 + cpu.data().size() + ppu.data().size() + apu.data().size() + bus.data().size() - 1;
+    for (const auto [offset, value] : {std::pair{attachment_offset, Byte{4}},
+                                       {after.size() - 1, Byte{2}},
+                                       {after.size() - 1, Byte{1}}}) {
+        auto corrupt = before;
+        corrupt[offset] = value;
+        REQUIRE_FALSE(emulator.load_state(corrupt));
+        CHECK(emulator.save_state() == after);
+    }
+    for (std::size_t missing = 1; missing <= 5; ++missing) {
+        REQUIRE_FALSE(emulator.load_state(std::span(before).first(before.size() - missing)));
+        CHECK(emulator.save_state() == after);
+    }
+}
+
+TEST_CASE("Version 16 imports detach external pads and preserve microphone and wiring",
+          "[state][controller][expansion]") {
+    Emulator emulator;
+    emulator.set_controller_wiring(ControllerWiring::RfFamicom);
+    emulator.set_microphone_active(true);
+    emulator.set_expansion_controllers(3);
+    emulator.expansion_controller().set_button_state(0, Button::A, true);
+    const auto legacy = mapperbus::tests::legacy_state(emulator, 16);
+    REQUIRE(emulator.load_state(legacy));
+    CHECK(emulator.expansion_controllers() == 0);
+    CHECK(emulator.controller_wiring() == ControllerWiring::RfFamicom);
+    CHECK(emulator.microphone_active());
+    CHECK((emulator.read_cpu(0x4016) & 6U) == 4);
+    emulator.expansion_controller().write(1);
+    CHECK(emulator.expansion_controller().peek(0) == 0);
+}
+
+TEST_CASE("External snapshot replay preserves a held CPU read enable",
+          "[state][controller][expansion][cpu]") {
+    register_builtin_mappers();
+    constexpr Byte kProgram[] = {0xA9,
+                                 0x01,
+                                 0x8D,
+                                 0x16,
+                                 0x40, // strobe high
+                                 0xA9,
+                                 0x00,
+                                 0x8D,
+                                 0x16,
+                                 0x40, // strobe low
+                                 0xAD,
+                                 0x16,
+                                 0x40, // LDA $4016: hold /OE at instruction boundary
+                                 0xAD,
+                                 0x16,
+                                 0x40, // next opcode fetch releases /OE, then reads B
+                                 0x4C,
+                                 0x00,
+                                 0x80};
+    const auto rom = mapperbus::tests::build_ines_rom("expansion-held-read", 0, 1, 1, kProgram);
+    Emulator emulator;
+    REQUIRE(emulator.load_cartridge(rom.string()));
+    emulator.reset();
+    emulator.set_expansion_controllers(1);
+    emulator.expansion_controller().set_button_state(0, Button::B, true);
+    for (int instruction = 0; instruction < 5; ++instruction)
+        emulator.step_instruction();
+    const auto before = emulator.save_state();
+    CHECK(emulator.expansion_controller().peek(0) == 0); // A, not yet clocked
+    emulator.step_instruction();
+    CHECK(emulator.expansion_controller().peek(0) == 1); // B
+    const auto after = emulator.save_state();
+    REQUIRE(emulator.load_state(before));
+    CHECK(emulator.expansion_controller().peek(0) == 0);
+    emulator.step_instruction();
+    CHECK(emulator.save_state() == after);
+    std::filesystem::remove(rom);
+}
+
 TEST_CASE("SHA-256 agrees with standard vectors including multi-block padding",
           "[state][identity]") {
     const auto hash = [](std::string_view input) {
@@ -146,7 +253,7 @@ TEST_CASE("Version 3 states require explicit legacy import", "[state][identity]"
     // A rejected v6 audio extension must roll back the entire machine.
     for (const Byte invalid : {32, 255}) {
         auto corrupt = original;
-        corrupt[corrupt.size() - 16384 - 9] = invalid;
+        corrupt[corrupt.size() - 5 - 16384 - 9] = invalid;
         REQUIRE_FALSE(emulator.load_state(corrupt));
         REQUIRE(emulator.save_state() == original);
     }
@@ -195,7 +302,7 @@ TEST_CASE("Snapshots restore controller timing and legacy states select NES wiri
     Apu{}.save_state(apu);
     MemoryBus{}.save_state(bus);
     const auto end =
-        43 + cpu.data().size() + ppu.data().size() + apu.data().size() + bus.data().size();
+        43 + cpu.data().size() + ppu.data().size() + apu.data().size() + bus.data().size() - 1;
     for (const bool invalid_timing : {false, true}) {
         auto corrupt = rf;
         // RF snapshots must have idle /OE at an instruction boundary.
@@ -232,7 +339,7 @@ TEST_CASE("Snapshots preserve RF wiring and version 14 retains its NES wiring",
     Apu{}.save_state(apu);
     MemoryBus{}.save_state(bus);
     const auto wiring_offset =
-        43 + cpu.data().size() + ppu.data().size() + apu.data().size() + bus.data().size() - 4;
+        43 + cpu.data().size() + ppu.data().size() + apu.data().size() + bus.data().size() - 5;
     for (const Byte invalid : {Byte{2}, Byte{255}}) {
         auto corrupt = rf;
         corrupt[wiring_offset] = invalid;
@@ -269,7 +376,7 @@ TEST_CASE("Microphone snapshots preserve the carrier and validate missing or cor
     Apu{}.save_state(apu);
     MemoryBus{}.save_state(bus);
     const auto end =
-        43 + cpu.data().size() + ppu.data().size() + apu.data().size() + bus.data().size();
+        43 + cpu.data().size() + ppu.data().size() + apu.data().size() + bus.data().size() - 1;
     for (const uint16_t phase : {uint16_t{1024}, uint16_t{65535}}) {
         auto corrupt = before;
         std::memcpy(corrupt.data() + end - 2, &phase, sizeof(phase));

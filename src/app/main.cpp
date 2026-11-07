@@ -108,6 +108,9 @@ int main(int argc, char* argv[]) {
         mapperbus::core::logger::info(
             "  --controller-timing T nes-av-famicom (default) or rf-famicom");
         mapperbus::core::logger::info("  --controller-wiring W nes (default) or rf-famicom");
+        mapperbus::core::logger::info("  --expansion-controllers P none (default), 1, 2, or both");
+        mapperbus::core::logger::info(
+            "  --gamepad3/4 N / --gamepad3-map / --gamepad4-map external pad profiles");
         mapperbus::core::logger::info(
             "  --live-microphone     enable host microphone activity for RF wiring");
         mapperbus::core::logger::info("  --no-live-microphone  disable host capture for this run");
@@ -159,11 +162,14 @@ int main(int argc, char* argv[]) {
     auto microphone_settings = mapperbus_config.microphone;
     auto controller_timing = mapperbus_config.input.controller_timing;
     auto controller_wiring = mapperbus_config.input.controller_wiring;
+    auto expansion_controllers = mapperbus_config.input.expansion_controllers;
     auto state_storage = mapperbus_config.save_states;
     fds_bios = mapperbus_config.fds_bios_path;
     mapperbus::core::AudioSettings audio_settings = mapperbus_config.audio;
     mapperbus::frontend::Sdl3InputConfig input_config = mapperbus_config.input.gamepad;
     mapperbus::frontend::Sdl3InputConfig input_config2 = mapperbus_config.input.player2_gamepad;
+    auto input_config3 = mapperbus_config.input.gamepad_profile(2);
+    auto input_config4 = mapperbus_config.input.gamepad_profile(3);
 
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--scale") == 0 && i + 1 < argc) {
@@ -230,6 +236,40 @@ int main(int argc, char* argv[]) {
                 mapperbus::core::logger::error("Invalid gamepad2 map: {}", result.error());
                 return EXIT_FAILURE;
             }
+        } else if (std::strcmp(argv[i], "--gamepad3") == 0 ||
+                   std::strcmp(argv[i], "--gamepad4") == 0) {
+            auto& target = std::strcmp(argv[i], "--gamepad3") == 0 ? input_config3 : input_config4;
+            const std::string_view value = i + 1 < argc ? argv[++i] : "";
+            int index = 0;
+            const auto parsed = std::from_chars(value.data(), value.data() + value.size(), index);
+            if (parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size() ||
+                index < 0) {
+                mapperbus::core::logger::error("--gamepad3/4 requires a nonnegative device index");
+                return EXIT_FAILURE;
+            }
+            target.gamepad_index = index;
+        } else if (std::strcmp(argv[i], "--gamepad3-map") == 0 ||
+                   std::strcmp(argv[i], "--gamepad4-map") == 0) {
+            auto& target =
+                std::strcmp(argv[i], "--gamepad3-map") == 0 ? input_config3 : input_config4;
+            if (i + 1 >= argc) {
+                mapperbus::core::logger::error("Missing external gamepad mapping");
+                return EXIT_FAILURE;
+            }
+            auto mapped = mapperbus::frontend::apply_gamepad_mapping(target, argv[++i]);
+            if (!mapped) {
+                mapperbus::core::logger::error("{}", mapped.error());
+                return EXIT_FAILURE;
+            }
+        } else if (std::strcmp(argv[i], "--expansion-controllers") == 0) {
+            const auto ports = i + 1 < argc ? mapperbus::app::parse_expansion_controllers(argv[++i])
+                                            : std::nullopt;
+            if (!ports) {
+                mapperbus::core::logger::error(
+                    "--expansion-controllers requires none, 1, 2, or both");
+                return EXIT_FAILURE;
+            }
+            expansion_controllers = *ports;
         } else if (std::strcmp(argv[i], "--state-dir") == 0 && i + 1 < argc) {
             state_storage.directory = argv[++i];
             if (!state_storage.directory.is_absolute()) {
@@ -330,13 +370,11 @@ int main(int argc, char* argv[]) {
     }
 
     auto audio = std::make_unique<mapperbus::frontend::Sdl3Audio>();
-    mapperbus::frontend::Sdl3TwoPlayerInputConfig tp_config;
-    tp_config.player1 = input_config;
-    tp_config.player2 = input_config2;
-    auto input = std::make_unique<mapperbus::frontend::Sdl3Input>(
-        tp_config,
-        mapperbus_config.input.keyboard_bindings,
-        mapperbus_config.input.player2_keyboard_bindings);
+    mapperbus::frontend::Sdl3FourPlayerInputConfig profiles;
+    profiles.players = {input_config, input_config2, input_config3, input_config4};
+    for (int player = 0; player < 4; ++player)
+        profiles.keyboards[player] = mapperbus_config.input.keyboard_profile(player);
+    auto input = std::make_unique<mapperbus::frontend::Sdl3Input>(profiles);
     auto* sdl_input = input.get();
 
     // --- Wire into App and run ---
@@ -346,6 +384,7 @@ int main(int argc, char* argv[]) {
     app.session().set_fds_bios_path(fds_bios);
     app.session().set_controller_timing(controller_timing);
     app.session().set_controller_wiring(controller_wiring);
+    app.session().set_expansion_controllers(expansion_controllers);
     app.session().set_microphone_backend(std::make_unique<mapperbus::frontend::Sdl3Microphone>());
     app.session().configure_live_microphone(microphone_settings);
     auto result = app.initialize(rom_path, rom_member);

@@ -81,7 +81,17 @@ class MemoryBus {
                     bool has_io_state = true,
                     bool has_controller_timing = true,
                     bool has_controller_wiring = true,
-                    bool has_microphone = true);
+                    bool has_microphone = true,
+                    bool has_expansion_controllers = true);
+    void set_expansion_controllers(Byte ports) {
+        expansion_ports_ = ports & 3U;
+    }
+    [[nodiscard]] Byte expansion_controllers() const {
+        return expansion_ports_;
+    }
+    void connect_expansion_controller(Controller* controller) {
+        expansion_controller_ = controller;
+    }
     void restore_legacy_controller();
     /// Detector outputs for the current CPU cycle: IRQ level and latched NMI edge.
     [[nodiscard]] Byte interrupt_sample() const {
@@ -155,6 +165,7 @@ class MemoryBus {
     Region region_ = Region::NTSC;
     ControllerTiming controller_timing_ = ControllerTiming::NesAvFamicom;
     ControllerWiring controller_wiring_ = ControllerWiring::Nes;
+    Byte expansion_ports_ = 0;
     bool microphone_active_ = false;
     uint16_t microphone_phase_ = 0;
     Byte ppu_clock_phase_ = 0; // elapsed master clocks since the last PPU dot
@@ -170,6 +181,7 @@ class MemoryBus {
     Ppu* ppu_ = nullptr;
     Apu* apu_ = nullptr;
     Controller* controller_ = nullptr;
+    Controller* expansion_controller_ = nullptr;
     Fds* fds_ = nullptr;
 };
 

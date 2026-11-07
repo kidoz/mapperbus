@@ -318,7 +318,7 @@ TEST_CASE("Accepted IRQ survives snapshots with I set and rejects invalid interr
     const auto cpu_end = 43 + cpu.data().size();
     const auto ppu_end = cpu_end + ppu.data().size();
     const auto apu_end = ppu_end + apu.data().size();
-    const auto bus_end = apu_end + bus.data().size();
+    const auto bus_end = apu_end + bus.data().size() - 1;
     for (const auto [offset, invalid] : {std::pair{cpu_end - 1, Byte{3}},
                                          {ppu_end - 2, Byte{2}},
                                          {ppu_end - 2, Byte{1}},
@@ -751,7 +751,7 @@ TEST_CASE("Invalid CPU PPU divider phases reject snapshots with rollback", "[cpu
         Apu{}.save_state(apu);
         MemoryBus{}.save_state(bus);
         const auto phase_offset =
-            43 + cpu.data().size() + ppu.data().size() + apu.data().size() + bus.data().size() - 8;
+            43 + cpu.data().size() + ppu.data().size() + apu.data().size() + bus.data().size() - 9;
         const auto before = emulator.save_state();
         for (const Byte invalid :
              {Byte{5}, Byte{255}, static_cast<Byte>(region == Region::PAL ? 6U : 1U)}) {
@@ -1086,12 +1086,12 @@ TEST_CASE("Invalid controller line states reject snapshots with rollback",
     MemoryBus{}.save_state(bus);
     Controller{}.save_state(controller);
     const auto end =
-        43 + cpu.data().size() + ppu.data().size() + apu.data().size() + bus.data().size();
+        43 + cpu.data().size() + ppu.data().size() + apu.data().size() + bus.data().size() - 1;
     for (const auto [offset, value] : {std::pair{end - 4, Byte{2}},
                                        {end - 5, Byte{2}},
                                        {end - 6, Byte{2}},
                                        {end - 7, Byte{3}},
-                                       {end + controller.data().size() - 1, Byte{2}}}) {
+                                       {end + controller.data().size(), Byte{2}}}) {
         auto corrupt = before;
         corrupt[offset] = value;
         CHECK_FALSE(emulator.load_state(corrupt));

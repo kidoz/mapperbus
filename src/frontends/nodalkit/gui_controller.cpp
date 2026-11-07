@@ -1021,16 +1021,18 @@ MapperBusGuiController::MapperBusGuiController(nk::Application& app, nk::Window&
     audio_backend_->set_volume(static_cast<float>(configuration_.frontend.audio_volume_percent) /
                                100.0F);
 
-    auto input = std::make_unique<NodalKitInput>(
-        window_, configuration_.input.gamepad, configuration_.input.player2_gamepad);
+    auto input =
+        std::make_unique<NodalKitInput>(window_,
+                                        std::array{configuration_.input.gamepad_profile(0),
+                                                   configuration_.input.gamepad_profile(1),
+                                                   configuration_.input.gamepad_profile(2),
+                                                   configuration_.input.gamepad_profile(3)});
     input_backend_ = input.get();
     const app::MapperBusInputConfiguration default_input;
     bool replaced_reserved_binding = false;
-    for (int player = 0; player < 2; ++player) {
-        auto& bindings = player == 0 ? configuration_.input.keyboard_bindings
-                                     : configuration_.input.player2_keyboard_bindings;
-        const auto& defaults =
-            player == 0 ? default_input.keyboard_bindings : default_input.player2_keyboard_bindings;
+    for (int player = 0; player < 4; ++player) {
+        auto& bindings = configuration_.input.keyboard_profile(player);
+        const auto& defaults = default_input.keyboard_profile(player);
         for (const auto button : kBindingOrder) {
             const auto index = platform::button_index(button);
             auto key = static_cast<nk::KeyCode>(bindings[index]);
@@ -1053,6 +1055,7 @@ MapperBusGuiController::MapperBusGuiController(nk::Application& app, nk::Window&
     session_->set_fds_bios_path(configuration_.fds_bios_path);
     session_->set_controller_timing(configuration_.input.controller_timing);
     session_->set_controller_wiring(configuration_.input.controller_wiring);
+    session_->set_expansion_controllers(configuration_.input.expansion_controllers);
 #if defined(MAPPERBUS_HAVE_SDL3_AUDIO)
     session_->set_microphone_backend(std::make_unique<Sdl3Microphone>());
 #endif
@@ -1757,6 +1760,7 @@ void MapperBusGuiController::attempt_open(std::string rom_path, std::string memb
     detected_region_ = actions_->snapshot().region;
     actions_->set_controller_timing(configuration_.input.controller_timing);
     actions_->set_controller_wiring(configuration_.input.controller_wiring);
+    actions_->set_expansion_controllers(configuration_.input.expansion_controllers);
     apply_region_preference();
     refresh_settings_dialog_sections();
     actions_->step_frame();
@@ -2260,15 +2264,13 @@ void MapperBusGuiController::update_preview_surface(const std::uint32_t* data,
 }
 
 void MapperBusGuiController::update_configuration_from_state() {
-    for (int player = 0; player < 2; ++player) {
+    for (int player = 0; player < 4; ++player) {
         const auto& input = input_backend_->player_input(player);
-        auto& keyboard = player == 0 ? configuration_.input.keyboard_bindings
-                                     : configuration_.input.player2_keyboard_bindings;
+        auto& keyboard = configuration_.input.keyboard_profile(player);
         for (const auto button : kBindingOrder) {
             keyboard[platform::button_index(button)] = static_cast<int>(input.binding(button));
         }
-        (player == 0 ? configuration_.input.gamepad : configuration_.input.player2_gamepad) =
-            input.gamepad_config();
+        configuration_.input.gamepad_profile(player) = input.gamepad_config();
     }
     configuration_.audio = actions_->snapshot().audio_settings;
     configuration_.frontend.preview_scale_index = preview_scale_index(preview_scale_option_);
@@ -2301,7 +2303,9 @@ void MapperBusGuiController::open_rebind_dialog(RebindDevice device, platform::I
     }
 
     const std::string target =
-        "Player " + std::to_string(settings_input_player_ + 1) + " · " + button_name(button);
+        (settings_input_player_ < 2 ? "Player " + std::to_string(settings_input_player_ + 1)
+                                    : "External " + std::to_string(settings_input_player_ - 1)) +
+        " · " + button_name(button);
     const bool keyboard = device == RebindDevice::Keyboard;
     rebind_dialog_ = nk::Dialog::create("Rebind " + target);
     rebind_dialog_->set_presentation_style(nk::DialogPresentationStyle::Sheet);
@@ -2668,7 +2672,25 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
             refresh_ui();
         });
         hardware_group->add(
-            pref_row("Controller timing", timing_combo, "Both controllers in NTSC mode."));
+            pref_row("Controller timing", timing_combo, "Controller ports in NTSC mode."));
+        for (int port = 0; port < 2; ++port) {
+            auto attached = nk::Switch::create();
+            attached->set_active((actions_->snapshot().expansion_controllers & (1U << port)) != 0);
+            (void)attached->on_toggled().connect([this, port](bool active) {
+                const auto mask = static_cast<core::Byte>(1U << port);
+                auto ports = actions_->snapshot().expansion_controllers;
+                ports = active ? static_cast<core::Byte>(ports | mask)
+                               : static_cast<core::Byte>(ports & ~mask);
+                configuration_.input.expansion_controllers = ports;
+                actions_->set_expansion_controllers(ports);
+                save_configuration_state();
+            });
+            hardware_group->add(
+                pref_row("External controller " + std::to_string(port + 1),
+                         attached,
+                         "Famicom expansion pad; bindings are under Input > External " +
+                             std::to_string(port + 1) + "."));
+        }
         page->append(hardware_group);
         auto bios_group = SettingsGroup::create("BIOS");
         bios_group->set_horizontal_size_policy(nk::SizePolicy::Expanding);
@@ -2722,11 +2744,11 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
         page->append(bios_status);
     } else if (settings_page_ == SettingsPage::Input) {
         auto player_selector = nk::SegmentedControl::create();
-        player_selector->set_segments({"Player 1", "Player 2"});
+        player_selector->set_segments({"Player 1", "Player 2", "External 1", "External 2"});
         player_selector->set_selected_index(settings_input_player_);
         player_selector->ensure_accessible().set_name("Input player");
         (void)player_selector->on_selection_changed().connect([this](int player) {
-            settings_input_player_ = std::clamp(player, 0, 1);
+            settings_input_player_ = std::clamp(player, 0, 3);
             refresh_settings_dialog_sections();
         });
         page->append(player_selector);
@@ -2735,8 +2757,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
         const int gamepad_count =
             input_backend_->player_input(settings_input_player_).gamepad_device_count();
         const bool gamepad_plugged_in =
-            gamepad_count >
-            input_backend_->player_input(settings_input_player_).gamepad_config().gamepad_index;
+            input_backend_->player_input(settings_input_player_).gamepad_connected();
         const bool gamepad_enabled =
             input_backend_->player_input(settings_input_player_).gamepad_config().enabled;
         const bool gamepad_available = gamepad_support && gamepad_enabled && gamepad_plugged_in;
@@ -3454,7 +3475,7 @@ void MapperBusGuiController::handle_menu_action(std::string_view action) {
 }
 
 std::string MapperBusGuiController::input_status_text() const {
-    for (int player = 0; player < 2; ++player) {
+    for (int player = 0; player < 4; ++player) {
         const auto& input = input_backend_->player_input(player);
         if (!input.uses_default_bindings() || !input.uses_default_gamepad_bindings()) {
             return "Input custom";

@@ -33,7 +33,7 @@ class TurboInput {
 
   private:
     int period_ = 4;
-    std::array<std::array<int, 2>, 2> phases_{};
+    std::array<std::array<int, 2>, 4> phases_{};
 };
 
 } // namespace mapperbus::app

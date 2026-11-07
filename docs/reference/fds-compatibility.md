@@ -198,10 +198,12 @@ shows `$67FF` / `$6E25`; both captured values match in MapperBus.
 - NTSC DMC stop/abort and duplicate-fetch timing pass the two targeted
   AccuracyCoin diagnostics; see [DMA timing](dma-timing.md). PAL/clone stop
   quirks and PAL register/repeated-read behavior remain unverified. The selected
-  All four combinations of NES/AV or RF timing and NES or RF data wiring pass six
+  all four combinations of NES/AV or RF timing and NES or RF data wiring pass six
   additional targeted checks each. RF built-in controller 2 omits Start/Select.
   Synthetic microphone activity has normal/DMA read and snapshot coverage;
-  microphone analog circuitry, expansion accessories, and electrical
+  External standard pads now have separate D1/DMA/snapshot and four-gamepad ROM
+  regressions; see [external pads](dma-timing.md#external-standard-pads).
+  Microphone analog circuitry, other expansion accessories, and electrical
   DMC sample capture remain outside those timing checks. Reset-cycle bus activity,
   analog DRAM decay, 2C33 test mode, and mechanical disk effects are not modeled.
 - CRC coverage includes the public BIOS-dumper write/readback flows, independent

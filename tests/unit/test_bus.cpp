@@ -553,6 +553,133 @@ TEST_CASE("APU status returns internal data without driving external open bus", 
     CHECK(machine.read(0x4000) == 0xA5);
 }
 
+TEST_CASE("External Famicom pads have independent eight-button reports on D1",
+          "[bus][controller][expansion]") {
+    for (const auto timing : {ControllerTiming::NesAvFamicom, ControllerTiming::RfFamicom}) {
+        for (const auto wiring : {ControllerWiring::Nes, ControllerWiring::RfFamicom}) {
+            for (const Byte attached : {0, 1, 2, 3}) {
+                INFO("timing " << int(timing) << ", wiring " << int(wiring) << ", attached "
+                               << int(attached));
+                IoMachine machine;
+                Controller external;
+                machine.bus.connect_expansion_controller(&external);
+                machine.bus.set_controller_timing(timing);
+                machine.bus.set_controller_wiring(wiring);
+                machine.bus.set_expansion_controllers(attached);
+                const Byte built_in[] = {0xA5, 0x5A};
+                const Byte expansion[] = {0x3C, 0xCC}; // external pad two keeps Select/Start
+                for (int player = 0; player < 2; ++player) {
+                    for (unsigned bit = 0; bit < 8; ++bit) {
+                        const auto button = static_cast<Button>(1U << bit);
+                        machine.pads.set_button_state(player, button, built_in[player] >> bit & 1U);
+                        external.set_button_state(player, button, expansion[player] >> bit & 1U);
+                    }
+                }
+                machine.latch();
+                for (unsigned bit = 0; bit < 12; ++bit) {
+                    for (int player = 0; player < 2; ++player) {
+                        const Byte mask =
+                            player == 1 && wiring == ControllerWiring::RfFamicom ? 0xF3 : 0xFF;
+                        const auto d0 = bit < 8 ? ((built_in[player] & mask) >> bit & 1U) : 1U;
+                        const auto d1 = !(attached & (1U << player)) ? 0U
+                                        : bit < 8 ? (expansion[player] >> bit & 1U)
+                                                  : 1U;
+                        machine.bus.write(0, 0xF8); // also check the floating/open-bus lines
+                        const auto value = machine.read(static_cast<Address>(0x4016 + player));
+                        CHECK((value & 3U) == (d0 | d1 << 1U));
+                        CHECK((value & 0xFCU) ==
+                              (wiring == ControllerWiring::RfFamicom && player == 0 ? 0xF8 : 0xE0));
+                        (void)machine.read(0);
+                    }
+                }
+            }
+        }
+    }
+}
+
+TEST_CASE("External pads share live strobe and read enables without attachment side effects",
+          "[bus][controller][expansion]") {
+    IoMachine machine;
+    Controller external;
+    machine.bus.connect_expansion_controller(&external);
+    machine.bus.set_expansion_controllers(3);
+    machine.bus.write(0x4016, 1);
+    external.set_button_state(0, Button::A, true);
+    CHECK((machine.read(0x4016) & 3U) == 2);
+    external.set_button_state(0, Button::A, false);
+    CHECK((machine.read(0x4016) & 3U) == 0);
+    external.set_button_state(0, Button::B, true);
+    external.set_button_state(1, Button::A, true);
+    machine.latch();
+    CHECK((machine.read(0x4016) & 2U) == 0);
+    CHECK((machine.read(0x4016) & 2U) == 0); // continuous NES /OE, no second clock
+    machine.bus.set_expansion_controllers(2);
+    CHECK((machine.read(0x4016) & 2U) == 0);
+    machine.bus.set_expansion_controllers(3);
+    CHECK((machine.read(0x4016) & 2U) == 0); // changing attachment does not reload/clock
+    CHECK((machine.read(0x4017) & 2U) == 2); // independent second report
+    CHECK((machine.read(0x4016) & 2U) == 2); // first report advanced to B
+    machine.bus.set_controller_timing(ControllerTiming::RfFamicom);
+    CHECK((machine.read(0x4016) & 2U) == 0); // timing change released the held read once
+    CHECK((machine.read(0x4017) & 2U) == 0);
+}
+
+TEST_CASE("OAM DMA clocks external and built-in serial lines together",
+          "[bus][controller][dma][expansion]") {
+    for (const auto timing : {ControllerTiming::NesAvFamicom, ControllerTiming::RfFamicom}) {
+        IoMachine machine;
+        Controller external;
+        machine.bus.connect_expansion_controller(&external);
+        machine.bus.set_expansion_controllers(3);
+        machine.bus.set_controller_timing(timing);
+        machine.pads.set_button_state(0, Button::B, true);
+        external.set_button_state(0, Button::Select, true);
+        machine.latch();
+        REQUIRE(machine.bus.run_oam_dma(0x00, 0x4016, false) >= 513);
+        // The NTSC split decoder aliases source offsets $16/$17 to their controller
+        // registers. Both serial lines must experience exactly the same clocks.
+        StateWriter built_in, expansion;
+        machine.pads.save_state(built_in);
+        external.save_state(expansion);
+        CHECK(built_in.data()[2] == expansion.data()[2]); // all eight bits shifted to ones
+        CHECK(built_in.data()[2] == 0xFF);
+        CHECK((machine.read(0x4016) & 3U) == 3);
+    }
+}
+
+TEST_CASE("DMC halted reads clock external pads with the selected console timing",
+          "[bus][controller][dma][expansion]") {
+    for (const auto timing : {ControllerTiming::NesAvFamicom, ControllerTiming::RfFamicom}) {
+        IoMachine machine;
+        Controller external, expected;
+        machine.bus.connect_expansion_controller(&external);
+        machine.bus.set_expansion_controllers(1);
+        machine.bus.set_controller_timing(timing);
+        for (const auto button : {Button::A, Button::Select, Button::Up, Button::Left}) {
+            machine.pads.set_button_state(0, button, true);
+            external.set_button_state(0, button, true);
+            expected.set_button_state(0, button, true);
+        }
+        machine.latch();
+        expected.write(1);
+        expected.write(0);
+        machine.bus.write(0x4012, 0); // sample $C000 does not alias either controller
+        machine.bus.write(0x4013, 0);
+        machine.bus.write(0x4015, 0x10);
+        machine.bus.clock_cpu_bus(0, 3);
+        const auto elapsed = machine.bus.run_dmc_dma(0x4016);
+        REQUIRE(elapsed >= 3);
+        const auto clocks = timing == ControllerTiming::RfFamicom ? elapsed - 1 : 1;
+        for (unsigned clock = 0; clock < clocks; ++clock)
+            expected.clock(0);
+        StateWriter actual_state, expected_state;
+        external.save_state(actual_state);
+        expected.save_state(expected_state);
+        CHECK(actual_state.data() == expected_state.data());
+        CHECK((machine.read(0x4016) & 3U) == (expected.peek(0) ? 3 : 0));
+    }
+}
+
 TEST_CASE("OAM DMA activates APU registers only through the halted CPU address",
           "[bus][dma][apu]") {
     for (const Address halted : {Address{0x0200}, Address{0x4000}}) {

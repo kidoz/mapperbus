@@ -26,6 +26,7 @@ struct SessionSnapshot {
     core::Region region = core::Region::NTSC;
     core::ControllerTiming controller_timing = core::ControllerTiming::NesAvFamicom;
     core::ControllerWiring controller_wiring = core::ControllerWiring::Nes;
+    core::Byte expansion_controllers = 0;
     core::AudioSettings audio_settings{};
 };
 
@@ -47,6 +48,9 @@ class SessionActions {
     }
     void set_controller_wiring(core::ControllerWiring wiring) {
         session_.set_controller_wiring(wiring);
+    }
+    void set_expansion_controllers(core::Byte ports) {
+        session_.set_expansion_controllers(ports);
     }
     core::Result<void> apply_audio_settings(const core::AudioSettings& settings);
     core::Result<void> set_upscaler(std::unique_ptr<platform::Upscaler> upscaler);

@@ -165,6 +165,126 @@ TEST_CASE("SDL3 gamepad control parser accepts buttons, aliases, and axes", "[sd
     REQUIRE(right->axis == platform::GamepadAxis::LeftX);
 }
 
+TEST_CASE("Four SDL gamepads reach separate D0 and D1 reports through a running ROM",
+          "[sdl3][input][expansion][functional]") {
+    struct VirtualPads {
+        std::array<SDL_JoystickID, 4> ids{};
+        std::array<SDL_Joystick*, 4> joysticks{};
+        ~VirtualPads() {
+            for (auto* joystick : joysticks)
+                if (joystick)
+                    SDL_CloseJoystick(joystick);
+            for (auto id : ids)
+                if (id)
+                    SDL_DetachVirtualJoystick(id);
+            SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
+        }
+    } pads;
+    REQUIRE(SDL_InitSubSystem(SDL_INIT_GAMEPAD));
+    SDL_VirtualJoystickDesc desc{};
+    SDL_INIT_INTERFACE(&desc);
+    desc.type = SDL_JOYSTICK_TYPE_GAMEPAD;
+    desc.nbuttons = SDL_GAMEPAD_BUTTON_COUNT;
+    desc.button_mask = (1U << SDL_GAMEPAD_BUTTON_COUNT) - 1;
+    desc.name = "MapperBus external pad test";
+    Sdl3FourPlayerInputConfig config;
+    for (int player = 0; player < 4; ++player) {
+        pads.ids[player] = SDL_AttachVirtualJoystick(&desc);
+        REQUIRE(pads.ids[player] != 0);
+        pads.joysticks[player] = SDL_OpenJoystick(pads.ids[player]);
+        REQUIRE(pads.joysticks[player] != nullptr);
+        int count = 0;
+        auto* ids = SDL_GetGamepads(&count);
+        REQUIRE(ids != nullptr);
+        const int index = static_cast<int>(std::find(ids, ids + count, pads.ids[player]) - ids);
+        SDL_free(ids);
+        REQUIRE(index < count);
+        config.players[player].gamepad_index = index;
+    }
+    core::register_builtin_mappers();
+    constexpr std::uint8_t kProgram[] = {
+        0xA9, 0x01, 0x8D, 0x16, 0x40,       // LDA #1; STA $4016
+        0xA9, 0x00, 0x8D, 0x16, 0x40,       // LDA #0; STA $4016
+        0xA2, 0x00,                         // LDX #0
+        0xAD, 0x16, 0x40, 0x9D, 0x00, 0x06, // LDA $4016; STA $0600,X
+        0xAD, 0x17, 0x40, 0x9D, 0x10, 0x06, // LDA $4017; STA $0610,X
+        0xE8, 0xE0, 0x08, 0xD0, 0xEF,       // INX; CPX #8; BNE loop
+        0x4C, 0x00, 0x80                    // JMP $8000
+    };
+    const auto rom = tests::build_ines_rom("expansion-functional", 0, 1, 1, kProgram);
+    const auto config_path = std::filesystem::path(rom.string() + ".conf");
+    app::MapperBusConfiguration saved;
+    saved.input.expansion_controllers = 3;
+    for (int player = 0; player < 4; ++player)
+        saved.input.gamepad_profile(player) = config.players[player];
+    REQUIRE(app::save_mapperbus_configuration_to_file(saved, config_path));
+    const auto loaded = app::load_mapperbus_configuration_from_file(config_path);
+    for (int player = 0; player < 4; ++player) {
+        config.players[player] = loaded.input.gamepad_profile(player);
+        config.keyboards[player] = loaded.input.keyboard_profile(player);
+    }
+    auto input = std::make_unique<Sdl3Input>(config);
+    auto* backend = input.get();
+    app::EmulationSession session(std::make_unique<platform::NullVideo>(),
+                                  std::make_unique<platform::NullAudio>(),
+                                  std::move(input));
+    REQUIRE(session.load_rom(rom.string()));
+    session.set_controller_wiring(core::ControllerWiring::RfFamicom);
+    session.set_controller_timing(core::ControllerTiming::RfFamicom);
+    session.set_expansion_controllers(loaded.input.expansion_controllers);
+    REQUIRE(SDL_SetJoystickVirtualButton(pads.joysticks[0], SDL_GAMEPAD_BUTTON_EAST, true));
+    REQUIRE(SDL_SetJoystickVirtualButton(pads.joysticks[1], SDL_GAMEPAD_BUTTON_SOUTH, true));
+    REQUIRE(SDL_SetJoystickVirtualButton(pads.joysticks[1], SDL_GAMEPAD_BUTTON_START, true));
+    REQUIRE(SDL_SetJoystickVirtualButton(pads.joysticks[2], SDL_GAMEPAD_BUTTON_BACK, true));
+    REQUIRE(SDL_SetJoystickVirtualButton(pads.joysticks[2], SDL_GAMEPAD_BUTTON_START, true));
+    REQUIRE(SDL_SetJoystickVirtualButton(pads.joysticks[3], SDL_GAMEPAD_BUTTON_EAST, true));
+    REQUIRE(SDL_SetJoystickVirtualButton(pads.joysticks[3], SDL_GAMEPAD_BUTTON_DPAD_UP, true));
+    const auto check_reports = [&](core::Byte external2, core::Byte built_in2 = 2) {
+        REQUIRE(session.tick() == app::TickResult::FrameAdvanced);
+        for (unsigned bit = 0; bit < 8; ++bit) {
+            CAPTURE(bit);
+            CHECK((session.emulator().read_cpu(0x0600 + bit) & 3U) ==
+                  ((0x01U >> bit & 1U) | (0x0CU >> bit & 1U) << 1U));
+            CHECK((session.emulator().read_cpu(0x0610 + bit) & 3U) ==
+                  ((built_in2 >> bit & 1U) | (external2 >> bit & 1U) << 1U));
+        }
+    };
+    check_reports(0x11);
+    SDL_CloseJoystick(pads.joysticks[3]);
+    pads.joysticks[3] = nullptr;
+    REQUIRE(SDL_DetachVirtualJoystick(pads.ids[3]));
+    pads.ids[3] = 0;
+    check_reports(0);
+    CHECK_FALSE(backend->is_button_pressed(3, core::Button::A));
+    pads.ids[3] = SDL_AttachVirtualJoystick(&desc);
+    REQUIRE(pads.ids[3] != 0);
+    pads.joysticks[3] = SDL_OpenJoystick(pads.ids[3]);
+    REQUIRE(pads.joysticks[3] != nullptr);
+    REQUIRE(SDL_SetJoystickVirtualButton(pads.joysticks[3], SDL_GAMEPAD_BUTTON_EAST, true));
+    check_reports(1);
+    // Reconnect before the next poll: the replacement ID is new, not a peer
+    // which should be suppressed when processing the queued removal event.
+    SDL_CloseJoystick(pads.joysticks[3]);
+    pads.joysticks[3] = nullptr;
+    REQUIRE(SDL_DetachVirtualJoystick(pads.ids[3]));
+    pads.ids[3] = SDL_AttachVirtualJoystick(&desc);
+    REQUIRE(pads.ids[3] != 0);
+    pads.joysticks[3] = SDL_OpenJoystick(pads.ids[3]);
+    REQUIRE(pads.joysticks[3] != nullptr);
+    REQUIRE(SDL_SetJoystickVirtualButton(pads.joysticks[3], SDL_GAMEPAD_BUTTON_EAST, true));
+    check_reports(1);
+    // A middle removal compacts SDL's indices. Profile two must not adopt
+    // external pad one, which is still holding Select and Start.
+    SDL_CloseJoystick(pads.joysticks[1]);
+    pads.joysticks[1] = nullptr;
+    REQUIRE(SDL_DetachVirtualJoystick(pads.ids[1]));
+    pads.ids[1] = 0;
+    check_reports(1, 0);
+    check_reports(1, 0);
+    std::filesystem::remove(config_path);
+    std::filesystem::remove(rom);
+}
+
 TEST_CASE("SDL3 gamepad mapping parser updates NES bindings", "[sdl3][input]") {
     Sdl3InputConfig config;
 

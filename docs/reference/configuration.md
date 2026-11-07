@@ -84,7 +84,7 @@ with the same tokens, without changing the saved configuration. The GUI exposes
 Settings → General → Hardware → Controller wiring and saves explicit choices.
 RF wiring models the built-in second controller without Start/Select and the
 unattached controller-port inputs. Digital microphone activity is available
-through the Microphone action; expansion accessories are not implemented. Existing host bindings are retained for switching back to
+through the Microphone action. External standard pads are configured separately below. Existing host bindings are retained for switching back to
 NES. Data-pin changes take effect immediately; a latched button report changes
 on the next strobe. Reset retains the selection.
 
@@ -93,18 +93,42 @@ NES wiring, including version 14 snapshots that selected RF timing. Loading a
 snapshot changes the active selection without rewriting the configuration;
 a new GUI ROM open reapplies both preferences.
 
+## External Famicom controllers
+
+`[input] expansion1_attached` and `expansion2_attached` are independent booleans,
+both defaulting to `false`. Missing or invalid values leave that pad detached.
+GUI Settings → General → Hardware exposes **External controller 1/2** switches.
+CLI and SDL3 accept `--expansion-controllers none|1|2|both` for this process.
+Attachments are independent of wiring and timing; select RF wiring/timing for
+an original Famicom setup.
+
+External 1 uses `[input.player3.keyboard]` / `[input.player3.gamepad]`; External 2
+uses the corresponding `player4` sections. Their keyboard bindings start unbound;
+gamepad indices default to `2` and `3`. Mapping tokens and other defaults match
+the built-in profiles. SDL3 also accepts `--gamepad3`, `--gamepad4`,
+`--gamepad3-map`, and `--gamepad4-map`.
+
+These are standard eight-button pads on D1 of `$4016`/`$4017`. Built-in pads
+remain on D0; external pad 2 includes Start/Select even with RF wiring. Games
+must read D1 to use them. Four Score and Hori adapter signatures are outside this
+implementation. See [serial behavior](dma-timing.md#external-standard-pads).
+
+Reset retains attachments. Version 17 snapshots restore attachments and partially
+shifted reports; versions 3–16 import with external pads detached. Snapshot loads
+leave the saved startup preference unchanged; a new GUI ROM open reapplies it.
+
 ## Microphone bindings
 
-Both input profiles accept `microphone` under their keyboard/gamepad sections.
+All four input profiles accept `microphone` under their keyboard/gamepad sections.
 Player one defaults to keyboard code `16` (M); player two is unbound. Gamepad
-bindings default to `none`. Either profile activates the same single RF Famicom
+bindings default to `none`. Every profile activates the same single RF Famicom
 microphone. GUI Settings → Input includes Microphone capture, clear, conflict
 handling, defaults and input testing. SDL3 mapping options accept `microphone`
 or `mic`, for example `--gamepad2-map microphone=rightshoulder`.
 
 Hold the bound key/button with RF Famicom wiring selected to generate digital
 activity. Keyboard M defaults are unbound on legacy import if another action in
-either profile already uses M; explicit bindings are retained. Bindings use the
+any profile already uses M; explicit bindings are retained. Bindings use the
 existing version-1 format. Runtime activity and carrier phase are stored in
 snapshot version 16, not user configuration. Older states restore an inactive
 microphone. Bound input remains available alongside optional live capture.
@@ -153,7 +177,7 @@ at those boundaries. Capture stays open when only microphone playback is muted.
 This is an optional host monitor, not a model of Famicom analog mixing circuitry.
 
 Raw PCM is used only in memory, never saved or transmitted. Capture settings and
-device state are host preferences outside snapshots; version 16 still stores only the core's
+device state are host preferences outside snapshots; snapshots store the core's
 processed activity and carrier phase. The SDL3 executable accepts process-local
 [overrides](commands-and-controls.md#famicom-microphone). Builds without SDL audio
 report capture unavailable. Real-device GUI capture has been checked on macOS
@@ -274,10 +298,19 @@ control names. These sections configure player 1. Player 2 has independent
 keys. Its keyboard defaults to unbound (`0`) for every action, and its gamepad
 defaults to index `1`; the other gamepad defaults match player 1.
 
-In GUI Settings → Input, select **Player 1** or **Player 2** before rebinding,
+External pads use `player3` and `player4` sections as described above.
+
+In GUI Settings → Input, select **Player 1**, **Player 2**, **External 1**, or
+**External 2** before rebinding,
 choosing a gamepad, or restoring defaults. Each profile saves automatically.
 Both graphical frontends combine the keyboard and gamepad assigned to each
-player. Turbo speed is shared by both players.
+player. Turbo speed is shared by all four profiles; their phases are independent.
+
+Device indices refer to the current SDL enumeration. A disconnect releases that
+profile without adopting an already connected peer after renumbering. A new
+device at the configured index can reconnect automatically. If device order
+changes, choose the intended device again in the GUI, or restart SDL3 with the
+updated index.
 
 Keyboard code `0` and gamepad token `none` explicitly leave an action unbound.
 Missing turbo bindings use the defaults above unless those controls already

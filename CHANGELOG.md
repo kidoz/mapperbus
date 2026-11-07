@@ -9,6 +9,10 @@ Versioning.
 
 ### Added
 
+- Two independently attached standard Famicom expansion controllers with four
+  keyboard/gamepad profiles, GUI attachment switches, SDL3/CLI overrides, shared
+  serial/DMA timing, and version-17 snapshots with legacy import.
+
 - Asynchronous macOS microphone permission requests, denied/restricted guidance,
   Retry/reopen recovery, and permission-loss checks before capture reads. Native
   prompts stay outside the core; status messages wrap and expose accessible text.
@@ -55,6 +59,9 @@ Versioning.
   gamepad mappings, deterministic CPU-cycle pulses, and snapshot persistence.
 
 ### Fixed
+
+- Gamepad disconnects no longer adopt another connected device after SDL
+  renumbers its device list; explicit device selection permits reassignment.
 
 - NTSC APU register activation during DMA, `$4015` external-bus isolation,
   controller read-enable edges, and strobe sampling for NES/AV Famicom timing.

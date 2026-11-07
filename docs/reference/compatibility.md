@@ -58,7 +58,7 @@ Source: [FDS subsystem](../../src/core/fds/fds.cpp),
 | Frontend | Presentation and input | Runtime scope |
 |---|---|---|
 | Headless CLI | No display, audio device, or interactive controller | Load NES/FDS media and execute 60 frames, or `--frames N` |
-| SDL3 | Window, audio, keyboard, gamepads | Command-line options, two-player gamepad input, runtime shortcuts |
+| SDL3 | Window, audio, keyboard, gamepads | Command-line options, four independent host input profiles, runtime shortcuts |
 | NodalKit GUI | Toolkit window and controls; SDL3 audio/gamepads when found | ROM opening, settings, session actions, recent ROMs |
 
 macOS and Linux have project build workflows. SDL3 supports Wayland and X11 on
@@ -73,3 +73,13 @@ Save states and battery-backed cartridge RAM are implemented. State files are
 versioned and validated on load; rejected states leave the current machine
 unchanged. See [Save and restore](../how-to/save-and-restore.md) for filenames and
 operations, and [Configuration](configuration.md) for frontend preferences.
+
+## External Famicom controllers
+
+Two standard expansion pads are supported on D1, alongside the built-in D0
+controllers. Enable them in Settings → General → Hardware and bind **External
+1/2** under Input, or use the SDL3 options in
+[Commands and controls](commands-and-controls.md). Games must read D1; this does
+not provide Four Score or Hori adapter protocols. Serial timing, DMA behavior,
+and version-17 snapshot replay have synthetic regression coverage, including
+four virtual SDL gamepads read by an original diagnostic ROM.

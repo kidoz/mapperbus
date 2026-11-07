@@ -61,6 +61,9 @@ class EmulationSession {
     void set_controller_timing(core::ControllerTiming timing) {
         emulator_.set_controller_timing(timing);
     }
+    void set_expansion_controllers(core::Byte ports) {
+        emulator_.set_expansion_controllers(ports);
+    }
     void set_controller_wiring(core::ControllerWiring wiring) {
         emulator_.set_controller_wiring(wiring);
         if (wiring != core::ControllerWiring::RfFamicom)
