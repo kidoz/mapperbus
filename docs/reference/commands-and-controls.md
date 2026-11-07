@@ -72,8 +72,10 @@ GUI General → Hardware → Controller mode. Input exposes Built-in 1/2 and Hor
 
 Explicit `--gamepad`/`--gamepad2`/`--gamepad3` through `--gamepad6` device indices
 override that profile's remembered controller identity for the current run.
-Saved assignments remain unchanged. Without an index override, both graphical
-frontends restore saved controller identities; see [configuration](configuration.md).
+Saved assignments remain unchanged. Per-game device choices apply after global
+defaults, before explicit index overrides; enabled flags still follow the saved
+layout. Without an index override, both graphical frontends restore saved
+controller identities; see [configuration](configuration.md).
 
 ### Gamepad mapping tokens
 

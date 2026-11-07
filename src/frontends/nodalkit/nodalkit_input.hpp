@@ -96,6 +96,18 @@ class NodalKitPlayerInput {
 #endif
     }
 
+    void set_gamepad_assignment(const platform::GamepadAssignment& assignment) {
+        if (platform::gamepad_assignment(gamepad_config_) == assignment)
+            return;
+#ifdef MAPPERBUS_HAVE_SDL3_GAMEPAD
+        Sdl3GamepadSelection previous;
+        selection_.swap(previous);
+#endif
+        platform::apply_gamepad_assignment(gamepad_config_, assignment);
+        initialize_gamepad_subsystem();
+        open_configured_gamepad();
+    }
+
 #ifdef MAPPERBUS_HAVE_SDL3_GAMEPAD
     bool prepare_gamepad_assignment() {
         if (!gamepad_initialized_)
@@ -621,6 +633,11 @@ class NodalKitInput : public platform::InputBackend {
 
     void set_assignment_capture(bool active) {
         assignment_capture_ = active;
+    }
+
+    void set_gamepad_assignments(const platform::GamepadAssignments& assignments) {
+        for (int player = 0; player < platform::kInputProfileCount; ++player)
+            players_[player].set_gamepad_assignment(assignments[player]);
     }
 
 #ifdef MAPPERBUS_HAVE_SDL3_GAMEPAD

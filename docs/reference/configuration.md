@@ -128,8 +128,8 @@ game's preferences. With the switch off, changes update global defaults. The
 switch is disabled without a loaded game.
 
 Turn it off to remove the game's override and immediately apply global defaults.
-Button bindings, keyboard controls, gamepad assignments, deadzones, turbo and
-microphone preferences remain shared. A save failure retains the previous
+Button bindings, keyboard controls, deadzones, turbo and microphone preferences
+remain shared. Device assignments can be remembered independently under Input. A save failure retains the previous
 preferences and running hardware, and shows an error in Settings.
 
 All three frontends resolve controller hardware in this order: global `[input]`
@@ -160,6 +160,60 @@ active hardware. Loading a save state restores that state's hardware without
 rewriting either global or game preferences. Explicit edits change the selected
 hardware field; **Remember for this game** captures all active fields. Closing a
 GUI game returns the hardware controls to global defaults.
+
+### Remember player assignments for a game
+
+Load a game, then enable **Settings → Input → Remember assignments for this
+game**. This captures the current device choices for all six host profiles,
+including inactive ones. Use **Assign by Button…**, the Hori index preset, or
+individual device/enabled controls to change that game's player order. Button
+bindings, keyboard bindings and deadzones remain shared across games.
+
+The option is disabled without a loaded game. Turn it off to remove the game's
+assignment set and immediately restore global device choices. With it off,
+assignment edits update global defaults. This is independent of the hardware
+preference switch in General: remember controller mode there as well when games
+need different adapters.
+
+GUI and SDL3 resolve assignments by the same content identity as hardware
+preferences and save states, so matching raw, ZIP and 7z media reuse a layout.
+Successful game opens apply the resolved assignments before the first frame;
+failed opens retain the current layout. Closing a GUI game restores global
+assignments. Reset and save-state loading retain host assignments. Automatic
+discovery/reconnect updates the active game's device records while an override
+exists, preserving global choices and other games.
+
+The scope switch saves before changing the active layout; a failed save leaves
+the previous scope and layout in place and shows an error. The assignment wizard
+retains its atomic save/application behavior. Existing identity rules apply:
+indistinguishable devices may need reassignment after reconnect, restart or
+switching layouts.
+
+Optional version-1 sections store device choices only:
+
+```ini
+[game_gamepads.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.player1]
+enabled=true
+index=0
+guid=""
+serial=""
+device_name=""
+ambiguous=false
+```
+
+The hash is an example; the GUI writes the actual content identity and sections
+for `player1` through `player6`. Missing fields/profiles in a valid partial record
+inherit final global assignments on load, regardless of section order. Unknown
+keys (including bindings/deadzones), invalid identities/player numbers, and
+invalid boolean/index values are ignored. An invalid/empty GUID clears identity
+metadata and retains index selection. Strings use ordinary configuration quoting
+and identity size limits. The GUI saves a complete six-profile set. Older readers
+ignore these additive sections; the file and save-state versions are unchanged.
+
+SDL3's explicit `--gamepad`, `--gamepad2`, and `--gamepad3`–`--gamepad6` indices
+replace the resolved identity/index for that run. Remembered enabled switches
+still apply. Automatic discovery never saves those overridden profiles; process
+button maps and deadzones also stay process-local as before.
 
 ### Assign gamepads by button
 
@@ -192,8 +246,9 @@ discards pending choices and preserves the prior pause state. Missing devices
 or a failed save prevent partial application.
 
 Bindings, deadzones, keyboard controls, profiles outside the wizard and hardware
-preferences are retained. Gamepad assignments remain shared across games;
-**Remember for this game** controls hardware only. Identical controller models
+preferences are retained. Assignments follow Input's **Remember assignments for
+this game** switch; bindings and deadzones remain shared. General's **Remember
+for this game** controls hardware independently. Identical controller models
 can be assigned for the current session; their usual remembered-identity limits
 apply after reconnect/restart. Physical testing is separate from automated
 virtual-controller checks. Builds without gamepad support disable the button.

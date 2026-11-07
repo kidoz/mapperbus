@@ -246,6 +246,74 @@ namespace {
     return std::string(section) + "." + std::string(key);
 }
 
+bool apply_assignment_setting(platform::GamepadAssignment& assignment,
+                              std::string_view key,
+                              std::string_view value) {
+    const auto token = platform::normalized_token(value);
+    if (key == "enabled" || key == "ambiguous") {
+        const bool valid = token == "true" || token == "false" || token == "1" || token == "0" ||
+                           token == "yes" || token == "no" || token == "on" || token == "off";
+        if (!valid)
+            return false;
+        (key == "enabled" ? assignment.enabled : assignment.identity.ambiguous) =
+            parse_bool(value, false);
+    } else if (key == "index") {
+        const auto index = parse_int_value(value);
+        if (!index || *index < 0)
+            return false;
+        assignment.gamepad_index = *index;
+    } else if (key == "guid") {
+        if (token.size() == 32 && token != "00000000000000000000000000000000" &&
+            std::ranges::all_of(token, [](unsigned char ch) {
+                return (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f');
+            }))
+            assignment.identity.guid = token;
+        else
+            assignment.identity = {};
+    } else if (key == "serial" || key == "device_name") {
+        (key == "serial" ? assignment.identity.serial : assignment.identity.name) =
+            value.substr(0, 256);
+    } else {
+        return false;
+    }
+    return true;
+}
+
+struct GamepadAssignmentRecord {
+    std::string section;
+    std::string key;
+    std::string value;
+};
+
+void apply_gamepad_assignment_records(MapperBusConfiguration& configuration,
+                                      const std::vector<GamepadAssignmentRecord>& records) {
+    constexpr std::string_view kPrefix = "game_gamepads.";
+    const auto globals = gamepad_assignments_for_game(configuration, {});
+    for (const auto& record : records) {
+        const std::string_view suffix = std::string_view(record.section).substr(kPrefix.size());
+        if (suffix.size() != 72 || suffix.substr(64, 7) != ".player" ||
+            !valid_game_identity(suffix.substr(0, 64)) || suffix.back() < '1' ||
+            suffix.back() > '6')
+            continue;
+        const auto identity = std::string(suffix.substr(0, 64));
+        const int player = suffix.back() - '1';
+        const auto found = configuration.game_gamepads.find(identity);
+        auto assignment =
+            found == configuration.game_gamepads.end() ? globals[player] : found->second[player];
+        if (!apply_assignment_setting(assignment, record.key, record.value))
+            continue;
+        auto [entry, inserted] = configuration.game_gamepads.try_emplace(identity, globals);
+        (void)inserted;
+        entry->second[player] = std::move(assignment);
+    }
+    for (auto& [identity, assignments] : configuration.game_gamepads) {
+        (void)identity;
+        for (auto& assignment : assignments)
+            if (assignment.identity.guid.empty())
+                assignment.identity = {};
+    }
+}
+
 void apply_setting(MapperBusConfiguration& configuration,
                    std::string_view section,
                    std::string_view key,
@@ -792,6 +860,7 @@ MapperBusConfiguration load_mapperbus_configuration_from_file(const std::filesys
 
     std::string section;
     std::string line;
+    std::vector<GamepadAssignmentRecord> assignment_records;
     while (std::getline(file, line)) {
         std::string trimmed = platform::trim_copy(line);
         if (trimmed.empty() || trimmed.front() == '#' || trimmed.front() == ';') {
@@ -830,6 +899,10 @@ MapperBusConfiguration load_mapperbus_configuration_from_file(const std::filesys
             value = std::move(raw_value);
         }
 
+        if (section.starts_with("game_gamepads.")) {
+            assignment_records.push_back({section, key, value});
+            continue;
+        }
         apply_setting(configuration, section, key, value);
         const auto full_key = scoped_key(section, key);
         for (int player = 0; player < platform::kInputProfileCount; ++player) {
@@ -889,6 +962,7 @@ MapperBusConfiguration load_mapperbus_configuration_from_file(const std::filesys
                     target[mic] = 0;
         }
     }
+    apply_gamepad_assignment_records(configuration, assignment_records);
     return configuration;
 }
 
@@ -1011,6 +1085,21 @@ core::Result<void> save_mapperbus_configuration_to_file(const MapperBusConfigura
         file << '\n';
     }
 
+    for (const auto& [identity, assignments] : configuration.game_gamepads) {
+        if (!valid_game_identity(identity))
+            continue;
+        for (int player = 0; player < platform::kInputProfileCount; ++player) {
+            const auto& assignment = assignments[player];
+            file << "[game_gamepads." << identity << ".player" << player + 1 << "]\n";
+            file << "enabled=" << (assignment.enabled ? "true" : "false") << '\n';
+            file << "index=" << std::max(0, assignment.gamepad_index) << '\n';
+            file << "guid=" << quote_config_value(assignment.identity.guid) << '\n';
+            file << "serial=" << quote_config_value(assignment.identity.serial) << '\n';
+            file << "device_name=" << quote_config_value(assignment.identity.name) << '\n';
+            file << "ambiguous=" << (assignment.identity.ambiguous ? "true" : "false") << "\n\n";
+        }
+    }
+
     file << "[input.turbo]\nperiod_frames=" << configuration.input.turbo_period_frames << "\n\n";
     for (int player = 0; player < platform::kInputProfileCount; ++player) {
         const auto& keyboard = configuration.input.keyboard_profile(player);
@@ -1058,6 +1147,46 @@ core::Result<void> save_mapperbus_configuration_to_file(const MapperBusConfigura
     }
 
     return {};
+}
+
+platform::GamepadAssignments gamepad_assignments_for_game(
+    const MapperBusConfiguration& configuration, std::string_view identity) {
+    const auto entry = configuration.game_gamepads.find(std::string(identity));
+    if (valid_game_identity(identity) && entry != configuration.game_gamepads.end())
+        return entry->second;
+    platform::GamepadAssignments assignments;
+    for (int player = 0; player < platform::kInputProfileCount; ++player)
+        assignments[player] =
+            platform::gamepad_assignment(configuration.input.gamepad_profile(player));
+    return assignments;
+}
+
+void remember_gamepad_assignment(MapperBusConfiguration& configuration,
+                                 std::string_view identity,
+                                 int player,
+                                 const platform::GamepadAssignment& assignment) {
+    if (player < 0 || player >= platform::kInputProfileCount)
+        return;
+    const auto entry = configuration.game_gamepads.find(std::string(identity));
+    if (valid_game_identity(identity) && entry != configuration.game_gamepads.end())
+        entry->second[player] = assignment;
+    else
+        platform::apply_gamepad_assignment(configuration.input.gamepad_profile(player), assignment);
+}
+
+void remember_gamepad_profile(MapperBusConfiguration& configuration,
+                              std::string_view identity,
+                              int player,
+                              const platform::GamepadInputConfig& profile) {
+    if (player < 0 || player >= platform::kInputProfileCount)
+        return;
+    // Preserve the global device choice while updating shared controls.
+    auto& global = configuration.input.gamepad_profile(player);
+    const auto global_assignment = platform::gamepad_assignment(global);
+    global = profile;
+    platform::apply_gamepad_assignment(global, global_assignment);
+    remember_gamepad_assignment(
+        configuration, identity, player, platform::gamepad_assignment(profile));
 }
 
 bool ControllerHardwareOverrides::empty() const {

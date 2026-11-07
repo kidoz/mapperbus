@@ -200,6 +200,10 @@ TEST_CASE("Controller game preferences follow content across raw, ZIP and 7z sou
                                           core::ControllerTiming::RfFamicom,
                                           3};
     remember_controller_hardware(configuration, identity, hori);
+    auto assignments = gamepad_assignments_for_game(configuration, {});
+    assignments[0].enabled = false;
+    assignments[3].gamepad_index = 17;
+    configuration.game_gamepads[identity] = assignments;
     const auto config_path = fixture.root / "mapperbus.conf";
     REQUIRE(save_mapperbus_configuration_to_file(configuration, config_path));
     configuration = load_mapperbus_configuration_from_file(config_path);
@@ -215,6 +219,7 @@ TEST_CASE("Controller game preferences follow content across raw, ZIP and 7z sou
             archive, {{"other.nes", make_rom(17)}, {"folder/renamed.nes", bytes}}, seven_zip);
         REQUIRE(session.open_rom(archive.string(), "folder/renamed.nes"));
         CHECK(session.game_identity() == identity);
+        CHECK(gamepad_assignments_for_game(configuration, session.game_identity()) == assignments);
         apply_controller_hardware(
             session.emulator(),
             controller_hardware_for_game(configuration, session.game_identity()));
@@ -224,6 +229,8 @@ TEST_CASE("Controller game preferences follow content across raw, ZIP and 7z sou
 
         REQUIRE(session.open_rom(archive.string(), "other.nes"));
         REQUIRE(session.game_identity() != identity);
+        CHECK(gamepad_assignments_for_game(configuration, session.game_identity()) ==
+              gamepad_assignments_for_game(configuration, {}));
         apply_controller_hardware(
             session.emulator(),
             controller_hardware_for_game(configuration, session.game_identity()));

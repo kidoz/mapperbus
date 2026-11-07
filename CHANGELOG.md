@@ -9,6 +9,9 @@ Versioning.
 
 ### Added
 
+- Per-game controller device assignments and player order in GUI and SDL3,
+  preserving shared bindings/deadzones and global defaults across game switches.
+
 - Multiplayer input monitor with all active roles, live held bindings and
   device status, shared-gamepad notices, local keyboard capture and pause recovery.
 

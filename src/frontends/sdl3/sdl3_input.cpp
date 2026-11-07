@@ -130,6 +130,18 @@ Sdl3Input::~Sdl3Input() {
         SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
 }
 
+void Sdl3Input::set_gamepad_assignments(const platform::GamepadAssignments& assignments) {
+    for (int player = 0; player < platform::kInputProfileCount; ++player) {
+        if (platform::gamepad_assignment(configs_[player]) == assignments[player])
+            continue;
+        Sdl3GamepadSelection previous;
+        selections_[player].swap(previous);
+        platform::apply_gamepad_assignment(configs_[player], assignments[player]);
+    }
+    init_gamepad_subsystem();
+    open_configured_gamepad();
+}
+
 void Sdl3Input::init_gamepad_subsystem() {
     bool wanted = false;
     for (int player = 0; player < player_count_; ++player)

@@ -119,6 +119,7 @@ class Sdl3Input : public platform::InputBackend {
     const Sdl3InputConfig& gamepad_config(int player) const {
         return configs_.at(player);
     }
+    void set_gamepad_assignments(const platform::GamepadAssignments& assignments);
     bool consume_gamepad_assignment_changes() {
         bool changed = false;
         for (auto& selection : selections_)

@@ -416,6 +416,15 @@ int main(int argc, char* argv[]) {
         mapperbus::app::controller_hardware_for_game(
             mapperbus_config, app.session().game_identity(), controller_overrides));
 
+    auto assignments = mapperbus::app::gamepad_assignments_for_game(mapperbus_config,
+                                                                    app.session().game_identity());
+    for (int player = 0; player < mapperbus::platform::kInputProfileCount; ++player)
+        if (gamepad_index_overrides[player]) {
+            assignments[player].gamepad_index = input_configs[player].gamepad_index;
+            assignments[player].identity = {};
+        }
+    sdl_input->set_gamepad_assignments(assignments);
+
     sdl_input->set_active_slot(
         mapperbus::app::selected_state_slot(mapperbus_config, app.session().game_identity()));
     mapperbus::core::logger::info("Active state slot: {} (Ctrl+1..9/0 to select)",
@@ -453,12 +462,15 @@ int main(int argc, char* argv[]) {
             for (int player = 0; player < mapperbus::platform::kInputProfileCount; ++player) {
                 if (gamepad_index_overrides[player])
                     continue;
-                auto& saved = mapperbus_config.input.gamepad_profile(player);
+                auto saved = mapperbus::app::gamepad_assignments_for_game(
+                    mapperbus_config, app.session().game_identity())[player];
                 const auto& active = sdl_input->gamepad_config(player);
                 changed |= saved.identity != active.identity ||
                            saved.gamepad_index != active.gamepad_index;
                 saved.identity = active.identity;
                 saved.gamepad_index = active.gamepad_index;
+                mapperbus::app::remember_gamepad_assignment(
+                    mapperbus_config, app.session().game_identity(), player, saved);
             }
             if (changed) {
                 if (auto saved = mapperbus::app::save_mapperbus_configuration(mapperbus_config);

@@ -49,6 +49,92 @@ TEST_CASE("Linux configuration ignores invalid XDG paths", "[app][configuration]
            ("mapperbus-config-test-" + std::to_string(stamp)) / "mapperbus.conf";
 }
 
+TEST_CASE("Per-game device assignments preserve global choices and shared controls",
+          "[app][configuration][game-assignments]") {
+    MapperBusConfiguration config;
+    const std::string first(64, 'a'), second(64, 'b');
+    const auto globals = gamepad_assignments_for_game(config, {});
+    auto a = globals, b = globals;
+    for (int player = 0; player < platform::kInputProfileCount; ++player) {
+        a[player].gamepad_index = 5 - player;
+        a[player].enabled = player >= 2;
+        a[player].identity = {.guid = "03000000341200000100000000000000",
+                              .serial = "pad \"" + std::to_string(player) + "\"; #serial\\value",
+                              .name = "Saved device " + std::to_string(player),
+                              .ambiguous = player % 2 == 0};
+        b[player].gamepad_index = player + 10;
+    }
+    config.game_gamepads[first] = a;
+    config.game_gamepads[second] = b;
+    auto active = config.input.gamepad_profile(3);
+    platform::apply_gamepad_assignment(active, a[3]);
+    active.gamepad_index = 17;
+    active.identity.serial = "discovered serial";
+    active.axis_deadzone = 19000;
+    REQUIRE(platform::apply_gamepad_mapping(active, "a=west,b=north"));
+    remember_gamepad_profile(config, first, 3, active);
+    a[3] = platform::gamepad_assignment(active);
+    CHECK(gamepad_assignments_for_game(config, {}) == globals);
+    CHECK(gamepad_assignments_for_game(config, first) == a);
+    CHECK(gamepad_assignments_for_game(config, second) == b);
+    CHECK(config.input.gamepad_profile(3).bindings == active.bindings);
+    CHECK(config.input.gamepad_profile(3).axis_deadzone == 19000);
+    CHECK(gamepad_assignments_for_game(config, std::string(64, 'c')) == globals);
+    const auto path = temporary_config_path();
+    REQUIRE(save_mapperbus_configuration_to_file(config, path));
+    auto restored = load_mapperbus_configuration_from_file(path);
+    CHECK(restored.game_gamepads == config.game_gamepads);
+    CHECK(gamepad_assignments_for_game(restored, {}) == globals);
+    CHECK(restored.input.gamepad_profile(3).bindings == active.bindings);
+    CHECK(restored.input.gamepad_profile(3).axis_deadzone == active.axis_deadzone);
+    auto discovered = a[3];
+    discovered.gamepad_index = 1;
+    discovered.identity.ambiguous = true;
+    remember_gamepad_assignment(restored, first, 3, discovered);
+    CHECK(gamepad_assignments_for_game(restored, {}) == globals);
+    CHECK(gamepad_assignments_for_game(restored, second) == b);
+    CHECK(gamepad_assignments_for_game(restored, first)[3] == discovered);
+    restored.game_gamepads.erase(first);
+    REQUIRE(save_mapperbus_configuration_to_file(restored, path));
+    restored = load_mapperbus_configuration_from_file(path);
+    CHECK(gamepad_assignments_for_game(restored, first) == globals);
+    CHECK(gamepad_assignments_for_game(restored, second) == b);
+    CHECK(restored.version == kMapperBusConfigurationVersion);
+    std::filesystem::remove_all(path.parent_path());
+}
+
+TEST_CASE(
+    "Partial game assignments inherit final globals and ignore controls and malformed records",
+    "[app][configuration][game-assignments]") {
+    const std::string valid(64, 'a'), invalid(64, 'b');
+    const auto path = temporary_config_path();
+    std::filesystem::create_directories(path.parent_path());
+    std::ofstream file(path);
+    file << "[game_gamepads." << valid << ".player3]\nindex=2\na=west\ndeadzone=20000\n"
+         << "[game_gamepads." << valid << ".player1]\nguid=invalid\nserial=orphan\nambiguous=true\n"
+         << "[game_gamepads." << invalid << ".player1]\nindex=-1\nenabled=broken\nunknown=ignored\n"
+         << "[game_gamepads." << invalid << ".player7]\nindex=2\n"
+         << "[game_gamepads.invalid.player1]\nindex=3\n"
+         << "[input.player3.gamepad]\nindex=9\nenabled=false\ndeadzone=12345\n"
+         << "guid=03000000341200000100000000000000\nserial=global\n";
+    file.close();
+    auto config = load_mapperbus_configuration_from_file(path);
+    REQUIRE(config.game_gamepads.size() == 1);
+    auto assignments = gamepad_assignments_for_game(config, valid);
+    CHECK(assignments[2].gamepad_index == 2);
+    CHECK_FALSE(assignments[2].enabled);
+    CHECK(assignments[2].identity == config.input.gamepad_profile(2).identity);
+    CHECK(assignments[0].identity == platform::GamepadIdentity{});
+    CHECK(config.input.gamepad_profile(2).gamepad_index == 9);
+    CHECK(config.input.gamepad_profile(2).axis_deadzone == 12345);
+    CHECK(config.input.gamepad_profile(2).bindings ==
+          MapperBusInputConfiguration{}.gamepad_profile(2).bindings);
+    REQUIRE(save_mapperbus_configuration_to_file(config, path));
+    const auto restored = load_mapperbus_configuration_from_file(path);
+    CHECK(restored.game_gamepads == config.game_gamepads);
+    std::filesystem::remove_all(path.parent_path());
+}
+
 TEST_CASE("Per-game controller hardware survives saves without changing defaults or host inputs",
           "[app][configuration][game-controllers]") {
     MapperBusConfiguration configuration;

@@ -14,6 +14,63 @@
 namespace mapperbus::frontend {
 namespace {
 
+TEST_CASE("SDL game layouts retain process mappings and save discovery to the active game",
+          "[sdl3][input][game-assignments]") {
+    tests::IdentityGamepads pads;
+    for (int pad = 0; pad < 4; ++pad)
+        pads.attach(pad, pad);
+    app::MapperBusConfiguration config;
+    Sdl3SixPlayerInputConfig profiles;
+    for (int player = 0; player < platform::kInputProfileCount; ++player) {
+        config.input.gamepad_profile(player).enabled = false;
+        profiles.players[player] = config.input.gamepad_profile(player);
+        profiles.keyboards[player].fill(0);
+    }
+    REQUIRE(platform::apply_gamepad_mapping(profiles.players[0], "a=west"));
+    profiles.players[0].axis_deadzone = 21000;
+    const auto globals = app::gamepad_assignments_for_game(config, {});
+    const std::string first(64, 'a'), second(64, 'b');
+    auto a = globals, b = globals;
+    a[0].enabled = b[0].enabled = true;
+    a[0].gamepad_index = 3;
+    b[0].gamepad_index = 1;
+    config.game_gamepads[first] = a;
+    config.game_gamepads[second] = b;
+    auto input = std::make_unique<Sdl3Input>(profiles);
+    for (const auto& identity : {first, second, first}) {
+        input->set_gamepad_assignments(app::gamepad_assignments_for_game(config, identity));
+        for (int pad = 0; pad < 4; ++pad)
+            REQUIRE(SDL_SetJoystickVirtualButton(
+                pads.joysticks[pad], SDL_GAMEPAD_BUTTON_WEST, pad == 3));
+        input->poll();
+        CHECK(input->is_button_pressed(0, core::Button::A) == (identity == first));
+        CHECK(input->gamepad_config(0).bindings == profiles.players[0].bindings);
+        CHECK(input->gamepad_config(0).axis_deadzone == 21000);
+        for (int player = 0; player < platform::kInputProfileCount; ++player)
+            app::remember_gamepad_assignment(
+                config,
+                identity,
+                player,
+                platform::gamepad_assignment(input->gamepad_config(player)));
+        CHECK(app::gamepad_assignments_for_game(config, {}) == globals);
+    }
+    const auto path = std::filesystem::temp_directory_path() /
+                      ("mapperbus-sdl-layouts-" + std::to_string(SDL_GetTicksNS()) + ".conf");
+    REQUIRE(app::save_mapperbus_configuration_to_file(config, path));
+    config = app::load_mapperbus_configuration_from_file(path);
+    input.reset();
+    input = std::make_unique<Sdl3Input>(profiles);
+    input->set_gamepad_assignments(app::gamepad_assignments_for_game(config, second));
+    input->poll();
+    CHECK(input->gamepad_config(0).identity == config.game_gamepads.at(second)[0].identity);
+    input->set_gamepad_assignments(app::gamepad_assignments_for_game(config, {}));
+    input->poll();
+    CHECK_FALSE(input->is_button_pressed(0, core::Button::A));
+    CHECK_FALSE(input->gamepad_config(0).enabled);
+    CHECK(input->gamepad_config(0).bindings == profiles.players[0].bindings);
+    std::filesystem::remove(path);
+}
+
 TEST_CASE("Four-controller capture requires fresh distinct presses and release before finish",
           "[sdl3][input][assignment]") {
     tests::IdentityGamepads pads;

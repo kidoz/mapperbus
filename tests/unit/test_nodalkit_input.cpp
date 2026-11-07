@@ -12,6 +12,83 @@
 namespace mapperbus::frontend {
 namespace {
 
+TEST_CASE("Game-specific layouts switch devices without copying them into global assignments",
+          "[gui][input][game-assignments]") {
+    tests::IdentityGamepads pads;
+    for (int pad = 0; pad < 4; ++pad)
+        pads.attach(pad, pad);
+    app::MapperBusConfiguration config;
+    std::array<platform::GamepadInputConfig, 6> profiles;
+    for (int player = 0; player < 6; ++player) {
+        auto& profile = config.input.gamepad_profile(player);
+        profile.enabled = player < 2;
+        profile.axis_deadzone = 15000 + player;
+        REQUIRE(platform::apply_gamepad_mapping(profile, "a=west,b=north"));
+        profiles[player] = profile;
+    }
+    nk::Window window({.title = "Per-game device layouts", .width = 600, .height = 300});
+    NodalKitInput input(window, profiles);
+    input.poll();
+    for (int player = 0; player < 6; ++player)
+        app::remember_gamepad_profile(
+            config, {}, player, input.player_input(player).gamepad_config());
+    const auto globals = app::gamepad_assignments_for_game(config, {});
+    const std::string hori(64, 'a'), standard(64, 'b');
+    auto a = globals, b = globals;
+    for (int player = 0; player < 6; ++player) {
+        a[player].enabled = player >= 2;
+        a[player].gamepad_index = player >= 2 ? 5 - player : player;
+        a[player].identity = {};
+        b[player].enabled = player < 3;
+        b[player].gamepad_index = player == 0 ? 1 : player == 1 ? 0 : player;
+        b[player].identity = {};
+    }
+    config.game_gamepads[hori] = a;
+    config.game_gamepads[standard] = b;
+    const auto apply = [&](const std::string& identity) {
+        input.set_gamepad_assignments(app::gamepad_assignments_for_game(config, identity));
+        input.poll();
+        for (int player = 0; player < 6; ++player) {
+            app::remember_gamepad_profile(
+                config, identity, player, input.player_input(player).gamepad_config());
+            CHECK(input.player_input(player).gamepad_config().bindings ==
+                  profiles[player].bindings);
+            CHECK(input.player_input(player).gamepad_config().axis_deadzone ==
+                  profiles[player].axis_deadzone);
+        }
+        CHECK(app::gamepad_assignments_for_game(config, {}) == globals);
+    };
+    for (const auto& identity : {hori, standard, hori, standard}) {
+        apply(identity);
+        for (int pad = 0; pad < 4; ++pad)
+            REQUIRE(SDL_SetJoystickVirtualButton(
+                pads.joysticks[pad], SDL_GAMEPAD_BUTTON_WEST, pad == 0));
+        input.poll();
+        for (int player = 0; player < 6; ++player) {
+            const bool expected = identity == hori ? player == 5 : player == 1;
+            CHECK(input.is_button_pressed(player, core::Button::A) == expected);
+        }
+    }
+    const auto untouched_hori = config.game_gamepads.at(hori);
+    pads.detach(0);
+    input.poll();
+    CHECK_FALSE(input.is_button_pressed(1, core::Button::A));
+    pads.attach(0, 0);
+    input.poll();
+    for (int player = 0; player < 6; ++player)
+        app::remember_gamepad_profile(
+            config, standard, player, input.player_input(player).gamepad_config());
+    CHECK(config.game_gamepads.at(hori) == untouched_hori);
+    CHECK(app::gamepad_assignments_for_game(config, {}) == globals);
+    config.game_gamepads.erase(standard);
+    input.set_gamepad_assignments(app::gamepad_assignments_for_game(config, standard));
+    input.poll();
+    CHECK(input.player_input(0).gamepad_config().identity == globals[0].identity);
+    CHECK(input.player_input(1).gamepad_config().identity == globals[1].identity);
+    for (int player = 2; player < 6; ++player)
+        CHECK_FALSE(input.player_input(player).gamepad_config().enabled);
+}
+
 TEST_CASE("Input monitor shows active roles and live shared instances without changing profiles",
           "[gui][input][monitor]") {
     tests::IdentityGamepads pads;
@@ -250,6 +327,9 @@ TEST_CASE("Assignment targets active Standard, Four Score and Hori roles transac
         REQUIRE(platform::apply_gamepad_mapping(config, "a=west,b=north"));
         before[player] = config;
     }
+    const std::string identity(64, 'a');
+    const auto global_assignments = app::gamepad_assignments_for_game(configuration, {});
+    configuration.game_gamepads[identity] = global_assignments;
     const auto keyboard = configuration.input.keyboard_profile(0);
     nk::Window window({.title = "Controller assignment modes", .width = 600, .height = 300});
     NodalKitInput input(window, before);
@@ -304,7 +384,7 @@ TEST_CASE("Assignment targets active Standard, Four Score and Hori roles transac
         auto updated = configuration;
         REQUIRE(proposal.size() == count);
         for (std::size_t pad = 0; pad < count; ++pad)
-            updated.input.gamepad_profile(roles[pad]) = proposal[pad];
+            app::remember_gamepad_profile(updated, identity, roles[pad], proposal[pad]);
         return app::save_mapperbus_configuration_to_file(updated, path).has_value();
     };
     REQUIRE(input.assign_gamepads(roles, chosen, save));
@@ -312,6 +392,8 @@ TEST_CASE("Assignment targets active Standard, Four Score and Hori roles transac
     CHECK(app::controller_hardware(restored.input) == saved_hardware);
     CHECK(restored.game_controllers == saved_game_hardware);
     CHECK(restored.input.keyboard_profile(0) == keyboard);
+    CHECK(app::gamepad_assignments_for_game(restored, {}) == global_assignments);
+    const auto saved_assignments = app::gamepad_assignments_for_game(restored, identity);
     CHECK(input.player_input(0).binding(platform::InputAction::A) == nk::KeyCode::Z);
     for (int player = 0; player < 6; ++player) {
         const auto& actual = input.player_input(player).gamepad_config();
@@ -319,8 +401,7 @@ TEST_CASE("Assignment targets active Standard, Four Score and Hori roles transac
         CHECK(actual.enabled == targeted);
         CHECK(actual.bindings == before[player].bindings);
         CHECK(actual.axis_deadzone == before[player].axis_deadzone);
-        CHECK(restored.input.gamepad_profile(player).identity == actual.identity);
-        CHECK(restored.input.gamepad_profile(player).gamepad_index == actual.gamepad_index);
+        CHECK(saved_assignments[player] == platform::gamepad_assignment(actual));
         if (!targeted) {
             CHECK(actual.gamepad_index == before[player].gamepad_index);
             CHECK(actual.identity == before[player].identity);

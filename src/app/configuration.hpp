@@ -132,7 +132,21 @@ struct MapperBusConfiguration {
     std::map<std::string, int> state_slots;
     /// Optional hardware preferences keyed by the same content identity as states.
     std::map<std::string, ControllerHardwareOverrides> game_controllers;
+    /// All six host device choices per game; bindings and deadzones stay in input.
+    std::map<std::string, platform::GamepadAssignments> game_gamepads;
 };
+
+[[nodiscard]] platform::GamepadAssignments gamepad_assignments_for_game(
+    const MapperBusConfiguration& configuration, std::string_view identity);
+void remember_gamepad_assignment(MapperBusConfiguration& configuration,
+                                 std::string_view identity,
+                                 int player,
+                                 const platform::GamepadAssignment& assignment);
+/// Save shared controls/deadzones, routing only the device choice to its active scope.
+void remember_gamepad_profile(MapperBusConfiguration& configuration,
+                              std::string_view identity,
+                              int player,
+                              const platform::GamepadInputConfig& profile);
 
 [[nodiscard]] ControllerHardwareSettings controller_hardware(
     const MapperBusInputConfiguration& input);

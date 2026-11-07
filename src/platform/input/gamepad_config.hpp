@@ -71,6 +71,25 @@ struct GamepadInputConfig {
     GamepadInputConfig();
 };
 
+/// Device choice only. Button bindings and deadzones remain shared preferences.
+struct GamepadAssignment {
+    bool enabled = true;
+    int gamepad_index = 0;
+    GamepadIdentity identity;
+    bool operator==(const GamepadAssignment&) const = default;
+};
+using GamepadAssignments = std::array<GamepadAssignment, kInputProfileCount>;
+
+inline GamepadAssignment gamepad_assignment(const GamepadInputConfig& config) {
+    return {config.enabled, config.gamepad_index, config.identity};
+}
+inline void apply_gamepad_assignment(GamepadInputConfig& config,
+                                     const GamepadAssignment& assignment) {
+    config.enabled = assignment.enabled;
+    config.gamepad_index = std::max(0, assignment.gamepad_index);
+    config.identity = assignment.identity;
+}
+
 [[nodiscard]] constexpr std::array<core::Button, 8> controller_buttons() {
     return {
         core::Button::Up,

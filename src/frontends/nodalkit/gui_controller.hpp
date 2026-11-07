@@ -127,6 +127,7 @@ class MapperBusGuiController {
     void close_rebind_dialog();
     void cancel_rebind_dialog();
     void poll_pending_rebind();
+    void remember_game_assignments(bool remember);
     void open_gamepad_assignment();
     void poll_gamepad_assignment();
     void cancel_gamepad_assignment();

@@ -1748,6 +1748,8 @@ void MapperBusGuiController::attempt_open(std::string rom_path, std::string memb
             member = members->front();
         }
     }
+    // Capture the old game's assignment scope before the content identity changes.
+    update_configuration_from_state();
     auto result = actions_->open_rom(rom_path, member);
     if (!result) {
         // A ROM that no longer opens (deleted, moved, unreadable) must not
@@ -1768,6 +1770,8 @@ void MapperBusGuiController::attempt_open(std::string rom_path, std::string memb
         return;
     }
 
+    input_backend_->set_gamepad_assignments(
+        app::gamepad_assignments_for_game(configuration_, session_->game_identity()));
     active_state_slot_ = app::selected_state_slot(configuration_, session_->game_identity());
     touch_recent_rom(configuration_, rom_path, session_->current_rom_member());
     save_configuration_state();
@@ -2201,7 +2205,9 @@ void MapperBusGuiController::close_current_rom() {
         set_message(saved.error());
         return;
     }
+    update_configuration_from_state();
     actions_->close_rom();
+    input_backend_->set_gamepad_assignments(app::gamepad_assignments_for_game(configuration_, {}));
     app::apply_controller_hardware(session_->emulator(),
                                    app::controller_hardware(configuration_.input));
     detected_region_.reset();
@@ -2287,7 +2293,8 @@ void MapperBusGuiController::update_configuration_from_state() {
         for (const auto button : kBindingOrder) {
             keyboard[platform::button_index(button)] = static_cast<int>(input.binding(button));
         }
-        configuration_.input.gamepad_profile(player) = input.gamepad_config();
+        app::remember_gamepad_profile(
+            configuration_, session_->game_identity(), player, input.gamepad_config());
     }
     configuration_.audio = actions_->snapshot().audio_settings;
     configuration_.frontend.preview_scale_index = preview_scale_index(preview_scale_option_);
@@ -2357,6 +2364,36 @@ void MapperBusGuiController::remember_game_controller_hardware(bool remember) {
     if (save_controller_hardware_change(std::move(proposed), settings))
         set_message(remember ? "Controller hardware remembered for this game."
                              : "Using global controller hardware defaults.");
+}
+
+void MapperBusGuiController::remember_game_assignments(bool remember) {
+    const auto identity = session_->game_identity();
+    if (identity.empty())
+        return;
+    update_configuration_from_state();
+    auto proposed = configuration_;
+    if (remember) {
+        platform::GamepadAssignments assignments;
+        for (int player = 0; player < platform::kInputProfileCount; ++player)
+            assignments[player] =
+                platform::gamepad_assignment(input_backend_->player_input(player).gamepad_config());
+        proposed.game_gamepads[identity] = std::move(assignments);
+    } else {
+        proposed.game_gamepads.erase(identity);
+    }
+    if (auto saved = app::save_mapperbus_configuration(proposed); !saved) {
+        const auto message = "Could not save player assignments: " + saved.error();
+        set_message(message);
+        refresh_settings_dialog_sections();
+        update_settings_save_status(message);
+        return;
+    }
+    configuration_ = std::move(proposed);
+    input_backend_->set_gamepad_assignments(
+        app::gamepad_assignments_for_game(configuration_, identity));
+    refresh_ui();
+    refresh_settings_dialog_sections();
+    update_settings_save_status("Saved automatically");
 }
 
 void MapperBusGuiController::open_gamepad_assignment() {
@@ -2466,7 +2503,10 @@ void MapperBusGuiController::poll_gamepad_assignment() {
                          &save_error](std::span<const platform::GamepadInputConfig> proposed) {
         auto updated = configuration_;
         for (std::size_t player = 0; player < gamepad_assignment_profiles_.size(); ++player)
-            updated.input.gamepad_profile(gamepad_assignment_profiles_[player]) = proposed[player];
+            app::remember_gamepad_profile(updated,
+                                          session_->game_identity(),
+                                          gamepad_assignment_profiles_[player],
+                                          proposed[player]);
         if (auto saved = app::save_mapperbus_configuration(updated); !saved) {
             save_error = "Could not save gamepad assignments: " + saved.error();
             return false;
@@ -3097,16 +3137,30 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
         auto setup_group = SettingsGroup::create(
             mode == core::ControllerMode::Standard ? "Controller setup" : "Four-player setup");
         setup_group->set_horizontal_size_policy(nk::SizePolicy::Expanding);
+        const auto identity = session_->game_identity();
+        const bool remembered = configuration_.game_gamepads.contains(identity);
+        auto remember = nk::Switch::create();
+        remember->set_active(remembered);
+        remember->set_sensitive(!identity.empty());
+        (void)remember->on_toggled().connect(
+            [this](bool active) { remember_game_assignments(active); });
+        setup_group->add(pref_row(
+            "Remember assignments for this game",
+            remember,
+            identity.empty() ? "Open a game to remember its player assignments."
+            : remembered
+                ? "Device choices and enabled switches are saved for this game. Bindings stay "
+                  "shared."
+                : "Device choices use global defaults. Turn on to keep this game's player order."));
+        remember->ensure_accessible().set_name("Remember assignments for this game");
         if (mode == core::ControllerMode::HoriFourPlayer) {
             auto configure = nk::Button::create("Configure Four Gamepads");
             configure->set_sensitive(gamepad_support);
             (void)configure->on_clicked().connect([this] {
                 update_configuration_from_state();
-                configuration_.input.configure_four_hori_gamepads();
                 for (int player = 2; player < platform::kInputProfileCount; ++player) {
                     auto& input = input_backend_->player_input(player);
-                    input.set_gamepad_index(
-                        configuration_.input.gamepad_profile(player).gamepad_index);
+                    input.set_gamepad_index(player - 2);
                     input.set_gamepad_enabled(true);
                 }
                 set_message("Hori 1–4 assigned to Gamepads 1–4. Button bindings retained.");
