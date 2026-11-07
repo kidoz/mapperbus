@@ -158,6 +158,12 @@ class Emulator {
     [[nodiscard]] ControllerTiming controller_timing() const {
         return bus_.controller_timing();
     }
+    void set_controller_mode(ControllerMode mode) {
+        bus_.set_controller_mode(mode);
+    }
+    [[nodiscard]] ControllerMode controller_mode() const {
+        return bus_.controller_mode();
+    }
     void set_controller_wiring(ControllerWiring wiring) {
         bus_.set_controller_wiring(wiring);
     }

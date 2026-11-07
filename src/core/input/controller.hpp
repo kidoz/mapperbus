@@ -26,6 +26,9 @@ class Controller {
     void set_button_state(int player, Button button, bool pressed);
     Byte read(int player);
     [[nodiscard]] Byte peek(int player) const;
+    [[nodiscard]] Byte buttons(int player) const {
+        return player >= 0 && player < 2 ? button_state_[player] : Byte{0};
+    }
     void clock(int player);
     [[nodiscard]] bool strobed() const {
         return strobe_;

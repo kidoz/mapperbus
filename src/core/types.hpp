@@ -49,6 +49,11 @@ enum class ControllerWiring : std::uint8_t {
     RfFamicom,
 };
 
+enum class ControllerMode : std::uint8_t {
+    Standard,
+    FourScore,
+};
+
 struct RegionTiming {
     int scanlines_per_frame;
     int vblank_scanline;

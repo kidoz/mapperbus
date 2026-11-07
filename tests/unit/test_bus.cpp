@@ -680,6 +680,101 @@ TEST_CASE("DMC halted reads clock external pads with the selected console timing
     }
 }
 
+TEST_CASE("Four Score multiplexes four full pads and distinct signatures on D0",
+          "[bus][controller][four-score]") {
+    for (const auto region : {Region::NTSC, Region::PAL, Region::Dendy}) {
+        for (const auto timing : {ControllerTiming::NesAvFamicom, ControllerTiming::RfFamicom}) {
+            for (const auto wiring : {ControllerWiring::Nes, ControllerWiring::RfFamicom}) {
+                IoMachine machine;
+                Controller extra;
+                machine.bus.connect_expansion_controller(&extra);
+                machine.bus.set_region(region);
+                machine.bus.set_controller_timing(timing);
+                machine.bus.set_controller_wiring(wiring);
+                machine.bus.set_expansion_controllers(3); // suppressed, retained preference
+                const Byte reports[] = {0xA5, 0x0C, 0x5A, 0xC3};
+                for (int player = 0; player < 4; ++player)
+                    for (unsigned bit = 0; bit < 8; ++bit)
+                        (player < 2 ? machine.pads : extra)
+                            .set_button_state(player % 2,
+                                              static_cast<Button>(1U << bit),
+                                              reports[player] >> bit & 1U);
+                machine.bus.set_controller_mode(ControllerMode::FourScore);
+                machine.latch();
+                const uint32_t expected[] = {0x105AA5, 0x20C30C};
+                for (unsigned bit = 0; bit < 32; ++bit) {
+                    for (int port = 0; port < 2; ++port) {
+                        const auto value = machine.read(static_cast<Address>(0x4016 + port));
+                        CHECK((value & 3U) == (bit < 24 ? (expected[port] >> bit & 1U) : 1U));
+                        (void)machine.read(0);
+                    }
+                }
+                CHECK(machine.bus.expansion_controllers() == 3);
+            }
+        }
+    }
+}
+
+TEST_CASE("Four Score shares live strobe and continuous read clocks and switches modes",
+          "[bus][controller][four-score]") {
+    IoMachine machine;
+    Controller extra;
+    machine.bus.connect_expansion_controller(&extra);
+    machine.bus.set_expansion_controllers(3);
+    machine.bus.set_controller_mode(ControllerMode::FourScore);
+    machine.bus.write(0x4016, 1);
+    machine.pads.set_button_state(0, Button::A, true);
+    CHECK((machine.read(0x4016) & 3U) == 1);
+    machine.pads.set_button_state(0, Button::A, false);
+    CHECK((machine.read(0x4016) & 3U) == 0);
+    machine.pads.set_button_state(0, Button::B, true);
+    extra.set_button_state(0, Button::A, true); // changed after high strobe
+    machine.bus.write(0x4016, 0);
+    CHECK((machine.read(0x4016) & 3U) == 0);
+    CHECK((machine.read(0x4016) & 3U) == 0);                    // same NES /OE
+    machine.bus.set_controller_mode(ControllerMode::FourScore); // reapply preserves report
+    (void)machine.read(0);
+    CHECK((machine.read(0x4016) & 3U) == 1); // B
+    for (int bit = 2; bit <= 8; ++bit) {
+        (void)machine.read(0);
+        CHECK((machine.read(0x4016) & 3U) == (bit == 8 ? 1 : 0)); // player three A
+    }
+    machine.bus.set_controller_mode(ControllerMode::Standard);
+    machine.latch();
+    CHECK((machine.read(0x4016) & 3U) == 2); // D1 attachment restored
+}
+
+TEST_CASE("Four Score DMC and OAM reads advance the full 24-bit report",
+          "[bus][controller][four-score][dma]") {
+    for (const auto timing : {ControllerTiming::NesAvFamicom, ControllerTiming::RfFamicom}) {
+        for (const bool oam : {false, true}) {
+            IoMachine machine;
+            Controller extra;
+            machine.bus.connect_expansion_controller(&extra);
+            machine.bus.set_controller_timing(timing);
+            extra.set_button_state(0, Button::B, true);
+            machine.bus.set_controller_mode(ControllerMode::FourScore);
+            machine.latch();
+            unsigned clocks = 9;
+            if (oam) {
+                REQUIRE(machine.bus.run_oam_dma(0, 0x4016, false) == 513);
+            } else {
+                machine.bus.write(0x4012, 0);
+                machine.bus.write(0x4013, 0);
+                machine.bus.write(0x4015, 0x10);
+                machine.bus.clock_cpu_bus(0, 3);
+                const auto elapsed = machine.bus.run_dmc_dma(0x4016);
+                REQUIRE(elapsed >= 3);
+                clocks = timing == ControllerTiming::RfFamicom ? elapsed - 1 : 1;
+            }
+            for (unsigned bit = clocks; bit < 28; ++bit) {
+                CHECK((machine.read(0x4016) & 1U) == (bit < 24 ? (0x100200U >> bit & 1U) : 1U));
+                (void)machine.read(0);
+            }
+        }
+    }
+}
+
 TEST_CASE("OAM DMA activates APU registers only through the halted CPU address",
           "[bus][dma][apu]") {
     for (const Address halted : {Address{0x0200}, Address{0x4000}}) {

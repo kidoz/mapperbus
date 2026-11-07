@@ -56,6 +56,10 @@ class MemoryBus {
         return controller_timing_;
     }
     void set_controller_wiring(ControllerWiring wiring);
+    void set_controller_mode(ControllerMode mode);
+    [[nodiscard]] ControllerMode controller_mode() const {
+        return controller_mode_;
+    }
     [[nodiscard]] ControllerWiring controller_wiring() const {
         return controller_wiring_;
     }
@@ -82,7 +86,8 @@ class MemoryBus {
                     bool has_controller_timing = true,
                     bool has_controller_wiring = true,
                     bool has_microphone = true,
-                    bool has_expansion_controllers = true);
+                    bool has_expansion_controllers = true,
+                    bool has_four_score = true);
     void set_expansion_controllers(Byte ports) {
         expansion_ports_ = ports & 3U;
     }
@@ -136,6 +141,8 @@ class MemoryBus {
     void set_controller_oe(Byte port);
     Byte read_controller(int player, Byte external, bool timed);
     void write_controller_strobe(Byte value);
+    void latch_four_score();
+    void clock_four_score(int port);
     [[nodiscard]] bool ntsc_io() const {
         return region_ == Region::NTSC || region_ == Region::Multi;
     }
@@ -166,6 +173,8 @@ class MemoryBus {
     ControllerTiming controller_timing_ = ControllerTiming::NesAvFamicom;
     ControllerWiring controller_wiring_ = ControllerWiring::Nes;
     Byte expansion_ports_ = 0;
+    ControllerMode controller_mode_ = ControllerMode::Standard;
+    std::array<uint32_t, 2> four_score_reports_{0xFFFFFF, 0xFFFFFF};
     bool microphone_active_ = false;
     uint16_t microphone_phase_ = 0;
     Byte ppu_clock_phase_ = 0; // elapsed master clocks since the last PPU dot
