@@ -9,6 +9,9 @@ Versioning.
 
 ### Added
 
+- Opt-in Japanese Bomberman II ZIP regression for independent three-player
+  controls and snapshot replay in Standard and Hori modes.
+
 - Hori 4 Players Adapter mode with independent built-in controllers, six host
   profiles, GUI/CLI/configuration support, shared serial/DMA timing, and
   version-19 snapshots with legacy import.

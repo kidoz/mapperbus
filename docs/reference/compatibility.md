@@ -58,7 +58,7 @@ Source: [FDS subsystem](../../src/core/fds/fds.cpp),
 | Frontend | Presentation and input | Runtime scope |
 |---|---|---|
 | Headless CLI | No display, audio device, or interactive controller | Load NES/FDS media and execute 60 frames, or `--frames N` |
-| SDL3 | Window, audio, keyboard, gamepads | Command-line options, four independent host input profiles, runtime shortcuts |
+| SDL3 | Window, audio, keyboard, gamepads | Command-line options, six independent host input profiles, runtime shortcuts |
 | NodalKit GUI | Toolkit window and controls; SDL3 audio/gamepads when found | ROM opening, settings, session actions, recent ROMs |
 
 macOS and Linux have project build workflows. SDL3 supports Wayland and X11 on
@@ -108,3 +108,35 @@ strobe, both read timings, wiring masks, microphone/open bus, NTSC DMC/OAM and
 post-report ones; state tests cover independent partial reports, held reads,
 rollback and version-18 imports. Commercial Hori game compatibility and physical
 adapter electrical behavior have not been independently certified.
+
+## Bomberman II (Japan)
+
+The original Japanese game supports **three players** in Battle Mode. Use
+**Standard** controller mode with **External controller 1** attached. Bind
+**Player 1**, **Player 2**, and **External 1**; the third player uses `$4016 D1`.
+For an original Famicom setup, select RF Famicom wiring and timing. The equivalent
+SDL3 options are:
+
+```sh
+./buildDir/src/app/mapperbus-sdl3 'tmp/Bomberman II (Japan).zip' \
+  --controller-mode standard --controller-wiring rf-famicom \
+  --controller-timing rf-famicom --expansion-controllers 1
+```
+
+The opt-in regression loads the ZIP through libarchive, selects a three-player
+match with host inputs, and verifies independent movement and snapshot replay.
+Both controller timing options are covered. Hori mode also carries the third
+player on its first pad; this game does not validate the adapter's longer report
+or identification signature. Extra profiles do not add a fourth player.
+
+To run with your own matching Japanese ROM archive:
+
+```sh
+MAPPERBUS_CONTROLLER_TEST_ASSETS="$PWD/tmp" \
+  meson test -C buildDir controller-compatibility --print-errorlogs
+```
+
+The archive must contain `Bomberman II (Japan).nes` with SHA-256
+`9bc9051b174ec4743df78a3086df6577c55258d705c9c9c451be63152c9badf1`.
+No licensed ROM data is included in the repository; ordinary CI skips this test
+without the asset environment variable.

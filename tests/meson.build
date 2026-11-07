@@ -209,6 +209,13 @@ if get_option('enable_sdl3')
 endif
 
 # Licensed BIOS/game assets are opt-in; ordinary CI reports these cases skipped.
+test_controller_compatibility = executable('test-controller-compatibility',
+    'integration/test_controller_compatibility.cpp',
+    dependencies : [mapperbus_app_dep, catch2_dep],
+)
+test('controller-compatibility', test_controller_compatibility,
+    args : ['--allow-running-no-tests'], timeout : 120)
+
 test_fds_compatibility = executable('test-fds-compatibility',
     'integration/test_fds_compatibility.cpp',
     dependencies : [mapperbus_app_dep, catch2_dep],

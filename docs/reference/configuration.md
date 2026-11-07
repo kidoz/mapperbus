@@ -165,8 +165,8 @@ the built-in profiles. SDL3 also accepts `--gamepad3`, `--gamepad4`,
 
 These are standard eight-button pads on D1 of `$4016`/`$4017`. Built-in pads
 remain on D0; external pad 2 includes Start/Select even with RF wiring. Games
-must read D1 to use them. Four Score is available through the separate controller mode above; Hori
-adapter signatures are not implemented. See [serial behavior](dma-timing.md#external-standard-pads).
+must read D1 to use them. Four Score and Hori serial adapters use the separate
+controller modes above. See [serial behavior](dma-timing.md#external-standard-pads).
 
 Reset retains attachments. Version 17 snapshots restore attachments and partially
 shifted reports; versions 3–16 import with external pads detached. Snapshot loads
