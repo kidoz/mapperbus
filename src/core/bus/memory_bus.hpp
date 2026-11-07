@@ -87,7 +87,8 @@ class MemoryBus {
                     bool has_controller_wiring = true,
                     bool has_microphone = true,
                     bool has_expansion_controllers = true,
-                    bool has_four_score = true);
+                    bool has_four_score = true,
+                    bool has_hori = true);
     void set_expansion_controllers(Byte ports) {
         expansion_ports_ = ports & 3U;
     }
@@ -96,6 +97,9 @@ class MemoryBus {
     }
     void connect_expansion_controller(Controller* controller) {
         expansion_controller_ = controller;
+    }
+    void connect_additional_expansion_controller(Controller* controller) {
+        additional_expansion_controller_ = controller;
     }
     void restore_legacy_controller();
     /// Detector outputs for the current CPU cycle: IRQ level and latched NMI edge.
@@ -141,8 +145,8 @@ class MemoryBus {
     void set_controller_oe(Byte port);
     Byte read_controller(int player, Byte external, bool timed);
     void write_controller_strobe(Byte value);
-    void latch_four_score();
-    void clock_four_score(int port);
+    void latch_adapter();
+    void clock_adapter(int port);
     [[nodiscard]] bool ntsc_io() const {
         return region_ == Region::NTSC || region_ == Region::Multi;
     }
@@ -174,7 +178,7 @@ class MemoryBus {
     ControllerWiring controller_wiring_ = ControllerWiring::Nes;
     Byte expansion_ports_ = 0;
     ControllerMode controller_mode_ = ControllerMode::Standard;
-    std::array<uint32_t, 2> four_score_reports_{0xFFFFFF, 0xFFFFFF};
+    std::array<uint32_t, 2> adapter_reports_{0xFFFFFF, 0xFFFFFF};
     bool microphone_active_ = false;
     uint16_t microphone_phase_ = 0;
     Byte ppu_clock_phase_ = 0; // elapsed master clocks since the last PPU dot
@@ -191,6 +195,7 @@ class MemoryBus {
     Apu* apu_ = nullptr;
     Controller* controller_ = nullptr;
     Controller* expansion_controller_ = nullptr;
+    Controller* additional_expansion_controller_ = nullptr;
     Fds* fds_ = nullptr;
 };
 

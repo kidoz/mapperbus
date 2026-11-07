@@ -121,6 +121,38 @@ TEST_CASE("Controller mode persists independently and invalid values select Stan
     std::filesystem::remove_all(path.parent_path());
 }
 
+TEST_CASE("Hori mode and all six input profiles roundtrip independently",
+          "[app][configuration][hori]") {
+    MapperBusConfiguration configuration;
+    configuration.input.controller_mode = core::ControllerMode::HoriFourPlayer;
+    for (int player = 0; player < platform::kInputProfileCount; ++player) {
+        auto& pad = configuration.input.gamepad_profile(player);
+        CHECK(pad.gamepad_index == player);
+        if (player >= 2)
+            for (const auto key : configuration.input.keyboard_profile(player))
+                CHECK(key == 0);
+        configuration.input.keyboard_profile(player)[platform::button_index(core::Button::A)] =
+            44 + player;
+        pad.gamepad_index = player + 6;
+        pad.enabled = player % 2 == 0;
+        pad.axis_deadzone = 12000 + player;
+    }
+    const auto path = temporary_config_path();
+    REQUIRE(save_mapperbus_configuration_to_file(configuration, path));
+    const auto restored = load_mapperbus_configuration_from_file(path);
+    CHECK(restored.input.controller_mode == core::ControllerMode::HoriFourPlayer);
+    CHECK(parse_controller_mode("hori-4-player") == core::ControllerMode::HoriFourPlayer);
+    CHECK(std::string(controller_mode_token(restored.input.controller_mode)) == "hori-4-player");
+    for (int player = 0; player < platform::kInputProfileCount; ++player) {
+        CHECK(restored.input.keyboard_profile(player) ==
+              configuration.input.keyboard_profile(player));
+        CHECK(restored.input.gamepad_profile(player).gamepad_index == player + 6);
+        CHECK(restored.input.gamepad_profile(player).enabled == (player % 2 == 0));
+        CHECK(restored.input.gamepad_profile(player).axis_deadzone == 12000 + player);
+    }
+    std::filesystem::remove_all(path.parent_path());
+}
+
 TEST_CASE("Content-identified slot selections persist independently of recent games",
           "[app][configuration][state]") {
     MapperBusConfiguration configuration;

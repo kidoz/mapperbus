@@ -119,7 +119,8 @@ TEST_CASE("External snapshot replay preserves a held CPU read enable",
                                  0x00,
                                  0x80};
     const auto rom = mapperbus::tests::build_ines_rom("expansion-held-read", 0, 1, 1, kProgram);
-    for (const auto mode : {ControllerMode::Standard, ControllerMode::FourScore}) {
+    for (const auto mode :
+         {ControllerMode::Standard, ControllerMode::FourScore, ControllerMode::HoriFourPlayer}) {
         Emulator emulator;
         REQUIRE(emulator.load_cartridge(rom.string()));
         emulator.reset();
@@ -188,7 +189,7 @@ TEST_CASE("Four Score snapshots resume independent partially read 24-bit reports
     MemoryBus{}.save_state(bus);
     const auto end =
         43 + cpu.data().size() + ppu.data().size() + apu.data().size() + bus.data().size();
-    for (const auto [offset, value] : {std::pair{end - 9, Byte{2}},
+    for (const auto [offset, value] : {std::pair{end - 9, Byte{3}},
                                        {end - 5, Byte{1}},
                                        {end - 1, Byte{0xFF}},
                                        {end - 9, Byte{0}}}) {
@@ -200,6 +201,72 @@ TEST_CASE("Four Score snapshots resume independent partially read 24-bit reports
     const auto legacy = mapperbus::tests::legacy_state(emulator, 17);
     REQUIRE(emulator.load_state(legacy));
     CHECK(emulator.controller_mode() == ControllerMode::Standard);
+    CHECK(emulator.expansion_controllers() == 3);
+    std::filesystem::remove(rom);
+}
+
+TEST_CASE("Hori snapshots preserve six pads and reject incompatible legacy mode values",
+          "[state][controller][hori]") {
+    register_builtin_mappers();
+    constexpr Byte kProgram[] = {
+        0xA9, 1, 0x8D, 0x16, 0x40, 0xA9, 0, 0x8D, 0x16, 0x40, 0x4C, 0x0A, 0x80};
+    const auto rom = mapperbus::tests::build_ines_rom("hori-state", 0, 1, 1, kProgram);
+    Emulator emulator;
+    REQUIRE(emulator.load_cartridge(rom.string()));
+    emulator.reset();
+    emulator.set_expansion_controllers(3);
+    emulator.controller().set_button_state(0, Button::A, true);
+    emulator.controller().set_button_state(1, Button::B, true);
+    emulator.expansion_controller().set_button_state(0, Button::A, true);
+    emulator.expansion_controller().set_button_state(1, Button::Start, true);
+    emulator.additional_expansion_controller().set_button_state(0, Button::B, true);
+    emulator.additional_expansion_controller().set_button_state(1, Button::Right, true);
+    emulator.set_controller_mode(ControllerMode::HoriFourPlayer);
+    for (int instruction = 0; instruction < 5; ++instruction)
+        emulator.step_instruction();
+    for (int bit = 0; bit < 11; ++bit)
+        (void)emulator.read_cpu(0x4016);
+    for (int bit = 0; bit < 7; ++bit)
+        (void)emulator.read_cpu(0x4017);
+    const auto before = emulator.save_state();
+    const auto replay = [&] {
+        const uint32_t reports[] = {0x040201, 0x088008};
+        for (int port = 0; port < 2; ++port)
+            for (unsigned bit = port == 0 ? 11 : 7; bit < 28; ++bit) {
+                const auto d0 = bit < 8 ? 0U : 1U;
+                const auto d1 = bit < 24 ? reports[port] >> bit & 1U : 1U;
+                CHECK((emulator.read_cpu(static_cast<Address>(0x4016 + port)) & 3U) ==
+                      (d0 | d1 << 1U));
+            }
+    };
+    replay();
+    const auto after = emulator.save_state();
+    emulator.set_controller_mode(ControllerMode::FourScore);
+    REQUIRE(emulator.load_state(before));
+    CHECK(emulator.controller_mode() == ControllerMode::HoriFourPlayer);
+    replay();
+    CHECK(emulator.save_state() == after);
+    for (const auto offset : {before.size() - 1, before.size() - 6}) {
+        for (const Byte invalid : {1, 2}) {
+            auto corrupt = before;
+            corrupt[offset] = invalid;
+            REQUIRE_FALSE(emulator.load_state(corrupt));
+            CHECK(emulator.save_state() == after);
+        }
+    }
+    auto invalid_legacy = before;
+    invalid_legacy.resize(invalid_legacy.size() - 5);
+    const uint32_t version18 = 18;
+    std::memcpy(invalid_legacy.data() + 4, &version18, sizeof(version18));
+    REQUIRE_FALSE(emulator.load_state(invalid_legacy)); // v18 has no Hori mode
+    CHECK(emulator.save_state() == after);
+
+    emulator.set_controller_mode(ControllerMode::FourScore);
+    const auto legacy = mapperbus::tests::legacy_state(emulator, 18);
+    REQUIRE(emulator.load_state(legacy));
+    CHECK(emulator.controller_mode() == ControllerMode::FourScore);
+    CHECK(emulator.additional_expansion_controller().buttons(0) == 0);
+    CHECK(emulator.additional_expansion_controller().buttons(1) == 0);
     CHECK(emulator.expansion_controllers() == 3);
     std::filesystem::remove(rom);
 }
@@ -319,7 +386,7 @@ TEST_CASE("Version 3 states require explicit legacy import", "[state][identity]"
     // A rejected v6 audio extension must roll back the entire machine.
     for (const Byte invalid : {32, 255}) {
         auto corrupt = original;
-        corrupt[corrupt.size() - 5 - 16384 - 9] = invalid;
+        corrupt[corrupt.size() - 10 - 16384 - 9] = invalid;
         REQUIRE_FALSE(emulator.load_state(corrupt));
         REQUIRE(emulator.save_state() == original);
     }

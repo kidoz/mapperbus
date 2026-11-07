@@ -777,6 +777,128 @@ TEST_CASE("Four Score DMC and OAM reads advance the full 24-bit report",
     }
 }
 
+TEST_CASE("Hori exposes four adapter pads on D1 beside two independent built-in pads",
+          "[bus][controller][hori]") {
+    for (const auto region : {Region::NTSC, Region::PAL, Region::Dendy}) {
+        for (const auto timing : {ControllerTiming::NesAvFamicom, ControllerTiming::RfFamicom}) {
+            for (const auto wiring : {ControllerWiring::Nes, ControllerWiring::RfFamicom}) {
+                for (const Byte attached : {0, 3}) {
+                    IoMachine machine;
+                    Controller first, second;
+                    machine.bus.connect_expansion_controller(&first);
+                    machine.bus.connect_additional_expansion_controller(&second);
+                    machine.bus.set_region(region);
+                    machine.bus.set_controller_timing(timing);
+                    machine.bus.set_controller_wiring(wiring);
+                    machine.bus.set_expansion_controllers(attached);
+                    machine.bus.set_microphone_active(true);
+                    const Byte buttons[] = {0xA5, 0x5A, 0x0C, 0xFF, 0xC3, 0xA5};
+                    for (int player = 0; player < 6; ++player)
+                        for (unsigned bit = 0; bit < 8; ++bit)
+                            (player < 2   ? machine.pads
+                             : player < 4 ? first
+                                          : second)
+                                .set_button_state(player % 2,
+                                                  static_cast<Button>(1U << bit),
+                                                  buttons[player] >> bit & 1U);
+                    machine.bus.set_controller_mode(ControllerMode::HoriFourPlayer);
+                    machine.latch();
+                    const uint32_t reports[] = {0x04C30C, 0x08A5FF};
+                    for (unsigned bit = 0; bit < 32; ++bit) {
+                        for (int port = 0; port < 2; ++port) {
+                            machine.bus.write(0, 0xF8);
+                            const auto value = machine.read(static_cast<Address>(0x4016 + port));
+                            const auto mask =
+                                port == 1 && wiring == ControllerWiring::RfFamicom ? 0xF3U : 0xFFU;
+                            const auto d0 = bit < 8 ? (buttons[port] & mask) >> bit & 1U : 1U;
+                            const auto d1 = bit < 24 ? reports[port] >> bit & 1U : 1U;
+                            CHECK((value & 3U) == (d0 | d1 << 1U));
+                            if (bit >= 16 && bit < 24)
+                                CHECK((value >> 1U & 1U) ==
+                                      (bit == (port == 0 ? 18U : 19U) ? 1U : 0U));
+                            const bool rf_microphone =
+                                wiring == ControllerWiring::RfFamicom && port == 0;
+                            CHECK((value & 4U) == (rf_microphone ? 4U : 0U));
+                            CHECK((value & 0xF8U) == (rf_microphone ? 0xF8U : 0xE0U));
+                            (void)machine.read(0);
+                        }
+                    }
+                    CHECK(machine.bus.expansion_controllers() == attached);
+                }
+            }
+        }
+    }
+}
+
+TEST_CASE("Hori shares live strobe and read enables without merging built-in inputs",
+          "[bus][controller][hori]") {
+    IoMachine machine;
+    Controller first, second;
+    machine.bus.connect_expansion_controller(&first);
+    machine.bus.connect_additional_expansion_controller(&second);
+    machine.bus.set_controller_mode(ControllerMode::HoriFourPlayer);
+    machine.bus.write(0x4016, 1);
+    machine.pads.set_button_state(0, Button::A, true);
+    CHECK((machine.read(0x4016) & 3U) == 1);
+    machine.pads.set_button_state(0, Button::A, false);
+    first.set_button_state(0, Button::A, true);
+    first.set_button_state(0, Button::B, true);
+    second.set_button_state(0, Button::Select, true);
+    CHECK((machine.read(0x4016) & 3U) == 2);
+    machine.bus.write(0x4016, 0);
+    CHECK((machine.read(0x4016) & 3U) == 2);
+    machine.bus.set_controller_mode(ControllerMode::HoriFourPlayer);
+    CHECK((machine.read(0x4016) & 3U) == 2); // same /OE, reapplying mode preserves position
+    for (unsigned bit = 1; bit < 24; ++bit) {
+        (void)machine.read(0);
+        CHECK((machine.read(0x4016) & 2U) == ((0x040403U >> bit & 1U) << 1U));
+    }
+    machine.bus.set_controller_mode(ControllerMode::FourScore);
+    machine.latch();
+    for (unsigned bit = 0; bit < 24; ++bit) {
+        CHECK((machine.read(0x4016) & 3U) == (0x080300U >> bit & 1U));
+        (void)machine.read(0);
+    }
+}
+
+TEST_CASE("NTSC Hori DMC and OAM reads clock D0 and D1 together", "[bus][controller][hori][dma]") {
+    for (const auto timing : {ControllerTiming::NesAvFamicom, ControllerTiming::RfFamicom}) {
+        for (const bool oam : {false, true}) {
+            IoMachine machine;
+            Controller first, second;
+            machine.bus.connect_expansion_controller(&first);
+            machine.bus.connect_additional_expansion_controller(&second);
+            machine.bus.set_controller_timing(timing);
+            first.set_button_state(0, Button::B, true);
+            second.set_button_state(1, Button::Start, true);
+            machine.bus.set_controller_mode(ControllerMode::HoriFourPlayer);
+            machine.latch();
+            unsigned clocks[] = {9, 8};
+            if (oam) {
+                REQUIRE(machine.bus.run_oam_dma(0, 0x4016, false) == 513);
+            } else {
+                machine.bus.write(0x4012, 0);
+                machine.bus.write(0x4013, 0);
+                machine.bus.write(0x4015, 0x10);
+                machine.bus.clock_cpu_bus(0, 3);
+                const auto elapsed = machine.bus.run_dmc_dma(0x4016);
+                REQUIRE(elapsed >= 3);
+                clocks[0] = timing == ControllerTiming::RfFamicom ? elapsed - 1 : 1;
+                clocks[1] = 0;
+            }
+            const uint32_t reports[] = {0x040002, 0x080800};
+            for (int port = 0; port < 2; ++port)
+                for (unsigned bit = clocks[port]; bit < 28; ++bit) {
+                    const auto d0 = bit < 8 ? 0U : 1U;
+                    const auto d1 = bit < 24 ? reports[port] >> bit & 1U : 1U;
+                    CHECK((machine.read(static_cast<Address>(0x4016 + port)) & 3U) ==
+                          (d0 | d1 << 1U));
+                    (void)machine.read(0);
+                }
+        }
+    }
+}
+
 TEST_CASE("OAM DMA activates APU registers only through the halted CPU address",
           "[bus][dma][apu]") {
     for (const Address halted : {Address{0x0200}, Address{0x4000}}) {

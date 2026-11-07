@@ -95,7 +95,7 @@ a new GUI ROM open reapplies both preferences.
 
 ## Controller mode
 
-`[input] controller_mode` accepts `standard` (default) or `four-score`.
+`[input] controller_mode` accepts `standard` (default), `four-score`, or `hori-4-player`.
 Missing or invalid values select Standard. GUI Settings → General → Hardware
 exposes **Controller mode**; CLI and SDL3 accept `--controller-mode` with the
 same tokens as a process-local override.
@@ -118,6 +118,35 @@ older snapshots select Standard while retaining any v17 Famicom attachments.
 Loading a snapshot leaves the saved startup preference unchanged. Opening another
 GUI game reapplies that preference. A mode change ends any held read once and
 initializes a fresh adapter report; reapplying the same mode preserves its position.
+
+### Hori 4 Players Adapter
+
+Select `hori-4-player` for the Famicom adapter's four-controller serial mode.
+The two built-in pads remain independent on D0; four adapter pads use D1.
+GUI Input shows **Built-in 1/2** and **Hori 1–4**. These six hardware inputs do
+not imply that every game supports six players.
+
+Hori 1/2 reuse profiles 3/4 (`input.player3`/`input.player4`). Hori 3/4 use
+profiles 5/6 (`input.player5.keyboard`/`input.player5.gamepad` and the corresponding
+`player6` sections). New keys start unbound; new gamepad indices default to 4/5.
+SDL3 accepts `--gamepad5`, `--gamepad6`, `--gamepad5-map`, and `--gamepad6-map`.
+Assign available devices to the Hori roles you want to use; device indices are
+independent of in-game player numbers.
+Keyboard/gamepad settings, turbo phases and defaults remain independent for all
+six profiles. Every profile can bind the same shared microphone action.
+
+The Hori mode connects four standard adapter pads independently of the two
+Standard-mode attachment preferences. Those switches remain disabled while an
+adapter mode is active, retaining their saved values. To model the adapter's
+two-controller pass-through setting, use Standard with External 1/2 attached.
+Four Score continues using only profiles 1–4. Profiles 5/6 remain saved when
+inactive. Selecting a mode with four profiles clamps the visible selection to
+that range without changing bindings.
+
+Version 19 adds Hori mode and the last two pads' state. Versions 3–18 clear those
+new pads; version 18 retains Four Score mode and reports. Earlier mode defaults
+are unchanged. Hori identification bits, strobe, DMA and snapshot behavior are
+specified under [DMA timing](dma-timing.md#hori-4-players-adapter).
 
 ## External Famicom controllers
 
@@ -145,7 +174,7 @@ leave the saved startup preference unchanged; a new GUI ROM open reapplies it.
 
 ## Microphone bindings
 
-All four input profiles accept `microphone` under their keyboard/gamepad sections.
+All six input profiles accept `microphone` under their keyboard/gamepad sections.
 Player one defaults to keyboard code `16` (M); player two is unbound. Gamepad
 bindings default to `none`. Every profile activates the same single RF Famicom
 microphone. GUI Settings → Input includes Microphone capture, clear, conflict
@@ -326,11 +355,12 @@ defaults to index `1`; the other gamepad defaults match player 1.
 
 External pads use `player3` and `player4` sections as described above.
 
-In GUI Settings → Input, select **Player 1**, **Player 2**, **External 1**, or
-**External 2** before rebinding,
-choosing a gamepad, or restoring defaults. Each profile saves automatically.
+In GUI Settings → Input, select the profile for the active controller mode
+before rebinding, choosing a gamepad, or restoring defaults. Standard uses
+**Player 1/2** and **External 1/2**; Four Score uses **Player 1–4**; Hori uses
+**Built-in 1/2** and **Hori 1–4**. Each profile saves automatically.
 Both graphical frontends combine the keyboard and gamepad assigned to each
-player. Turbo speed is shared by all four profiles; their phases are independent.
+player. Turbo speed is shared by all six profiles; their phases are independent.
 
 Device indices refer to the current SDL enumeration. A disconnect releases that
 profile without adopting an already connected peer after renumbering. A new

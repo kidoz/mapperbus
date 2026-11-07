@@ -518,7 +518,7 @@ class ActionInput : public platform::InputBackend {
     void hold(int player, platform::InputAction action, bool down = true) {
         held[player][platform::button_index(action)] = down;
     }
-    std::array<std::array<bool, platform::kInputActionCount>, 4> held{};
+    std::array<std::array<bool, platform::kInputActionCount>, platform::kInputProfileCount> held{};
     int poll_count = 0;
 };
 
@@ -624,6 +624,37 @@ TEST_CASE("External host profiles have independent turbo phases and a shared mic
         CHECK(session.emulator().microphone_active());
     }
     held->hold(3, platform::InputAction::Microphone, false);
+    REQUIRE(session.tick() == TickResult::FrameAdvanced);
+    CHECK_FALSE(session.emulator().microphone_active());
+}
+
+TEST_CASE("Hori's last two profiles have independent turbo and shared microphone input",
+          "[app][session][hori][turbo]") {
+    core::register_builtin_mappers();
+    auto input = std::make_unique<ActionInput>();
+    auto* held = input.get();
+    held->hold(0, platform::InputAction::Up);
+    held->hold(4, platform::InputAction::TurboA);
+    held->hold(5, platform::InputAction::TurboB);
+    held->hold(5, platform::InputAction::Microphone);
+    EmulationSession session(std::make_unique<platform::NullVideo>(),
+                             std::make_unique<TestAudioBackend>(),
+                             std::move(input));
+    REQUIRE(session.load_rom(test_rom_path()));
+    session.set_controller_mode(core::ControllerMode::HoriFourPlayer);
+    session.set_controller_wiring(core::ControllerWiring::RfFamicom);
+    for (int frame = 0; frame < 8; ++frame) {
+        REQUIRE(session.tick() == TickResult::FrameAdvanced);
+        auto& additional = session.emulator().additional_expansion_controller();
+        additional.write(1);
+        additional.write(0);
+        CHECK(additional.read(0) == (frame % 4 < 2 ? 1 : 0));
+        CHECK(additional.read(1) == 0);
+        CHECK(additional.read(1) == (frame % 4 < 2 ? 1 : 0));
+        CHECK(read_controller(session, 0) == 0x10);
+        CHECK(session.emulator().microphone_active());
+    }
+    held->hold(5, platform::InputAction::Microphone, false);
     REQUIRE(session.tick() == TickResult::FrameAdvanced);
     CHECK_FALSE(session.emulator().microphone_active());
 }

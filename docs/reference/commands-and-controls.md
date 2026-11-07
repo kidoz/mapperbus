@@ -22,7 +22,7 @@ the corresponding values for this process. Scaling and region use their own star
 | `--resampling MODE` | `blip`, `cubic` | `blip` |
 | `--filter-mode MODE` | `accurate`, `enhanced`, `unfiltered` | `accurate` |
 | `--filter-profile P` | `nes`, `famicom` | `nes` |
-| `--controller-mode M` | `standard`, `four-score` | Saved preference, fresh default Standard |
+| `--controller-mode M` | `standard`, `four-score`, `hori-4-player` | Saved preference, fresh default Standard |
 | `--controller-wiring W` | `nes`, `rf-famicom` | Saved preference, fresh default NES |
 | `--expansion-controllers P` | `none`, `1`, `2`, `both` | Attach external Famicom pads; fresh default `none` |
 | `--controller-timing T` | `nes-av-famicom`, `rf-famicom` | Saved preference, fresh default NES/AV Famicom |
@@ -38,6 +38,8 @@ the corresponding values for this process. Scaling and region use their own star
 | `--gamepad2-map MAP` | Same mapping format | Override named player 2 bindings |
 | `--gamepad3 N`, `--gamepad4 N` | Nonnegative SDL gamepad index | Profiles 3/4 (external pads or Four Score); default indices 2/3 |
 | `--gamepad3-map MAP`, `--gamepad4-map MAP` | Same mapping format | Override profile 3/4 bindings |
+| `--gamepad5 N`, `--gamepad6 N` | Nonnegative SDL gamepad index | Hori 3/4; default device indices 4/5 |
+| `--gamepad5-map MAP`, `--gamepad6-map MAP` | Same mapping format | Override profile 5/6 bindings |
 
 CPU xBRZ is selected when `--scale` is supplied without a mode flag. If multiple
 mode flags are supplied, precedence is `--gpu-fsr`, then `--fsr`, then `--gpu`.
@@ -56,6 +58,14 @@ Settings → General → Hardware → Controller mode. Input settings show Playe
 1–4. SDL3 `--gamepad3`/`--gamepad4` and their mapping options select the two
 additional host devices. Famicom D1 attachments resume when returning to Standard.
 See [controller mode](configuration.md#controller-mode) for persistence and limits.
+
+### Hori adapter
+
+Select `--controller-mode hori-4-player` in SDL3/CLI or **Hori 4 Players** in
+GUI General → Hardware → Controller mode. Input exposes Built-in 1/2 and Hori
+1–4. The last two use profile 5/6 bindings and gamepad options; existing profiles
+3/4 become Hori 1/2. All six profiles are saved independently. See
+[Hori configuration](configuration.md#hori-4-players-adapter).
 
 ### Gamepad mapping tokens
 
@@ -180,7 +190,7 @@ and volume accepts 0–100. The headless CLI does not open capture. See
 ## Headless CLI
 
 ```text
-./buildDir/src/frontends/cli/mapperbus-cli <rom-file|archive> [--entry NAME] [--fds-bios PATH] [--frames N] [--controller-timing T] [--controller-wiring W] [--controller-mode standard|four-score] [--expansion-controllers none|1|2|both]
+./buildDir/src/frontends/cli/mapperbus-cli <rom-file|archive> [--entry NAME] [--fds-bios PATH] [--frames N] [--controller-timing T] [--controller-wiring W] [--controller-mode standard|four-score|hori-4-player] [--expansion-controllers none|1|2|both]
 ```
 
 Loads NES/FDS media, resets the emulator, executes 60 frames by default, and

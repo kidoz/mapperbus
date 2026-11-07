@@ -29,7 +29,7 @@ void MemoryBus::save_state(StateWriter& writer) const {
     writer.write(microphone_phase_);
     writer.write(expansion_ports_);
     writer.write(controller_mode_);
-    writer.write_array(four_score_reports_);
+    writer.write_array(adapter_reports_);
 }
 
 void MemoryBus::load_state(StateReader& reader,
@@ -40,7 +40,8 @@ void MemoryBus::load_state(StateReader& reader,
                            bool has_controller_wiring,
                            bool has_microphone,
                            bool has_expansion_controllers,
-                           bool has_four_score) {
+                           bool has_four_score,
+                           bool has_hori) {
     reader.read_array(ram_);
     reader.read(open_bus_);
     reader.read(dma_cycles_);
@@ -75,12 +76,12 @@ void MemoryBus::load_state(StateReader& reader,
     if (expansion_ports_ > 3)
         reader.fail();
     controller_mode_ = has_four_score ? reader.read<ControllerMode>() : ControllerMode::Standard;
-    four_score_reports_.fill(0xFFFFFF);
+    adapter_reports_.fill(0xFFFFFF);
     if (has_four_score)
-        reader.read_array(four_score_reports_);
-    if (controller_mode_ > ControllerMode::FourScore)
+        reader.read_array(adapter_reports_);
+    if (controller_mode_ > (has_hori ? ControllerMode::HoriFourPlayer : ControllerMode::FourScore))
         reader.fail();
-    for (const auto report : four_score_reports_)
+    for (const auto report : adapter_reports_)
         if (report > 0xFFFFFF ||
             (controller_mode_ == ControllerMode::Standard && report != 0xFFFFFF))
             reader.fail();
@@ -106,8 +107,11 @@ void MemoryBus::set_controller_oe(Byte port) {
         controller_->clock(controller_oe_ - 1);
     if (controller_oe_ != port && controller_oe_ != 0 && expansion_controller_ != nullptr)
         expansion_controller_->clock(controller_oe_ - 1);
+    if (controller_oe_ != port && controller_oe_ != 0 &&
+        additional_expansion_controller_ != nullptr)
+        additional_expansion_controller_->clock(controller_oe_ - 1);
     if (controller_oe_ != port && controller_oe_ != 0)
-        clock_four_score(controller_oe_ - 1);
+        clock_adapter(controller_oe_ - 1);
     controller_oe_ = port;
 }
 
@@ -116,28 +120,30 @@ void MemoryBus::set_controller_mode(ControllerMode mode) {
         return;
     set_controller_oe(0);
     controller_mode_ = mode;
-    four_score_reports_.fill(0xFFFFFF);
-    latch_four_score();
+    adapter_reports_.fill(0xFFFFFF);
+    latch_adapter();
 }
 
-void MemoryBus::latch_four_score() {
-    if (controller_mode_ != ControllerMode::FourScore)
+void MemoryBus::latch_adapter() {
+    if (controller_mode_ == ControllerMode::Standard)
         return;
+    const bool hori = controller_mode_ == ControllerMode::HoriFourPlayer;
+    const auto* first_pair = hori ? expansion_controller_ : controller_;
+    const auto* second_pair = hori ? additional_expansion_controller_ : expansion_controller_;
     for (int port = 0; port < 2; ++port) {
-        const auto first = controller_ != nullptr ? controller_->buttons(port) : Byte{0};
-        const auto second =
-            expansion_controller_ != nullptr ? expansion_controller_->buttons(port) : Byte{0};
-        // One identification bit at serial read 19 ($4016) / 18 ($4017).
-        // $10/$20 in read-order documentation become $08/$04 packed LSB first.
-        four_score_reports_[port] = static_cast<uint32_t>(first) |
-                                    static_cast<uint32_t>(second) << 8U | (0x08U >> port) << 16U;
+        const auto first = first_pair != nullptr ? first_pair->buttons(port) : Byte{0};
+        const auto second = second_pair != nullptr ? second_pair->buttons(port) : Byte{0};
+        // Raw serial identification bit: Hori read18/read19, Four Score read19/read18.
+        const uint32_t signature = hori ? (0x04U << port) : (0x08U >> port);
+        adapter_reports_[port] =
+            static_cast<uint32_t>(first) | static_cast<uint32_t>(second) << 8U | signature << 16U;
     }
 }
 
-void MemoryBus::clock_four_score(int port) {
-    if (controller_mode_ == ControllerMode::FourScore &&
+void MemoryBus::clock_adapter(int port) {
+    if (controller_mode_ != ControllerMode::Standard &&
         (controller_ == nullptr || !controller_->strobed()))
-        four_score_reports_[port] = (four_score_reports_[port] >> 1U) | 0x800000U;
+        adapter_reports_[port] = (adapter_reports_[port] >> 1U) | 0x800000U;
 }
 
 void MemoryBus::set_controller_wiring(ControllerWiring wiring) {
@@ -151,11 +157,13 @@ void MemoryBus::set_controller_wiring(ControllerWiring wiring) {
 void MemoryBus::write_controller_strobe(Byte value) {
     // Falling strobe captures host updates made while strobe was high too.
     if ((value & 1U) != 0 || (controller_ != nullptr && controller_->strobed()))
-        latch_four_score();
+        latch_adapter();
     if (controller_ != nullptr)
         controller_->write(value, controller_wiring_ == ControllerWiring::RfFamicom ? 0xF3 : 0xFF);
     if (expansion_controller_ != nullptr)
         expansion_controller_->write(value);
+    if (additional_expansion_controller_ != nullptr)
+        additional_expansion_controller_->write(value);
 }
 
 Byte MemoryBus::read_controller(int player, Byte external, bool timed) {
@@ -168,16 +176,22 @@ Byte MemoryBus::read_controller(int player, Byte external, bool timed) {
     const auto expansion_bit = expansion_controller_ == nullptr ? Byte{0}
                                : timed && ntsc_io() ? expansion_controller_->peek(player)
                                                     : expansion_controller_->read(player);
-    const Byte expansion =
+    Byte expansion =
         controller_mode_ == ControllerMode::Standard && (expansion_ports_ & (1U << player)) != 0
             ? static_cast<Byte>(expansion_bit << 1U)
             : Byte{0};
-    if (controller_mode_ == ControllerMode::FourScore) {
-        bit = controller_ != nullptr && controller_->strobed()
-                  ? static_cast<Byte>(controller_->buttons(player) & 1U)
-                  : static_cast<Byte>(four_score_reports_[player] & 1U);
+    if (controller_mode_ != ControllerMode::Standard) {
+        const bool hori = controller_mode_ == ControllerMode::HoriFourPlayer;
+        const auto* first_pair = hori ? expansion_controller_ : controller_;
+        const auto serial = controller_ != nullptr && controller_->strobed()
+                                ? (first_pair != nullptr ? first_pair->buttons(player) & 1U : 0U)
+                                : adapter_reports_[player] & 1U;
+        if (hori)
+            expansion = static_cast<Byte>(serial << 1U);
+        else
+            bit = static_cast<Byte>(serial);
         if (!(timed && ntsc_io()))
-            clock_four_score(player);
+            clock_adapter(player);
     }
     // RF $4016 D3/D4 float; D1 is the external controller input and D2
     // is the live microphone, independent of the pad shifter and strobe.

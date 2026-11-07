@@ -80,6 +80,12 @@ struct Sdl3FourPlayerInputConfig {
     Sdl3FourPlayerInputConfig();
 };
 
+struct Sdl3SixPlayerInputConfig {
+    std::array<Sdl3InputConfig, platform::kInputProfileCount> players{};
+    std::array<Sdl3KeyboardBindings, platform::kInputProfileCount> keyboards{};
+    Sdl3SixPlayerInputConfig();
+};
+
 class Sdl3Input : public platform::InputBackend {
   public:
     explicit Sdl3Input(Sdl3InputConfig config = {},
@@ -88,6 +94,7 @@ class Sdl3Input : public platform::InputBackend {
                        std::optional<Sdl3KeyboardBindings> keyboard_bindings = std::nullopt,
                        Sdl3KeyboardBindings player2_keyboard_bindings = {});
     explicit Sdl3Input(Sdl3FourPlayerInputConfig config);
+    explicit Sdl3Input(Sdl3SixPlayerInputConfig config);
     ~Sdl3Input() override;
 
     void poll() override;
@@ -117,16 +124,16 @@ class Sdl3Input : public platform::InputBackend {
     [[nodiscard]] std::uint16_t gamepad_state(int player) const;
     [[nodiscard]] bool is_control_pressed(int player, const GamepadControl& control) const;
 
-    std::array<Sdl3InputConfig, 4> configs_{};
-    std::array<Sdl3KeyboardBindings, 4> keyboard_bindings_{};
+    std::array<Sdl3InputConfig, platform::kInputProfileCount> configs_{};
+    std::array<Sdl3KeyboardBindings, platform::kInputProfileCount> keyboard_bindings_{};
     int player_count_ = 1;
     bool quit_requested_ = false;
     bool gamepad_initialized_ = false;
-    std::array<SDL_Gamepad*, 4> gamepads_{};
-    std::array<SDL_JoystickID, 4> gamepad_ids_{};
-    std::array<std::vector<SDL_JoystickID>, 4> disconnected_peers_;
+    std::array<SDL_Gamepad*, platform::kInputProfileCount> gamepads_{};
+    std::array<SDL_JoystickID, platform::kInputProfileCount> gamepad_ids_{};
+    std::array<std::vector<SDL_JoystickID>, platform::kInputProfileCount> disconnected_peers_;
     std::vector<SDL_JoystickID> known_gamepads_;
-    std::array<std::uint16_t, 4> button_state_{};
+    std::array<std::uint16_t, platform::kInputProfileCount> button_state_{};
     Sdl3ScalerCommand pending_scaler_command_{};
     Sdl3SessionCommand pending_session_command_{};
     Sdl3WindowCommand pending_window_command_{};

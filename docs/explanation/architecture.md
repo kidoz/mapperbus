@@ -89,6 +89,9 @@ RAM. User configuration describes host preferences such as input mappings and
 audio settings. Keeping these separate means a UI preference does not become
 part of cartridge hardware state.
 
+Version 19 adds Hori routing onto D1 and a third two-pad Controller for host
+profiles 5/6. Built-in pads stay independent; older states clear the new pair.
+
 Version 18 adds Four Score routing and two 24-bit reports in the bus. It reads
 the existing four host button bytes; standard Controller serialization is
 unchanged. Older states select Standard mode.

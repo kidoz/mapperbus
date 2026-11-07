@@ -108,10 +108,11 @@ int main(int argc, char* argv[]) {
         mapperbus::core::logger::info(
             "  --controller-timing T nes-av-famicom (default) or rf-famicom");
         mapperbus::core::logger::info("  --controller-wiring W nes (default) or rf-famicom");
-        mapperbus::core::logger::info("  --controller-mode M standard (default) or four-score");
+        mapperbus::core::logger::info(
+            "  --controller-mode M standard (default), four-score, or hori-4-player");
         mapperbus::core::logger::info("  --expansion-controllers P none (default), 1, 2, or both");
         mapperbus::core::logger::info(
-            "  --gamepad3/4 N / --gamepad3-map / --gamepad4-map external pad profiles");
+            "  --gamepad3..6 N / --gamepad3-map .. --gamepad6-map adapter pad profiles");
         mapperbus::core::logger::info(
             "  --live-microphone     enable host microphone activity for RF wiring");
         mapperbus::core::logger::info("  --no-live-microphone  disable host capture for this run");
@@ -168,10 +169,12 @@ int main(int argc, char* argv[]) {
     auto state_storage = mapperbus_config.save_states;
     fds_bios = mapperbus_config.fds_bios_path;
     mapperbus::core::AudioSettings audio_settings = mapperbus_config.audio;
-    mapperbus::frontend::Sdl3InputConfig input_config = mapperbus_config.input.gamepad;
-    mapperbus::frontend::Sdl3InputConfig input_config2 = mapperbus_config.input.player2_gamepad;
-    auto input_config3 = mapperbus_config.input.gamepad_profile(2);
-    auto input_config4 = mapperbus_config.input.gamepad_profile(3);
+    std::array<mapperbus::frontend::Sdl3InputConfig, mapperbus::platform::kInputProfileCount>
+        input_configs;
+    for (int player = 0; player < mapperbus::platform::kInputProfileCount; ++player)
+        input_configs[player] = mapperbus_config.input.gamepad_profile(player);
+    auto& input_config = input_configs[0];
+    auto& input_config2 = input_configs[1];
 
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--scale") == 0 && i + 1 < argc) {
@@ -239,21 +242,24 @@ int main(int argc, char* argv[]) {
                 return EXIT_FAILURE;
             }
         } else if (std::strcmp(argv[i], "--gamepad3") == 0 ||
-                   std::strcmp(argv[i], "--gamepad4") == 0) {
-            auto& target = std::strcmp(argv[i], "--gamepad3") == 0 ? input_config3 : input_config4;
+                   std::strcmp(argv[i], "--gamepad4") == 0 ||
+                   std::strcmp(argv[i], "--gamepad5") == 0 ||
+                   std::strcmp(argv[i], "--gamepad6") == 0) {
+            auto& target = input_configs[argv[i][9] - '1'];
             const std::string_view value = i + 1 < argc ? argv[++i] : "";
             int index = 0;
             const auto parsed = std::from_chars(value.data(), value.data() + value.size(), index);
             if (parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size() ||
                 index < 0) {
-                mapperbus::core::logger::error("--gamepad3/4 requires a nonnegative device index");
+                mapperbus::core::logger::error("--gamepad3..6 requires a nonnegative device index");
                 return EXIT_FAILURE;
             }
             target.gamepad_index = index;
         } else if (std::strcmp(argv[i], "--gamepad3-map") == 0 ||
-                   std::strcmp(argv[i], "--gamepad4-map") == 0) {
-            auto& target =
-                std::strcmp(argv[i], "--gamepad3-map") == 0 ? input_config3 : input_config4;
+                   std::strcmp(argv[i], "--gamepad4-map") == 0 ||
+                   std::strcmp(argv[i], "--gamepad5-map") == 0 ||
+                   std::strcmp(argv[i], "--gamepad6-map") == 0) {
+            auto& target = input_configs[argv[i][9] - '1'];
             if (i + 1 >= argc) {
                 mapperbus::core::logger::error("Missing external gamepad mapping");
                 return EXIT_FAILURE;
@@ -267,7 +273,8 @@ int main(int argc, char* argv[]) {
             const auto mode =
                 i + 1 < argc ? mapperbus::app::parse_controller_mode(argv[++i]) : std::nullopt;
             if (!mode) {
-                mapperbus::core::logger::error("--controller-mode requires standard or four-score");
+                mapperbus::core::logger::error(
+                    "--controller-mode requires standard, four-score, or hori-4-player");
                 return EXIT_FAILURE;
             }
             controller_mode = *mode;
@@ -380,9 +387,9 @@ int main(int argc, char* argv[]) {
     }
 
     auto audio = std::make_unique<mapperbus::frontend::Sdl3Audio>();
-    mapperbus::frontend::Sdl3FourPlayerInputConfig profiles;
-    profiles.players = {input_config, input_config2, input_config3, input_config4};
-    for (int player = 0; player < 4; ++player)
+    mapperbus::frontend::Sdl3SixPlayerInputConfig profiles;
+    profiles.players = input_configs;
+    for (int player = 0; player < mapperbus::platform::kInputProfileCount; ++player)
         profiles.keyboards[player] = mapperbus_config.input.keyboard_profile(player);
     auto input = std::make_unique<mapperbus::frontend::Sdl3Input>(profiles);
     auto* sdl_input = input.get();

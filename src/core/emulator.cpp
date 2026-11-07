@@ -14,7 +14,8 @@ namespace mapperbus::core {
 namespace {
 // "MBST" — MapperBus STate. Bump kStateVersion on any layout change.
 constexpr std::array<Byte, 4> kStateMagic = {'M', 'B', 'S', 'T'};
-// v18 adds Four Score mode and two 24-bit serial reports.
+// v19 adds Hori mode and two additional host pad states.
+// v18 added Four Score mode and two 24-bit serial reports.
 // v17 added external controller attachments and serial reports.
 // v16 added digital microphone activity/phase. v15 added controller-port wiring.
 // v14 added the selected controller timing.
@@ -24,7 +25,7 @@ constexpr std::array<Byte, 4> kStateMagic = {'M', 'B', 'S', 'T'};
 // clock remainder. v10 added PPU frame parity and the retained dot-skip decision.
 // v9 added interrupt decisions/detectors and PPU/APU race state. v8 added DMC
 // requests/cadence; v7 the FDS watchdog; v6 audio latches; v5 drive state; v4 SHA-256.
-constexpr std::uint32_t kStateVersion = 18;
+constexpr std::uint32_t kStateVersion = 19;
 
 [[nodiscard]] std::string battery_path_for(const std::string& rom_path) {
     return std::filesystem::path(rom_path).replace_extension(".sav").string();
@@ -46,10 +47,10 @@ constexpr std::uint32_t kStateVersion = 18;
         return std::nullopt;
     }
     const auto version = reader.read<std::uint32_t>();
-    if (version != kStateVersion && version != 17 && version != 16 && version != 15 &&
-        version != 14 && version != 13 && version != 12 && version != 11 && version != 10 &&
-        version != 9 && version != 8 && version != 7 && version != 6 && version != 5 &&
-        version != 4 && !(version == 3 && allow_legacy)) {
+    if (version != kStateVersion && version != 18 && version != 17 && version != 16 &&
+        version != 15 && version != 14 && version != 13 && version != 12 && version != 11 &&
+        version != 10 && version != 9 && version != 8 && version != 7 && version != 6 &&
+        version != 5 && version != 4 && !(version == 3 && allow_legacy)) {
         logger::warn("Save-state rejected: unsupported version");
         return std::nullopt;
     }
@@ -94,6 +95,7 @@ void Emulator::wire_apu() {
     bus_.connect_apu(&apu_);
     bus_.connect_controller(&controller_);
     bus_.connect_expansion_controller(&expansion_controller_);
+    bus_.connect_additional_expansion_controller(&additional_expansion_controller_);
     bus_.connect_fds(&fds_);
 
     // Wire expansion audio (mapper + FDS) into APU mixer
@@ -340,6 +342,7 @@ std::vector<Byte> Emulator::save_state() const {
         cartridge_->save_state(writer);
     }
     expansion_controller_.save_state(writer);
+    additional_expansion_controller_.save_state(writer);
     return writer.take();
 }
 
@@ -379,7 +382,8 @@ bool Emulator::restore_state(std::span<const Byte> data, bool allow_legacy) {
                     version >= 15,
                     version >= 16,
                     version >= 17,
-                    version >= 18);
+                    version >= 18,
+                    version >= 19);
     controller_.load_state(reader);
     if (version < 13)
         bus_.restore_legacy_controller();
@@ -394,6 +398,15 @@ bool Emulator::restore_state(std::span<const Byte> data, bool allow_legacy) {
     } else {
         expansion_controller_ = Controller{};
         expansion_controller_.write(controller_.strobed() ? 1 : 0);
+    }
+
+    if (version >= 19) {
+        additional_expansion_controller_.load_state(reader);
+        if (additional_expansion_controller_.strobed() != controller_.strobed())
+            reader.fail();
+    } else {
+        additional_expansion_controller_ = Controller{};
+        additional_expansion_controller_.write(controller_.strobed() ? 1 : 0);
     }
 
     if (version < 9)

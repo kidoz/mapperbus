@@ -125,5 +125,70 @@ TEST_CASE("NodalKit gamepads route independent mappings and release disconnected
     CHECK_FALSE(input.player_input(3).gamepad_connected());
 }
 
+TEST_CASE("NodalKit owns six independent gamepad profiles for Hori mode", "[gui][input][hori]") {
+    struct VirtualPads {
+        std::array<SDL_JoystickID, 6> ids{};
+        std::array<SDL_Joystick*, 6> joysticks{};
+        ~VirtualPads() {
+            for (auto* joystick : joysticks)
+                if (joystick)
+                    SDL_CloseJoystick(joystick);
+            for (auto id : ids)
+                if (id)
+                    SDL_DetachVirtualJoystick(id);
+            SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
+        }
+    } pads;
+    REQUIRE(SDL_InitSubSystem(SDL_INIT_GAMEPAD));
+    SDL_VirtualJoystickDesc desc{};
+    SDL_INIT_INTERFACE(&desc);
+    desc.type = SDL_JOYSTICK_TYPE_GAMEPAD;
+    desc.nbuttons = SDL_GAMEPAD_BUTTON_COUNT;
+    desc.button_mask = (1U << SDL_GAMEPAD_BUTTON_COUNT) - 1;
+    desc.name = "MapperBus Hori profiles";
+    std::array<platform::GamepadInputConfig, 6> profiles;
+    for (int player = 0; player < 6; ++player) {
+        pads.ids[player] = SDL_AttachVirtualJoystick(&desc);
+        REQUIRE(pads.ids[player] != 0);
+        pads.joysticks[player] = SDL_OpenJoystick(pads.ids[player]);
+        REQUIRE(pads.joysticks[player] != nullptr);
+        int count = 0;
+        auto* ids = SDL_GetGamepads(&count);
+        REQUIRE(ids != nullptr);
+        const int index = static_cast<int>(std::find(ids, ids + count, pads.ids[player]) - ids);
+        SDL_free(ids);
+        REQUIRE(index < count);
+        profiles[player].gamepad_index = index;
+    }
+    REQUIRE(platform::apply_gamepad_mapping(profiles[4], "a=back"));
+    REQUIRE(platform::apply_gamepad_mapping(profiles[5], "a=start,microphone=leftshoulder"));
+    nk::Window window({.title = "Six input profiles", .width = 600, .height = 300});
+    NodalKitInput input(window, profiles);
+    REQUIRE(SDL_SetJoystickVirtualButton(pads.joysticks[4], SDL_GAMEPAD_BUTTON_BACK, true));
+    REQUIRE(SDL_SetJoystickVirtualButton(pads.joysticks[5], SDL_GAMEPAD_BUTTON_START, true));
+    REQUIRE(
+        SDL_SetJoystickVirtualButton(pads.joysticks[5], SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, true));
+    input.poll();
+    CHECK(input.is_button_pressed(4, core::Button::A));
+    CHECK(input.is_button_pressed(5, core::Button::A));
+    CHECK_FALSE(input.is_button_pressed(0, core::Button::A));
+    CHECK(input.is_action_pressed(5, platform::InputAction::Microphone));
+    CHECK(input.player_input(5).uses_default_bindings());
+    input.player_input(5).reset_default_gamepad_bindings();
+    CHECK(input.player_input(5).uses_default_gamepad_bindings());
+    input.player_input(5).set_gamepad_index(profiles[5].gamepad_index);
+    input.poll();
+    CHECK_FALSE(input.is_button_pressed(5, core::Button::A));
+    CHECK_FALSE(input.is_action_pressed(5, platform::InputAction::Microphone));
+    CHECK(input.is_button_pressed(4, core::Button::A));
+    SDL_CloseJoystick(pads.joysticks[5]);
+    pads.joysticks[5] = nullptr;
+    REQUIRE(SDL_DetachVirtualJoystick(pads.ids[5]));
+    pads.ids[5] = 0;
+    input.poll();
+    CHECK_FALSE(input.player_input(5).gamepad_connected());
+    CHECK(input.player_input(4).gamepad_connected());
+}
+
 } // namespace
 } // namespace mapperbus::frontend

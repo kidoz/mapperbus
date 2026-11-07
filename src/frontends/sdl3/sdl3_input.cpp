@@ -85,6 +85,12 @@ Sdl3FourPlayerInputConfig::Sdl3FourPlayerInputConfig() {
         players[player].gamepad_index = player;
 }
 
+Sdl3SixPlayerInputConfig::Sdl3SixPlayerInputConfig() {
+    keyboards[0] = default_keyboard_bindings();
+    for (int player = 0; player < platform::kInputProfileCount; ++player)
+        players[player].gamepad_index = player;
+}
+
 Sdl3Input::Sdl3Input(Sdl3InputConfig config, std::optional<Sdl3KeyboardBindings> keyboard_bindings)
     : configs_{config},
       keyboard_bindings_{keyboard_bindings.value_or(default_keyboard_bindings())} {
@@ -103,8 +109,16 @@ Sdl3Input::Sdl3Input(Sdl3TwoPlayerInputConfig config,
     open_configured_gamepad();
 }
 
-Sdl3Input::Sdl3Input(Sdl3FourPlayerInputConfig config)
-    : configs_(config.players), keyboard_bindings_(config.keyboards), player_count_(4) {
+Sdl3Input::Sdl3Input(Sdl3FourPlayerInputConfig config) : player_count_(4) {
+    std::ranges::copy(config.players, configs_.begin());
+    std::ranges::copy(config.keyboards, keyboard_bindings_.begin());
+    init_gamepad_subsystem();
+    open_configured_gamepad();
+}
+
+Sdl3Input::Sdl3Input(Sdl3SixPlayerInputConfig config)
+    : configs_(config.players), keyboard_bindings_(config.keyboards),
+      player_count_(platform::kInputProfileCount) {
     init_gamepad_subsystem();
     open_configured_gamepad();
 }

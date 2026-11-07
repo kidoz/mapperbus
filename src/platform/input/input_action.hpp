@@ -24,6 +24,8 @@ enum class InputAction : std::uint8_t {
 };
 
 inline constexpr std::size_t kInputActionCount = 11;
+// Two built-in pads plus up to four Famicom adapter pads.
+inline constexpr int kInputProfileCount = 6;
 
 [[nodiscard]] constexpr auto input_actions() {
     return std::array{InputAction::Up,

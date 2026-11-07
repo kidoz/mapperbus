@@ -9,7 +9,7 @@ class InputBackend {
     virtual ~InputBackend() = default;
 
     virtual void poll() = 0;
-    // Profiles 0/1 are built-in pads; 2/3 are external Famicom pads.
+    // Profiles 0/1 are built-in pads; 2..5 are external Famicom adapter pads.
     // Unsupported profiles must return false.
     virtual bool is_button_pressed(int player, core::Button button) const = 0;
     // Backends without extra actions (e.g. headless input) need no turbo support.

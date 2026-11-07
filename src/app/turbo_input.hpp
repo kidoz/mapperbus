@@ -2,6 +2,8 @@
 
 #include <array>
 
+#include "platform/input/input_action.hpp"
+
 namespace mapperbus::app {
 
 // Session policy: phase advances only when a frame consumes input. It never
@@ -33,7 +35,7 @@ class TurboInput {
 
   private:
     int period_ = 4;
-    std::array<std::array<int, 2>, 4> phases_{};
+    std::array<std::array<int, 2>, platform::kInputProfileCount> phases_{};
 };
 
 } // namespace mapperbus::app

@@ -433,7 +433,7 @@ void EmulationSession::sync_input() {
     if (was_recording && !live_microphone_.recording())
         clear_microphone_playback();
     bool microphone = live;
-    for (int player = 0; player < 4; ++player) {
+    for (int player = 0; player < platform::kInputProfileCount; ++player) {
         microphone |= input_->is_action_pressed(player, platform::InputAction::Microphone);
         // Consume each turbo action even when ordinary A/B is held, so its
         // phase remains independent of the normal binding.
@@ -447,8 +447,9 @@ void EmulationSession::sync_input() {
                 pressed |= turbo_a;
             if (button == Button::B)
                 pressed |= turbo_b;
-            auto& controller =
-                player < 2 ? emulator_.controller() : emulator_.expansion_controller();
+            auto& controller = player < 2   ? emulator_.controller()
+                               : player < 4 ? emulator_.expansion_controller()
+                                            : emulator_.additional_expansion_controller();
             controller.set_button_state(player % 2, button, pressed);
         }
     }

@@ -52,6 +52,7 @@ enum class ControllerWiring : std::uint8_t {
 enum class ControllerMode : std::uint8_t {
     Standard,
     FourScore,
+    HoriFourPlayer,
 };
 
 struct RegionTiming {

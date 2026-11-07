@@ -7,7 +7,7 @@
 
 namespace mapperbus::tests {
 
-/// Derive v17-v7 fixtures by removing newer component extensions. FDS
+/// Derive v18-v7 fixtures by removing newer component extensions. FDS
 /// v4-v6 conversions can then remove their older tail extensions independently.
 inline std::vector<core::Byte> legacy_state(const core::Emulator& emulator, uint32_t version) {
     auto blob = emulator.save_state();
@@ -25,6 +25,8 @@ inline std::vector<core::Byte> legacy_state(const core::Emulator& emulator, uint
         blob.erase(blob.begin() + static_cast<std::ptrdiff_t>(end - count),
                    blob.begin() + static_cast<std::ptrdiff_t>(end));
     };
+    if (version < 19)
+        erase(blob.size(), 5); // Hori adapter pads 3/4 appended after existing external state
     if (version < 17)
         erase(blob.size(), 5); // external pad reports appended after cartridge state
     const std::size_t old_bus_tail = version < 9 ? 5 : version < 11 ? 3 : version < 13 ? 2 : 0;

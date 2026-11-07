@@ -777,6 +777,15 @@ std::string file_dialog_error_text(nk::FileDialogError error) {
     }
 }
 
+std::string input_profile_name(int player, core::ControllerMode mode) {
+    if (mode == core::ControllerMode::HoriFourPlayer)
+        return player < 2 ? "Built-in " + std::to_string(player + 1)
+                          : "Hori " + std::to_string(player - 1);
+    return player < 2 || mode == core::ControllerMode::FourScore
+               ? "Player " + std::to_string(player + 1)
+               : "External " + std::to_string(player - 1);
+}
+
 std::string button_name(platform::InputAction button) {
     switch (button) {
     case platform::InputAction::Microphone:
@@ -1026,11 +1035,13 @@ MapperBusGuiController::MapperBusGuiController(nk::Application& app, nk::Window&
                                         std::array{configuration_.input.gamepad_profile(0),
                                                    configuration_.input.gamepad_profile(1),
                                                    configuration_.input.gamepad_profile(2),
-                                                   configuration_.input.gamepad_profile(3)});
+                                                   configuration_.input.gamepad_profile(3),
+                                                   configuration_.input.gamepad_profile(4),
+                                                   configuration_.input.gamepad_profile(5)});
     input_backend_ = input.get();
     const app::MapperBusInputConfiguration default_input;
     bool replaced_reserved_binding = false;
-    for (int player = 0; player < 4; ++player) {
+    for (int player = 0; player < platform::kInputProfileCount; ++player) {
         auto& bindings = configuration_.input.keyboard_profile(player);
         const auto& defaults = default_input.keyboard_profile(player);
         for (const auto button : kBindingOrder) {
@@ -2266,7 +2277,7 @@ void MapperBusGuiController::update_preview_surface(const std::uint32_t* data,
 }
 
 void MapperBusGuiController::update_configuration_from_state() {
-    for (int player = 0; player < 4; ++player) {
+    for (int player = 0; player < platform::kInputProfileCount; ++player) {
         const auto& input = input_backend_->player_input(player);
         auto& keyboard = configuration_.input.keyboard_profile(player);
         for (const auto button : kBindingOrder) {
@@ -2305,11 +2316,8 @@ void MapperBusGuiController::open_rebind_dialog(RebindDevice device, platform::I
     }
 
     const std::string target =
-        (settings_input_player_ < 2 ||
-                 actions_->snapshot().controller_mode == core::ControllerMode::FourScore
-             ? "Player " + std::to_string(settings_input_player_ + 1)
-             : "External " + std::to_string(settings_input_player_ - 1)) +
-        " · " + button_name(button);
+        input_profile_name(settings_input_player_, actions_->snapshot().controller_mode) + " · " +
+        button_name(button);
     const bool keyboard = device == RebindDevice::Keyboard;
     rebind_dialog_ = nk::Dialog::create("Rebind " + target);
     rebind_dialog_->set_presentation_style(nk::DialogPresentationStyle::Sheet);
@@ -2644,22 +2652,22 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
         input_test_label_.reset();
         auto hardware_group = SettingsGroup::create("Hardware");
         hardware_group->set_horizontal_size_policy(nk::SizePolicy::Expanding);
-        const bool four_score =
-            actions_->snapshot().controller_mode == core::ControllerMode::FourScore;
+        const bool adapter = actions_->snapshot().controller_mode != core::ControllerMode::Standard;
         auto mode_combo = nk::ComboBox::create();
-        mode_combo->set_items({"Standard", "Four Score"});
-        mode_combo->set_selected_index(four_score ? 1 : 0);
+        mode_combo->set_items({"Standard", "Four Score", "Hori 4 Players"});
+        mode_combo->set_selected_index(static_cast<int>(actions_->snapshot().controller_mode));
         mode_combo->ensure_accessible().set_name("Controller mode");
         (void)mode_combo->on_selection_changed().connect([this](int index) {
-            configuration_.input.controller_mode =
-                index == 1 ? core::ControllerMode::FourScore : core::ControllerMode::Standard;
+            configuration_.input.controller_mode = index == 2 ? core::ControllerMode::HoriFourPlayer
+                                                   : index == 1 ? core::ControllerMode::FourScore
+                                                                : core::ControllerMode::Standard;
             actions_->set_controller_mode(configuration_.input.controller_mode);
             save_configuration_state();
             refresh_ui();
             refresh_settings_dialog_sections();
         });
-        hardware_group->add(pref_row(
-            "Controller mode", mode_combo, "Four-player adapter for compatible NES games."));
+        hardware_group->add(
+            pref_row("Controller mode", mode_combo, "NES Four Score or Famicom Hori adapter."));
         auto wiring_combo = nk::ComboBox::create();
         wiring_combo->set_items({"NES", "Original RF Famicom"});
         wiring_combo->set_selected_index(
@@ -2695,7 +2703,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
             pref_row("Controller timing", timing_combo, "Controller ports in NTSC mode."));
         for (int port = 0; port < 2; ++port) {
             auto attached = nk::Switch::create();
-            attached->set_sensitive(!four_score);
+            attached->set_sensitive(!adapter);
             attached->set_active((actions_->snapshot().expansion_controllers & (1U << port)) != 0);
             (void)attached->on_toggled().connect([this, port](bool active) {
                 const auto mask = static_cast<core::Byte>(1U << port);
@@ -2706,12 +2714,12 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
                 actions_->set_expansion_controllers(ports);
                 save_configuration_state();
             });
-            hardware_group->add(pref_row(
-                "External controller " + std::to_string(port + 1),
-                attached,
-                four_score ? "Available in Standard controller mode."
-                           : "Famicom expansion pad; bindings are under Input > External " +
-                                 std::to_string(port + 1) + "."));
+            hardware_group->add(
+                pref_row("External controller " + std::to_string(port + 1),
+                         attached,
+                         adapter ? "Available in Standard controller mode."
+                                 : "Famicom expansion pad; bindings are under Input > External " +
+                                       std::to_string(port + 1) + "."));
         }
         page->append(hardware_group);
         auto bios_group = SettingsGroup::create("BIOS");
@@ -2766,14 +2774,18 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
         page->append(bios_status);
     } else if (settings_page_ == SettingsPage::Input) {
         auto player_selector = nk::SegmentedControl::create();
-        if (actions_->snapshot().controller_mode == core::ControllerMode::FourScore)
-            player_selector->set_segments({"Player 1", "Player 2", "Player 3", "Player 4"});
-        else
-            player_selector->set_segments({"Player 1", "Player 2", "External 1", "External 2"});
+        const auto mode = actions_->snapshot().controller_mode;
+        const int profile_count =
+            mode == core::ControllerMode::HoriFourPlayer ? platform::kInputProfileCount : 4;
+        std::vector<std::string> profile_names;
+        for (int player = 0; player < profile_count; ++player)
+            profile_names.push_back(input_profile_name(player, mode));
+        settings_input_player_ = std::clamp(settings_input_player_, 0, profile_count - 1);
+        player_selector->set_segments(profile_names);
         player_selector->set_selected_index(settings_input_player_);
         player_selector->ensure_accessible().set_name("Input player");
-        (void)player_selector->on_selection_changed().connect([this](int player) {
-            settings_input_player_ = std::clamp(player, 0, 3);
+        (void)player_selector->on_selection_changed().connect([this, profile_count](int player) {
+            settings_input_player_ = std::clamp(player, 0, profile_count - 1);
             refresh_settings_dialog_sections();
         });
         page->append(player_selector);
@@ -3500,7 +3512,7 @@ void MapperBusGuiController::handle_menu_action(std::string_view action) {
 }
 
 std::string MapperBusGuiController::input_status_text() const {
-    for (int player = 0; player < 4; ++player) {
+    for (int player = 0; player < platform::kInputProfileCount; ++player) {
         const auto& input = input_backend_->player_input(player);
         if (!input.uses_default_bindings() || !input.uses_default_gamepad_bindings()) {
             return "Input custom";

@@ -541,10 +541,22 @@ class NodalKitInput : public platform::InputBackend {
                         std::array{player1, player2, disabled_profile(2), disabled_profile(3)}) {}
 
     NodalKitInput(nk::Window& window, std::array<platform::GamepadInputConfig, 4> profiles)
+        : NodalKitInput(window,
+                        std::array{profiles[0],
+                                   profiles[1],
+                                   profiles[2],
+                                   profiles[3],
+                                   disabled_profile(4),
+                                   disabled_profile(5)}) {}
+
+    NodalKitInput(nk::Window& window,
+                  std::array<platform::GamepadInputConfig, platform::kInputProfileCount> profiles)
         : players_{NodalKitPlayerInput(window, profiles[0], 0),
                    NodalKitPlayerInput(window, profiles[1], 1),
                    NodalKitPlayerInput(window, profiles[2], 2),
-                   NodalKitPlayerInput(window, profiles[3], 3)} {}
+                   NodalKitPlayerInput(window, profiles[3], 3),
+                   NodalKitPlayerInput(window, profiles[4], 4),
+                   NodalKitPlayerInput(window, profiles[5], 5)} {}
 
     void poll() override {
         for (auto& player : players_) {
@@ -557,7 +569,8 @@ class NodalKitInput : public platform::InputBackend {
     }
 
     bool is_action_pressed(int player, platform::InputAction action) const override {
-        return player >= 0 && player < 4 && players_[player].is_action_pressed(action);
+        return player >= 0 && player < platform::kInputProfileCount &&
+               players_[player].is_action_pressed(action);
     }
 
     bool should_quit() const override {
@@ -583,7 +596,7 @@ class NodalKitInput : public platform::InputBackend {
         config.gamepad_index = index;
         return config;
     }
-    std::array<NodalKitPlayerInput, 4> players_;
+    std::array<NodalKitPlayerInput, platform::kInputProfileCount> players_;
 };
 
 } // namespace mapperbus::frontend

@@ -30,8 +30,9 @@ struct MapperBusInputConfiguration {
     /// External pads 1/2 use host profiles 3/4. Bit 0/1 attaches each D1 input.
     core::Byte expansion_controllers = 0;
     core::ControllerMode controller_mode = core::ControllerMode::Standard;
-    std::array<std::array<int, platform::kInputActionCount>, 2> expansion_keyboard_bindings{};
-    std::array<platform::GamepadInputConfig, 2> expansion_gamepads{};
+    std::array<std::array<int, platform::kInputActionCount>, platform::kInputProfileCount - 2>
+        expansion_keyboard_bindings{};
+    std::array<platform::GamepadInputConfig, platform::kInputProfileCount - 2> expansion_gamepads{};
     int turbo_period_frames = 4;
 
     MapperBusInputConfiguration();

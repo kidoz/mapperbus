@@ -79,8 +79,8 @@ operations, and [Configuration](configuration.md) for frontend preferences.
 Two standard expansion pads are supported on D1, alongside the built-in D0
 controllers. Enable them in Settings → General → Hardware and bind **External
 1/2** under Input, or use the SDL3 options in
-[Commands and controls](commands-and-controls.md). Games must read D1. Hori adapter
-signatures are not implemented; Four Score is available as a separate mode below. Serial timing, DMA behavior,
+[Commands and controls](commands-and-controls.md). Games must read D1. Hori and Four Score
+serial adapters are available as separate modes below. Serial timing, DMA behavior,
 and version-17 snapshot replay have synthetic regression coverage, including
 four virtual SDL gamepads read by an original diagnostic ROM.
 
@@ -96,3 +96,15 @@ all four virtual SDL gamepads and both signatures into CPU RAM. The pinned publi
 [allpads diagnostic](dma-timing.md#optional-public-controller-diagnostic) also
 identifies Four Score using its original detection routine in both timing modes. This coverage
 does not certify compatibility with every commercial Four Score game.
+
+## Hori 4 Players Adapter
+
+Hori four-controller serial mode is supported through `hori-4-player`, with two
+independent built-in pads and four expansion pads. Input exposes six profiles.
+The adapter reports on D1 with identification bits at read 18/19, retaining D0
+built-ins and RF microphone behavior. The original six-gamepad ROM test reads
+all reports and identification bits through the emulated CPU. Bus tests cover
+strobe, both read timings, wiring masks, microphone/open bus, NTSC DMC/OAM and
+post-report ones; state tests cover independent partial reports, held reads,
+rollback and version-18 imports. Commercial Hori game compatibility and physical
+adapter electrical behavior have not been independently certified.

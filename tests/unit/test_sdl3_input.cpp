@@ -321,6 +321,104 @@ TEST_CASE("SDL3 gamepad mapping parser updates NES bindings", "[sdl3][input]") {
     REQUIRE(select.button == platform::GamepadButton::Back);
 }
 
+TEST_CASE("Six SDL gamepads reach built-in and Hori reports through a running ROM",
+          "[sdl3][input][hori][functional]") {
+    struct VirtualPads {
+        std::array<SDL_JoystickID, 6> ids{};
+        std::array<SDL_Joystick*, 6> joysticks{};
+        ~VirtualPads() {
+            for (auto* joystick : joysticks)
+                if (joystick)
+                    SDL_CloseJoystick(joystick);
+            for (auto id : ids)
+                if (id)
+                    SDL_DetachVirtualJoystick(id);
+            SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
+        }
+    } pads;
+    REQUIRE(SDL_InitSubSystem(SDL_INIT_GAMEPAD));
+    SDL_VirtualJoystickDesc desc{};
+    SDL_INIT_INTERFACE(&desc);
+    desc.type = SDL_JOYSTICK_TYPE_GAMEPAD;
+    desc.nbuttons = SDL_GAMEPAD_BUTTON_COUNT;
+    desc.button_mask = (1U << SDL_GAMEPAD_BUTTON_COUNT) - 1;
+    desc.name = "MapperBus Hori six profile test";
+    Sdl3SixPlayerInputConfig profiles;
+    for (int player = 0; player < 6; ++player) {
+        pads.ids[player] = SDL_AttachVirtualJoystick(&desc);
+        REQUIRE(pads.ids[player] != 0);
+        pads.joysticks[player] = SDL_OpenJoystick(pads.ids[player]);
+        REQUIRE(pads.joysticks[player] != nullptr);
+        int count = 0;
+        auto* ids = SDL_GetGamepads(&count);
+        REQUIRE(ids != nullptr);
+        const int index = static_cast<int>(std::find(ids, ids + count, pads.ids[player]) - ids);
+        SDL_free(ids);
+        REQUIRE(index < count);
+        profiles.players[player].gamepad_index = index;
+    }
+    REQUIRE(apply_gamepad_mapping(profiles.players[5], "microphone=rightshoulder"));
+    constexpr std::uint8_t kProgram[] = {0xA9, 1,    0x8D, 0x16, 0x40, 0xA9, 0,    0x8D,
+                                         0x16, 0x40, 0xA2, 0,    0xAD, 0x16, 0x40, 0x9D,
+                                         0x00, 0x06, 0xAD, 0x17, 0x40, 0x9D, 0x40, 0x06,
+                                         0xE8, 0xE0, 0x18, 0xD0, 0xEF, 0x4C, 0,    0x80};
+    core::register_builtin_mappers();
+    const auto rom = tests::build_ines_rom("hori-functional", 0, 1, 1, kProgram);
+    const auto config_path = std::filesystem::path(rom.string() + ".conf");
+    app::MapperBusConfiguration saved;
+    saved.input.controller_mode = core::ControllerMode::HoriFourPlayer;
+    for (int player = 0; player < 6; ++player)
+        saved.input.gamepad_profile(player) = profiles.players[player];
+    REQUIRE(app::save_mapperbus_configuration_to_file(saved, config_path));
+    const auto loaded = app::load_mapperbus_configuration_from_file(config_path);
+    for (int player = 0; player < 6; ++player) {
+        profiles.players[player] = loaded.input.gamepad_profile(player);
+        profiles.keyboards[player] = loaded.input.keyboard_profile(player);
+    }
+    auto input = std::make_unique<Sdl3Input>(profiles);
+    auto* backend = input.get();
+    app::EmulationSession session(std::make_unique<platform::NullVideo>(),
+                                  std::make_unique<platform::NullAudio>(),
+                                  std::move(input));
+    REQUIRE(session.load_rom(rom.string()));
+    session.set_controller_mode(loaded.input.controller_mode);
+    session.set_controller_wiring(core::ControllerWiring::RfFamicom);
+    session.set_controller_timing(core::ControllerTiming::RfFamicom);
+    REQUIRE(SDL_SetJoystickVirtualButton(pads.joysticks[0], SDL_GAMEPAD_BUTTON_EAST, true));
+    REQUIRE(SDL_SetJoystickVirtualButton(pads.joysticks[1], SDL_GAMEPAD_BUTTON_BACK, true));
+    REQUIRE(SDL_SetJoystickVirtualButton(pads.joysticks[1], SDL_GAMEPAD_BUTTON_START, true));
+    REQUIRE(SDL_SetJoystickVirtualButton(pads.joysticks[1], SDL_GAMEPAD_BUTTON_DPAD_UP, true));
+    REQUIRE(SDL_SetJoystickVirtualButton(pads.joysticks[2], SDL_GAMEPAD_BUTTON_SOUTH, true));
+    REQUIRE(SDL_SetJoystickVirtualButton(pads.joysticks[3], SDL_GAMEPAD_BUTTON_START, true));
+    REQUIRE(SDL_SetJoystickVirtualButton(pads.joysticks[4], SDL_GAMEPAD_BUTTON_DPAD_RIGHT, true));
+    REQUIRE(SDL_SetJoystickVirtualButton(pads.joysticks[5], SDL_GAMEPAD_BUTTON_EAST, true));
+    REQUIRE(
+        SDL_SetJoystickVirtualButton(pads.joysticks[5], SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, true));
+    const auto check_reports = [&](bool sixth_connected) {
+        REQUIRE(session.tick() == app::TickResult::FrameAdvanced);
+        CHECK(session.emulator().microphone_active() == sixth_connected);
+        const uint32_t reports[] = {0x048002U, sixth_connected ? 0x080108U : 0x080008U};
+        const unsigned built_in[] = {0x01, 0x10}; // RF built-in 2 masks Start/Select
+        for (unsigned bit = 0; bit < 24; ++bit)
+            for (int port = 0; port < 2; ++port) {
+                const auto d0 = bit < 8 ? built_in[port] >> bit & 1U : 1U;
+                const auto d1 = reports[port] >> bit & 1U;
+                CHECK((session.emulator().read_cpu((port == 0 ? 0x0600 : 0x0640) + bit) & 3U) ==
+                      (d0 | d1 << 1U));
+            }
+    };
+    check_reports(true);
+    SDL_CloseJoystick(pads.joysticks[5]);
+    pads.joysticks[5] = nullptr;
+    REQUIRE(SDL_DetachVirtualJoystick(pads.ids[5]));
+    pads.ids[5] = 0;
+    check_reports(false);
+    CHECK_FALSE(backend->is_button_pressed(5, core::Button::A));
+    CHECK(backend->is_button_pressed(4, core::Button::Right));
+    std::filesystem::remove(config_path);
+    std::filesystem::remove(rom);
+}
+
 TEST_CASE("SDL3 gamepad mapping parser reports invalid entries", "[sdl3][input]") {
     Sdl3InputConfig config;
 

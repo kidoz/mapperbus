@@ -9,6 +9,10 @@ Versioning.
 
 ### Added
 
+- Hori 4 Players Adapter mode with independent built-in controllers, six host
+  profiles, GUI/CLI/configuration support, shared serial/DMA timing, and
+  version-19 snapshots with legacy import.
+
 - Hash-pinned allpads controller detection and snapshot diagnostics for Standard
   and Four Score modes, using the author's unmodified public ROM.
 

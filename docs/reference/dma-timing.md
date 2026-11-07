@@ -192,6 +192,34 @@ inactive reports and truncation reject with full rollback. Versions 3–17 impor
 Standard mode; v17 retains its D1 mask and external controller state. The v17
 five-byte external controller tail remains in place after cartridge state.
 
+### Hori 4 Players Adapter
+
+[NESdev's Hori report table](https://www.nesdev.org/wiki/Four_player_adapters)
+places adapter pads 1/3 on `$4016` D1 and 2/4 on `$4017` D1. Each report has two
+8-bit button bytes followed by identification. Only zero-based read 18 on
+`$4016` and 19 on `$4017` is set among reads 16–23, giving LSB-packed signature
+bytes `$04`/`$08`. Reads after bit 23 return ones. Built-in D0 reports remain
+independent, including RF pad 2's Start/Select masking. All adapter pads have
+all eight buttons. RF microphone D2 and floating-bit masks remain independent.
+
+The bus shares its 24-bit adapter shifters between Four Score and Hori modes.
+Hori captures profiles 3/5 or 4/6; Four Score still captures 1/3 or 2/4. Strobe
+and clock edges are shared with each port's built-in pad. High strobe exposes
+live A from the first adapter pad per port; the falling edge captures host
+updates made while high. Attachment preferences only affect Standard mode.
+Mode changes release the old held read once and capture a fresh adapter report;
+reapplying a mode preserves position. NTSC alias DMA and untimed accesses use
+the same paths as the built-in serial reports.
+
+Version 19 permits mode value 2 (Hori) in the existing nine-byte bus extension
+and appends one five-byte Controller state after the v17 external Controller
+state. This third Controller owns host profiles 5/6. Its effective strobe must
+match the built-in pair, like the existing external pair. Older states clear
+its buttons/reports and restore the effective strobe; v18 retains Four Score.
+A v18 blob claiming Hori mode, invalid flags or truncated tails rejects with
+full rollback. The bus layout is unchanged; there are now ten external-pad bytes
+after cartridge state. Component FDS serialization and disk-save format are unchanged.
+
 ### Optional public controller diagnostic
 
 The DMA diagnostic target also runs Damian Yerrick's unmodified

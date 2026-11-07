@@ -50,7 +50,7 @@ int main(int argc, char* argv[]) {
                 const auto mode = mapperbus::app::parse_controller_mode(value);
                 if (!mode) {
                     mapperbus::core::logger::error(
-                        "--controller-mode requires standard or four-score");
+                        "--controller-mode requires standard, four-score, or hori-4-player");
                     return EXIT_FAILURE;
                 }
                 controller_mode = *mode;
@@ -80,12 +80,12 @@ int main(int argc, char* argv[]) {
         }
     }
     if (path.empty()) {
-        mapperbus::core::logger::error(
-            "Usage: mapperbus-cli <rom-file|archive> [--entry NAME] "
-            "[--fds-bios PATH] [--frames N] "
-            "[--controller-timing nes-av-famicom|rf-famicom] "
-            "[--controller-wiring nes|rf-famicom] [--controller-mode standard|four-score] "
-            "[--expansion-controllers none|1|2|both]");
+        mapperbus::core::logger::error("Usage: mapperbus-cli <rom-file|archive> [--entry NAME] "
+                                       "[--fds-bios PATH] [--frames N] "
+                                       "[--controller-timing nes-av-famicom|rf-famicom] "
+                                       "[--controller-wiring nes|rf-famicom] [--controller-mode "
+                                       "standard|four-score|hori-4-player] "
+                                       "[--expansion-controllers none|1|2|both]");
         return EXIT_FAILURE;
     }
     mapperbus::core::register_builtin_mappers();

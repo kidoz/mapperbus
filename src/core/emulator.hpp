@@ -130,6 +130,9 @@ class Emulator {
     [[nodiscard]] Controller& expansion_controller() {
         return expansion_controller_;
     }
+    [[nodiscard]] Controller& additional_expansion_controller() {
+        return additional_expansion_controller_;
+    }
     void set_expansion_controllers(Byte ports) {
         bus_.set_expansion_controllers(ports);
     }
@@ -200,6 +203,7 @@ class Emulator {
     Apu apu_;
     Controller controller_;
     Controller expansion_controller_;
+    Controller additional_expansion_controller_;
     Fds fds_;
     std::unique_ptr<Cartridge> cartridge_;
 };
