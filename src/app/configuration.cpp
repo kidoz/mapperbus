@@ -7,6 +7,7 @@
 #include <ctime>
 #include <fstream>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -843,7 +844,8 @@ MapperBusConfiguration load_mapperbus_configuration() {
     return configuration;
 }
 
-MapperBusConfiguration load_mapperbus_configuration_from_file(const std::filesystem::path& path) {
+namespace {
+MapperBusConfiguration parse_configuration(std::istream& file) {
     MapperBusConfiguration configuration;
     constexpr auto kExtraActions = std::array{platform::InputAction::TurboA,
                                               platform::InputAction::TurboB,
@@ -852,11 +854,6 @@ MapperBusConfiguration load_mapperbus_configuration_from_file(const std::filesys
         explicit_extra_keyboard{};
     std::array<std::array<bool, kExtraActions.size()>, platform::kInputProfileCount>
         explicit_extra_gamepad{};
-
-    std::ifstream file(path);
-    if (!file) {
-        return configuration;
-    }
 
     std::string section;
     std::string line;
@@ -964,6 +961,20 @@ MapperBusConfiguration load_mapperbus_configuration_from_file(const std::filesys
     }
     apply_gamepad_assignment_records(configuration, assignment_records);
     return configuration;
+}
+
+} // namespace
+
+MapperBusConfiguration load_mapperbus_configuration_from_file(const std::filesystem::path& path) {
+    std::ifstream file(path);
+    if (!file)
+        return {};
+    return parse_configuration(file);
+}
+
+MapperBusConfiguration parse_mapperbus_configuration(std::string_view text) {
+    std::istringstream file{std::string(text)};
+    return parse_configuration(file);
 }
 
 core::Result<void> save_mapperbus_configuration(const MapperBusConfiguration& configuration) {

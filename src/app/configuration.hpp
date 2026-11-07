@@ -198,6 +198,8 @@ void clear_recent_roms(MapperBusConfiguration& configuration);
 }
 [[nodiscard]] std::filesystem::path mapperbus_configuration_path();
 [[nodiscard]] MapperBusConfiguration load_mapperbus_configuration();
+/// Memory-only parser with the same tolerant defaults as the file loader.
+[[nodiscard]] MapperBusConfiguration parse_mapperbus_configuration(std::string_view text);
 [[nodiscard]] MapperBusConfiguration load_mapperbus_configuration_from_file(
     const std::filesystem::path& path);
 [[nodiscard]] core::Result<void> save_mapperbus_configuration(

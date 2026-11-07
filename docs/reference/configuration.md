@@ -19,6 +19,25 @@ that the Windows frontend has the same validation coverage as macOS and Linux.
 When `mapperbus.conf` is absent, the loader can read a sibling legacy
 `config.ini`. Saving writes `mapperbus.conf`.
 
+## GUI startup
+
+The NodalKit window shows **Loading settings…** while a worker reads preferences.
+ROMs supplied at launch or dropped during startup wait until settings are ready.
+Settings edits and automatic settings saves are unavailable during the read;
+**Quit** remains available and does not wait for a stalled read.
+
+Missing files use defaults. A legacy file is considered only when the primary
+file is absent. Invalid values retain the usual field-by-field fallback rules.
+The GUI accepts regular settings files up to 16 MiB; an unreadable, nonregular,
+or oversized file shows **Retry** and **Continue Without Saving**.
+
+**Continue Without Saving** uses defaults for this session and preserves the
+saved settings file, including when preferences change or the app quits.
+Settings shows **Changes are not saved in this session**. Controller and storage
+preferences can still change for the current session; game progress and explicit
+save states retain their normal persistence behavior. Restart and load settings
+successfully to enable preference saving again.
+
 ## Parsing and persistence
 
 The NodalKit GUI saves settings in the background. Rapid edits keep only the

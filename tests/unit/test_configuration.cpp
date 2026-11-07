@@ -12,6 +12,7 @@
 #include <thread>
 #include <utility>
 
+#include "app/async_configuration_load.hpp"
 #include "app/async_configuration_save.hpp"
 #include "app/configuration.hpp"
 #include "core/binary_file.hpp"
@@ -1224,5 +1225,177 @@ TEST_CASE("Default background settings failures retain existing configuration by
     saving.retry();
     REQUIRE(wait_configuration(saving).result);
     CHECK(load_mapperbus_configuration_from_file(fixture.path).frontend.audio_volume_percent == 25);
+}
+
+namespace {
+core::Result<LoadedConfiguration> wait_configuration_load(AsyncConfigurationLoad& loading) {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (auto result = loading.poll())
+            return std::move(*result);
+        std::this_thread::yield();
+    }
+    return std::unexpected("Timed out waiting for startup settings");
+}
+void write_startup_text(const std::filesystem::path& path, const std::string& text) {
+    std::filesystem::create_directories(path.parent_path());
+    std::ofstream file(path);
+    file << text;
+    REQUIRE(file.good());
+}
+} // namespace
+
+TEST_CASE("Startup settings default only for absent files and preserve primary precedence",
+          "[app][configuration][startup]") {
+    ConfigurationFixture fixture;
+    const auto legacy = fixture.path.parent_path() / "config.ini";
+    const ConfigurationLoadRequest request{fixture.path, legacy};
+    auto missing = read_startup_configuration(request);
+    REQUIRE(missing);
+    CHECK(missing->missing);
+    CHECK_FALSE(missing->legacy);
+    CHECK(missing->configuration.frontend.audio_volume_percent == 100);
+    CHECK(load_mapperbus_configuration_from_file(fixture.path).input.keyboard_profile(0) ==
+          missing->configuration.input.keyboard_profile(0));
+    CHECK_FALSE(std::filesystem::exists(fixture.path.parent_path()));
+    write_startup_text(legacy, "[frontend]\naudio_volume=23\n");
+    auto imported = read_startup_configuration(request);
+    REQUIRE(imported);
+    CHECK(imported->legacy);
+    CHECK_FALSE(imported->missing);
+    CHECK(imported->configuration.frontend.audio_volume_percent == 23);
+    CHECK_FALSE(std::filesystem::exists(fixture.path)); // Reads do not migrate/write.
+    const std::string text = "malformed line\n[frontend]\naudio_volume=42\npreview_scale=oops\n"
+                             "[input]\ncontroller_mode=bad-mode\n"
+                             "[fds]\nbios_path=\"broken\n";
+    write_startup_text(fixture.path, text);
+    auto primary = read_startup_configuration(request);
+    REQUIRE(primary);
+    CHECK_FALSE(primary->legacy);
+    CHECK_FALSE(primary->missing);
+    CHECK(primary->configuration.frontend.audio_volume_percent == 42);
+    CHECK(primary->configuration.frontend.preview_scale_index == 0);
+    CHECK(primary->configuration.input.controller_mode == core::ControllerMode::Standard);
+    CHECK(primary->configuration.fds_bios_path.empty());
+    const auto memory = parse_mapperbus_configuration(text);
+    const auto synchronous = load_mapperbus_configuration_from_file(fixture.path);
+    CHECK(memory.frontend.audio_volume_percent == synchronous.frontend.audio_volume_percent);
+    CHECK(memory.input.keyboard_profile(0) == synchronous.input.keyboard_profile(0));
+    auto bytes = core::read_binary_file_capped(fixture.path.string(), 100000, "config");
+    REQUIRE(bytes);
+    CHECK(std::string(bytes->begin(), bytes->end()) == text);
+}
+
+TEST_CASE("Startup settings reject unreadable or oversized primary files without importing legacy",
+          "[app][configuration][startup]") {
+    ConfigurationFixture fixture;
+    const auto legacy = fixture.path.parent_path() / "config.ini";
+    write_startup_text(legacy, "[frontend]\naudio_volume=23\n");
+    const ConfigurationLoadRequest request{fixture.path, legacy};
+    std::filesystem::create_directory(fixture.path);
+    CHECK_FALSE(read_startup_configuration(request));
+    std::filesystem::remove(fixture.path);
+    std::filesystem::create_symlink(fixture.path.parent_path() / "missing", fixture.path);
+    CHECK_FALSE(read_startup_configuration(request));
+    std::filesystem::remove(fixture.path);
+    {
+        std::ofstream oversized(fixture.path, std::ios::binary);
+        oversized.seekp(static_cast<std::streamoff>(kMaxConfigurationBytes));
+        oversized.put('\0');
+        REQUIRE(oversized.good());
+    }
+    auto large = read_startup_configuration(request);
+    REQUIRE_FALSE(large);
+    CHECK(large.error().find("exceeds maximum size") != std::string::npos);
+    CHECK_FALSE(read_startup_configuration({{}, legacy}));
+    CHECK(std::filesystem::file_size(fixture.path) == kMaxConfigurationBytes + 1);
+}
+
+TEST_CASE("A stalled startup read owns paths and cancellation discards its late settings",
+          "[app][configuration][startup][async]") {
+    ConfigurationFixture fixture;
+    const auto slow = fixture.path.parent_path() / "slow.conf";
+    write_startup_text(slow, "[frontend]\naudio_volume=35\n");
+    write_startup_text(fixture.path, "[frontend]\naudio_volume=88\n");
+    auto gate = std::make_shared<ConfigurationGate>();
+    const ReleaseConfiguration cleanup{gate};
+    auto old_volume = std::make_shared<int>(0);
+    AsyncConfigurationLoad loading([gate, slow, old_volume](const auto& request) {
+        if (request.primary != slow)
+            return read_startup_configuration(request);
+        gate->block();
+        auto result = read_startup_configuration(request);
+        if (result)
+            *old_volume = result->configuration.frontend.audio_volume_percent;
+        gate->finish();
+        return result;
+    });
+    ConfigurationLoadRequest request{slow, {}};
+    REQUIRE(loading.start(request));
+    REQUIRE(gate->wait(&ConfigurationGate::entered));
+    request.primary = fixture.path;
+    CHECK_FALSE(loading.poll());
+    CHECK(loading.cancel()); // Quit never joins the blocked read.
+    REQUIRE(loading.start(request));
+    auto current = wait_configuration_load(loading);
+    REQUIRE(current);
+    CHECK(current->configuration.frontend.audio_volume_percent == 88);
+    gate->release();
+    REQUIRE(gate->wait(&ConfigurationGate::finished));
+    CHECK(*old_volume == 35);
+    CHECK_FALSE(loading.poll());
+    CHECK_FALSE(loading.cancel());
+    CHECK_FALSE(std::filesystem::exists(fixture.path.string() + ".tmp"));
+}
+
+TEST_CASE("Startup read failures can be retried without ever writing default configuration",
+          "[app][configuration][startup][async]") {
+    ConfigurationFixture fixture;
+    write_startup_text(fixture.path, "[frontend]\naudio_volume=17\n");
+    auto original = core::read_binary_file_capped(fixture.path.string(), 100000, "config");
+    REQUIRE(original);
+    auto calls = std::make_shared<int>(0);
+    AsyncConfigurationLoad loading(
+        [calls](const auto& request) -> core::Result<LoadedConfiguration> {
+            if (++*calls == 1)
+                return std::unexpected("Injected startup read failure");
+            return read_startup_configuration(request);
+        });
+    REQUIRE(loading.start({fixture.path, {}}));
+    auto failed = wait_configuration_load(loading);
+    REQUIRE_FALSE(failed);
+    CHECK(failed.error().find("Injected") != std::string::npos);
+    REQUIRE(loading.start({fixture.path, {}}));
+    auto retried = wait_configuration_load(loading);
+    REQUIRE(retried);
+    CHECK(retried->configuration.frontend.audio_volume_percent == 17);
+    auto retained = core::read_binary_file_capped(fixture.path.string(), 100000, "config");
+    REQUIRE(retained);
+    CHECK(*retained == *original);
+}
+
+TEST_CASE("Startup workers outlive their loader without retaining a frontend or writing files",
+          "[app][configuration][startup][async]") {
+    ConfigurationFixture fixture;
+    write_startup_text(fixture.path, "[frontend]\naudio_volume=45\n");
+    auto gate = std::make_shared<ConfigurationGate>();
+    const ReleaseConfiguration cleanup{gate};
+    auto observed = std::make_shared<int>(0);
+    {
+        AsyncConfigurationLoad loading([gate, observed](const auto& request) {
+            gate->block();
+            auto result = read_startup_configuration(request);
+            if (result)
+                *observed = result->configuration.frontend.audio_volume_percent;
+            gate->finish();
+            return result;
+        });
+        REQUIRE(loading.start({fixture.path, {}}));
+        REQUIRE(gate->wait(&ConfigurationGate::entered));
+    }
+    gate->release();
+    REQUIRE(gate->wait(&ConfigurationGate::finished));
+    CHECK(*observed == 45);
+    CHECK_FALSE(std::filesystem::exists(fixture.path.string() + ".tmp"));
 }
 } // namespace mapperbus::app

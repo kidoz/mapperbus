@@ -20,8 +20,10 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
+#include "app/async_configuration_load.hpp"
 #include "app/async_configuration_save.hpp"
 #include "app/async_disk_export.hpp"
 #include "app/async_rom_loader.hpp"
@@ -51,11 +53,13 @@ namespace mapperbus::frontend {
 
 class MapperBusGuiController {
   public:
-    MapperBusGuiController(nk::Application& app,
-                           nk::Window& window,
-                           app::AsyncDiskExport::Write disk_export_write = app::write_disk_export,
-                           app::AsyncConfigurationSave::Write configuration_write =
-                               app::save_mapperbus_configuration_to_file);
+    MapperBusGuiController(
+        nk::Application& app,
+        nk::Window& window,
+        app::AsyncDiskExport::Write disk_export_write = app::write_disk_export,
+        app::AsyncConfigurationSave::Write configuration_write =
+            app::save_mapperbus_configuration_to_file,
+        app::AsyncConfigurationLoad::Read configuration_read = app::read_startup_configuration);
 
     void open_initial_rom(std::string_view rom_path);
 
@@ -67,6 +71,11 @@ class MapperBusGuiController {
     };
 
   private:
+    bool configure_session();
+    void start_configuration_load();
+    void poll_configuration_load();
+    void show_startup_view();
+    void finish_startup(app::LoadedConfiguration loaded, bool allow_saving);
     enum class SettingsPage {
         Input,
         Video,
@@ -200,6 +209,12 @@ class MapperBusGuiController {
     GuiAudioBackend* audio_backend_ = nullptr;
     NodalKitInput* input_backend_ = nullptr;
     app::MapperBusConfiguration configuration_;
+    app::AsyncConfigurationLoad configuration_loader_;
+    bool startup_ready_ = false;
+    bool startup_loading_ = false;
+    bool configuration_saves_enabled_ = true;
+    std::string startup_error_;
+    std::optional<std::pair<std::string, std::string>> initial_rom_request_;
     app::AsyncConfigurationSave configuration_saver_;
     struct PendingConfigurationChange {
         std::uint64_t revision;
@@ -252,6 +267,7 @@ class MapperBusGuiController {
     std::shared_ptr<ContentSlot> main_slot_;
     std::shared_ptr<nk::Widget> welcome_view_;
     std::shared_ptr<nk::Button> welcome_open_button_;
+    std::shared_ptr<nk::Button> header_open_button_;
     bool welcome_active_ = true;
     std::shared_ptr<nk::Headerbar> headerbar_;
     std::shared_ptr<SessionIconButton> pause_button_;

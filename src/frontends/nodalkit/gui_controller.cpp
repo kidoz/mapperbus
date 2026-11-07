@@ -36,6 +36,8 @@
 #include "core/mappers/mapper_registry.hpp"
 #include "frontends/nodalkit/gui_close_policy.hpp"
 #include "frontends/nodalkit/input_binding_table.hpp"
+#include "platform/audio/null_audio.hpp"
+#include "platform/input/null_input.hpp"
 #include "platform/video/fsr1.hpp"
 #include "platform/video/null_video.hpp"
 #include "platform/video/xbrz.hpp"
@@ -1009,83 +1011,28 @@ MapperBusGuiController::MapperBusGuiController(
     nk::Application& app,
     nk::Window& window,
     app::AsyncDiskExport::Write disk_export_write,
-    app::AsyncConfigurationSave::Write configuration_write)
-    : app_(app), window_(window), configuration_(app::load_mapperbus_configuration()),
+    app::AsyncConfigurationSave::Write configuration_write,
+    app::AsyncConfigurationLoad::Read configuration_read)
+    : app_(app), window_(window), configuration_loader_(std::move(configuration_read)),
       configuration_saver_(app::mapperbus_configuration_path(), std::move(configuration_write)),
-      disk_export_(std::move(disk_export_write)),
-      settings_page_(static_cast<SettingsPage>(configuration_.frontend.settings_page_index)),
-      preview_scale_option_(preview_scale_for_index(configuration_.frontend.preview_scale_index)) {
-    auto theme_selection = app_.theme_selection();
-    theme_selection.density = density_for_index(configuration_.frontend.ui_density_index);
-    app_.set_theme_selection(theme_selection);
-
-    auto audio = std::make_unique<GuiAudioBackend>();
-    audio_backend_ = audio.get();
-    audio_backend_->set_muted(configuration_.frontend.audio_muted);
-    audio_backend_->set_volume(static_cast<float>(configuration_.frontend.audio_volume_percent) /
-                               100.0F);
-
-    auto input =
-        std::make_unique<NodalKitInput>(window_,
-                                        std::array{configuration_.input.gamepad_profile(0),
-                                                   configuration_.input.gamepad_profile(1),
-                                                   configuration_.input.gamepad_profile(2),
-                                                   configuration_.input.gamepad_profile(3),
-                                                   configuration_.input.gamepad_profile(4),
-                                                   configuration_.input.gamepad_profile(5)});
-    input_backend_ = input.get();
-    const app::MapperBusInputConfiguration default_input;
-    bool replaced_reserved_binding = false;
-    for (int player = 0; player < platform::kInputProfileCount; ++player) {
-        auto& bindings = configuration_.input.keyboard_profile(player);
-        const auto& defaults = default_input.keyboard_profile(player);
-        for (const auto button : kBindingOrder) {
-            const auto index = platform::button_index(button);
-            auto key = static_cast<nk::KeyCode>(bindings[index]);
-            if (NodalKitInput::is_reserved_game_key(key)) {
-                key = static_cast<nk::KeyCode>(defaults[index]);
-                bindings[index] = static_cast<int>(key);
-                replaced_reserved_binding = true;
-            }
-            input_backend_->player_input(player).set_binding(button, key);
-        }
-    }
-
+      disk_export_(std::move(disk_export_write)) {
+    // Loading has no live host devices or media. Install configured backends
+    // only after the owned settings result is adopted on the UI thread.
     session_ = std::make_unique<app::EmulationSession>(std::make_unique<platform::NullVideo>(),
-                                                       std::move(audio),
-                                                       std::move(input),
-                                                       configuration_.audio);
-    session_->enable_background_disk_saves();
+                                                       std::make_unique<platform::NullAudio>(),
+                                                       std::make_unique<platform::NullInput>());
     actions_ = std::make_unique<app::SessionActions>(*session_);
-    session_->set_turbo_period(configuration_.input.turbo_period_frames);
-    session_->set_state_storage(configuration_.save_states);
-    session_->set_fds_bios_path(configuration_.fds_bios_path);
-    session_->set_controller_timing(configuration_.input.controller_timing);
-    session_->set_controller_wiring(configuration_.input.controller_wiring);
-    session_->set_expansion_controllers(configuration_.input.expansion_controllers);
-    session_->set_controller_mode(configuration_.input.controller_mode);
-#if defined(MAPPERBUS_HAVE_SDL3_AUDIO)
-    session_->set_microphone_backend(std::make_unique<Sdl3Microphone>());
-#endif
-    session_->configure_live_microphone(configuration_.microphone);
-    if (replaced_reserved_binding) {
-        save_configuration_state();
-    }
 
     build_ui();
     wire_ui();
-    if (preview_scale_option_ == PreviewScaleOption::Xbrz2x) {
-        preview_upscaler_ = std::make_unique<platform::XbrzUpscaler>(2);
-    } else if (preview_scale_option_ == PreviewScaleOption::Fsr2x) {
-        preview_upscaler_ = std::make_unique<platform::Fsr1Upscaler>(2);
-    }
-
-    clear_preview();
-    refresh_ui();
-    focus_game_surface();
+    start_configuration_load();
 
     last_tick_time_ = std::chrono::steady_clock::now();
     tick_handle_ = app_.event_loop().set_interval(std::chrono::milliseconds(1), [this] {
+        if (!startup_ready_) {
+            poll_configuration_load();
+            return;
+        }
         poll_rom_load();
         poll_state_operation();
         poll_disk_export();
@@ -1174,6 +1121,194 @@ MapperBusGuiController::MapperBusGuiController(
     });
 }
 
+void MapperBusGuiController::start_configuration_load() {
+    if (startup_ready_ || startup_loading_ || close_authorized_)
+        return;
+    const auto primary = app::mapperbus_configuration_path();
+    startup_error_.clear();
+    if (auto started = configuration_loader_.start({primary, primary.parent_path() / "config.ini"});
+        !started) {
+        startup_error_ = started.error();
+    } else {
+        startup_loading_ = true;
+    }
+    show_startup_view();
+}
+
+void MapperBusGuiController::poll_configuration_load() {
+    auto loaded = configuration_loader_.poll();
+    if (!loaded)
+        return;
+    startup_loading_ = false;
+    if (!*loaded) {
+        startup_error_ = loaded->error();
+        show_startup_view();
+        return;
+    }
+    finish_startup(std::move(**loaded), true);
+}
+
+void MapperBusGuiController::show_startup_view() {
+    auto content = Box::vertical(14.0F);
+    content->set_horizontal_size_policy(nk::SizePolicy::Expanding);
+    content->set_vertical_size_policy(nk::SizePolicy::Expanding);
+    auto top = Spacer::create();
+    top->set_vertical_size_policy(nk::SizePolicy::Expanding);
+    top->set_vertical_stretch(1);
+    content->append(top);
+    auto column = Box::vertical(14.0F);
+    std::shared_ptr<nk::Button> initial_focus;
+    if (startup_error_.empty()) {
+        auto spinner = nk::Spinner::create();
+        spinner->set_spinning(true);
+        column->append(spinner);
+        auto title = nk::Label::create("Loading settings…");
+        title->add_style_class("heading");
+        column->append(title);
+        auto explanation = nk::Label::create(
+            initial_rom_request_ ? "Your game will open when settings are ready."
+                                 : "Please wait while your saved preferences are loaded.");
+        explanation->add_style_class("muted");
+        explanation->set_wrapping(true);
+        column->append(explanation);
+    } else {
+        auto title = nk::Label::create("Could Not Load Settings");
+        title->add_style_class("heading");
+        column->append(title);
+        auto error = nk::Label::create(startup_error_);
+        error->set_wrapping(true);
+        column->append(error);
+        auto help = nk::Label::create("Retry, or continue with defaults without saving settings "
+                                      "for this session. Your saved settings will be preserved.");
+        help->set_wrapping(true);
+        column->append(help);
+        auto retry = nk::Button::create("Retry");
+        initial_focus = retry;
+        (void)retry->on_clicked().connect([this] {
+            app_.event_loop().post([this] { start_configuration_load(); },
+                                   "mapperbus.startup-retry");
+        });
+        column->append(retry);
+        auto defaults = nk::Button::create("Continue Without Saving");
+        (void)defaults->on_clicked().connect([this] {
+            app_.event_loop().post([this] { finish_startup({}, false); },
+                                   "mapperbus.startup-defaults");
+        });
+        column->append(defaults);
+    }
+    auto quit = nk::Button::create("Quit");
+    (void)quit->on_clicked().connect([this] {
+        app_.event_loop().post([this] { request_session_close(true); }, "mapperbus.startup-quit");
+    });
+    column->append(quit);
+    auto row = Box::horizontal(0.0F);
+    row->set_horizontal_size_policy(nk::SizePolicy::Expanding);
+    row->append(Spacer::create());
+    row->append(FixedWidthSlot::create(480.0F, column));
+    row->append(Spacer::create());
+    content->append(row);
+    auto bottom = Spacer::create();
+    bottom->set_vertical_size_policy(nk::SizePolicy::Expanding);
+    bottom->set_vertical_stretch(1);
+    content->append(bottom);
+    main_slot_->set_child(content);
+    status_bar_->set_segments(
+        {startup_error_.empty() ? "Loading settings…" : "Settings unavailable"});
+    update_native_toolbar();
+    (initial_focus ? initial_focus : quit)->grab_focus();
+}
+
+void MapperBusGuiController::finish_startup(app::LoadedConfiguration loaded, bool allow_saving) {
+    if (startup_ready_ || close_authorized_)
+        return;
+    (void)configuration_loader_.cancel();
+    startup_loading_ = false;
+    configuration_ = std::move(loaded.configuration);
+    configuration_saves_enabled_ = allow_saving;
+    settings_page_ = static_cast<SettingsPage>(configuration_.frontend.settings_page_index);
+    preview_scale_option_ = preview_scale_for_index(configuration_.frontend.preview_scale_index);
+    auto theme_selection = app_.theme_selection();
+    theme_selection.density = density_for_index(configuration_.frontend.ui_density_index);
+    app_.set_theme_selection(theme_selection);
+    const bool replaced_reserved_binding = configure_session();
+    preview_upscaler_.reset();
+    if (preview_scale_option_ == PreviewScaleOption::Xbrz2x)
+        preview_upscaler_ = std::make_unique<platform::XbrzUpscaler>(2);
+    else if (preview_scale_option_ == PreviewScaleOption::Fsr2x)
+        preview_upscaler_ = std::make_unique<platform::Fsr1Upscaler>(2);
+    preview_->set_integer_scaling(preview_scale_option_ == PreviewScaleOption::PixelPerfect);
+    startup_ready_ = true;
+    header_open_button_->set_sensitive(true);
+    refresh_welcome_view();
+    clear_preview();
+    refresh_ui();
+    refresh_configuration_save_status();
+    if (replaced_reserved_binding)
+        save_configuration_state();
+    if (!allow_saving)
+        set_message("Using defaults. Settings changes will not be saved in this session.");
+    else if (loaded.missing)
+        set_message("No saved settings found. Using defaults.");
+    focus_game_surface();
+    if (auto request = std::exchange(initial_rom_request_, {}))
+        attempt_open(std::move(request->first), std::move(request->second));
+}
+
+bool MapperBusGuiController::configure_session() {
+    actions_.reset();
+    session_.reset();
+    auto audio = std::make_unique<GuiAudioBackend>();
+    audio_backend_ = audio.get();
+    audio_backend_->set_muted(configuration_.frontend.audio_muted);
+    audio_backend_->set_volume(static_cast<float>(configuration_.frontend.audio_volume_percent) /
+                               100.0F);
+
+    auto input =
+        std::make_unique<NodalKitInput>(window_,
+                                        std::array{configuration_.input.gamepad_profile(0),
+                                                   configuration_.input.gamepad_profile(1),
+                                                   configuration_.input.gamepad_profile(2),
+                                                   configuration_.input.gamepad_profile(3),
+                                                   configuration_.input.gamepad_profile(4),
+                                                   configuration_.input.gamepad_profile(5)});
+    input_backend_ = input.get();
+    const app::MapperBusInputConfiguration default_input;
+    bool replaced_reserved_binding = false;
+    for (int player = 0; player < platform::kInputProfileCount; ++player) {
+        auto& bindings = configuration_.input.keyboard_profile(player);
+        const auto& defaults = default_input.keyboard_profile(player);
+        for (const auto button : kBindingOrder) {
+            const auto index = platform::button_index(button);
+            auto key = static_cast<nk::KeyCode>(bindings[index]);
+            if (NodalKitInput::is_reserved_game_key(key)) {
+                key = static_cast<nk::KeyCode>(defaults[index]);
+                bindings[index] = static_cast<int>(key);
+                replaced_reserved_binding = true;
+            }
+            input_backend_->player_input(player).set_binding(button, key);
+        }
+    }
+
+    session_ = std::make_unique<app::EmulationSession>(std::make_unique<platform::NullVideo>(),
+                                                       std::move(audio),
+                                                       std::move(input),
+                                                       configuration_.audio);
+    session_->enable_background_disk_saves();
+    actions_ = std::make_unique<app::SessionActions>(*session_);
+    session_->set_turbo_period(configuration_.input.turbo_period_frames);
+    session_->set_state_storage(configuration_.save_states);
+    session_->set_fds_bios_path(configuration_.fds_bios_path);
+    session_->set_controller_timing(configuration_.input.controller_timing);
+    session_->set_controller_wiring(configuration_.input.controller_wiring);
+    session_->set_expansion_controllers(configuration_.input.expansion_controllers);
+    session_->set_controller_mode(configuration_.input.controller_mode);
+#if defined(MAPPERBUS_HAVE_SDL3_AUDIO)
+    session_->set_microphone_backend(std::make_unique<Sdl3Microphone>());
+#endif
+    session_->configure_live_microphone(configuration_.microphone);
+    return replaced_reserved_binding;
+}
+
 void MapperBusGuiController::open_initial_rom(std::string_view rom_path) {
     if (!rom_path.empty()) {
         attempt_open(std::string(rom_path));
@@ -1198,6 +1333,8 @@ void MapperBusGuiController::build_ui() {
     // secondary commands in one compact menu instead of duplicating them in an
     // in-window menu bar.
     auto open_button = nk::Button::create("Open…");
+    header_open_button_ = open_button;
+    open_button->set_sensitive(startup_ready_);
     open_button->add_style_class("flat");
     (void)open_button->on_clicked().connect([this] { browse_for_rom(); });
     headerbar_->add_leading(open_button);
@@ -1292,7 +1429,7 @@ void MapperBusGuiController::build_ui() {
     const auto bind_session_key =
         [this, &shortcuts](nk::KeyCode key, nk::Modifiers modifiers, std::string_view action) {
             shortcuts.add_action(std::string(action), [this, a = std::string(action)] {
-                if (modal_dialog_presented()) {
+                if (modal_dialog_presented() && a != "file.quit") {
                     return;
                 }
                 handle_menu_action(a);
@@ -1320,11 +1457,12 @@ void MapperBusGuiController::build_ui() {
     {
         auto root_keys = std::make_shared<nk::KeyboardController>();
         (void)root_keys->on_key_pressed().connect([this](int key_code, int modifiers) {
-            if (modal_dialog_presented()) {
-                return;
-            }
             const auto key = static_cast<nk::KeyCode>(key_code);
             const auto mods = static_cast<nk::Modifiers>(modifiers);
+            if (modal_dialog_presented() &&
+                !(key == nk::KeyCode::Q && mods == nk::Modifiers::Ctrl)) {
+                return;
+            }
             if (key == nk::KeyCode::F11 && mods == nk::Modifiers::None) {
                 toggle_fullscreen();
             } else if (key == nk::KeyCode::P && mods == nk::Modifiers::None) {
@@ -1492,6 +1630,10 @@ void MapperBusGuiController::refresh_welcome_view() {
 }
 
 void MapperBusGuiController::refresh_ui() {
+    if (!startup_ready_) {
+        update_native_toolbar();
+        return;
+    }
     if (machine_worker_active())
         return;
     const bool assignments_changed = input_backend_->consume_gamepad_assignment_changes();
@@ -1751,6 +1893,8 @@ void MapperBusGuiController::update_fullscreen_chrome() {
 }
 
 void MapperBusGuiController::browse_for_rom() {
+    if (!startup_ready_)
+        return;
     app_.open_file_dialog_async("Open ROM",
                                 {"*.nes", "*.fds", "*.zip", "*.7z"},
                                 [this](nk::OpenFileDialogResult dialog_result) {
@@ -1767,6 +1911,15 @@ void MapperBusGuiController::browse_for_rom() {
 }
 
 void MapperBusGuiController::attempt_open(std::string rom_path, std::string member) {
+    if (close_authorized_)
+        return;
+    if (!startup_ready_) {
+        if (!rom_path.empty()) {
+            initial_rom_request_ = std::pair{std::move(rom_path), std::move(member)};
+            show_startup_view();
+        }
+        return;
+    }
     if (loading_request_ || modal_dialog_presented())
         return;
     if (rom_path.empty()) {
@@ -2616,6 +2769,14 @@ void MapperBusGuiController::dismiss_close_dialog() {
 void MapperBusGuiController::request_session_close(bool quit) {
     if (close_authorized_)
         return;
+    if (!startup_ready_) {
+        (void)configuration_loader_.cancel();
+        startup_loading_ = false;
+        initial_rom_request_.reset();
+        close_authorized_ = true;
+        window_.request_close();
+        return;
+    }
     if (close_intent_) {
         if (quit)
             close_intent_ = true;
@@ -2902,7 +3063,7 @@ void MapperBusGuiController::update_preview_surface(const std::uint32_t* data,
 }
 
 void MapperBusGuiController::update_configuration_from_state() {
-    if (machine_worker_active())
+    if (!startup_ready_ || machine_worker_active())
         return;
     for (int player = 0; player < platform::kInputProfileCount; ++player) {
         const auto& input = input_backend_->player_input(player);
@@ -2920,15 +3081,23 @@ void MapperBusGuiController::update_configuration_from_state() {
 }
 
 void MapperBusGuiController::save_configuration_state() {
+    if (!startup_ready_)
+        return;
     update_configuration_from_state();
     if (configuration_change_)
         configuration_save_deferred_ = true;
-    else
+    else if (configuration_saves_enabled_)
         (void)configuration_saver_.submit(configuration_);
     refresh_configuration_save_status();
 }
 
 void MapperBusGuiController::refresh_configuration_save_status() {
+    if (!configuration_saves_enabled_) {
+        update_settings_save_status("Changes are not saved in this session.");
+        if (settings_save_retry_)
+            settings_save_retry_->set_visible(false);
+        return;
+    }
     const auto& error = configuration_saver_.error();
     update_settings_save_status(!error.empty()                ? "Failed to save settings: " + error
                                 : configuration_saver_.busy() ? "Saving settings…"
@@ -2940,6 +3109,8 @@ void MapperBusGuiController::refresh_configuration_save_status() {
 }
 
 void MapperBusGuiController::retry_configuration_save() {
+    if (!startup_ready_ || !configuration_saves_enabled_)
+        return;
     if (!configuration_change_) {
         update_configuration_from_state();
         (void)configuration_saver_.submit(configuration_);
@@ -3007,12 +3178,14 @@ void MapperBusGuiController::show_configuration_change(bool failed) {
 void MapperBusGuiController::begin_configuration_change(app::MapperBusConfiguration proposed,
                                                         std::function<void()> apply,
                                                         std::string success_message) {
-    if (configuration_change_ || close_intent_)
+    if (!startup_ready_ || configuration_change_ || close_intent_)
         return;
-    const auto revision = configuration_saver_.submit(proposed);
+    const auto revision = configuration_saves_enabled_ ? configuration_saver_.submit(proposed) : 0;
     configuration_change_ = PendingConfigurationChange{
         revision, std::move(proposed), std::move(apply), std::move(success_message)};
     configuration_save_deferred_ = false;
+    if (!configuration_saves_enabled_)
+        return; // Applied on the next UI poll; no file writer is started.
     // An explicit new proposal is also an explicit retry of failed storage.
     configuration_saver_.retry();
     refresh_configuration_save_status();
@@ -3032,7 +3205,8 @@ void MapperBusGuiController::discard_configuration_change() {
     configuration_change_.reset();
     configuration_save_deferred_ = false;
     update_configuration_from_state();
-    configuration_saver_.replace_failed(configuration_);
+    if (configuration_saves_enabled_)
+        configuration_saver_.replace_failed(configuration_);
     refresh_configuration_save_status();
     refresh_settings_dialog_sections();
     refresh_ui();
@@ -3040,6 +3214,8 @@ void MapperBusGuiController::discard_configuration_change() {
 
 void MapperBusGuiController::poll_configuration_saves() {
     auto completed = configuration_saver_.poll();
+    if (!configuration_saves_enabled_ && configuration_change_)
+        completed = app::ConfigurationSaveCompletion{0, {}};
     if (completed && configuration_change_ &&
         completed->revision == configuration_change_->revision && completed->result) {
         dismiss_configuration_change();
@@ -4351,7 +4527,8 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_footer_conten
     settings_save_label_->set_horizontal_size_policy(nk::SizePolicy::Expanding);
     container->append(settings_save_label_);
     settings_save_retry_ = nk::Button::create("Retry Settings Save");
-    settings_save_retry_->set_visible(!configuration_saver_.error().empty());
+    settings_save_retry_->set_visible(configuration_saves_enabled_ &&
+                                      !configuration_saver_.error().empty());
     settings_save_retry_->set_sensitive(!configuration_saver_.busy());
     (void)settings_save_retry_->on_clicked().connect([this] { retry_configuration_save(); });
     container->append(settings_save_retry_);
@@ -4574,7 +4751,7 @@ nk::Window& MapperBusGuiController::settings_host_window() {
 }
 
 bool MapperBusGuiController::modal_dialog_presented() const {
-    return configuration_change_.has_value() || close_intent_.has_value() ||
+    return !startup_ready_ || configuration_change_.has_value() || close_intent_.has_value() ||
            loading_request_.has_value() || choosing_disk_export_ || disk_export_.busy() ||
            (disk_export_dialog_ && disk_export_dialog_->is_presented()) ||
            pending_state_operation_.has_value() ||
@@ -4588,6 +4765,8 @@ bool MapperBusGuiController::modal_dialog_presented() const {
 }
 
 void MapperBusGuiController::handle_menu_action(std::string_view action) {
+    if (!startup_ready_ && action != "file.quit")
+        return;
     if ((configuration_change_ || close_intent_ || loading_request_ || pending_state_operation_ ||
          choosing_disk_export_ || disk_export_.busy() ||
          (disk_export_dialog_ && disk_export_dialog_->is_presented())) &&
