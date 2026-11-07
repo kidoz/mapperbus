@@ -2,6 +2,7 @@
 #include <string>
 
 #include "../support/test_rom.hpp"
+#include "../support/virtual_gamepads.hpp"
 #include "app/configuration.hpp"
 #include "app/emulation_session.hpp"
 #include "core/mappers/mapper_registry.hpp"
@@ -11,6 +12,116 @@
 
 namespace mapperbus::frontend {
 namespace {
+
+TEST_CASE("Gamepad serial identity and ambiguous model matching are explicit",
+          "[sdl3][input][identity]") {
+    const std::array<Sdl3GamepadCandidate, 2> devices = {
+        {{1, 0, {.guid = "model", .serial = "alpha", .name = "Same pad"}},
+         {2, 1, {.guid = "model", .serial = "beta", .name = "Same pad"}}}};
+    platform::GamepadIdentity saved{.guid = "model", .serial = "beta", .name = "Saved"};
+    CHECK(unique_gamepad_match(saved, devices) == 1);
+    saved.serial = "missing";
+    CHECK_FALSE(unique_gamepad_match(saved, devices));
+    saved.serial.clear();
+    CHECK_FALSE(unique_gamepad_match(saved, devices));
+    CHECK(unique_gamepad_match(saved, std::span(devices).first(1)) == 0);
+    saved.ambiguous = true;
+    CHECK_FALSE(unique_gamepad_match(saved, std::span(devices).first(1)));
+}
+
+TEST_CASE("Saved four-gamepad identities survive reordered startup and middle reconnect",
+          "[sdl3][input][identity]") {
+    tests::IdentityGamepads pads;
+    for (int pad = 0; pad < 4; ++pad)
+        pads.attach(pad, pad);
+    app::MapperBusConfiguration saved;
+    saved.input.gamepad.enabled = false;
+    saved.input.player2_gamepad.enabled = false;
+    saved.input.configure_four_hori_gamepads();
+    Sdl3SixPlayerInputConfig profiles;
+    for (int player = 0; player < 6; ++player)
+        profiles.players[player] = saved.input.gamepad_profile(player);
+    auto input = std::make_unique<Sdl3Input>(profiles);
+    input->poll();
+    REQUIRE(input->consume_gamepad_assignment_changes());
+    for (int player = 0; player < 6; ++player)
+        saved.input.gamepad_profile(player) = input->gamepad_config(player);
+    for (int player = 2; player < 6; ++player) {
+        CHECK_FALSE(saved.input.gamepad_profile(player).identity.guid.empty());
+        CHECK_FALSE(saved.input.gamepad_profile(player).identity.ambiguous);
+    }
+    const auto path = std::filesystem::temp_directory_path() /
+                      ("mapperbus-pad-identity-" + std::to_string(SDL_GetTicksNS()) + ".conf");
+    REQUIRE(app::save_mapperbus_configuration_to_file(saved, path));
+    input.reset();
+    for (int pad = 0; pad < 4; ++pad)
+        pads.detach(pad);
+    for (int pad : {3, 1, 0, 2})
+        pads.attach(pad, pad);
+    const auto restored = app::load_mapperbus_configuration_from_file(path);
+    for (int player = 0; player < 6; ++player)
+        profiles.players[player] = restored.input.gamepad_profile(player);
+    input = std::make_unique<Sdl3Input>(profiles);
+    for (int active = 0; active < 4; ++active) {
+        for (int pad = 0; pad < 4; ++pad)
+            pads.press(pad, pad == active);
+        input->poll();
+        for (int pad = 0; pad < 4; ++pad)
+            CHECK(input->is_button_pressed(pad + 2, core::Button::A) == (pad == active));
+    }
+    for (int pad = 0; pad < 4; ++pad)
+        pads.press(pad, true);
+    input->poll();
+    pads.detach(1);
+    input->poll();
+    for (int pad = 0; pad < 4; ++pad)
+        CHECK(input->is_button_pressed(pad + 2, core::Button::A) == (pad != 1));
+    pads.attach(1, 1);
+    pads.press(1, true);
+    input->poll();
+    for (int pad = 0; pad < 4; ++pad)
+        CHECK(input->is_button_pressed(pad + 2, core::Button::A));
+    input.reset();
+    for (int pad = 0; pad < 4; ++pad)
+        pads.detach(pad);
+    pads.attach(0, 99);
+    pads.press(0, true);
+    input = std::make_unique<Sdl3Input>(profiles);
+    input->poll();
+    for (int pad = 0; pad < 4; ++pad)
+        CHECK_FALSE(input->is_button_pressed(pad + 2, core::Button::A));
+    std::filesystem::remove(path);
+}
+
+TEST_CASE("Identical controllers require explicit reassignment after disconnect or restart",
+          "[sdl3][input][identity]") {
+    tests::IdentityGamepads pads;
+    pads.attach(0, 0);
+    platform::GamepadInputConfig config;
+    Sdl3GamepadSelection selection;
+    selection.poll(config); // Legacy index configuration captures the chosen pad.
+    REQUIRE(selection.gamepad() != nullptr);
+    CHECK_FALSE(config.identity.ambiguous);
+    pads.attach(1, 0);
+    selection.poll(config);
+    REQUIRE(selection.gamepad() != nullptr);
+    REQUIRE(config.identity.ambiguous);
+    auto persisted = config;
+    Sdl3GamepadSelection restarted;
+    restarted.poll(persisted);
+    CHECK(restarted.gamepad() == nullptr);
+    pads.detach(0);
+    selection.poll(config);
+    CHECK(selection.gamepad() == nullptr); // Remaining identical peer is not adopted.
+    REQUIRE(config.identity.ambiguous);
+    pads.attach(0, 0);
+    selection.poll(config);
+    CHECK(selection.gamepad() == nullptr);
+    selection.assign(config, 1);
+    REQUIRE(selection.gamepad() != nullptr);
+    CHECK(SDL_GetGamepadID(selection.gamepad()) == pads.ids[0]);
+    CHECK(config.identity.ambiguous);
+}
 
 TEST_CASE("Turbo gamepad mappings accept actions and explicit unbinding", "[sdl3][input][turbo]") {
     Sdl3InputConfig config;
@@ -189,6 +300,8 @@ TEST_CASE("Four SDL gamepads reach separate D0 and D1 reports through a running 
     desc.name = "MapperBus external pad test";
     Sdl3FourPlayerInputConfig config;
     for (int player = 0; player < 4; ++player) {
+        desc.vendor_id = 0x1234;
+        desc.product_id = static_cast<Uint16>(player + 1);
         pads.ids[player] = SDL_AttachVirtualJoystick(&desc);
         REQUIRE(pads.ids[player] != 0);
         pads.joysticks[player] = SDL_OpenJoystick(pads.ids[player]);

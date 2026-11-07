@@ -2,11 +2,92 @@
 #include <catch2/catch_test_macros.hpp>
 #include <nk/platform/window.h>
 
+#include "../support/virtual_gamepads.hpp"
 #include "app/configuration.hpp"
 #include "frontends/nodalkit/nodalkit_input.hpp"
 
 namespace mapperbus::frontend {
 namespace {
+
+TEST_CASE(
+    "NodalKit explains identical controllers and explicitly reassigns without resetting bindings",
+    "[gui][input][identity]") {
+    tests::IdentityGamepads pads;
+    pads.attach(0, 0);
+    pads.attach(1, 0);
+    std::array<platform::GamepadInputConfig, 6> profiles;
+    for (auto& profile : profiles)
+        profile.enabled = false;
+    profiles[0].enabled = true;
+    REQUIRE(platform::apply_gamepad_mapping(profiles[0], "a=east,b=north"));
+    nk::Window window({.title = "Identical gamepads", .width = 600, .height = 300});
+    auto input = std::make_unique<NodalKitInput>(window, profiles);
+    input->poll();
+    REQUIRE(input->player_input(0).gamepad_connected());
+    profiles[0] = input->player_input(0).gamepad_config();
+    REQUIRE(profiles[0].identity.ambiguous);
+    input.reset();
+    input = std::make_unique<NodalKitInput>(window, profiles);
+    input->poll();
+    CHECK_FALSE(input->player_input(0).gamepad_connected());
+    CHECK(input->player_input(0).gamepad_status_text().find("Identical") != std::string::npos);
+    CHECK(input->player_input(0).gamepad_status_text().find("Use Selected Gamepad") !=
+          std::string::npos);
+    pads.press(1, true);
+    input->player_input(0).set_gamepad_index(1);
+    input->poll();
+    CHECK(input->is_button_pressed(0, core::Button::A));
+    CHECK(input->player_input(0).gamepad_config().bindings == profiles[0].bindings);
+    pads.detach(1);
+    input->poll();
+    CHECK_FALSE(input->player_input(0).gamepad_connected());
+    CHECK_FALSE(input->is_button_pressed(0, core::Button::A));
+    input->player_input(0).set_gamepad_index(0);
+    pads.press(0, true);
+    input->poll();
+    CHECK(input->is_button_pressed(0, core::Button::A));
+}
+
+TEST_CASE("NodalKit retains identities when four pads restart in another order",
+          "[gui][input][identity]") {
+    tests::IdentityGamepads pads;
+    for (int pad = 0; pad < 4; ++pad)
+        pads.attach(pad, pad);
+    app::MapperBusInputConfiguration configuration;
+    configuration.gamepad.enabled = false;
+    configuration.player2_gamepad.enabled = false;
+    configuration.configure_four_hori_gamepads();
+    std::array<platform::GamepadInputConfig, 6> profiles;
+    for (int player = 0; player < 6; ++player)
+        profiles[player] = configuration.gamepad_profile(player);
+    nk::Window window({.title = "Stable four-pad identities", .width = 600, .height = 300});
+    auto input = std::make_unique<NodalKitInput>(window, profiles);
+    input->poll();
+    REQUIRE(input->consume_gamepad_assignment_changes());
+    for (int player = 0; player < 6; ++player)
+        profiles[player] = input->player_input(player).gamepad_config();
+    input.reset();
+    for (int pad = 0; pad < 4; ++pad)
+        pads.detach(pad);
+    for (int pad : {3, 2, 0, 1})
+        pads.attach(pad, pad);
+    input = std::make_unique<NodalKitInput>(window, profiles);
+    for (int active = 0; active < 4; ++active) {
+        for (int pad = 0; pad < 4; ++pad)
+            pads.press(pad, active == pad);
+        input->poll();
+        for (int pad = 0; pad < 4; ++pad)
+            CHECK(input->is_button_pressed(pad + 2, core::Button::A) == (active == pad));
+    }
+    pads.detach(1);
+    input->poll();
+    CHECK_FALSE(input->player_input(3).gamepad_connected());
+    pads.attach(1, 1);
+    pads.press(1, true);
+    input->poll();
+    CHECK(input->player_input(3).gamepad_connected());
+    CHECK(input->is_button_pressed(3, core::Button::A));
+}
 
 TEST_CASE("Four Hori gamepad preset applies live and handles unplug and reconnect",
           "[gui][input][hori][preset]") {
@@ -35,6 +116,8 @@ TEST_CASE("Four Hori gamepad preset applies live and handles unplug and reconnec
     desc.button_mask = (1U << SDL_GAMEPAD_BUTTON_COUNT) - 1;
     desc.name = "MapperBus four Hori preset";
     const auto attach = [&](int pad) {
+        desc.vendor_id = 0x1234;
+        desc.product_id = static_cast<Uint16>(pad + 1);
         pads.ids[pad] = SDL_AttachVirtualJoystick(&desc);
         REQUIRE(pads.ids[pad] != 0);
         pads.joysticks[pad] = SDL_OpenJoystick(pads.ids[pad]);
@@ -120,6 +203,8 @@ TEST_CASE("NodalKit gamepads route independent mappings and release disconnected
     desc.name = "MapperBus four profile test";
     std::array<platform::GamepadInputConfig, 4> configs;
     for (int player = 0; player < 4; ++player) {
+        desc.vendor_id = 0x1234;
+        desc.product_id = static_cast<Uint16>(player + 1);
         pads.ids[player] = SDL_AttachVirtualJoystick(&desc);
         REQUIRE(pads.ids[player] != 0);
         pads.joysticks[player] = SDL_OpenJoystick(pads.ids[player]);

@@ -6,6 +6,7 @@
 #include <optional>
 #include <vector>
 
+#include "frontends/sdl3/gamepad_selection.hpp"
 #include "platform/input/gamepad_config.hpp"
 #include "platform/input/input_backend.hpp"
 
@@ -115,6 +116,16 @@ class Sdl3Input : public platform::InputBackend {
         return active_slot_;
     }
 
+    const Sdl3InputConfig& gamepad_config(int player) const {
+        return configs_.at(player);
+    }
+    bool consume_gamepad_assignment_changes() {
+        bool changed = false;
+        for (auto& selection : selections_)
+            changed |= selection.consume_changed();
+        return changed;
+    }
+
   private:
     void init_gamepad_subsystem();
     void open_configured_gamepad();
@@ -129,10 +140,7 @@ class Sdl3Input : public platform::InputBackend {
     int player_count_ = 1;
     bool quit_requested_ = false;
     bool gamepad_initialized_ = false;
-    std::array<SDL_Gamepad*, platform::kInputProfileCount> gamepads_{};
-    std::array<SDL_JoystickID, platform::kInputProfileCount> gamepad_ids_{};
-    std::array<std::vector<SDL_JoystickID>, platform::kInputProfileCount> disconnected_peers_;
-    std::vector<SDL_JoystickID> known_gamepads_;
+    std::array<Sdl3GamepadSelection, platform::kInputProfileCount> selections_;
     std::array<std::uint16_t, platform::kInputProfileCount> button_state_{};
     Sdl3ScalerCommand pending_scaler_command_{};
     Sdl3SessionCommand pending_session_command_{};

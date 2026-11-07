@@ -53,9 +53,18 @@ struct GamepadControl {
     friend bool operator==(const GamepadControl&, const GamepadControl&) = default;
 };
 
+struct GamepadIdentity {
+    std::string guid;
+    std::string serial;
+    std::string name;
+    bool ambiguous = false;
+    friend bool operator==(const GamepadIdentity&, const GamepadIdentity&) = default;
+};
+
 struct GamepadInputConfig {
     bool enabled = true;
     int gamepad_index = 0;
+    GamepadIdentity identity;
     std::int16_t axis_deadzone = 12000;
     std::array<GamepadControl, kInputActionCount> bindings{};
 

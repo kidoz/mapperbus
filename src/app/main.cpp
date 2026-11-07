@@ -175,6 +175,7 @@ int main(int argc, char* argv[]) {
         input_configs[player] = mapperbus_config.input.gamepad_profile(player);
     auto& input_config = input_configs[0];
     auto& input_config2 = input_configs[1];
+    std::array<bool, mapperbus::platform::kInputProfileCount> gamepad_index_overrides{};
 
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--scale") == 0 && i + 1 < argc) {
@@ -224,6 +225,8 @@ int main(int argc, char* argv[]) {
             }
         } else if (std::strcmp(argv[i], "--gamepad") == 0 && i + 1 < argc) {
             input_config.gamepad_index = std::max(0, std::atoi(argv[++i]));
+            input_config.identity = {};
+            gamepad_index_overrides[0] = true;
         } else if (std::strcmp(argv[i], "--gamepad-deadzone") == 0 && i + 1 < argc) {
             input_config.axis_deadzone =
                 static_cast<std::int16_t>(std::clamp(std::atoi(argv[++i]), 1, 32767));
@@ -235,6 +238,8 @@ int main(int argc, char* argv[]) {
             }
         } else if (std::strcmp(argv[i], "--gamepad2") == 0 && i + 1 < argc) {
             input_config2.gamepad_index = std::max(0, std::atoi(argv[++i]));
+            input_config2.identity = {};
+            gamepad_index_overrides[1] = true;
         } else if (std::strcmp(argv[i], "--gamepad2-map") == 0 && i + 1 < argc) {
             auto result = mapperbus::frontend::apply_gamepad_mapping(input_config2, argv[++i]);
             if (!result) {
@@ -255,6 +260,8 @@ int main(int argc, char* argv[]) {
                 return EXIT_FAILURE;
             }
             target.gamepad_index = index;
+            target.identity = {};
+            gamepad_index_overrides[&target - input_configs.data()] = true;
         } else if (std::strcmp(argv[i], "--gamepad3-map") == 0 ||
                    std::strcmp(argv[i], "--gamepad4-map") == 0 ||
                    std::strcmp(argv[i], "--gamepad5-map") == 0 ||
@@ -442,7 +449,29 @@ int main(int argc, char* argv[]) {
         runtime_scaler_mode_from_flags(use_gpu, use_gpu_fsr, use_fsr);
     int runtime_scale_factor = (upscale_factor >= 2 && upscale_factor <= 6) ? upscale_factor : 0;
 
+    const auto remember_gamepads = [&] {
+        if (sdl_input->consume_gamepad_assignment_changes()) {
+            bool changed = false;
+            for (int player = 0; player < mapperbus::platform::kInputProfileCount; ++player) {
+                if (gamepad_index_overrides[player])
+                    continue;
+                auto& saved = mapperbus_config.input.gamepad_profile(player);
+                const auto& active = sdl_input->gamepad_config(player);
+                changed |= saved.identity != active.identity ||
+                           saved.gamepad_index != active.gamepad_index;
+                saved.identity = active.identity;
+                saved.gamepad_index = active.gamepad_index;
+            }
+            if (changed) {
+                if (auto saved = mapperbus::app::save_mapperbus_configuration(mapperbus_config);
+                    !saved)
+                    mapperbus::core::logger::error("Could not remember gamepads: {}",
+                                                   saved.error());
+            }
+        }
+    };
     app.run([&](mapperbus::app::EmulationSession& session) {
+        remember_gamepads();
         if (const auto window_command = sdl_input->consume_window_command()) {
             if (window_command.kind ==
                 mapperbus::frontend::Sdl3WindowCommandKind::ToggleFullscreen) {
@@ -537,6 +566,7 @@ int main(int argc, char* argv[]) {
                                           runtime_scale_factor);
         }
     });
+    remember_gamepads();
     if (auto saved = app.session().flush_disk_changes(); !saved) {
         mapperbus::core::logger::error("{}", saved.error());
         return EXIT_FAILURE;

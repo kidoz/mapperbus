@@ -136,8 +136,8 @@ GUI Input offers **Configure Four Gamepads** while Hori mode is active. It enabl
 Hori 1–4 and assigns Gamepads 1–4 (device indices 0–3), preserving keyboard/button
 bindings, deadzones, built-in profiles, and the startup controller mode. It saves
 immediately and can be used before connecting devices. Other modes retain their
-usual per-profile controls. Reapply the preset to assign the current enumeration
-order if devices change order after reconnecting.
+usual per-profile controls. Reapplying deliberately replaces remembered identities
+with the current device order.
 Keyboard/gamepad settings, turbo phases and defaults remain independent for all
 six profiles. Every profile can bind the same shared microphone action.
 
@@ -368,11 +368,34 @@ before rebinding, choosing a gamepad, or restoring defaults. Standard uses
 Both graphical frontends combine the keyboard and gamepad assigned to each
 player. Turbo speed is shared by all six profiles; their phases are independent.
 
-Device indices refer to the current SDL enumeration. A disconnect releases that
-profile without adopting an already connected peer after renumbering. A new
-device at the configured index can reconnect automatically. If device order
-changes, choose the intended device again in the GUI, or restart SDL3 with the
-updated index.
+Device indices refer to the current SDL enumeration. On opening a device, both
+frontends remember its identity and save it automatically. A saved identity takes
+priority over the index after reconnect or restart; an unavailable saved device
+waits rather than adopting a different controller at that index. The displayed
+index follows the connected device when enumeration changes. Unplugging releases
+held buttons, turbo and microphone actions.
+
+Each gamepad section can include `guid`, `serial`, `device_name`, and `ambiguous`.
+These optional version-1 keys use the normal quoted-string escaping. GUIDs must
+contain 32 hexadecimal digits; serial/name strings are capped at 256 bytes.
+Missing identities retain index-based selection and are learned on first open.
+Older builds ignore these keys. No emulator snapshot fields change.
+
+Serial numbers are used when [SDL supplies them](https://wiki.libsdl.org/SDL3/SDL_GetGamepadSerial).
+Without a serial, a unique matching model can reconnect automatically. A model
+match cannot distinguish two same-model physical pads that are never connected
+together. Once indistinguishable matches are observed, `ambiguous=true` is retained
+and automatic reassignment is blocked, including after only one remains. A live
+selected handle continues working until it disconnects; after reconnect/restart,
+choose **Preferred device → Use Selected Gamepad**. This explicit action keeps
+bindings and deadzones. Device connection changes refresh the chooser/status.
+
+**Configure Four Gamepads** deliberately assigns the current first four devices.
+SDL3 `--gamepad`, `--gamepad2`, and `--gamepad3` through `--gamepad6` also select
+an index explicitly for that run, overriding its saved identity without replacing
+the saved assignment. A different connection transport or changed device GUID
+may require explicit reassignment. Physical serial-number behavior is dependent
+on the controller and SDL driver.
 
 Keyboard code `0` and gamepad token `none` explicitly leave an action unbound.
 Missing turbo bindings use the defaults above unless those controls already

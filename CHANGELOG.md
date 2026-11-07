@@ -9,6 +9,9 @@ Versioning.
 
 ### Added
 
+- Saved controller identities across reconnects and reordered startup in SDL3
+  and GUI, with explicit reassignment for indistinguishable controllers.
+
 - Hori Input settings preset to enable and assign four gamepads while retaining
   keyboard/button bindings and deadzones, with persistence and hotplug coverage.
 

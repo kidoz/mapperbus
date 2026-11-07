@@ -1468,6 +1468,12 @@ void MapperBusGuiController::refresh_welcome_view() {
 }
 
 void MapperBusGuiController::refresh_ui() {
+    const bool assignments_changed = input_backend_->consume_gamepad_assignment_changes();
+    const bool devices_changed = input_backend_->consume_gamepad_inventory_changes();
+    if (assignments_changed)
+        save_configuration_state();
+    if ((assignments_changed || devices_changed) && settings_page_ == SettingsPage::Input)
+        refresh_settings_dialog_sections();
     const app::SessionSnapshot snapshot = actions_->snapshot();
     const bool loaded = snapshot.has_cartridge;
     const bool paused = loaded && snapshot.paused;
@@ -3000,6 +3006,24 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
                 });
                 controller_group->add(pref_row("Preferred device", index_combo));
 
+                auto assign_device = nk::Button::create("Use Selected Gamepad");
+                (void)assign_device->on_clicked().connect(
+                    [this, weak_combo = std::weak_ptr<nk::ComboBox>(index_combo)] {
+                        const auto combo = weak_combo.lock();
+                        if (!combo)
+                            return;
+                        input_backend_->player_input(settings_input_player_)
+                            .set_gamepad_index(combo->selected_index());
+                        set_message("Selected gamepad assigned. Button bindings retained.");
+                        save_configuration_state();
+                        refresh_ui();
+                        refresh_settings_dialog_sections();
+                    });
+                auto assignment_row =
+                    pref_row("Assignment", assign_device, "Confirm this player's controller.");
+                assign_device->ensure_accessible().set_name("Use Selected Gamepad");
+                controller_group->add(assignment_row);
+
                 auto deadzone_control = nk::SegmentedControl::create();
                 deadzone_control->set_segments(owned_labels(kGamepadDeadzoneLabels));
                 deadzone_control->set_selected_index(
@@ -3020,6 +3044,15 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
                 controller_group->add(pref_row("Deadzone", deadzone_control));
             }
             page->append(controller_group);
+            if (gamepad_enabled && !gamepad_plugged_in &&
+                !input_backend_->player_input(settings_input_player_)
+                     .gamepad_config()
+                     .identity.guid.empty()) {
+                auto assignment_status = nk::Label::create(gamepad_help);
+                assignment_status->set_wrapping(true);
+                assignment_status->set_horizontal_size_policy(nk::SizePolicy::Expanding);
+                page->append(assignment_status);
+            }
         }
     } else if (settings_page_ == SettingsPage::Video) {
         input_test_label_.reset();

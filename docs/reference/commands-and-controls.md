@@ -67,6 +67,11 @@ GUI General → Hardware → Controller mode. Input exposes Built-in 1/2 and Hor
 3/4 become Hori 1/2. All six profiles are saved independently. See
 [Hori configuration](configuration.md#hori-4-players-adapter).
 
+Explicit `--gamepad`/`--gamepad2`/`--gamepad3` through `--gamepad6` device indices
+override that profile's remembered controller identity for the current run.
+Saved assignments remain unchanged. Without an index override, both graphical
+frontends restore saved controller identities; see [configuration](configuration.md).
+
 ### Gamepad mapping tokens
 
 Input action names are `a`, `b`, `start`, `select`, `up`, `down`, `left`, `right`,

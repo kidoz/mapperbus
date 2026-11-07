@@ -49,6 +49,38 @@ TEST_CASE("Linux configuration ignores invalid XDG paths", "[app][configuration]
            ("mapperbus-config-test-" + std::to_string(stamp)) / "mapperbus.conf";
 }
 
+TEST_CASE("Gamepad identities roundtrip with quoted serials and legacy defaults",
+          "[app][configuration][identity]") {
+    MapperBusConfiguration configuration;
+    for (int player = 0; player < platform::kInputProfileCount; ++player) {
+        configuration.input.gamepad_profile(player).identity = {
+            .guid = "03000000341200000100000000000000",
+            .serial = "pad \"" + std::to_string(player) + "\"; #serial\\value",
+            .name = "Saved controller " + std::to_string(player),
+            .ambiguous = player % 2 == 0};
+    }
+    const auto path = temporary_config_path();
+    REQUIRE(save_mapperbus_configuration_to_file(configuration, path));
+    const auto restored = load_mapperbus_configuration_from_file(path);
+    for (int player = 0; player < platform::kInputProfileCount; ++player)
+        CHECK(restored.input.gamepad_profile(player).identity ==
+              configuration.input.gamepad_profile(player).identity);
+    configuration.input.configure_four_hori_gamepads();
+    CHECK(configuration.input.gamepad.identity == restored.input.gamepad.identity);
+    for (int player = 2; player < platform::kInputProfileCount; ++player)
+        CHECK(configuration.input.gamepad_profile(player).identity == platform::GamepadIdentity{});
+    {
+        std::ofstream file(path);
+        file << "[input.gamepad]\nindex=3\nguid=invalid\n"
+                "[input.player2.gamepad]\nindex=1\n";
+    }
+    const auto legacy = load_mapperbus_configuration_from_file(path);
+    CHECK(legacy.input.gamepad.identity.guid.empty());
+    CHECK(legacy.input.gamepad.gamepad_index == 3);
+    CHECK(legacy.input.player2_gamepad.identity == platform::GamepadIdentity{});
+    std::filesystem::remove_all(path.parent_path());
+}
+
 TEST_CASE("Four Hori gamepads preset preserves bindings and persists device assignments",
           "[app][configuration][hori]") {
     MapperBusConfiguration configuration;

@@ -476,6 +476,29 @@ void apply_setting(MapperBusConfiguration& configuration,
                 static_cast<std::int16_t>(std::clamp(parse_int(value, 12000, full_key), 1, 32767));
             return;
         }
+        if (full_key == prefix + "gamepad.guid") {
+            const auto guid = platform::normalized_token(value);
+            if (guid.size() == 32 &&
+                std::ranges::all_of(guid,
+                                    [](unsigned char ch) {
+                                        return (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f');
+                                    }) &&
+                guid != "00000000000000000000000000000000")
+                gamepad.identity.guid = guid;
+            else
+                gamepad.identity.guid.clear();
+            return;
+        }
+        if (full_key == prefix + "gamepad.serial" || full_key == prefix + "gamepad.device_name") {
+            auto& field =
+                full_key.ends_with(".serial") ? gamepad.identity.serial : gamepad.identity.name;
+            field = value.substr(0, 256);
+            return;
+        }
+        if (full_key == prefix + "gamepad.ambiguous") {
+            gamepad.identity.ambiguous = parse_bool_setting(value, false, full_key);
+            return;
+        }
 
         const auto keyboard_prefix = prefix + "keyboard.";
         const auto gamepad_prefix = prefix + "gamepad.";
@@ -663,6 +686,7 @@ void MapperBusInputConfiguration::configure_four_hori_gamepads() {
     for (int pad = 0; pad < 4; ++pad) {
         auto& profile = gamepad_profile(pad + 2);
         profile.gamepad_index = pad;
+        profile.identity = {};
         profile.enabled = true;
     }
 }
@@ -817,6 +841,9 @@ MapperBusConfiguration load_mapperbus_configuration_from_file(const std::filesys
             }
         }
     }
+    for (int player = 0; player < platform::kInputProfileCount; ++player)
+        if (configuration.input.gamepad_profile(player).identity.guid.empty())
+            configuration.input.gamepad_profile(player).identity = {};
     // A keyboard Microphone binding in any profile drives one shared device.
     // Avoid adding it over an older binding in another profile as well.
     const auto mic = platform::button_index(platform::InputAction::Microphone);
@@ -954,6 +981,10 @@ core::Result<void> save_mapperbus_configuration_to_file(const MapperBusConfigura
         file << '[' << prefix << "gamepad]\n";
         file << "enabled=" << (gamepad.enabled ? "true" : "false") << '\n';
         file << "index=" << gamepad.gamepad_index << '\n';
+        file << "guid=" << quote_config_value(gamepad.identity.guid) << '\n';
+        file << "serial=" << quote_config_value(gamepad.identity.serial) << '\n';
+        file << "device_name=" << quote_config_value(gamepad.identity.name) << '\n';
+        file << "ambiguous=" << (gamepad.identity.ambiguous ? "true" : "false") << '\n';
         file << "deadzone=" << gamepad.axis_deadzone << '\n';
         for (const auto button : platform::input_actions()) {
             file << controller_button_name(button) << '='
