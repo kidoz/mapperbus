@@ -2805,6 +2805,37 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
         const std::string gamepad_help =
             input_backend_->player_input(settings_input_player_).gamepad_status_text();
 
+        if (mode == core::ControllerMode::HoriFourPlayer) {
+            auto setup_group = SettingsGroup::create("Four-player setup");
+            setup_group->set_horizontal_size_policy(nk::SizePolicy::Expanding);
+            auto configure = nk::Button::create("Configure Four Gamepads");
+            configure->set_sensitive(gamepad_support);
+            (void)configure->on_clicked().connect([this] {
+                update_configuration_from_state();
+                configuration_.input.configure_four_hori_gamepads();
+                for (int player = 2; player < platform::kInputProfileCount; ++player) {
+                    auto& input = input_backend_->player_input(player);
+                    input.set_gamepad_index(
+                        configuration_.input.gamepad_profile(player).gamepad_index);
+                    input.set_gamepad_enabled(true);
+                }
+                set_message("Hori 1–4 assigned to Gamepads 1–4. Button bindings retained.");
+                save_configuration_state();
+                refresh_ui();
+                refresh_settings_dialog_sections();
+            });
+            auto setup_row =
+                pref_row("Hori 1–4",
+                         configure,
+                         gamepad_support ? "Enable Gamepads 1–4."
+                                         : "Gamepad support is unavailable in this build.");
+            configure->ensure_accessible().set_name("Configure Four Hori Gamepads");
+            configure->ensure_accessible().set_description(
+                "Assign and enable Gamepads 1–4 for Hori 1–4. Keep bindings and deadzones.");
+            setup_group->add(setup_row);
+            page->append(setup_group);
+        }
+
         auto bindings = Box::vertical(6.0F);
         bindings->set_horizontal_size_policy(nk::SizePolicy::Expanding);
         bindings->append(SectionTitle::create("Bindings", true));

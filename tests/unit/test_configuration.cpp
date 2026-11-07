@@ -49,6 +49,47 @@ TEST_CASE("Linux configuration ignores invalid XDG paths", "[app][configuration]
            ("mapperbus-config-test-" + std::to_string(stamp)) / "mapperbus.conf";
 }
 
+TEST_CASE("Four Hori gamepads preset preserves bindings and persists device assignments",
+          "[app][configuration][hori]") {
+    MapperBusConfiguration configuration;
+    configuration.input.expansion_controllers = 1;
+    for (int player = 0; player < platform::kInputProfileCount; ++player) {
+        auto& pad = configuration.input.gamepad_profile(player);
+        pad.enabled = false;
+        pad.gamepad_index = 10 + player;
+        pad.axis_deadzone = 12000 + player;
+        REQUIRE(
+            platform::apply_gamepad_mapping(pad, "a=west,turbo_a=north,microphone=rightshoulder"));
+        configuration.input.keyboard_profile(player)[platform::button_index(core::Button::A)] =
+            40 + player;
+    }
+    const auto before = configuration.input;
+    configuration.input.configure_four_hori_gamepads();
+    configuration.input.configure_four_hori_gamepads(); // Reapplying is safe.
+    const auto path = temporary_config_path();
+    REQUIRE(save_mapperbus_configuration_to_file(configuration, path));
+    const auto restored = load_mapperbus_configuration_from_file(path);
+    CHECK(restored.input.controller_mode == before.controller_mode);
+    CHECK(restored.input.controller_timing == before.controller_timing);
+    CHECK(restored.input.controller_wiring == before.controller_wiring);
+    CHECK(restored.input.expansion_controllers == before.expansion_controllers);
+    for (int player = 0; player < platform::kInputProfileCount; ++player) {
+        CAPTURE(player);
+        const auto& actual = restored.input.gamepad_profile(player);
+        const auto& original = before.gamepad_profile(player);
+        CHECK(actual.enabled == (player >= 2));
+        CHECK(actual.gamepad_index == (player >= 2 ? player - 2 : original.gamepad_index));
+        CHECK(actual.axis_deadzone == original.axis_deadzone);
+        CHECK(restored.input.keyboard_profile(player) == before.keyboard_profile(player));
+        for (const auto action : platform::input_actions())
+            CHECK(platform::gamepad_control_token(
+                      platform::gamepad_control_for_button(actual, action)) ==
+                  platform::gamepad_control_token(
+                      platform::gamepad_control_for_button(original, action)));
+    }
+    std::filesystem::remove_all(path.parent_path());
+}
+
 TEST_CASE("External controller attachments and host profiles persist independently",
           "[app][configuration][expansion]") {
     MapperBusConfiguration configuration;

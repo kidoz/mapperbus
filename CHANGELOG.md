@@ -9,6 +9,9 @@ Versioning.
 
 ### Added
 
+- Hori Input settings preset to enable and assign four gamepads while retaining
+  keyboard/button bindings and deadzones, with persistence and hotplug coverage.
+
 - Opt-in Japanese Wit's ZIP regression for Hori signature detection, four
   independent player controls, built-in aliases, and multiplayer snapshot replay.
 

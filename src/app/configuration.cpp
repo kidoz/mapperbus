@@ -659,6 +659,14 @@ std::optional<core::Byte> parse_expansion_controllers(std::string_view value) {
     return std::nullopt;
 }
 
+void MapperBusInputConfiguration::configure_four_hori_gamepads() {
+    for (int pad = 0; pad < 4; ++pad) {
+        auto& profile = gamepad_profile(pad + 2);
+        profile.gamepad_index = pad;
+        profile.enabled = true;
+    }
+}
+
 MapperBusInputConfiguration::MapperBusInputConfiguration() {
     player2_gamepad.gamepad_index = 1;
     for (int player = 2; player < platform::kInputProfileCount; ++player)

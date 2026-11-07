@@ -36,6 +36,8 @@ struct MapperBusInputConfiguration {
     int turbo_period_frames = 4;
 
     MapperBusInputConfiguration();
+    /// Assigns and enables devices 0..3 for Hori 1..4, retaining all bindings.
+    void configure_four_hori_gamepads();
     auto& keyboard_profile(int player) {
         if (player == 0)
             return keyboard_bindings;

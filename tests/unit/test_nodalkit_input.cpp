@@ -2,10 +2,97 @@
 #include <catch2/catch_test_macros.hpp>
 #include <nk/platform/window.h>
 
+#include "app/configuration.hpp"
 #include "frontends/nodalkit/nodalkit_input.hpp"
 
 namespace mapperbus::frontend {
 namespace {
+
+TEST_CASE("Four Hori gamepad preset applies live and handles unplug and reconnect",
+          "[gui][input][hori][preset]") {
+    struct VirtualPads {
+        std::array<SDL_JoystickID, 4> ids{};
+        std::array<SDL_Joystick*, 4> joysticks{};
+        ~VirtualPads() {
+            for (auto* joystick : joysticks)
+                if (joystick)
+                    SDL_CloseJoystick(joystick);
+            for (auto id : ids)
+                if (id)
+                    SDL_DetachVirtualJoystick(id);
+            SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
+        }
+    } pads;
+    REQUIRE(SDL_InitSubSystem(SDL_INIT_GAMEPAD));
+    int existing = 0;
+    SDL_free(SDL_GetGamepads(&existing));
+    if (existing != 0)
+        SKIP("This preset test needs virtual gamepads in enumeration slots 0..3");
+    SDL_VirtualJoystickDesc desc{};
+    SDL_INIT_INTERFACE(&desc);
+    desc.type = SDL_JOYSTICK_TYPE_GAMEPAD;
+    desc.nbuttons = SDL_GAMEPAD_BUTTON_COUNT;
+    desc.button_mask = (1U << SDL_GAMEPAD_BUTTON_COUNT) - 1;
+    desc.name = "MapperBus four Hori preset";
+    const auto attach = [&](int pad) {
+        pads.ids[pad] = SDL_AttachVirtualJoystick(&desc);
+        REQUIRE(pads.ids[pad] != 0);
+        pads.joysticks[pad] = SDL_OpenJoystick(pads.ids[pad]);
+        REQUIRE(pads.joysticks[pad] != nullptr);
+        REQUIRE(SDL_SetJoystickVirtualButton(pads.joysticks[pad], SDL_GAMEPAD_BUTTON_WEST, true));
+    };
+    const auto detach = [&](int pad) {
+        SDL_CloseJoystick(pads.joysticks[pad]);
+        pads.joysticks[pad] = nullptr;
+        REQUIRE(SDL_DetachVirtualJoystick(pads.ids[pad]));
+        pads.ids[pad] = 0;
+    };
+    for (int pad = 0; pad < 4; ++pad)
+        attach(pad);
+    app::MapperBusInputConfiguration configuration;
+    std::array<platform::GamepadInputConfig, platform::kInputProfileCount> profiles;
+    for (int player = 0; player < platform::kInputProfileCount; ++player) {
+        auto& config = configuration.gamepad_profile(player);
+        config.enabled = false;
+        config.gamepad_index = 10 + player;
+        REQUIRE(platform::apply_gamepad_mapping(config, "a=west"));
+        profiles[player] = config;
+    }
+    nk::Window window({.title = "Four Hori gamepad preset", .width = 600, .height = 300});
+    NodalKitInput input(window, profiles);
+    configuration.configure_four_hori_gamepads();
+    for (int player = 2; player < platform::kInputProfileCount; ++player) {
+        input.player_input(player).set_gamepad_index(
+            configuration.gamepad_profile(player).gamepad_index);
+        input.player_input(player).set_gamepad_enabled(true);
+    }
+    input.poll();
+    CHECK_FALSE(input.is_button_pressed(0, core::Button::A));
+    CHECK_FALSE(input.is_button_pressed(1, core::Button::A));
+    for (int player = 2; player < platform::kInputProfileCount; ++player) {
+        CHECK(input.player_input(player).gamepad_connected());
+        CHECK(input.is_button_pressed(player, core::Button::A));
+        CHECK(input.player_input(player).gamepad_config().bindings == profiles[player].bindings);
+    }
+    detach(3);
+    input.poll();
+    CHECK_FALSE(input.is_button_pressed(5, core::Button::A));
+    CHECK_FALSE(input.player_input(5).gamepad_connected());
+    for (int player = 2; player < 5; ++player)
+        CHECK(input.is_button_pressed(player, core::Button::A));
+    attach(3);
+    input.poll();
+    for (int player = 2; player < platform::kInputProfileCount; ++player)
+        CHECK(input.is_button_pressed(player, core::Button::A));
+    // Removing a middle device must not transfer its held action to a peer
+    // that occupied another slot before the enumeration compacted.
+    detach(1);
+    input.poll();
+    CHECK_FALSE(input.is_button_pressed(3, core::Button::A));
+    CHECK_FALSE(input.player_input(3).gamepad_connected());
+    for (int player : {2, 4, 5})
+        CHECK(input.is_button_pressed(player, core::Button::A));
+}
 
 TEST_CASE("NodalKit gamepads route independent mappings and release disconnected inputs",
           "[gui][input][gamepad]") {

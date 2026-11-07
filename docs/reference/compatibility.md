@@ -146,7 +146,9 @@ without the asset environment variable.
 
 Select **Hori 4 Players** and the game's **MULTI VS MODE**. Give **Hori 1–4**
 separate keyboard bindings or gamepad assignments. For four host gamepads, assign
-device indices **0, 1, 2, 3** to those roles; their fresh defaults are **2, 3, 4, 5**.
+devices with **Input → Configure Four Gamepads**. This assigns indices **0–3**
+to those roles and enables them while keeping bindings. The fresh defaults
+before applying the preset are **2, 3, 4, 5**.
 Wit's also accepts the built-in pads as aliases of its first two players.
 
 ```sh

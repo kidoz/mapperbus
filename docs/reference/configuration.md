@@ -132,6 +132,12 @@ profiles 5/6 (`input.player5.keyboard`/`input.player5.gamepad` and the correspon
 SDL3 accepts `--gamepad5`, `--gamepad6`, `--gamepad5-map`, and `--gamepad6-map`.
 Assign available devices to the Hori roles you want to use; device indices are
 independent of in-game player numbers.
+GUI Input offers **Configure Four Gamepads** while Hori mode is active. It enables
+Hori 1–4 and assigns Gamepads 1–4 (device indices 0–3), preserving keyboard/button
+bindings, deadzones, built-in profiles, and the startup controller mode. It saves
+immediately and can be used before connecting devices. Other modes retain their
+usual per-profile controls. Reapply the preset to assign the current enumeration
+order if devices change order after reconnecting.
 Keyboard/gamepad settings, turbo phases and defaults remain independent for all
 six profiles. Every profile can bind the same shared microphone action.
 
