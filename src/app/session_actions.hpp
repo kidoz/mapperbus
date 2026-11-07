@@ -27,6 +27,7 @@ struct SessionSnapshot {
     core::ControllerTiming controller_timing = core::ControllerTiming::NesAvFamicom;
     core::ControllerWiring controller_wiring = core::ControllerWiring::Nes;
     core::Byte expansion_controllers = 0;
+    core::ControllerMode controller_mode = core::ControllerMode::Standard;
     core::AudioSettings audio_settings{};
 };
 
@@ -45,6 +46,9 @@ class SessionActions {
     void set_region(core::Region region);
     void set_controller_timing(core::ControllerTiming timing) {
         session_.set_controller_timing(timing);
+    }
+    void set_controller_mode(core::ControllerMode mode) {
+        session_.set_controller_mode(mode);
     }
     void set_controller_wiring(core::ControllerWiring wiring) {
         session_.set_controller_wiring(wiring);

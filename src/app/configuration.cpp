@@ -318,6 +318,13 @@ void apply_setting(MapperBusConfiguration& configuration,
             timing.value_or(core::ControllerTiming::NesAvFamicom);
         return;
     }
+    if (full_key == "input.controller_mode") {
+        const auto mode = parse_controller_mode(value);
+        if (!mode)
+            core::logger::warn("Invalid controller mode: {}", value);
+        configuration.input.controller_mode = mode.value_or(core::ControllerMode::Standard);
+        return;
+    }
     if (full_key == "input.controller_wiring") {
         const auto wiring = parse_controller_wiring(value);
         if (!wiring)
@@ -624,6 +631,18 @@ const char* controller_wiring_token(core::ControllerWiring wiring) {
     return wiring == core::ControllerWiring::RfFamicom ? "rf-famicom" : "nes";
 }
 
+std::optional<core::ControllerMode> parse_controller_mode(std::string_view value) {
+    if (value == "standard")
+        return core::ControllerMode::Standard;
+    if (value == "four-score")
+        return core::ControllerMode::FourScore;
+    return std::nullopt;
+}
+
+const char* controller_mode_token(core::ControllerMode mode) {
+    return mode == core::ControllerMode::FourScore ? "four-score" : "standard";
+}
+
 std::optional<core::Byte> parse_expansion_controllers(std::string_view value) {
     if (value == "none")
         return 0;
@@ -839,6 +858,8 @@ core::Result<void> save_mapperbus_configuration_to_file(const MapperBusConfigura
     file << "region=" << region_preference_token(configuration.frontend.region) << "\n\n";
 
     file << "[input]\n";
+    file << "controller_mode=" << controller_mode_token(configuration.input.controller_mode)
+         << '\n';
     file << "controller_timing=" << controller_timing_token(configuration.input.controller_timing)
          << '\n';
     file << "controller_wiring=" << controller_wiring_token(configuration.input.controller_wiring)

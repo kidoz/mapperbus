@@ -207,8 +207,8 @@ TEST_CASE("Four SDL gamepads reach separate D0 and D1 reports through a running 
         0xA9, 0x00, 0x8D, 0x16, 0x40,       // LDA #0; STA $4016
         0xA2, 0x00,                         // LDX #0
         0xAD, 0x16, 0x40, 0x9D, 0x00, 0x06, // LDA $4016; STA $0600,X
-        0xAD, 0x17, 0x40, 0x9D, 0x10, 0x06, // LDA $4017; STA $0610,X
-        0xE8, 0xE0, 0x08, 0xD0, 0xEF,       // INX; CPX #8; BNE loop
+        0xAD, 0x17, 0x40, 0x9D, 0x40, 0x06, // LDA $4017; STA $0640,X
+        0xE8, 0xE0, 0x18, 0xD0, 0xEF,       // INX; CPX #24; BNE loop
         0x4C, 0x00, 0x80                    // JMP $8000
     };
     const auto rom = tests::build_ines_rom("expansion-functional", 0, 1, 1, kProgram);
@@ -245,10 +245,19 @@ TEST_CASE("Four SDL gamepads reach separate D0 and D1 reports through a running 
             CAPTURE(bit);
             CHECK((session.emulator().read_cpu(0x0600 + bit) & 3U) ==
                   ((0x01U >> bit & 1U) | (0x0CU >> bit & 1U) << 1U));
-            CHECK((session.emulator().read_cpu(0x0610 + bit) & 3U) ==
+            CHECK((session.emulator().read_cpu(0x0640 + bit) & 3U) ==
                   ((built_in2 >> bit & 1U) | (external2 >> bit & 1U) << 1U));
         }
     };
+    check_reports(0x11);
+    session.set_controller_mode(core::ControllerMode::FourScore);
+    REQUIRE(session.tick() == app::TickResult::FrameAdvanced);
+    const uint32_t four_score_reports[] = {0x100C01, 0x20110A};
+    for (unsigned bit = 0; bit < 24; ++bit)
+        for (int port = 0; port < 2; ++port)
+            CHECK((session.emulator().read_cpu((port == 0 ? 0x0600 : 0x0640) + bit) & 3U) ==
+                  (four_score_reports[port] >> bit & 1U));
+    session.set_controller_mode(core::ControllerMode::Standard);
     check_reports(0x11);
     SDL_CloseJoystick(pads.joysticks[3]);
     pads.joysticks[3] = nullptr;

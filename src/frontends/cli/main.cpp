@@ -16,13 +16,14 @@ int main(int argc, char* argv[]) {
     auto bios = configuration.fds_bios_path;
     auto controller_timing = configuration.input.controller_timing;
     auto controller_wiring = configuration.input.controller_wiring;
+    auto controller_mode = configuration.input.controller_mode;
     auto expansion_controllers = configuration.input.expansion_controllers;
     int frames = 60;
     for (int index = 1; index < argc; ++index) {
         const std::string_view argument(argv[index]);
         if ((argument == "--entry" || argument == "--fds-bios" || argument == "--frames" ||
              argument == "--controller-timing" || argument == "--controller-wiring" ||
-             argument == "--expansion-controllers") &&
+             argument == "--controller-mode" || argument == "--expansion-controllers") &&
             index + 1 < argc) {
             const std::string_view value(argv[++index]);
             if (argument == "--entry")
@@ -45,6 +46,14 @@ int main(int argc, char* argv[]) {
                     return EXIT_FAILURE;
                 }
                 controller_wiring = *wiring;
+            } else if (argument == "--controller-mode") {
+                const auto mode = mapperbus::app::parse_controller_mode(value);
+                if (!mode) {
+                    mapperbus::core::logger::error(
+                        "--controller-mode requires standard or four-score");
+                    return EXIT_FAILURE;
+                }
+                controller_mode = *mode;
             } else if (argument == "--expansion-controllers") {
                 const auto ports = mapperbus::app::parse_expansion_controllers(value);
                 if (!ports) {
@@ -75,13 +84,15 @@ int main(int argc, char* argv[]) {
             "Usage: mapperbus-cli <rom-file|archive> [--entry NAME] "
             "[--fds-bios PATH] [--frames N] "
             "[--controller-timing nes-av-famicom|rf-famicom] "
-            "[--controller-wiring nes|rf-famicom] [--expansion-controllers none|1|2|both]");
+            "[--controller-wiring nes|rf-famicom] [--controller-mode standard|four-score] "
+            "[--expansion-controllers none|1|2|both]");
         return EXIT_FAILURE;
     }
     mapperbus::core::register_builtin_mappers();
     mapperbus::core::Emulator emulator;
     emulator.set_controller_timing(controller_timing);
     emulator.set_controller_wiring(controller_wiring);
+    emulator.set_controller_mode(controller_mode);
     emulator.set_expansion_controllers(expansion_controllers);
     auto result = mapperbus::app::load_rom_source(emulator, path, member, bios);
     if (!result) {

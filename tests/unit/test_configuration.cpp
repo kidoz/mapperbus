@@ -97,6 +97,30 @@ TEST_CASE("External controller attachments and host profiles persist independent
     std::filesystem::remove_all(path.parent_path());
 }
 
+TEST_CASE("Controller mode persists independently and invalid values select Standard",
+          "[app][configuration][four-score]") {
+    MapperBusConfiguration config;
+    CHECK(config.input.controller_mode == core::ControllerMode::Standard);
+    config.input.controller_mode = core::ControllerMode::FourScore;
+    config.input.expansion_controllers = 3;
+    const auto path = temporary_config_path();
+    REQUIRE(save_mapperbus_configuration_to_file(config, path));
+    const auto restored = load_mapperbus_configuration_from_file(path);
+    CHECK(restored.input.controller_mode == core::ControllerMode::FourScore);
+    CHECK(restored.input.expansion_controllers == 3);
+    CHECK(parse_controller_mode("standard") == core::ControllerMode::Standard);
+    CHECK(parse_controller_mode("four-score") == core::ControllerMode::FourScore);
+    CHECK_FALSE(parse_controller_mode("four_score"));
+    CHECK(std::string(controller_mode_token(restored.input.controller_mode)) == "four-score");
+    {
+        std::ofstream file(path);
+        file << "[input]\ncontroller_mode=invalid\n";
+    }
+    CHECK(load_mapperbus_configuration_from_file(path).input.controller_mode ==
+          core::ControllerMode::Standard);
+    std::filesystem::remove_all(path.parent_path());
+}
+
 TEST_CASE("Content-identified slot selections persist independently of recent games",
           "[app][configuration][state]") {
     MapperBusConfiguration configuration;

@@ -1056,6 +1056,7 @@ MapperBusGuiController::MapperBusGuiController(nk::Application& app, nk::Window&
     session_->set_controller_timing(configuration_.input.controller_timing);
     session_->set_controller_wiring(configuration_.input.controller_wiring);
     session_->set_expansion_controllers(configuration_.input.expansion_controllers);
+    session_->set_controller_mode(configuration_.input.controller_mode);
 #if defined(MAPPERBUS_HAVE_SDL3_AUDIO)
     session_->set_microphone_backend(std::make_unique<Sdl3Microphone>());
 #endif
@@ -1761,6 +1762,7 @@ void MapperBusGuiController::attempt_open(std::string rom_path, std::string memb
     actions_->set_controller_timing(configuration_.input.controller_timing);
     actions_->set_controller_wiring(configuration_.input.controller_wiring);
     actions_->set_expansion_controllers(configuration_.input.expansion_controllers);
+    actions_->set_controller_mode(configuration_.input.controller_mode);
     apply_region_preference();
     refresh_settings_dialog_sections();
     actions_->step_frame();
@@ -2303,8 +2305,10 @@ void MapperBusGuiController::open_rebind_dialog(RebindDevice device, platform::I
     }
 
     const std::string target =
-        (settings_input_player_ < 2 ? "Player " + std::to_string(settings_input_player_ + 1)
-                                    : "External " + std::to_string(settings_input_player_ - 1)) +
+        (settings_input_player_ < 2 ||
+                 actions_->snapshot().controller_mode == core::ControllerMode::FourScore
+             ? "Player " + std::to_string(settings_input_player_ + 1)
+             : "External " + std::to_string(settings_input_player_ - 1)) +
         " · " + button_name(button);
     const bool keyboard = device == RebindDevice::Keyboard;
     rebind_dialog_ = nk::Dialog::create("Rebind " + target);
@@ -2640,6 +2644,22 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
         input_test_label_.reset();
         auto hardware_group = SettingsGroup::create("Hardware");
         hardware_group->set_horizontal_size_policy(nk::SizePolicy::Expanding);
+        const bool four_score =
+            actions_->snapshot().controller_mode == core::ControllerMode::FourScore;
+        auto mode_combo = nk::ComboBox::create();
+        mode_combo->set_items({"Standard", "Four Score"});
+        mode_combo->set_selected_index(four_score ? 1 : 0);
+        mode_combo->ensure_accessible().set_name("Controller mode");
+        (void)mode_combo->on_selection_changed().connect([this](int index) {
+            configuration_.input.controller_mode =
+                index == 1 ? core::ControllerMode::FourScore : core::ControllerMode::Standard;
+            actions_->set_controller_mode(configuration_.input.controller_mode);
+            save_configuration_state();
+            refresh_ui();
+            refresh_settings_dialog_sections();
+        });
+        hardware_group->add(pref_row(
+            "Controller mode", mode_combo, "Four-player adapter for compatible NES games."));
         auto wiring_combo = nk::ComboBox::create();
         wiring_combo->set_items({"NES", "Original RF Famicom"});
         wiring_combo->set_selected_index(
@@ -2654,8 +2674,8 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
                                    : "Controller wiring set to NES.");
             refresh_ui();
         });
-        hardware_group->add(
-            pref_row("Controller wiring", wiring_combo, "RF pad 2 has no Start or Select."));
+        hardware_group->add(pref_row(
+            "Controller wiring", wiring_combo, "RF built-in pad 2 has no Start or Select."));
         auto timing_combo = nk::ComboBox::create();
         timing_combo->set_items({"NES / AV Famicom", "Original RF Famicom"});
         timing_combo->set_selected_index(
@@ -2675,6 +2695,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
             pref_row("Controller timing", timing_combo, "Controller ports in NTSC mode."));
         for (int port = 0; port < 2; ++port) {
             auto attached = nk::Switch::create();
+            attached->set_sensitive(!four_score);
             attached->set_active((actions_->snapshot().expansion_controllers & (1U << port)) != 0);
             (void)attached->on_toggled().connect([this, port](bool active) {
                 const auto mask = static_cast<core::Byte>(1U << port);
@@ -2685,11 +2706,12 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
                 actions_->set_expansion_controllers(ports);
                 save_configuration_state();
             });
-            hardware_group->add(
-                pref_row("External controller " + std::to_string(port + 1),
-                         attached,
-                         "Famicom expansion pad; bindings are under Input > External " +
-                             std::to_string(port + 1) + "."));
+            hardware_group->add(pref_row(
+                "External controller " + std::to_string(port + 1),
+                attached,
+                four_score ? "Available in Standard controller mode."
+                           : "Famicom expansion pad; bindings are under Input > External " +
+                                 std::to_string(port + 1) + "."));
         }
         page->append(hardware_group);
         auto bios_group = SettingsGroup::create("BIOS");
@@ -2744,7 +2766,10 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
         page->append(bios_status);
     } else if (settings_page_ == SettingsPage::Input) {
         auto player_selector = nk::SegmentedControl::create();
-        player_selector->set_segments({"Player 1", "Player 2", "External 1", "External 2"});
+        if (actions_->snapshot().controller_mode == core::ControllerMode::FourScore)
+            player_selector->set_segments({"Player 1", "Player 2", "Player 3", "Player 4"});
+        else
+            player_selector->set_segments({"Player 1", "Player 2", "External 1", "External 2"});
         player_selector->set_selected_index(settings_input_player_);
         player_selector->ensure_accessible().set_name("Input player");
         (void)player_selector->on_selection_changed().connect([this](int player) {

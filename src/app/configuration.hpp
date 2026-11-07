@@ -29,6 +29,7 @@ struct MapperBusInputConfiguration {
     platform::GamepadInputConfig player2_gamepad;
     /// External pads 1/2 use host profiles 3/4. Bit 0/1 attaches each D1 input.
     core::Byte expansion_controllers = 0;
+    core::ControllerMode controller_mode = core::ControllerMode::Standard;
     std::array<std::array<int, platform::kInputActionCount>, 2> expansion_keyboard_bindings{};
     std::array<platform::GamepadInputConfig, 2> expansion_gamepads{};
     int turbo_period_frames = 4;
@@ -131,6 +132,8 @@ void clear_recent_roms(MapperBusConfiguration& configuration);
 [[nodiscard]] const char* controller_timing_token(core::ControllerTiming timing);
 [[nodiscard]] std::optional<core::ControllerWiring> parse_controller_wiring(std::string_view value);
 [[nodiscard]] const char* controller_wiring_token(core::ControllerWiring wiring);
+[[nodiscard]] std::optional<core::ControllerMode> parse_controller_mode(std::string_view value);
+[[nodiscard]] const char* controller_mode_token(core::ControllerMode mode);
 [[nodiscard]] std::optional<core::Byte> parse_expansion_controllers(std::string_view value);
 [[nodiscard]] inline std::string controller_button_name(core::Button button) {
     return controller_button_name(platform::input_action(button));

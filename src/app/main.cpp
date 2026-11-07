@@ -108,6 +108,7 @@ int main(int argc, char* argv[]) {
         mapperbus::core::logger::info(
             "  --controller-timing T nes-av-famicom (default) or rf-famicom");
         mapperbus::core::logger::info("  --controller-wiring W nes (default) or rf-famicom");
+        mapperbus::core::logger::info("  --controller-mode M standard (default) or four-score");
         mapperbus::core::logger::info("  --expansion-controllers P none (default), 1, 2, or both");
         mapperbus::core::logger::info(
             "  --gamepad3/4 N / --gamepad3-map / --gamepad4-map external pad profiles");
@@ -162,6 +163,7 @@ int main(int argc, char* argv[]) {
     auto microphone_settings = mapperbus_config.microphone;
     auto controller_timing = mapperbus_config.input.controller_timing;
     auto controller_wiring = mapperbus_config.input.controller_wiring;
+    auto controller_mode = mapperbus_config.input.controller_mode;
     auto expansion_controllers = mapperbus_config.input.expansion_controllers;
     auto state_storage = mapperbus_config.save_states;
     fds_bios = mapperbus_config.fds_bios_path;
@@ -261,6 +263,14 @@ int main(int argc, char* argv[]) {
                 mapperbus::core::logger::error("{}", mapped.error());
                 return EXIT_FAILURE;
             }
+        } else if (std::strcmp(argv[i], "--controller-mode") == 0) {
+            const auto mode =
+                i + 1 < argc ? mapperbus::app::parse_controller_mode(argv[++i]) : std::nullopt;
+            if (!mode) {
+                mapperbus::core::logger::error("--controller-mode requires standard or four-score");
+                return EXIT_FAILURE;
+            }
+            controller_mode = *mode;
         } else if (std::strcmp(argv[i], "--expansion-controllers") == 0) {
             const auto ports = i + 1 < argc ? mapperbus::app::parse_expansion_controllers(argv[++i])
                                             : std::nullopt;
@@ -384,6 +394,7 @@ int main(int argc, char* argv[]) {
     app.session().set_fds_bios_path(fds_bios);
     app.session().set_controller_timing(controller_timing);
     app.session().set_controller_wiring(controller_wiring);
+    app.session().set_controller_mode(controller_mode);
     app.session().set_expansion_controllers(expansion_controllers);
     app.session().set_microphone_backend(std::make_unique<mapperbus::frontend::Sdl3Microphone>());
     app.session().configure_live_microphone(microphone_settings);

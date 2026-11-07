@@ -99,6 +99,7 @@ SessionSnapshot SessionActions::snapshot() const {
         .controller_timing = session_.emulator().controller_timing(),
         .controller_wiring = session_.emulator().controller_wiring(),
         .expansion_controllers = session_.emulator().expansion_controllers(),
+        .controller_mode = session_.emulator().controller_mode(),
         .audio_settings = session_.audio_settings(),
     };
 }
