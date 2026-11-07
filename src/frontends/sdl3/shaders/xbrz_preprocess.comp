@@ -1,0 +1,110 @@
+#version 450
+#extension GL_EXT_samplerless_texture_functions : require
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+layout(std140, set = 2, binding = 0) uniform Params {
+    int scale_factor;
+    int src_width;
+    int src_height;
+    int padding;
+};
+
+layout(set = 0, binding = 0) uniform texture2D src;
+layout(rgba8, set = 1, binding = 0) uniform writeonly image2D blend_info;
+
+float color_dist(vec4 a, vec4 b) {
+    float dr = a.r - b.r;
+    float dg = a.g - b.g;
+    float db = a.b - b.b;
+    float rmean = (a.r + b.r) * 0.5;
+    float wr = (rmean >= 0.5) ? 3.0 : 2.0;
+    float wg = 4.0;
+    float wb = (rmean >= 0.5) ? 2.0 : 3.0;
+    return sqrt(wr * dr * dr + wg * dg * dg + wb * db * db);
+}
+
+vec4 sample_src(int x, int y, int w, int h) {
+    x = clamp(x, 0, w - 1);
+    y = clamp(y, 0, h - 1);
+    return texelFetch(src, ivec2(x, y), 0);
+}
+
+int detect_edge(vec4 center, vec4 diag, vec4 ortho1, vec4 ortho2,
+                vec4 ext1, vec4 ext2, vec4 ext3, vec4 ext4) {
+    float tolerance = 30.0 / 255.0;
+    float dominant_threshold = 3.6;
+
+    if (color_dist(center, diag) < tolerance) return 0;
+
+    float diag_grad = color_dist(center, diag) + color_dist(ext1, ext2);
+    float ortho_grad = color_dist(ortho1, ortho2) + color_dist(ext3, ext4);
+
+    if (diag_grad < ortho_grad) return 0;
+    if (diag_grad > ortho_grad * dominant_threshold) return 2;
+    return 1;
+}
+
+void main() {
+    uvec3 gid = gl_GlobalInvocationID;
+    int sw = src_width;
+    int sh = src_height;
+    if (int(gid.x) >= sw || int(gid.y) >= sh) return;
+
+    int sx = int(gid.x);
+    int sy = int(gid.y);
+    vec4 D = sample_src(sx-1, sy-1, sw, sh);
+    vec4 E = sample_src(sx,   sy-1, sw, sh);
+    vec4 F = sample_src(sx+1, sy-1, sw, sh);
+    vec4 G = sample_src(sx-1, sy,   sw, sh);
+    vec4 H = sample_src(sx,   sy,   sw, sh);
+    vec4 I = sample_src(sx+1, sy,   sw, sh);
+    vec4 J = sample_src(sx-1, sy+1, sw, sh);
+    vec4 K = sample_src(sx,   sy+1, sw, sh);
+    vec4 L = sample_src(sx+1, sy+1, sw, sh);
+
+    int bl_tl = detect_edge(H, D, G, E, D, E, F, I);
+    int bl_tr = detect_edge(H, F, E, I, F, I, L, K);
+    int bl_bl = detect_edge(H, J, K, G, J, G, D, E);
+    int bl_br = detect_edge(H, L, I, K, L, K, J, G);
+    float steep_threshold = 2.2;
+
+    bool blend_tl = false;
+    if (bl_tl > 0) {
+        float d = color_dist(H, D);
+        float dv = color_dist(H, G);
+        float dh_val = color_dist(H, E);
+        blend_tl = d > 30.0/255.0 &&
+                   (dv < d * steep_threshold || dh_val < d * steep_threshold);
+    }
+    bool blend_tr = false;
+    if (bl_tr > 0) {
+        float d = color_dist(H, F);
+        float dv = color_dist(H, I);
+        float dh_val = color_dist(H, E);
+        blend_tr = d > 30.0/255.0 &&
+                   (dv < d * steep_threshold || dh_val < d * steep_threshold);
+    }
+    bool blend_bl = false;
+    if (bl_bl > 0) {
+        float d = color_dist(H, J);
+        float dv = color_dist(H, G);
+        float dh_val = color_dist(H, K);
+        blend_bl = d > 30.0/255.0 &&
+                   (dv < d * steep_threshold || dh_val < d * steep_threshold);
+    }
+    bool blend_br = false;
+    if (bl_br > 0) {
+        float d = color_dist(H, L);
+        float dv = color_dist(H, I);
+        float dh_val = color_dist(H, K);
+        blend_br = d > 30.0/255.0 &&
+                   (dv < d * steep_threshold || dh_val < d * steep_threshold);
+    }
+
+    int blends = bl_tl | (bl_tr << 2) | (bl_bl << 4) | (bl_br << 6);
+    int active_corners = int(blend_tl) | (int(blend_tr) << 1) |
+                 (int(blend_bl) << 2) | (int(blend_br) << 3);
+    imageStore(blend_info, ivec2(gid.xy),
+               vec4(float(blends) / 255.0, float(active_corners) / 255.0, 0.0, 1.0));
+}

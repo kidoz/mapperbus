@@ -74,7 +74,8 @@ inline SDL_GPUComputePipeline* create_compute_pipeline(SDL_GPUDevice* device,
                                                        const char* msl,
                                                        const char* entrypoint,
                                                        const char* hlsl,
-                                                       std::span<const uint32_t> spirv = {}) {
+                                                       std::span<const uint32_t> spirv = {},
+                                                       uint32_t readonly_texture_count = 1) {
     const auto formats = SDL_GetGPUShaderFormats(device);
     SDL_GPUComputePipelineCreateInfo info{};
     if (!spirv.empty() && (formats & SDL_GPU_SHADERFORMAT_SPIRV)) {
@@ -96,7 +97,7 @@ inline SDL_GPUComputePipeline* create_compute_pipeline(SDL_GPUDevice* device,
         return nullptr;
 #endif
     }
-    info.num_readonly_storage_textures = 1;
+    info.num_readonly_storage_textures = readonly_texture_count;
     info.num_readwrite_storage_textures = 1;
     info.num_uniform_buffers = 1;
     info.threadcount_x = 16;

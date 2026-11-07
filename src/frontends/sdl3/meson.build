@@ -28,7 +28,7 @@ mapperbus_sdl3_deps = [mapperbus_core_dep, sdl3_dep, mapperbus_microphone_permis
 mapperbus_sdl3_cpp_args = []
 
 if glslang.found()
-    foreach shader : ['xbrz', 'fsr1_easu', 'fsr1_rcas']
+    foreach shader : ['xbrz_preprocess', 'xbrz', 'fsr1_easu', 'fsr1_rcas']
         sdl3_sources += custom_target(shader + '-spirv',
             input : 'shaders' / (shader + '.comp'),
             output : shader + '_spirv.hpp',

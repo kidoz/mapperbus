@@ -48,8 +48,10 @@ class GpuUpscaler : public platform::Upscaler {
     int src_h_ = 0;
 
     SDL_GPUDevice* device_ = nullptr;
+    SDL_GPUComputePipeline* preprocess_pipeline_ = nullptr;
     SDL_GPUComputePipeline* pipeline_ = nullptr;
     SDL_GPUTexture* src_texture_ = nullptr;
+    SDL_GPUTexture* blend_texture_ = nullptr;
     SDL_GPUTexture* dst_texture_ = nullptr;
     SDL_GPUTransferBuffer* upload_buf_ = nullptr;
     SDL_GPUTransferBuffer* download_buf_ = nullptr;

@@ -7,6 +7,7 @@
 #include "frontends/sdl3/shaders/xbrz_shader.hpp"
 
 #ifdef HAVE_VULKAN_SHADERS
+#include "xbrz_preprocess_spirv.hpp"
 #include "xbrz_spirv.hpp"
 #endif
 
@@ -53,13 +54,20 @@ bool GpuUpscaler::init_gpu(int src_width, int src_height) {
         external_device_ = false;
     }
 
+    std::span<const uint32_t> preprocess_spirv;
     std::span<const uint32_t> spirv;
 #ifdef HAVE_VULKAN_SHADERS
+    preprocess_spirv = k_xbrz_preprocess_spirv;
     spirv = k_xbrz_spirv;
 #endif
+    preprocess_pipeline_ = create_compute_pipeline(device_,
+                                                   shaders::kXbrzPreprocessMsl,
+                                                   "xbrz_preprocess",
+                                                   shaders::kXbrzPreprocessHlsl,
+                                                   preprocess_spirv);
     pipeline_ = create_compute_pipeline(
-        device_, shaders::kXbrzComputeMsl, "xbrz_upscale", shaders::kXbrzComputeHlsl, spirv);
-    if (!pipeline_) {
+        device_, shaders::kXbrzComputeMsl, "xbrz_upscale", shaders::kXbrzComputeHlsl, spirv, 2);
+    if (!preprocess_pipeline_ || !pipeline_) {
         cleanup_gpu();
         return false;
     }
@@ -78,6 +86,15 @@ bool GpuUpscaler::init_gpu(int src_width, int src_height) {
 
     src_texture_ = SDL_CreateGPUTexture(device_, &src_tex_info);
     if (!src_texture_) {
+        cleanup_gpu();
+        return false;
+    }
+
+    auto blend_tex_info = src_tex_info;
+    blend_tex_info.usage =
+        SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_READ | SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_WRITE;
+    blend_texture_ = SDL_CreateGPUTexture(device_, &blend_tex_info);
+    if (!blend_texture_) {
         cleanup_gpu();
         return false;
     }
@@ -129,8 +146,12 @@ void GpuUpscaler::cleanup_gpu() {
             SDL_ReleaseGPUTransferBuffer(device_, upload_buf_);
         if (dst_texture_)
             SDL_ReleaseGPUTexture(device_, dst_texture_);
+        if (blend_texture_)
+            SDL_ReleaseGPUTexture(device_, blend_texture_);
         if (src_texture_)
             SDL_ReleaseGPUTexture(device_, src_texture_);
+        if (preprocess_pipeline_)
+            SDL_ReleaseGPUComputePipeline(device_, preprocess_pipeline_);
         if (pipeline_)
             SDL_ReleaseGPUComputePipeline(device_, pipeline_);
         if (!external_device_) {
@@ -144,8 +165,10 @@ void GpuUpscaler::cleanup_gpu() {
     }
 #endif
     device_ = nullptr;
+    preprocess_pipeline_ = nullptr;
     pipeline_ = nullptr;
     src_texture_ = nullptr;
+    blend_texture_ = nullptr;
     dst_texture_ = nullptr;
     upload_buf_ = nullptr;
     download_buf_ = nullptr;
@@ -207,7 +230,21 @@ void GpuUpscaler::scale(std::span<const std::uint32_t> source,
         SDL_EndGPUCopyPass(copy_pass);
     }
 
-    // Dispatch compute shader
+    GpuParams params{scale_, src_width, src_height, 0};
+
+    SDL_GPUStorageTextureReadWriteBinding preprocess_bindings[1]{};
+    preprocess_bindings[0].texture = blend_texture_;
+    auto* preprocess = SDL_BeginGPUComputePass(cmd, preprocess_bindings, 1, nullptr, 0);
+    SDL_BindGPUComputePipeline(preprocess, preprocess_pipeline_);
+    SDL_GPUTexture* preprocess_reads[] = {src_texture_};
+    SDL_BindGPUComputeStorageTextures(preprocess, 0, preprocess_reads, 1);
+    SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
+    SDL_DispatchGPUCompute(preprocess,
+                           (static_cast<uint32_t>(src_width) + 15) / 16,
+                           (static_cast<uint32_t>(src_height) + 15) / 16,
+                           1);
+    SDL_EndGPUComputePass(preprocess);
+
     SDL_GPUStorageTextureReadWriteBinding rw_tex_bindings[1]{};
     rw_tex_bindings[0].texture = dst_texture_;
 
@@ -216,11 +253,9 @@ void GpuUpscaler::scale(std::span<const std::uint32_t> source,
     SDL_BindGPUComputePipeline(compute, pipeline_);
 
     // Bind source texture as read-only storage
-    SDL_GPUTexture* read_textures[] = {src_texture_};
-    SDL_BindGPUComputeStorageTextures(compute, 0, read_textures, 1);
+    SDL_GPUTexture* read_textures[] = {src_texture_, blend_texture_};
+    SDL_BindGPUComputeStorageTextures(compute, 0, read_textures, 2);
 
-    // Push uniform parameters
-    GpuParams params{scale_, src_width, src_height, 0};
     SDL_PushGPUComputeUniformData(cmd, 0, &params, sizeof(params));
 
     // Dispatch workgroups

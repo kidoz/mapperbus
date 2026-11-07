@@ -117,6 +117,49 @@ TEST_CASE("GPU xBRZ preserves colors across partial workgroups", "[sdl3][gpu]") 
     }
 }
 
+TEST_CASE("GPU xBRZ rotates every binary neighborhood consistently at every scale", "[sdl3][gpu][xbrz]") {
+    SdlVideoScope sdl;
+    require_gpu_device();
+
+    // Put all 512 possible 3x3 neighborhoods into one texture. Each has a
+    // one-pixel border; the remaining tiles stay black.
+    constexpr int kWidth = 120;
+    std::vector<uint32_t> source(static_cast<std::size_t>(kWidth) * kWidth, 0xFF000000U);
+    for (int mask = 0; mask < 512; ++mask) {
+        const int origin_x = (mask % 24) * 5 + 1;
+        const int origin_y = (mask / 24) * 5 + 1;
+        for (int y = 0; y < 3; ++y) {
+            for (int x = 0; x < 3; ++x) {
+                if ((static_cast<unsigned>(mask) & (1U << static_cast<unsigned>(y * 3 + x))) !=
+                    0U) {
+                    source[(origin_y + y) * kWidth + origin_x + x] = 0xFFFFFFFFU;
+                }
+            }
+        }
+    }
+    const auto rotate = [](const std::vector<uint32_t>& pixels, int width) {
+        std::vector<uint32_t> rotated(pixels.size());
+        for (int y = 0; y < width; ++y) {
+            for (int x = 0; x < width; ++x) {
+                rotated[x * width + width - 1 - y] = pixels[y * width + x];
+            }
+        }
+        return rotated;
+    };
+
+    for (int factor : {2, 3, 4, 5, 6}) {
+        CAPTURE(factor);
+        GpuUpscaler upscaler(factor);
+        std::vector<uint32_t> output(source.size() * factor * factor);
+        upscaler.scale(source, kWidth, kWidth, output);
+        INFO(SDL_GetError());
+        REQUIRE(upscaler.is_gpu_available());
+        const auto expected = rotate(output, kWidth * factor);
+        upscaler.scale(rotate(source, kWidth), kWidth, kWidth, output);
+        REQUIRE(std::equal(output.begin(), output.end(), expected.begin()));
+    }
+}
+
 TEST_CASE("GPU FSR returns the previous frame with correct channels", "[sdl3][gpu]") {
     SdlVideoScope sdl;
     require_gpu_device();
