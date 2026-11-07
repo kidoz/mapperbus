@@ -2369,8 +2369,7 @@ void MapperBusGuiController::remember_game_controller_hardware(bool remember) {
 
 void MapperBusGuiController::open_gamepad_assignment() {
 #ifdef MAPPERBUS_HAVE_SDL3_GAMEPAD
-    if (gamepad_assignment_dialog_ || rebind_dialog_ ||
-        actions_->snapshot().controller_mode != core::ControllerMode::HoriFourPlayer)
+    if (gamepad_assignment_dialog_ || rebind_dialog_)
         return;
     refresh_ui();
     update_configuration_from_state();
@@ -2379,29 +2378,34 @@ void MapperBusGuiController::open_gamepad_assignment() {
     if (resume_after_gamepad_assignment_)
         actions_->pause();
     input_backend_->set_assignment_capture(true);
-    gamepad_assignment_ = std::make_unique<Sdl3GamepadAssignment>();
-    auto dialog = nk::Dialog::create("Assign Four Gamepads");
+    gamepad_assignment_profiles_ = NodalKitInput::gamepad_assignment_profiles(
+        snapshot.controller_mode, snapshot.expansion_controllers);
+    std::vector<std::string> roles;
+    for (int player : gamepad_assignment_profiles_)
+        roles.push_back(input_profile_name(player, snapshot.controller_mode));
+    gamepad_assignment_ = std::make_unique<Sdl3GamepadAssignment>(std::move(roles));
+    auto dialog = nk::Dialog::create("Assign Gamepads");
     gamepad_assignment_dialog_ = dialog;
     dialog->set_presentation_style(nk::DialogPresentationStyle::Sheet);
     dialog->set_minimum_panel_width(460.0F);
     dialog->set_default_response(nk::DialogResponse::Cancel);
     dialog->add_button("Cancel", nk::DialogResponse::Cancel);
     auto content = Box::vertical(10.0F);
-    auto instructions = nk::Label::create(
-        "Press a button on each controller in Hori 1–4 order. Bindings are kept.");
+    auto instructions =
+        nk::Label::create("Press a button for each role below, in order. Bindings are kept.");
     instructions->set_wrapping(true);
     content->append(instructions);
     gamepad_assignment_status_ = nk::Label::create(gamepad_assignment_->status());
     gamepad_assignment_status_->set_wrapping(true);
     content->append(gamepad_assignment_status_);
-    for (int player = 0; player < 4; ++player) {
-        auto label = nk::Label::create("Hori " + std::to_string(player + 1) + ": Not assigned");
+    for (std::size_t player = 0; player < gamepad_assignment_profiles_.size(); ++player) {
+        auto label = nk::Label::create(gamepad_assignment_->role_name(player) + ": Not assigned");
         label->set_wrapping(true);
         gamepad_assignment_labels_[player] = label;
         content->append(label);
     }
     auto finish_help =
-        nk::Label::create("Changes are saved after all four controllers are assigned and buttons "
+        nk::Label::create("Changes are saved after all listed controllers are assigned and buttons "
                           "are released. Cancel keeps existing assignments.");
     finish_help->set_wrapping(true);
     content->append(finish_help);
@@ -2413,12 +2417,13 @@ void MapperBusGuiController::open_gamepad_assignment() {
                 return;
             gamepad_assignment_dialog_.reset();
             gamepad_assignment_.reset();
+            gamepad_assignment_profiles_.clear();
             gamepad_assignment_status_.reset();
             gamepad_assignment_labels_.fill(nullptr);
             input_backend_->set_assignment_capture(false);
             if (response == nk::DialogResponse::Accept) {
                 (void)input_backend_->consume_gamepad_assignment_changes();
-                set_message("Four Hori gamepads assigned. Button bindings retained.");
+                set_message("Gamepads assigned. Button bindings retained.");
             } else {
                 set_message("Gamepad assignment cancelled.");
             }
@@ -2456,9 +2461,9 @@ void MapperBusGuiController::poll_gamepad_assignment() {
     const auto& status = gamepad_assignment_->status();
     if (gamepad_assignment_status_->text() != status)
         gamepad_assignment_status_->set_text(status);
-    for (int player = 0; player < 4; ++player) {
-        const auto text =
-            "Hori " + std::to_string(player + 1) + ": " + gamepad_assignment_->device_name(player);
+    for (std::size_t player = 0; player < gamepad_assignment_profiles_.size(); ++player) {
+        const auto text = gamepad_assignment_->role_name(player) + ": " +
+                          gamepad_assignment_->device_name(player);
         if (gamepad_assignment_labels_[player]->text() != text)
             gamepad_assignment_labels_[player]->set_text(text);
     }
@@ -2466,10 +2471,10 @@ void MapperBusGuiController::poll_gamepad_assignment() {
         return;
     std::string save_error;
     const auto commit = [this,
-                         &save_error](const std::array<platform::GamepadInputConfig, 4>& proposed) {
+                         &save_error](std::span<const platform::GamepadInputConfig> proposed) {
         auto updated = configuration_;
-        for (int player = 0; player < 4; ++player)
-            updated.input.gamepad_profile(player + 2) = proposed[player];
+        for (std::size_t player = 0; player < gamepad_assignment_profiles_.size(); ++player)
+            updated.input.gamepad_profile(gamepad_assignment_profiles_[player]) = proposed[player];
         if (auto saved = app::save_mapperbus_configuration(updated); !saved) {
             save_error = "Could not save gamepad assignments: " + saved.error();
             return false;
@@ -2478,7 +2483,8 @@ void MapperBusGuiController::poll_gamepad_assignment() {
         return true;
     };
     const auto dialog = gamepad_assignment_dialog_;
-    if (input_backend_->assign_four_hori_gamepads(gamepad_assignment_->assignments(), commit)) {
+    if (input_backend_->assign_gamepads(
+            gamepad_assignment_profiles_, gamepad_assignment_->assignments(), commit)) {
         dialog->close(nk::DialogResponse::Accept);
     } else {
         dialog->close(nk::DialogResponse::Cancel);
@@ -3001,9 +3007,10 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
         const std::string gamepad_help =
             input_backend_->player_input(settings_input_player_).gamepad_status_text();
 
+        auto setup_group = SettingsGroup::create(
+            mode == core::ControllerMode::Standard ? "Controller setup" : "Four-player setup");
+        setup_group->set_horizontal_size_policy(nk::SizePolicy::Expanding);
         if (mode == core::ControllerMode::HoriFourPlayer) {
-            auto setup_group = SettingsGroup::create("Four-player setup");
-            setup_group->set_horizontal_size_policy(nk::SizePolicy::Expanding);
             auto configure = nk::Button::create("Configure Four Gamepads");
             configure->set_sensitive(gamepad_support);
             (void)configure->on_clicked().connect([this] {
@@ -3029,15 +3036,20 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
             configure->ensure_accessible().set_description(
                 "Assign and enable Gamepads 1–4 for Hori 1–4. Keep bindings and deadzones.");
             setup_group->add(setup_row);
-            auto assign_by_button = nk::Button::create("Assign by Button…");
-            assign_by_button->set_sensitive(gamepad_support);
-            (void)assign_by_button->on_clicked().connect([this] { open_gamepad_assignment(); });
-            auto by_button_row =
-                pref_row("Player order", assign_by_button, "Press a button for each Hori player.");
-            assign_by_button->ensure_accessible().set_name("Assign Four Hori Gamepads by Button");
-            setup_group->add(by_button_row);
-            page->append(setup_group);
         }
+        auto assign_by_button = nk::Button::create("Assign by Button…");
+        assign_by_button->set_sensitive(gamepad_support);
+        (void)assign_by_button->on_clicked().connect([this] { open_gamepad_assignment(); });
+        const auto assignment_count = NodalKitInput::gamepad_assignment_profiles(
+                                          mode, actions_->snapshot().expansion_controllers)
+                                          .size();
+        auto by_button_row = pref_row("Player order",
+                                      assign_by_button,
+                                      "Assign " + std::to_string(assignment_count) +
+                                          " controllers in player order.");
+        assign_by_button->ensure_accessible().set_name("Assign Gamepads by Button");
+        setup_group->add(by_button_row);
+        page->append(setup_group);
 
         auto bindings = Box::vertical(6.0F);
         bindings->set_horizontal_size_policy(nk::SizePolicy::Expanding);

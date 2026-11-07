@@ -161,6 +161,43 @@ rewriting either global or game preferences. Explicit edits change the selected
 hardware field; **Remember for this game** captures all active fields. Closing a
 GUI game returns the hardware controls to global defaults.
 
+### Assign gamepads by button
+
+In **Settings → Input → Player order**, choose **Assign by Button…**. The wizard
+uses the active machine's controller mode and attachments, including hardware
+restored from a save state:
+
+| Mode | Assignment order |
+|---|---|
+| Standard | Player 1, Player 2, then each attached External 1/2 pad |
+| Four Score | Players 1–4; Standard expansion attachments are ignored |
+| Hori 4 Players | Hori 1–4; the built-in profiles are retained |
+
+Standard requires two, three or four controllers according to its attachment
+switches in General → Hardware. With only External 2 attached, the third role is
+**External 2**; External 1 is retained. Disabled host profiles can be assigned and
+are enabled on successful completion. The Hori index preset remains available
+separately as **Configure Four Gamepads**.
+
+Press a fresh button on each controller in the displayed order. Buttons already
+held when the wizard opens or a controller connects are ignored; release them
+and press again. The same controller cannot fill two roles, and simultaneous
+presses on different controllers require a retry. If a chosen controller
+disconnects, capture returns to its step and clears later choices.
+
+The wizard pauses a running game and suppresses game input during capture. It
+saves and applies all listed assignments together after every selected
+controller's buttons are released. **Cancel**, Escape, or closing Settings
+discards pending choices and preserves the prior pause state. Missing devices
+or a failed save prevent partial application.
+
+Bindings, deadzones, keyboard controls, profiles outside the wizard and hardware
+preferences are retained. Gamepad assignments remain shared across games;
+**Remember for this game** controls hardware only. Identical controller models
+can be assigned for the current session; their usual remembered-identity limits
+apply after reconnect/restart. Physical testing is separate from automated
+virtual-controller checks. Builds without gamepad support disable the button.
+
 ### Hori 4 Players Adapter
 
 Select `hori-4-player` for the Famicom adapter's four-controller serial mode.
@@ -181,21 +218,6 @@ immediately and can be used before connecting devices. Other modes retain their
 usual per-profile controls. Reapplying deliberately replaces remembered identities
 with the current device order.
 
-**Assign by Button…** opens a wizard for Hori 1–4. Press a fresh button on each
-physical controller in the desired player order. Buttons already held when the
-wizard opens or a controller connects are ignored; release them and press again.
-The same controller cannot fill two roles, and simultaneous presses on different
-controllers require a retry. If a chosen controller disconnects, capture returns
-to its step and clears the later choices.
-
-The wizard pauses a running game and suppresses game input during capture. It
-applies and saves all four assignments together after every selected controller's
-buttons are released. **Cancel**, Escape, or closing Settings discards the pending
-choices; the prior pause state, bindings, deadzones, built-in profiles and startup
-mode are retained. A missing device or save failure prevents partial application.
-Identical models can be assigned by button for the current session; their usual
-identity limitations after reconnect/restart still apply. Physical testing is
-separate from the automated virtual-controller checks.
 Keyboard/gamepad settings, turbo phases and defaults remain independent for all
 six profiles. Every profile can bind the same shared microphone action.
 

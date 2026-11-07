@@ -184,6 +184,7 @@ class MapperBusGuiController {
     std::array<std::shared_ptr<nk::Label>, 4> gamepad_assignment_labels_{};
 #ifdef MAPPERBUS_HAVE_SDL3_GAMEPAD
     std::unique_ptr<Sdl3GamepadAssignment> gamepad_assignment_;
+    std::vector<int> gamepad_assignment_profiles_;
     bool resume_after_gamepad_assignment_ = false;
     std::chrono::steady_clock::time_point gamepad_assignment_last_poll_{};
 #endif

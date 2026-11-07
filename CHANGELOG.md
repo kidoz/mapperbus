@@ -9,6 +9,9 @@ Versioning.
 
 ### Added
 
+- Button-based gamepad assignment for Standard and Four Score, including only
+  attached Standard expansion pads, with ordered roles and atomic save/application.
+
 - Per-game controller hardware preferences shared by GUI, SDL3 and CLI, matched
   by content across raw/archive ROMs, with a Remember for this game switch,
   global fallback, CLI precedence and recoverable save errors.

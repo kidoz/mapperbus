@@ -20,7 +20,7 @@ TEST_CASE("Four-controller capture requires fresh distinct presses and release b
     for (int pad = 0; pad < 4; ++pad)
         pads.attach(pad, 0); // Four indistinguishable models still have distinct instance IDs.
     pads.press(3, true);
-    Sdl3GamepadAssignment capture;
+    Sdl3GamepadAssignment capture({"Hori 1", "Hori 2", "Hori 3", "Hori 4"});
     capture.poll();
     CHECK(capture.assigned_count() == 0); // A button held on opening is ignored.
     pads.press(3, false);
@@ -55,7 +55,7 @@ TEST_CASE("Four-controller capture requires fresh distinct presses and release b
     }
     REQUIRE(capture.ready());
     const std::array expected = {pads.ids[0], pads.ids[2], pads.ids[1], pads.ids[3]};
-    CHECK(capture.assignments() == expected);
+    CHECK(std::ranges::equal(capture.assignments(), expected));
     pads.detach(2);
     capture.poll();
     CHECK_FALSE(capture.ready());
@@ -67,6 +67,51 @@ TEST_CASE("Four-controller capture requires fresh distinct presses and release b
     pads.press(2, true);
     capture.poll();
     CHECK(capture.assigned_count() == 2);
+}
+
+TEST_CASE("Two and three controller captures use their role names and exact completion count",
+          "[sdl3][input][assignment]") {
+    for (const int count : {2, 3}) {
+        DYNAMIC_SECTION(count << " controller roles") {
+            tests::IdentityGamepads pads;
+            for (int pad = 0; pad < 4; ++pad)
+                pads.attach(pad, 0);
+            std::vector<std::string> roles{"Player 1", "Player 2"};
+            if (count == 3)
+                roles.push_back("External 2");
+            Sdl3GamepadAssignment capture(roles);
+            CHECK(capture.status().find("Player 1") != std::string::npos);
+            for (int role = 0; role < count; ++role) {
+                const int pad = 3 - role;
+                pads.press(pad, true);
+                capture.poll();
+                REQUIRE(capture.assigned_count() == static_cast<std::size_t>(role + 1));
+                CHECK_FALSE(capture.ready());
+                CHECK(capture.role_name(role) == roles[role]);
+                pads.press(pad, false);
+                capture.poll();
+                CHECK(capture.ready() == (role == count - 1));
+            }
+            pads.detach(2); // Rewind the second role, clearing any later choice.
+            capture.poll();
+            CHECK_FALSE(capture.ready());
+            CHECK(capture.assigned_count() == 1);
+            CHECK(capture.status().find("Player 2") != std::string::npos);
+            pads.attach(2, 0);
+            pads.press(2, true); // A held button on connection is primed too.
+            capture.poll();
+            CHECK(capture.assigned_count() == 1);
+            pads.press(2, false);
+            capture.poll();
+            pads.press(2, true);
+            capture.poll();
+            CHECK(capture.assigned_count() == 2);
+        }
+    }
+    Sdl3GamepadAssignment empty({});
+    CHECK_FALSE(empty.ready());
+    CHECK(empty.assignments().empty());
+    CHECK(empty.status().find("No controller roles") != std::string::npos);
 }
 
 TEST_CASE("Gamepad serial identity and ambiguous model matching are explicit",

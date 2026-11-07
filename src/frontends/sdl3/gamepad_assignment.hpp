@@ -2,9 +2,9 @@
 
 #include <SDL3/SDL.h>
 #include <algorithm>
-#include <array>
 #include <bitset>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace mapperbus::frontend {
@@ -13,7 +13,8 @@ namespace mapperbus::frontend {
 // can be distinguished for this session. No live configuration is modified.
 class Sdl3GamepadAssignment {
   public:
-    Sdl3GamepadAssignment() : initialized_(SDL_InitSubSystem(SDL_INIT_GAMEPAD)) {
+    explicit Sdl3GamepadAssignment(std::vector<std::string> roles)
+        : roles_(std::move(roles)), initialized_(SDL_InitSubSystem(SDL_INIT_GAMEPAD)) {
         poll();
     }
     Sdl3GamepadAssignment(const Sdl3GamepadAssignment&) = delete;
@@ -27,6 +28,10 @@ class Sdl3GamepadAssignment {
 
     void poll() {
         ready_ = false;
+        if (roles_.empty()) {
+            status_ = "No controller roles selected. Cancel and try again.";
+            return;
+        }
         if (!initialized_) {
             status_ = "Gamepad support could not be initialized. Cancel and try again.";
             return;
@@ -58,8 +63,8 @@ class Sdl3GamepadAssignment {
         for (std::size_t player = 0; player < selected_.size(); ++player) {
             if (std::ranges::find(devices_, selected_[player], &Device::id) == devices_.end()) {
                 selected_.resize(player);
-                status_ = "A selected controller disconnected. Assign Hori " +
-                          std::to_string(player + 1) + " again.";
+                status_ =
+                    "A selected controller disconnected. Assign " + roles_[player] + " again.";
                 break;
             }
         }
@@ -77,10 +82,10 @@ class Sdl3GamepadAssignment {
             if (std::ranges::find(selected_, device.id) != selected_.end())
                 selected_held |= pressed.any();
         }
-        ready_ = selected_.size() == 4 && !selected_held;
-        if (selected_.size() == 4) {
-            status_ = ready_ ? "All four controllers are ready."
-                             : "Release the controller buttons to finish.";
+        ready_ = selected_.size() == roles_.size() && !selected_held;
+        if (selected_.size() == roles_.size()) {
+            status_ =
+                ready_ ? "All controllers are ready." : "Release the controller buttons to finish.";
             return;
         }
         if (fresh.size() > 1) {
@@ -88,13 +93,13 @@ class Sdl3GamepadAssignment {
         } else if (fresh.size() == 1) {
             const auto previous = std::ranges::find(selected_, fresh.front());
             if (previous != selected_.end()) {
-                status_ = "That controller is already Hori " +
-                          std::to_string(previous - selected_.begin() + 1) +
+                status_ = "That controller is already " + roles_[previous - selected_.begin()] +
                           ". Use a different controller.";
             } else {
                 selected_.push_back(fresh.front());
-                status_ =
-                    selected_.size() == 4 ? "Release the controller buttons to finish." : prompt();
+                status_ = selected_.size() == roles_.size()
+                              ? "Release the controller buttons to finish."
+                              : prompt();
             }
         } else if (status_.empty()) {
             status_ = prompt();
@@ -110,10 +115,11 @@ class Sdl3GamepadAssignment {
     [[nodiscard]] const std::string& status() const {
         return status_;
     }
-    [[nodiscard]] std::array<SDL_JoystickID, 4> assignments() const {
-        std::array<SDL_JoystickID, 4> result{};
-        std::ranges::copy(selected_, result.begin());
-        return result;
+    [[nodiscard]] const std::vector<SDL_JoystickID>& assignments() const {
+        return selected_;
+    }
+    [[nodiscard]] const std::string& role_name(std::size_t player) const {
+        return roles_.at(player);
     }
     [[nodiscard]] std::string device_name(std::size_t player) const {
         if (player >= selected_.size())
@@ -133,9 +139,10 @@ class Sdl3GamepadAssignment {
         bool primed = false;
     };
     [[nodiscard]] std::string prompt() const {
-        return "Press a button for Hori " + std::to_string(selected_.size() + 1) +
+        return "Press a button for " + roles_.at(selected_.size()) +
                ". Release any buttons already held.";
     }
+    std::vector<std::string> roles_;
     bool initialized_ = false;
     bool ready_ = false;
     std::vector<Device> devices_;

@@ -578,6 +578,20 @@ class NodalKitInput : public platform::InputBackend {
         return false;
     }
 
+    /// Host roles in capture order, independent of each profile's enabled flag.
+    [[nodiscard]] static std::vector<int> gamepad_assignment_profiles(core::ControllerMode mode,
+                                                                      core::Byte attached) {
+        if (mode == core::ControllerMode::HoriFourPlayer)
+            return {2, 3, 4, 5};
+        if (mode == core::ControllerMode::FourScore)
+            return {0, 1, 2, 3};
+        std::vector<int> profiles{0, 1};
+        for (int port = 0; port < 2; ++port)
+            if (attached & (1U << port))
+                profiles.push_back(port + 2);
+        return profiles;
+    }
+
     void set_assignment_capture(bool active) {
         assignment_capture_ = active;
     }
@@ -585,25 +599,31 @@ class NodalKitInput : public platform::InputBackend {
 #ifdef MAPPERBUS_HAVE_SDL3_GAMEPAD
     // Stage every handle and config first. The callback may atomically save the
     // proposal; rejecting it leaves all live assignments and bindings intact.
-    bool assign_four_hori_gamepads(
-        const std::array<SDL_JoystickID, 4>& chosen,
-        const std::function<bool(const std::array<platform::GamepadInputConfig, 4>&)>& confirm =
-            {}) {
+    bool assign_gamepads(
+        std::span<const int> profiles,
+        std::span<const SDL_JoystickID> chosen,
+        const std::function<bool(std::span<const platform::GamepadInputConfig>)>& confirm = {}) {
+        if (profiles.empty() || profiles.size() > players_.size() ||
+            profiles.size() != chosen.size())
+            return false;
+        for (std::size_t pad = 0; pad < profiles.size(); ++pad)
+            if (profiles[pad] < 0 || profiles[pad] >= platform::kInputProfileCount ||
+                std::ranges::find(profiles.first(pad), profiles[pad]) != profiles.first(pad).end())
+                return false;
         int count = 0;
         auto* ids = SDL_GetGamepads(&count);
         if (!ids)
             return false;
         const std::vector<SDL_JoystickID> connected(ids, ids + count);
         SDL_free(ids);
-        std::array<Sdl3GamepadSelection, 4> staged;
-        std::array<platform::GamepadInputConfig, 4> configurations;
-        for (int pad = 0; pad < 4; ++pad) {
+        std::array<Sdl3GamepadSelection, platform::kInputProfileCount> staged;
+        std::array<platform::GamepadInputConfig, platform::kInputProfileCount> configurations;
+        for (std::size_t pad = 0; pad < profiles.size(); ++pad) {
             const auto found = std::ranges::find(connected, chosen[pad]);
             if (!chosen[pad] || found == connected.end() ||
-                std::ranges::find(std::span(chosen).first(pad), chosen[pad]) !=
-                    std::span(chosen).first(pad).end())
+                std::ranges::find(chosen.first(pad), chosen[pad]) != chosen.first(pad).end())
                 return false;
-            auto& player = players_[pad + 2];
+            auto& player = players_[profiles[pad]];
             if (!player.prepare_gamepad_assignment())
                 return false;
             configurations[pad] = player.gamepad_config();
@@ -612,14 +632,14 @@ class NodalKitInput : public platform::InputBackend {
             if (!staged[pad].gamepad() || SDL_GetGamepadID(staged[pad].gamepad()) != chosen[pad])
                 return false;
         }
-        for (auto& selection : staged)
-            if (!SDL_GamepadConnected(selection.gamepad()))
+        for (std::size_t pad = 0; pad < profiles.size(); ++pad)
+            if (!SDL_GamepadConnected(staged[pad].gamepad()))
                 return false;
-        if (confirm && !confirm(configurations))
+        if (confirm && !confirm(std::span(configurations).first(profiles.size())))
             return false;
-        for (int pad = 0; pad < 4; ++pad)
-            players_[pad + 2].commit_gamepad_assignment(staged[pad],
-                                                        std::move(configurations[pad]));
+        for (std::size_t pad = 0; pad < profiles.size(); ++pad)
+            players_[profiles[pad]].commit_gamepad_assignment(staged[pad],
+                                                              std::move(configurations[pad]));
         return true;
     }
 #endif

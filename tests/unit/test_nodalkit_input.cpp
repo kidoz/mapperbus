@@ -1,5 +1,6 @@
 #include <array>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 #include <filesystem>
 #include <nk/platform/window.h>
 
@@ -50,7 +51,7 @@ TEST_CASE("Hori wizard cancels safely and commits all four assignments only afte
     CHECK_FALSE(input.is_button_pressed(2, core::Button::A));
     REQUIRE(SDL_SetJoystickVirtualButton(pads.joysticks[0], SDL_GAMEPAD_BUTTON_WEST, false));
     {
-        Sdl3GamepadAssignment cancelled;
+        Sdl3GamepadAssignment cancelled({"Hori 1", "Hori 2", "Hori 3", "Hori 4"});
         for (int pad : {0, 1}) {
             pads.press(pad, true);
             cancelled.poll();
@@ -60,6 +61,7 @@ TEST_CASE("Hori wizard cancels safely and commits all four assignments only afte
         REQUIRE(cancelled.assigned_count() == 2);
     }
     check_unchanged(); // Discarding partial capture has no config or handle side effects.
+    constexpr std::array kProfiles = {2, 3, 4, 5};
     const std::array chosen = {pads.ids[3], pads.ids[1], pads.ids[0], pads.ids[2]};
     auto invalid = chosen;
     invalid[3] = invalid[0];
@@ -68,19 +70,19 @@ TEST_CASE("Hori wizard cancels safely and commits all four assignments only afte
         save_called = true;
         return false;
     };
-    CHECK_FALSE(input.assign_four_hori_gamepads(invalid, reject_save));
+    CHECK_FALSE(input.assign_gamepads(kProfiles, invalid, reject_save));
     CHECK_FALSE(save_called);
-    CHECK_FALSE(input.assign_four_hori_gamepads(chosen, reject_save));
+    CHECK_FALSE(input.assign_gamepads(kProfiles, chosen, reject_save));
     CHECK(save_called);
     check_unchanged(); // Save rejection rolls back the entire proposal.
     const auto path = std::filesystem::temp_directory_path() /
                       ("mapperbus-wizard-" + std::to_string(SDL_GetTicksNS()) + ".conf");
-    const auto save = [&](const std::array<platform::GamepadInputConfig, 4>& proposed) {
+    const auto save = [&](std::span<const platform::GamepadInputConfig> proposed) {
         for (int pad = 0; pad < 4; ++pad)
             configuration.input.gamepad_profile(pad + 2) = proposed[pad];
         return app::save_mapperbus_configuration_to_file(configuration, path).has_value();
     };
-    REQUIRE(input.assign_four_hori_gamepads(chosen, save));
+    REQUIRE(input.assign_gamepads(kProfiles, chosen, save));
     input.set_assignment_capture(false);
     const auto restored = app::load_mapperbus_configuration_from_file(path);
     for (int player = 0; player < 6; ++player) {
@@ -108,6 +110,133 @@ TEST_CASE("Hori wizard cancels safely and commits all four assignments only afte
         for (int player = 0; player < 4; ++player)
             CHECK(input.is_button_pressed(player + 2, core::Button::A) ==
                   (kPadForPlayer[player] == active));
+    }
+    std::filesystem::remove(path);
+}
+
+TEST_CASE("Assignment targets active Standard, Four Score and Hori roles transactionally",
+          "[gui][input][assignment]") {
+    using core::ControllerMode;
+    const auto [mode, attached, expected] =
+        GENERATE(table<ControllerMode, core::Byte, std::vector<int>>({
+            {ControllerMode::Standard, 0, {0, 1}},
+            {ControllerMode::Standard, 1, {0, 1, 2}},
+            {ControllerMode::Standard, 2, {0, 1, 3}},
+            {ControllerMode::Standard, 3, {0, 1, 2, 3}},
+            {ControllerMode::FourScore, 0, {0, 1, 2, 3}},
+            {ControllerMode::FourScore, 3, {0, 1, 2, 3}},
+            {ControllerMode::HoriFourPlayer, 0, {2, 3, 4, 5}},
+            {ControllerMode::HoriFourPlayer, 3, {2, 3, 4, 5}},
+        }));
+    const auto roles = NodalKitInput::gamepad_assignment_profiles(mode, attached);
+    REQUIRE(roles == expected);
+    tests::IdentityGamepads pads;
+    for (int pad = 0; pad < 4; ++pad)
+        pads.attach(pad, pad);
+    app::MapperBusConfiguration configuration;
+    configuration.input.controller_mode = mode;
+    configuration.input.expansion_controllers = attached;
+    app::remember_controller_hardware(
+        configuration, std::string(64, 'a'), {core::ControllerMode::HoriFourPlayer});
+    const auto saved_hardware = app::controller_hardware(configuration.input);
+    const auto saved_game_hardware = configuration.game_controllers;
+    std::array<platform::GamepadInputConfig, 6> before;
+    for (int player = 0; player < 6; ++player) {
+        auto& config = configuration.input.gamepad_profile(player);
+        config.enabled = false;
+        config.gamepad_index = player;
+        config.axis_deadzone = 16000 + player;
+        REQUIRE(platform::apply_gamepad_mapping(config, "a=west,b=north"));
+        before[player] = config;
+    }
+    const auto keyboard = configuration.input.keyboard_profile(0);
+    nk::Window window({.title = "Controller assignment modes", .width = 600, .height = 300});
+    NodalKitInput input(window, before);
+    input.player_input(0).set_binding(platform::InputAction::A, nk::KeyCode::Z);
+    input.set_assignment_capture(true);
+    const auto unchanged = [&] {
+        for (int player = 0; player < 6; ++player) {
+            const auto& actual = input.player_input(player).gamepad_config();
+            CHECK(actual.enabled == before[player].enabled);
+            CHECK(actual.gamepad_index == before[player].gamepad_index);
+            CHECK(actual.identity == before[player].identity);
+            CHECK(actual.bindings == before[player].bindings);
+            CHECK(actual.axis_deadzone == before[player].axis_deadzone);
+        }
+    };
+    const auto count = roles.size();
+    constexpr std::array kOrder = {3, 1, 0, 2};
+    std::vector<SDL_JoystickID> chosen;
+    for (std::size_t pad = 0; pad < count; ++pad)
+        chosen.push_back(pads.ids[kOrder[pad]]);
+    bool save_called = false;
+    const auto reject_save = [&](auto) {
+        save_called = true;
+        return false;
+    };
+    auto bad_roles = roles;
+    bad_roles[1] = bad_roles[0];
+    CHECK_FALSE(input.assign_gamepads(bad_roles, chosen, reject_save));
+    bad_roles[1] = -1;
+    CHECK_FALSE(input.assign_gamepads(bad_roles, chosen, reject_save));
+    bad_roles[1] = platform::kInputProfileCount;
+    CHECK_FALSE(input.assign_gamepads(bad_roles, chosen, reject_save));
+    CHECK_FALSE(input.assign_gamepads({}, {}, reject_save));
+    CHECK_FALSE(input.assign_gamepads(roles, std::span(chosen).first(count - 1), reject_save));
+    auto bad_ids = chosen;
+    bad_ids.back() = chosen.front();
+    CHECK_FALSE(input.assign_gamepads(roles, bad_ids, reject_save));
+    bad_ids.back() = 0;
+    CHECK_FALSE(input.assign_gamepads(roles, bad_ids, reject_save));
+    pads.detach(kOrder[count - 1]);
+    CHECK_FALSE(input.assign_gamepads(roles, chosen, reject_save));
+    CHECK_FALSE(save_called);
+    unchanged();
+    pads.attach(kOrder[count - 1], kOrder[count - 1]);
+    chosen.back() = pads.ids[kOrder[count - 1]];
+    CHECK_FALSE(input.assign_gamepads(roles, chosen, reject_save));
+    CHECK(save_called);
+    unchanged();
+    const auto path = std::filesystem::temp_directory_path() /
+                      ("mapperbus-mode-assignment-" + std::to_string(SDL_GetTicksNS()) + ".conf");
+    const auto save = [&](std::span<const platform::GamepadInputConfig> proposal) {
+        auto updated = configuration;
+        REQUIRE(proposal.size() == count);
+        for (std::size_t pad = 0; pad < count; ++pad)
+            updated.input.gamepad_profile(roles[pad]) = proposal[pad];
+        return app::save_mapperbus_configuration_to_file(updated, path).has_value();
+    };
+    REQUIRE(input.assign_gamepads(roles, chosen, save));
+    const auto restored = app::load_mapperbus_configuration_from_file(path);
+    CHECK(app::controller_hardware(restored.input) == saved_hardware);
+    CHECK(restored.game_controllers == saved_game_hardware);
+    CHECK(restored.input.keyboard_profile(0) == keyboard);
+    CHECK(input.player_input(0).binding(platform::InputAction::A) == nk::KeyCode::Z);
+    for (int player = 0; player < 6; ++player) {
+        const auto& actual = input.player_input(player).gamepad_config();
+        const bool targeted = std::ranges::find(roles, player) != roles.end();
+        CHECK(actual.enabled == targeted);
+        CHECK(actual.bindings == before[player].bindings);
+        CHECK(actual.axis_deadzone == before[player].axis_deadzone);
+        CHECK(restored.input.gamepad_profile(player).identity == actual.identity);
+        CHECK(restored.input.gamepad_profile(player).gamepad_index == actual.gamepad_index);
+        if (!targeted) {
+            CHECK(actual.gamepad_index == before[player].gamepad_index);
+            CHECK(actual.identity == before[player].identity);
+        }
+    }
+    for (int active = 0; active < 4; ++active) {
+        for (int pad = 0; pad < 4; ++pad)
+            REQUIRE(SDL_SetJoystickVirtualButton(
+                pads.joysticks[pad], SDL_GAMEPAD_BUTTON_WEST, pad == active));
+        input.poll();
+        for (int player = 0; player < 6; ++player)
+            CHECK_FALSE(input.is_button_pressed(player, core::Button::A));
+        input.set_assignment_capture(false);
+        input.poll();
+        for (std::size_t pad = 0; pad < count; ++pad)
+            CHECK(input.is_button_pressed(roles[pad], core::Button::A) == (kOrder[pad] == active));
+        input.set_assignment_capture(true);
     }
     std::filesystem::remove(path);
 }
