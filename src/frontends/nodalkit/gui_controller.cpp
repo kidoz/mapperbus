@@ -1133,16 +1133,18 @@ MapperBusGuiController::MapperBusGuiController(nk::Application& app, nk::Window&
         };
 
         int steps = 0;
+        bool preview_changed = false;
+        bool state_changed = false;
         while ((frame_accumulator_ >= target_frame_duration || needs_audio_preroll()) &&
                steps < 4) {
             const auto result = actions_->tick();
             if (result == app::TickResult::FrameAdvanced) {
-                refresh_preview();
+                preview_changed = true;
             }
 
             if (result == app::TickResult::FrameAdvanced || result == app::TickResult::Paused ||
                 result == app::TickResult::NoCartridge) {
-                refresh_ui();
+                state_changed = true;
             }
 
             if (result == app::TickResult::AudioBackpressure) {
@@ -1156,6 +1158,14 @@ MapperBusGuiController::MapperBusGuiController(nk::Application& app, nk::Window&
 
             frame_accumulator_ -= target_frame_duration;
             ++steps;
+        }
+        // Catch-up/preroll may advance several frames before the event loop
+        // can paint. Scale and upload only the final frame that can be shown.
+        if (preview_changed) {
+            refresh_preview();
+        }
+        if (state_changed) {
+            refresh_ui();
         }
     });
 }
