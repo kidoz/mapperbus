@@ -21,6 +21,7 @@
 #include <string_view>
 #include <vector>
 
+#include "app/async_disk_export.hpp"
 #include "app/async_rom_loader.hpp"
 #include "app/async_state_io.hpp"
 #include "app/configuration.hpp"
@@ -48,7 +49,9 @@ namespace mapperbus::frontend {
 
 class MapperBusGuiController {
   public:
-    MapperBusGuiController(nk::Application& app, nk::Window& window);
+    MapperBusGuiController(nk::Application& app,
+                           nk::Window& window,
+                           app::AsyncDiskExport::Write disk_export_write = app::write_disk_export);
 
     void open_initial_rom(std::string_view rom_path);
 
@@ -103,6 +106,10 @@ class MapperBusGuiController {
     void finish_rom_open(std::string rom_path, std::string member);
     void choose_archive_rom(std::string rom_path, std::vector<std::string> members);
     void open_disk_controls();
+    void choose_disk_export();
+    void start_disk_export(std::string path);
+    void poll_disk_export();
+    void dismiss_disk_export_dialog();
     void perform_disk_action(std::string_view action);
     void toggle_pause();
     void step_frame();
@@ -206,6 +213,13 @@ class MapperBusGuiController {
     std::string announced_disk_save_error_;
     std::weak_ptr<nk::Label> disk_save_status_;
     std::weak_ptr<nk::Button> disk_save_retry_;
+    app::AsyncDiskExport disk_export_;
+    bool choosing_disk_export_ = false;
+    std::string disk_export_path_;
+    std::shared_ptr<nk::Dialog> disk_export_dialog_;
+    std::weak_ptr<nk::Label> disk_export_status_;
+    // Native chooser callbacks may outlive the controller during shutdown.
+    std::shared_ptr<int> disk_export_lifetime_ = std::make_shared<int>(0);
 
     std::shared_ptr<Box> root_;
     std::shared_ptr<ContentSlot> main_slot_;

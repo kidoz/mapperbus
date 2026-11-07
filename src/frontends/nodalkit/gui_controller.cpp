@@ -989,7 +989,7 @@ gamepad_capture_controls() {
     return controls;
 }
 
-// A saving worker owns the paused machine. Keep its sheet visible until
+// Noncancellable file writes keep their sheet visible until
 // completion, including when Escape or Return reaches the dialog itself.
 class FileOperationDialog final : public nk::Dialog {
   public:
@@ -1005,8 +1005,11 @@ class FileOperationDialog final : public nk::Dialog {
 
 } // namespace
 
-MapperBusGuiController::MapperBusGuiController(nk::Application& app, nk::Window& window)
+MapperBusGuiController::MapperBusGuiController(nk::Application& app,
+                                               nk::Window& window,
+                                               app::AsyncDiskExport::Write disk_export_write)
     : app_(app), window_(window), configuration_(app::load_mapperbus_configuration()),
+      disk_export_(std::move(disk_export_write)),
       settings_page_(static_cast<SettingsPage>(configuration_.frontend.settings_page_index)),
       preview_scale_option_(preview_scale_for_index(configuration_.frontend.preview_scale_index)) {
     auto theme_selection = app_.theme_selection();
@@ -1082,6 +1085,7 @@ MapperBusGuiController::MapperBusGuiController(nk::Application& app, nk::Window&
     tick_handle_ = app_.event_loop().set_interval(std::chrono::milliseconds(1), [this] {
         poll_rom_load();
         poll_state_operation();
+        poll_disk_export();
         poll_session_close();
         if (!machine_worker_active()) {
             session_->poll_disk_saves();
@@ -2030,26 +2034,7 @@ void MapperBusGuiController::open_disk_controls() {
         });
         content->append(retry);
         auto export_button = nk::Button::create("Export Modified Disk…");
-        (void)export_button->on_clicked().connect([this] {
-            app_.save_file_dialog_async(
-                {.title = "Export FDS Disk",
-                 .suggested_filename = "modified-disk.fds",
-                 .filters = {"*.fds"}},
-                [this](nk::SaveFileDialogResult result) {
-                    if (!result) {
-                        if (result.error() != nk::FileDialogError::Cancelled)
-                            set_message(file_dialog_error_text(result.error()));
-                        return;
-                    }
-                    std::error_code error;
-                    if (std::filesystem::equivalent(*result, session_->current_rom_path(), error)) {
-                        set_message("Choose a different path to preserve the original disk image.");
-                        return;
-                    }
-                    auto exported = session_->export_disk(*result);
-                    set_message(exported ? "Modified disk exported." : exported.error());
-                });
-        });
+        (void)export_button->on_clicked().connect([this] { choose_disk_export(); });
         content->append(export_button);
     } else
         content->append(SecondaryText::create("Open a .fds image to use disk controls."));
@@ -2068,6 +2053,120 @@ void MapperBusGuiController::open_disk_controls() {
             "mapperbus.fds-close");
     });
     fds_dialog_->present(window_);
+    refresh_ui();
+}
+
+void MapperBusGuiController::choose_disk_export() {
+    if (choosing_disk_export_ || disk_export_.busy() || close_intent_)
+        return;
+    choosing_disk_export_ = true;
+    const std::weak_ptr<int> lifetime = disk_export_lifetime_;
+    app_.save_file_dialog_async({.title = "Export FDS Disk",
+                                 .suggested_filename = "modified-disk.fds",
+                                 .filters = {"*.fds"}},
+                                [this, lifetime](nk::SaveFileDialogResult result) {
+                                    if (lifetime.expired())
+                                        return;
+                                    choosing_disk_export_ = false;
+                                    if (close_intent_)
+                                        return;
+                                    if (!result) {
+                                        if (result.error() != nk::FileDialogError::Cancelled)
+                                            set_message(file_dialog_error_text(result.error()));
+                                        return;
+                                    }
+                                    // Retire Disk Controls before presenting the progress sheet.
+                                    if (fds_dialog_ && fds_dialog_->is_presented())
+                                        fds_dialog_->close();
+                                    choosing_disk_export_ = true;
+                                    app_.event_loop().post(
+                                        [this, path = std::move(*result)] {
+                                            choosing_disk_export_ = false;
+                                            if (!close_intent_)
+                                                start_disk_export(path);
+                                        },
+                                        "mapperbus.export-start");
+                                });
+}
+
+void MapperBusGuiController::dismiss_disk_export_dialog() {
+    auto dialog = std::exchange(disk_export_dialog_, {});
+    if (dialog && dialog->is_presented())
+        dialog->close();
+}
+
+void MapperBusGuiController::start_disk_export(std::string path) {
+    auto data = session_->emulator().disk_export_data();
+    if (!data) {
+        set_message(data.error());
+        return;
+    }
+    disk_export_path_ = std::move(path);
+    auto content = Box::vertical(12.0F);
+    auto spinner = nk::Spinner::create();
+    spinner->set_spinning(true);
+    content->append(spinner);
+    auto label = nk::Label::create("Exporting a copy of the current disk…");
+    label->set_wrapping(true);
+    disk_export_status_ = label;
+    content->append(label);
+    auto destination = nk::Label::create(disk_export_path_);
+    destination->set_wrapping(true);
+    content->append(destination);
+    disk_export_dialog_ = std::make_shared<FileOperationDialog>("Exporting Disk", false);
+    disk_export_dialog_->set_content(FixedWidthSlot::create(440.0F, content));
+    disk_export_dialog_->present(window_);
+    auto started =
+        disk_export_.start({disk_export_path_, session_->current_rom_path(), std::move(*data)});
+    if (!started) {
+        dismiss_disk_export_dialog();
+        set_message("Could not start disk export: " + started.error());
+    }
+    refresh_ui();
+}
+
+void MapperBusGuiController::poll_disk_export() {
+    auto completed = disk_export_.poll();
+    if (!completed)
+        return;
+    dismiss_disk_export_dialog();
+    if (!*completed) {
+        // Keep the failed export visible instead of hiding its error on exit.
+        close_intent_.reset();
+        close_ready_ = false;
+        close_captured_ = false;
+        auto content = Box::vertical(12.0F);
+        auto error = nk::Label::create(completed->error());
+        error->set_wrapping(true);
+        content->append(error);
+        auto destination = nk::Label::create(disk_export_path_);
+        destination->set_wrapping(true);
+        content->append(destination);
+        auto help = nk::Label::create("Your game remains open. Choose Export Modified Disk "
+                                      "again to retry or select another destination.");
+        help->set_wrapping(true);
+        content->append(help);
+        disk_export_dialog_ = nk::Dialog::create("Could Not Export Disk");
+        disk_export_dialog_->set_content(FixedWidthSlot::create(480.0F, content));
+        disk_export_dialog_->add_button("Done", nk::DialogResponse::Close);
+        (void)disk_export_dialog_->on_response().connect([this](nk::DialogResponse) {
+            auto dialog = disk_export_dialog_;
+            app_.event_loop().post(
+                [this, dialog] {
+                    if (disk_export_dialog_ == dialog) {
+                        dismiss_disk_export_dialog();
+                        refresh_ui();
+                        focus_game_surface();
+                    }
+                },
+                "mapperbus.export-error-close");
+        });
+        disk_export_dialog_->present(window_);
+        set_message("Failed to export disk: " + completed->error());
+    } else {
+        set_message("Modified disk exported to " + **completed + ".");
+        focus_game_surface();
+    }
     refresh_ui();
 }
 
@@ -2523,6 +2622,13 @@ void MapperBusGuiController::request_session_close(bool quit) {
     close_intent_ = quit;
     close_ready_ = false;
     close_captured_ = false;
+    if (disk_export_.busy()) {
+        if (auto status = disk_export_status_.lock())
+            status->set_text(quit ? "Finishing disk export before quitting…"
+                                  : "Finishing disk export before closing the game…");
+    } else {
+        dismiss_disk_export_dialog();
+    }
     // Cancel reads immediately. Existing exclusive saves finish before closing.
     if (state_io_.cancel())
         finish_state_operation("Loading state cancelled.", false);
@@ -2649,7 +2755,7 @@ void MapperBusGuiController::poll_session_close() {
             finish_close_rom();
         }
     } else if (close_ready_ && !loading_request_ && !pending_state_operation_ &&
-               !close_save_dialog_) {
+               !disk_export_.busy() && !close_save_dialog_) {
         start_close_save();
     }
 }
@@ -4280,7 +4386,8 @@ nk::Window& MapperBusGuiController::settings_host_window() {
 }
 
 bool MapperBusGuiController::modal_dialog_presented() const {
-    return close_intent_.has_value() || loading_request_.has_value() ||
+    return close_intent_.has_value() || loading_request_.has_value() || choosing_disk_export_ ||
+           disk_export_.busy() || (disk_export_dialog_ && disk_export_dialog_->is_presented()) ||
            pending_state_operation_.has_value() ||
            (input_monitor_dialog_ && input_monitor_dialog_->is_presented()) ||
            (gamepad_assignment_dialog_ && gamepad_assignment_dialog_->is_presented()) ||
@@ -4292,7 +4399,9 @@ bool MapperBusGuiController::modal_dialog_presented() const {
 }
 
 void MapperBusGuiController::handle_menu_action(std::string_view action) {
-    if ((close_intent_ || loading_request_ || pending_state_operation_) && action != "file.quit")
+    if ((close_intent_ || loading_request_ || pending_state_operation_ || choosing_disk_export_ ||
+         disk_export_.busy() || (disk_export_dialog_ && disk_export_dialog_->is_presented())) &&
+        action != "file.quit")
         return;
     if ((gamepad_assignment_dialog_ || input_monitor_dialog_) && action != "file.quit")
         return;

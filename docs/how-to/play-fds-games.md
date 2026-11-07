@@ -67,8 +67,19 @@ SDL3 and CLI retain synchronous disk saves. Do not interrupt an in-game disk
 write or force-quit while persistence is pending.
 
 Use **Export Modified Disk…** to write a headerless `.fds` copy containing the
-current changes. Choose a new destination. The `.fds-save` file is MapperBus's
-versioned save format, not a disk image for other emulators.
+current changes. Choose a new destination. The GUI captures the disk when export
+starts, then checks the destination and writes in the background. The progress
+sheet stays open until writing finishes; Escape does not cancel a started export.
+Quit waits for export before saving progress and closing. A failed export keeps
+the game open and shows the error and destination; choose **Export Modified
+Disk…** again to retry or select another path. An export does not mark automatic
+disk persistence as saved, and later game writes are outside the captured copy.
+
+The original disk or containing archive cannot be the export destination,
+including symbolic or hard links to that file. Writes use an exclusively created
+temporary sibling and replace the destination only after writing succeeds.
+The `.fds-save` file is MapperBus's versioned save format, not a disk image for
+other emulators.
 
 [Save states](save-and-restore.md) include disk contents, adapter RAM, side,
 transfer position, and audio state. Loading one can restore older disk progress;

@@ -259,10 +259,18 @@ void Emulator::acknowledge_disk_save(const DiskSaveSnapshot& saved) {
 }
 
 Result<void> Emulator::export_disk(const std::string& path) {
+    auto data = disk_export_data();
+    if (!data)
+        return std::unexpected(data.error());
+    return write_binary_file_atomic(path, *data, "FDS disk image");
+}
+
+Result<std::vector<Byte>> Emulator::disk_export_data() {
     fds_.synchronize_disk();
     if (!is_fds())
         return std::unexpected("No FDS game is loaded");
-    return write_binary_file_atomic(path, fds_.disk_image(), "FDS disk image");
+    const auto data = fds_.disk_image();
+    return std::vector<Byte>(data.begin(), data.end());
 }
 
 void Emulator::flush_battery_ram() {

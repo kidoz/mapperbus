@@ -11,6 +11,7 @@
 #include "../support/fds_image.hpp"
 #include "../support/legacy_state.hpp"
 #include "../support/test_rom.hpp"
+#include "app/async_disk_export.hpp"
 #include "app/async_disk_save.hpp"
 #include "app/async_state_io.hpp"
 #include "app/configuration.hpp"
@@ -40,7 +41,7 @@ struct StateFixture {
     StateFixture() {
         core::register_builtin_mappers();
         std::filesystem::create_directories(rom.parent_path());
-        const auto source = tests::write_visible_nrom_test_rom("storage-source");
+        const auto source = tests::write_visible_nrom_test_rom(root.filename().string());
         std::filesystem::copy_file(source, rom);
         std::filesystem::remove(source);
         session.set_state_storage(settings);
@@ -1029,6 +1030,154 @@ TEST_CASE("An exclusive-save start failure keeps tracking the original snapshot 
     REQUIRE(*final);
     machine.acknowledge_disk_save(**final);
     CHECK_FALSE(machine.fds().dirty());
+}
+
+TEST_CASE("An FDS export owns headerless bytes while emulation and edits continue",
+          "[app][fds][export][async]") {
+    StateFixture fixture;
+    auto& session = fixture.session;
+    REQUIRE(session.open_rom(fixture.rom.string()));
+    const auto disk = tests::make_fds_image(2);
+    const auto source = fixture.root / "source.fds";
+    const auto destination = fixture.root / "export.fds";
+    fixture.write(source, disk);
+    auto& machine = session.emulator();
+    REQUIRE(machine.load_fds(tests::make_fds_bios(), disk));
+    machine.reset();
+    for (int frame = 0; frame < 60; ++frame)
+        machine.step_frame();
+    change_fds_payload(machine.fds(), 42);
+    auto data = machine.disk_export_data();
+    REQUIRE(data);
+    REQUIRE(data->size() == disk.size());
+    REQUIRE(data->at(75) == 42);
+    auto gate = std::make_shared<StateIOGate>();
+    const ReleaseStateIO cleanup{gate};
+    AsyncDiskExport exporting([gate](const auto& request) {
+        gate->block();
+        return write_disk_export(request);
+    });
+    REQUIRE(exporting.start({destination.string(), source.string(), std::move(*data)}));
+    REQUIRE(gate->wait(&StateIOGate::entered));
+    REQUIRE(exporting.busy());
+    CHECK_FALSE(exporting.poll());
+    // A second export cannot race an older noncancellable write.
+    CHECK_FALSE(exporting.start({destination.string(), source.string(), disk}));
+    const auto cycles = machine.cpu().cycles();
+    REQUIRE(session.tick() == TickResult::FrameAdvanced);
+    CHECK(machine.cpu().cycles() > cycles);
+    change_fds_payload(machine.fds(), 43);
+    gate->release();
+    auto completed = wait_for_storage([&] { return exporting.poll(); });
+    INFO((completed ? "success" : completed.error()));
+    REQUIRE(completed);
+    CHECK(*completed == destination.string());
+    CHECK_FALSE(exporting.busy());
+    auto written = core::read_binary_file_capped(destination.string(), disk.size(), "export");
+    REQUIRE(written);
+    CHECK(written->at(75) == 42);
+    CHECK(machine.fds().disk_image()[75] == 43);
+    CHECK(machine.fds().dirty()); // Export must never acknowledge autosave.
+    CHECK(*core::read_binary_file_capped(source.string(), disk.size(), "source") == disk);
+    CHECK_FALSE(core::Emulator{}.disk_export_data());
+}
+
+TEST_CASE("Disk export rejects source aliases and isolates pre-existing temporary files",
+          "[app][fds][export]") {
+    StateFixture fixture;
+    const auto disk = tests::make_fds_image(2);
+    auto changed = disk;
+    changed[75] = 42;
+    const auto source = fixture.root / "source.zip"; // Also protect containing archives.
+    fixture.write(source, disk);
+    const auto symlink = fixture.root / "source-link.fds";
+    const auto hardlink = fixture.root / "source-hardlink.fds";
+    std::filesystem::create_symlink(source, symlink);
+    std::filesystem::create_hard_link(source, hardlink);
+    for (const auto& path :
+         {source, symlink, hardlink, source.parent_path() / "." / source.filename()}) {
+        auto result = write_disk_export({path.string(), source.string(), changed});
+        REQUIRE_FALSE(result);
+        CHECK(result.error().find("preserve the original") != std::string::npos);
+    }
+    const auto destination = fixture.root / "export.fds";
+    // The old fixed .tmp name may belong to another file or even alias the source.
+    std::filesystem::create_symlink(source, destination.string() + ".tmp");
+    auto initial_export = write_disk_export({destination.string(), source.string(), changed});
+    INFO((initial_export ? "success" : initial_export.error()));
+    REQUIRE(initial_export);
+    CHECK(std::filesystem::is_symlink(destination.string() + ".tmp"));
+    REQUIRE(write_disk_export({destination.string(), source.string(), disk}));
+    CHECK(*core::read_binary_file_capped(destination.string(), disk.size(), "export") == disk);
+    CHECK(*core::read_binary_file_capped(source.string(), disk.size(), "source") == disk);
+    for (const auto& entry : std::filesystem::directory_iterator(fixture.root))
+        CHECK(entry.path().filename().string().find(".export-") == std::string::npos);
+}
+
+TEST_CASE("Disk export failures retain old data and permit a fresh retry",
+          "[app][fds][export][async]") {
+    StateFixture fixture;
+    const auto disk = tests::make_fds_image(2);
+    const auto source = fixture.root / "source.fds";
+    const auto destination = fixture.root / "export.fds";
+    fixture.write(source, disk);
+    fixture.write(destination, disk);
+    auto changed = disk;
+    changed[75] = 42;
+    auto calls = std::make_shared<int>(0);
+    AsyncDiskExport exporting([calls](const auto& request) -> core::Result<void> {
+        if (++*calls == 1)
+            return std::unexpected("Injected disk export write failure");
+        return write_disk_export(request);
+    });
+    REQUIRE(exporting.start({destination.string(), source.string(), changed}));
+    auto failed = wait_for_storage([&] { return exporting.poll(); });
+    REQUIRE_FALSE(failed);
+    CHECK(failed.error().find("Injected") != std::string::npos);
+    CHECK_FALSE(exporting.busy());
+    CHECK(*core::read_binary_file_capped(destination.string(), disk.size(), "export") == disk);
+    changed[75] = 43;
+    REQUIRE(exporting.start({destination.string(), source.string(), changed}));
+    auto retried = wait_for_storage([&] { return exporting.poll(); });
+    REQUIRE(retried);
+    CHECK(*core::read_binary_file_capped(destination.string(), disk.size(), "export") == changed);
+    const auto blocked = fixture.root / "blocked.fds";
+    std::filesystem::create_directory(blocked);
+    fixture.write(blocked / "keep", disk);
+    CHECK_FALSE(write_disk_export({blocked.string(), source.string(), changed}));
+    CHECK(*core::read_binary_file_capped((blocked / "keep").string(), disk.size(), "keep") == disk);
+    CHECK_FALSE(write_disk_export(
+        {(fixture.root / "absent" / "export.fds").string(), source.string(), changed}));
+    for (const auto& entry : std::filesystem::directory_iterator(fixture.root))
+        CHECK(entry.path().filename().string().find(".export-") == std::string::npos);
+}
+
+TEST_CASE("Abandoned disk export workers retain only owned bytes and paths",
+          "[app][fds][export][async]") {
+    StateFixture fixture;
+    const auto source = fixture.root / "source.fds";
+    const auto destination = fixture.root / "export.fds";
+    auto disk = tests::make_fds_image(2);
+    fixture.write(source, disk);
+    auto gate = std::make_shared<StateIOGate>();
+    const ReleaseStateIO cleanup{gate};
+    {
+        AsyncDiskExport exporting([gate](const auto& request) {
+            gate->block();
+            auto result = write_disk_export(request);
+            gate->finish();
+            return result;
+        });
+        REQUIRE(exporting.start({destination.string(), source.string(), disk}));
+        REQUIRE(gate->wait(&StateIOGate::entered));
+    } // No join; the callback does not retain a session/controller/widget.
+    disk[75] = 43;
+    gate->release();
+    REQUIRE(gate->wait(&StateIOGate::finished));
+    auto exported = core::read_binary_file_capped(destination.string(), disk.size(), "export");
+    INFO((exported ? "success" : exported.error()));
+    REQUIRE(exported);
+    CHECK(exported->at(75) != 43);
 }
 
 } // namespace mapperbus::app

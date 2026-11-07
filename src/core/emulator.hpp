@@ -66,6 +66,8 @@ class Emulator {
     /// Only call after these exact bytes were saved successfully. Newer edits stay dirty.
     void acknowledge_disk_save(const DiskSaveSnapshot& saved);
     [[nodiscard]] Result<void> export_disk(const std::string& path);
+    /// Memory-only, owned headerless disk bytes; does not acknowledge persistence.
+    [[nodiscard]] Result<std::vector<Byte>> disk_export_data();
     [[nodiscard]] bool is_fds() const {
         return cartridge_ && cartridge_->header().mapper_number == 20;
     }
