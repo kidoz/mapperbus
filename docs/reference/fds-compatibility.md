@@ -201,8 +201,8 @@ shows `$67FF` / `$6E25`; both captured values match in MapperBus.
   All four combinations of NES/AV or RF timing and NES or RF data wiring pass six
   additional targeted checks each. RF built-in controller 2 omits Start/Select.
   Synthetic microphone activity has normal/DMA read and snapshot coverage;
-  physical microphone capture/audio mixing, expansion accessories and electrical
-  DMC sample capture remain outside that coverage. Reset-cycle bus activity,
+  microphone analog response/audio mixing, expansion accessories, and electrical
+  DMC sample capture remain outside those timing checks. Reset-cycle bus activity,
   analog DRAM decay, 2C33 test mode, and mechanical disk effects are not modeled.
 - CRC coverage includes the public BIOS-dumper write/readback flows, independent
   fixed vectors, and injected CRC faults described above. Physical-drive fault
@@ -272,12 +272,26 @@ or a comparison with recordings from hardware.
 
 ### GUI workflow validation
 
-The live-capture controls were rendered using SDL dummy audio: enable/disable,
-device selection, sensitivity, retry, and the no-game waiting status. Metroid
-opened, but automation could not reactivate the review app afterward, so the
-in-game live-capture UI workflow was not completed. Fake and dummy-device tests
-cover capture lifecycle and failures; physical microphone capture and OS
-permission prompts remain untested. The original user configuration was restored.
+Real-device live capture was checked in the packaged macOS GUI at commit
+`30810dd`, with Metroid and RF Famicom wiring/timing. Both MacBook Pro Microphone
+and Steinberg UR22mkII reported detected activity. Sensitivity 1 produced quiet
+status, while 100 detected activity. System-default selection, retry, disabling
+and re-enabling capture worked. Pause closed capture; resume restarted recording.
+A paused snapshot load kept capture closed, and a subsequent save was
+byte-for-byte identical to the original snapshot (SHA-256
+`b925a119737f8d0cd7923d1590413ed95230ebebf86afb39931ecbd317881d9c`).
+
+System Settings showed MapperBus microphone access already enabled. No permission
+settings were changed; fresh allow/deny prompts and revoked access remain
+untested. Unplugging the Steinberg interface reported disconnection; Retry
+while absent reported the selected device unavailable without falling back.
+Reconnection retained the error until Retry, which resumed recording. An auxiliary
+standalone probe returned only zero-valued samples and was not counted as proof
+of real capture; the packaged GUI supplied the activity observations above.
+No microphone PCM was saved. Both validation apps were closed, and the original
+configuration was restored byte-for-byte (SHA-256
+`926d77e87c8cba149227102f9b566c3050bd43efcbcb6f2d20330406884c6b06`).
+Validation snapshots use an isolated folder.
 
 The macOS NodalKit GUI was exercised with the supplied Metroid image and BIOS
 using a temporary profile; the original profile was restored with matching file

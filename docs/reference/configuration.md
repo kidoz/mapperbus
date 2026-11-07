@@ -139,9 +139,11 @@ saved, transmitted, or mixed into game audio. Capture settings and device state
 are host preferences outside snapshots; version 16 still stores only the core's
 processed activity and carrier phase. The SDL3 executable accepts process-local
 [overrides](commands-and-controls.md#famicom-microphone). Builds without SDL audio
-report capture unavailable. Physical-device permissions and behavior need host
-validation; macOS desktop binaries and the app bundle include a microphone
-purpose description.
+report capture unavailable. Real-device GUI capture has been checked on macOS
+with the built-in microphone and a Steinberg UR22mkII; fresh permission prompts
+and revoked access still need validation. macOS desktop binaries and the app
+bundle include a microphone purpose description. See the
+[validation scope](fds-compatibility.md#gui-workflow-validation).
 
 ## Famicom Disk System
 
