@@ -9,6 +9,9 @@ Versioning.
 
 ### Added
 
+- Hash-pinned allpads controller detection and snapshot diagnostics for Standard
+  and Four Score modes, using the author's unmodified public ROM.
+
 - Four Score four-player mode with 24-bit reports and signatures, GUI/CLI/shared
   configuration selection, existing four-profile bindings, DMA timing, and
   version-18 snapshots with legacy import.
@@ -63,6 +66,9 @@ Versioning.
   gamepad mappings, deterministic CPU-cycle pulses, and snapshot persistence.
 
 ### Fixed
+
+- Four Score identification bit order, verified against raw serial positions
+  and the independent allpads detection routine.
 
 - Gamepad disconnects no longer adopt another connected device after SDL
   renumbers its device list; explicit device selection permits reassignment.

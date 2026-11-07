@@ -166,7 +166,7 @@ TEST_CASE("Four Score snapshots resume independent partially read 24-bit reports
         (void)emulator.read_cpu(0x4017);
     const auto before = emulator.save_state();
     const auto replay = [&] {
-        const uint32_t reports[] = {0x100201, 0x208000};
+        const uint32_t reports[] = {0x080201, 0x048000};
         for (int port = 0; port < 2; ++port)
             for (unsigned bit = port == 0 ? 11 : 7; bit < 28; ++bit)
                 CHECK((emulator.read_cpu(static_cast<Address>(0x4016 + port)) & 3U) ==

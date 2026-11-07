@@ -701,11 +701,13 @@ TEST_CASE("Four Score multiplexes four full pads and distinct signatures on D0",
                                               reports[player] >> bit & 1U);
                 machine.bus.set_controller_mode(ControllerMode::FourScore);
                 machine.latch();
-                const uint32_t expected[] = {0x105AA5, 0x20C30C};
+                const uint32_t expected[] = {0x085AA5, 0x04C30C};
                 for (unsigned bit = 0; bit < 32; ++bit) {
                     for (int port = 0; port < 2; ++port) {
                         const auto value = machine.read(static_cast<Address>(0x4016 + port));
                         CHECK((value & 3U) == (bit < 24 ? (expected[port] >> bit & 1U) : 1U));
+                        if (bit >= 16 && bit < 24)
+                            CHECK((value & 1U) == (bit == (port == 0 ? 19U : 18U) ? 1U : 0U));
                         (void)machine.read(0);
                     }
                 }
@@ -768,7 +770,7 @@ TEST_CASE("Four Score DMC and OAM reads advance the full 24-bit report",
                 clocks = timing == ControllerTiming::RfFamicom ? elapsed - 1 : 1;
             }
             for (unsigned bit = clocks; bit < 28; ++bit) {
-                CHECK((machine.read(0x4016) & 1U) == (bit < 24 ? (0x100200U >> bit & 1U) : 1U));
+                CHECK((machine.read(0x4016) & 1U) == (bit < 24 ? (0x080200U >> bit & 1U) : 1U));
                 (void)machine.read(0);
             }
         }

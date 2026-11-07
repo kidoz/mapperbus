@@ -168,8 +168,11 @@ bindings and device selection remain outside snapshots.
 
 `ControllerMode::FourScore` routes the four host pad profiles onto D0. Per the
 [NESdev four-player adapter protocol](https://www.nesdev.org/wiki/Four_player_adapters),
-`$4016` returns player 1, player 3, then `$10`; `$4017` returns player 2,
-player 4, then `$20`. Each byte is read least-significant bit first. Reads after
+`$4016` returns player 1 then player 3; `$4017` returns player 2 then player 4.
+Pad bytes are read least-significant bit first. The identification bit is 1 at
+zero-based read position 19 on `$4016` and 18 on `$4017`, and 0 at the other
+positions 16–23. Packed LSB first these bytes are `$08`/`$04`; the commonly
+quoted `$10`/`$20` values pack the first read into bit 7 instead. Reads after
 bit 23 return ones. High strobe exposes live A of the first pad on each port;
 falling strobe captures all four current button bytes, including updates made
 while high. All four pads have eight buttons, independently of RF built-in masking.
@@ -188,6 +191,26 @@ both containers as `$FFFFFF`. Unknown modes, high report bits, inconsistent
 inactive reports and truncation reject with full rollback. Versions 3–17 import
 Standard mode; v17 retains its D1 mask and external controller state. The v17
 five-byte external controller tail remains in place after cartridge state.
+
+### Optional public controller diagnostic
+
+The DMA diagnostic target also runs Damian Yerrick's unmodified
+[allpads v0.09](https://github.com/pinobatch/allpads-nes/releases/tag/v0.09)
+when `MAPPERBUS_CONTROLLER_DIAGNOSTICS` points to a directory containing
+`allpads.nes`. Source pin: `e70cc84369b326300e4dc11077597565dd715e6a`;
+ROM SHA-256: `9ce022805eb472e4ad9a9a7b101a685a86267c6448cc47176b14ee95d0c4afb9`.
+The author distributes it under the zlib license. Keep the ROM outside Git.
+
+```sh
+MAPPERBUS_CONTROLLER_DIAGNOSTICS="$PWD/tmp/four-score" \
+  ./buildDir/tests/test-dma-diagnostics "Public allpads*"
+```
+
+The test verifies that the original program identifies the adapter as Four Score,
+identifies ordinary pads in Standard mode, and replays snapshots under both
+NES/AV and RF timing. It checks the source-defined result table at `$0314` onward
+only after verifying the exact ROM hash. During validation, a separate build
+with reversed signature packing failed this diagnostic as expected.
 
 ### Digital microphone
 

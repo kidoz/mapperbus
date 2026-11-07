@@ -127,8 +127,10 @@ void MemoryBus::latch_four_score() {
         const auto first = controller_ != nullptr ? controller_->buttons(port) : Byte{0};
         const auto second =
             expansion_controller_ != nullptr ? expansion_controller_->buttons(port) : Byte{0};
+        // One identification bit at serial read 19 ($4016) / 18 ($4017).
+        // $10/$20 in read-order documentation become $08/$04 packed LSB first.
         four_score_reports_[port] = static_cast<uint32_t>(first) |
-                                    static_cast<uint32_t>(second) << 8U | (0x10U << port) << 16U;
+                                    static_cast<uint32_t>(second) << 8U | (0x08U >> port) << 16U;
     }
 }
 

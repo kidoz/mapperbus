@@ -92,5 +92,7 @@ profiles. Select it in General → Hardware → Controller mode or with
 signatures and post-report ones. Synthetic coverage includes all regional clock
 paths, NES/AV and RF timing, both wiring choices, strobe behavior, CPU/DMC/OAM
 reads, snapshot replay/rollback and v17 import. An original 6502 diagnostic reads
-all four virtual SDL gamepads and both signatures into CPU RAM. This coverage
+all four virtual SDL gamepads and both signatures into CPU RAM. The pinned public
+[allpads diagnostic](dma-timing.md#optional-public-controller-diagnostic) also
+identifies Four Score using its original detection routine in both timing modes. This coverage
 does not certify compatibility with every commercial Four Score game.

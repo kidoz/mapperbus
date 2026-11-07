@@ -11,6 +11,52 @@
 
 using namespace mapperbus::core;
 
+TEST_CASE("Public allpads identifies Four Score through its original detection routine",
+          "[controller][four-score][diagnostic][external]") {
+    const char* root = std::getenv("MAPPERBUS_CONTROLLER_DIAGNOSTICS");
+    if (root == nullptr || *root == '\0')
+        SKIP("Set MAPPERBUS_CONTROLLER_DIAGNOSTICS to the pinned allpads ROM directory");
+    // pinobatch/allpads-nes v0.09, e70cc84369b326300e4dc11077597565dd715e6a.
+    // Unmodified author release. identify.s stores count/types/port-bit selectors
+    // at $0314/$0315/$031A (MAX_IDENT=5) and packs signatures with ROL, first read in bit 7.
+    const auto path = std::filesystem::path(root) / "allpads.nes";
+    const auto bytes =
+        read_binary_file_capped(path.string(), kMaxRomBytes, "Controller diagnostic");
+    REQUIRE(bytes);
+    REQUIRE(sha256_hex(rom_sha256(*bytes)) ==
+            "9ce022805eb472e4ad9a9a7b101a685a86267c6448cc47176b14ee95d0c4afb9");
+    register_builtin_mappers();
+    for (const auto timing : {ControllerTiming::NesAvFamicom, ControllerTiming::RfFamicom}) {
+        for (const auto mode : {ControllerMode::Standard, ControllerMode::FourScore}) {
+            CAPTURE(timing, mode);
+            Emulator emulator;
+            REQUIRE(emulator.load_cartridge(path.string()));
+            emulator.set_controller_timing(timing);
+            emulator.set_controller_mode(mode);
+            emulator.reset();
+            for (int frame = 0; frame < 180; ++frame)
+                emulator.step_frame();
+            if (mode == ControllerMode::FourScore) {
+                CHECK(emulator.read_cpu(0x0314) == 1);
+                CHECK(emulator.read_cpu(0x0315) == 4); // TYPE_FOUR_SCORE
+                CHECK(emulator.read_cpu(0x031A) == 2); // paired ports on D0
+            } else {
+                CHECK(emulator.read_cpu(0x0314) == 2);
+                CHECK(emulator.read_cpu(0x0315) != 4);
+                CHECK(emulator.read_cpu(0x0316) != 4);
+            }
+            const auto before = emulator.save_state();
+            for (int frame = 0; frame < 12; ++frame)
+                emulator.step_frame();
+            const auto after = emulator.save_state();
+            REQUIRE(emulator.load_state(before));
+            for (int frame = 0; frame < 12; ++frame)
+                emulator.step_frame();
+            CHECK(emulator.save_state() == after);
+        }
+    }
+}
+
 TEST_CASE("Public Blargg OAM and DMC DMA timing diagnostics", "[cpu][dma][diagnostic][external]") {
     register_builtin_mappers();
     const char* root = std::getenv("MAPPERBUS_CPU_DMA_DIAGNOSTICS");

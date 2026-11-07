@@ -252,7 +252,7 @@ TEST_CASE("Four SDL gamepads reach separate D0 and D1 reports through a running 
     check_reports(0x11);
     session.set_controller_mode(core::ControllerMode::FourScore);
     REQUIRE(session.tick() == app::TickResult::FrameAdvanced);
-    const uint32_t four_score_reports[] = {0x100C01, 0x20110A};
+    const uint32_t four_score_reports[] = {0x080C01, 0x04110A};
     for (unsigned bit = 0; bit < 24; ++bit)
         for (int port = 0; port < 2; ++port)
             CHECK((session.emulator().read_cpu((port == 0 ? 0x0600 : 0x0640) + bit) & 3U) ==
