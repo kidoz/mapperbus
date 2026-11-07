@@ -119,6 +119,8 @@ GUI Settings → Input → Live microphone saves these optional version-1 keys:
 enabled=false
 device=""
 sensitivity=50
+audio_enabled=false
+volume=25
 ```
 
 Capture is disabled by default. An empty device selects the system recording
@@ -134,9 +136,24 @@ changes, and capture failures release live activity; use Retry / Refresh Devices
 or change a setting to retry. System-default capture stops if the recording-device
 set or default name changes. Bound keyboard/gamepad input remains usable.
 
-Captured mono PCM is converted to activity in memory and discarded. It is never
-saved, transmitted, or mixed into game audio. Capture settings and device state
-are host preferences outside snapshots; version 16 still stores only the core's
+Microphone audio is separately off by default. Enable it to add captured sound
+at playback, with `volume` from 0 to 100 (default 25). Both Capture input and
+unpaused RF play are required; enabling playback alone never opens a device.
+The volume does not affect sensitivity or the game's activity signal, and
+sensitivity does not gate playback. GUI master volume/mute apply to the combined
+output. Bound M/gamepad simulation produces activity only, not an audio tone.
+
+The host mixer linearly resamples 16 kHz mono PCM to the session playback rate,
+copies it to both stereo channels when needed, and clamps the sum to [-1, 1].
+Its queue holds at most 2048 capture samples (128 ms); stale backlogs are replaced
+and underruns add silence. Pause, stop, reset, device failure, successful snapshot
+loads, device/audio-setting changes, Retry, and disabling/changing microphone
+audio discard pending mic sound. Queued playback that may contain it is cleared
+at those boundaries. Capture stays open when only microphone playback is muted.
+This is an optional host monitor, not a model of Famicom analog mixing circuitry.
+
+Raw PCM is used only in memory, never saved or transmitted. Capture settings and
+device state are host preferences outside snapshots; version 16 still stores only the core's
 processed activity and carrier phase. The SDL3 executable accepts process-local
 [overrides](commands-and-controls.md#famicom-microphone). Builds without SDL audio
 report capture unavailable. Real-device GUI capture has been checked on macOS

@@ -100,4 +100,9 @@ void Sdl3Audio::resume() {
     }
 }
 
+void Sdl3Audio::clear() {
+    if (stream_)
+        SDL_ClearAudioStream(stream_);
+}
+
 } // namespace mapperbus::frontend

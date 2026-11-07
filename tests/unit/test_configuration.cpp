@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <catch2/catch_test_macros.hpp>
 #include <chrono>
 #include <cstdlib>
@@ -323,17 +324,27 @@ TEST_CASE("Live microphone defaults stay disabled and sensitivity is bounded",
     CHECK_FALSE(defaults.enabled);
     CHECK(defaults.device.empty());
     CHECK(defaults.sensitivity == 50);
+    CHECK_FALSE(defaults.audio_enabled);
+    CHECK(defaults.volume_percent == 25);
     std::filesystem::create_directories(path.parent_path());
-    for (const auto& [token, expected] :
-         {std::pair{"bad", 50}, {"0", 1}, {"101", 100}, {"72", 72}}) {
+    struct Scenario {
+        const char* token;
+        int sensitivity;
+        int volume;
+    };
+    for (const auto& [token, expected, volume] :
+         {Scenario{"bad", 50, 25}, {"-1", 1, 0}, {"0", 1, 0}, {"101", 100, 100}, {"72", 72, 72}}) {
         {
             std::ofstream file(path);
-            file << "[microphone]\nenabled=invalid\nsensitivity=" << token << '\n';
+            file << "[microphone]\nenabled=invalid\naudio_enabled=invalid\nsensitivity=" << token
+                 << "\nvolume=" << token << '\n';
         }
         const auto loaded = load_mapperbus_configuration_from_file(path);
         CHECK_FALSE(loaded.microphone.enabled);
         CHECK(loaded.microphone.sensitivity == expected);
         CHECK(loaded.microphone.device.empty());
+        CHECK_FALSE(loaded.microphone.audio_enabled);
+        CHECK(loaded.microphone.volume_percent == volume);
     }
     std::filesystem::remove_all(path.parent_path());
 }
@@ -358,6 +369,8 @@ TEST_CASE("MapperBus configuration round-trips universal settings", "[app][confi
     configuration.frontend.audio_volume_percent = 40;
     configuration.frontend.region = RegionPreference::Pal;
     configuration.microphone = {.enabled = true, .device = "Input #1; \"USB\"", .sensitivity = 72};
+    configuration.microphone.audio_enabled = true;
+    configuration.microphone.volume_percent = 63;
     configuration.input.controller_timing = core::ControllerTiming::RfFamicom;
     configuration.input.controller_wiring = core::ControllerWiring::RfFamicom;
     configuration.input.keyboard_bindings[platform::button_index(core::Button::A)] = 44;
@@ -392,6 +405,8 @@ TEST_CASE("MapperBus configuration round-trips universal settings", "[app][confi
     CHECK(loaded.microphone.enabled);
     CHECK(loaded.microphone.device == configuration.microphone.device);
     CHECK(loaded.microphone.sensitivity == 72);
+    CHECK(loaded.microphone.audio_enabled);
+    CHECK(loaded.microphone.volume_percent == 63);
     REQUIRE(loaded.input.controller_timing == core::ControllerTiming::RfFamicom);
     REQUIRE(loaded.input.controller_wiring == core::ControllerWiring::RfFamicom);
     REQUIRE(loaded.input.keyboard_bindings[platform::button_index(core::Button::A)] == 44);

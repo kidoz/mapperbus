@@ -114,6 +114,10 @@ int main(int argc, char* argv[]) {
         mapperbus::core::logger::info("  --microphone-device N recording device name, or default");
         mapperbus::core::logger::info(
             "  --microphone-sensitivity N 1-100; higher detects quieter sound");
+        mapperbus::core::logger::info("  --microphone-audio    mix captured sound into playback");
+        mapperbus::core::logger::info("  --no-microphone-audio disable microphone playback");
+        mapperbus::core::logger::info(
+            "  --microphone-volume N playback level, 0-100 (default: 25)");
         mapperbus::core::logger::info("  --filter-profile P    nes or famicom (default: nes)");
         mapperbus::core::logger::info("  --stereo              enable pseudo-stereo output");
         mapperbus::core::logger::info("  --dither              enable TPDF dithering");
@@ -261,6 +265,21 @@ int main(int argc, char* argv[]) {
         } else if (std::strcmp(argv[i], "--microphone-device") == 0) {
             mapperbus::core::logger::error("--microphone-device requires a device name");
             return EXIT_FAILURE;
+        } else if (std::strcmp(argv[i], "--microphone-audio") == 0) {
+            microphone_settings.audio_enabled = true;
+        } else if (std::strcmp(argv[i], "--no-microphone-audio") == 0) {
+            microphone_settings.audio_enabled = false;
+        } else if (std::strcmp(argv[i], "--microphone-volume") == 0) {
+            const std::string_view value = i + 1 < argc ? argv[++i] : "";
+            int volume = 0;
+            const auto parsed = std::from_chars(value.data(), value.data() + value.size(), volume);
+            if (parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size() ||
+                volume < 0 || volume > 100) {
+                mapperbus::core::logger::error(
+                    "--microphone-volume requires an integer from 0 to 100");
+                return EXIT_FAILURE;
+            }
+            microphone_settings.volume_percent = volume;
         } else if (std::strcmp(argv[i], "--controller-timing") == 0) {
             const auto timing =
                 i + 1 < argc ? mapperbus::app::parse_controller_timing(argv[++i]) : std::nullopt;

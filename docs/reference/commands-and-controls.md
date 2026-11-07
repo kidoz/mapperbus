@@ -134,8 +134,11 @@ microphone, enable Capture input, choose an input device, and raise Sensitivity
 for quieter sounds. Capture runs during unpaused RF Famicom play. Pause and
 snapshot loads discard capture buffers; device failures release live activity
 and show an error until Retry / Refresh Devices or a setting change. Keyboard
-and gamepad simulation remain available. Captured sound is neither saved nor
-mixed into game audio.
+and gamepad simulation remain available. Microphone audio optionally adds captured
+sound to playback with an independent 0–100 volume control (default 25). It starts
+off and requires Capture input. Sensitivity only controls game input detection.
+Master audio volume/mute affect the combined sound. Use headphones to avoid
+feedback. No raw microphone sound is saved.
 
 The SDL3 executable accepts these process-local overrides:
 
@@ -144,10 +147,15 @@ The SDL3 executable accepts these process-local overrides:
 --no-live-microphone
 --microphone-device NAME
 --microphone-sensitivity N
+--microphone-audio
+--no-microphone-audio
+--microphone-volume N
 ```
 
 Use `default` for the system input and an integer from 1 to 100 for sensitivity.
-The headless CLI does not open capture. See [capture preferences](configuration.md#live-microphone-capture).
+`--microphone-audio` requires `--live-microphone` (or saved capture enabled),
+and volume accepts 0–100. The headless CLI does not open capture. See
+[capture preferences](configuration.md#live-microphone-capture).
 
 ## Headless CLI
 

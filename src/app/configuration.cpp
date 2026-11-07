@@ -337,6 +337,15 @@ void apply_setting(MapperBusConfiguration& configuration,
         configuration.microphone.sensitivity = std::clamp(parse_int(value, 50, full_key), 1, 100);
         return;
     }
+    if (full_key == "microphone.audio_enabled") {
+        configuration.microphone.audio_enabled = parse_bool_setting(value, false, full_key);
+        return;
+    }
+    if (full_key == "microphone.volume") {
+        configuration.microphone.volume_percent =
+            std::clamp(parse_int(value, 25, full_key), 0, 100);
+        return;
+    }
     if (full_key.starts_with("recent.rom_")) {
         const std::string suffix(full_key.substr(std::strlen("recent.rom_")));
         const auto slot = parse_int_value(suffix);
@@ -814,7 +823,9 @@ core::Result<void> save_mapperbus_configuration_to_file(const MapperBusConfigura
     file << "[microphone]\n";
     file << "enabled=" << (configuration.microphone.enabled ? "true" : "false") << '\n';
     file << "device=" << quote_config_value(configuration.microphone.device) << '\n';
-    file << "sensitivity=" << std::clamp(configuration.microphone.sensitivity, 1, 100) << "\n\n";
+    file << "sensitivity=" << std::clamp(configuration.microphone.sensitivity, 1, 100) << '\n';
+    file << "audio_enabled=" << (configuration.microphone.audio_enabled ? "true" : "false") << '\n';
+    file << "volume=" << std::clamp(configuration.microphone.volume_percent, 0, 100) << "\n\n";
 
     file << "[audio]\n";
     file << "sample_rate=" << configuration.audio.sample_rate << '\n';

@@ -64,13 +64,16 @@ class EmulationSession {
     void set_controller_wiring(core::ControllerWiring wiring) {
         emulator_.set_controller_wiring(wiring);
         if (wiring != core::ControllerWiring::RfFamicom)
-            live_microphone_.suspend();
+            suspend_live_microphone();
     }
     void set_microphone_backend(std::unique_ptr<platform::MicrophoneBackend> backend) {
+        clear_microphone_playback();
         live_microphone_.set_backend(std::move(backend));
     }
-    void configure_live_microphone(LiveMicrophoneSettings settings) {
-        live_microphone_.configure(std::move(settings));
+    void configure_live_microphone(LiveMicrophoneSettings settings);
+    void retry_live_microphone() {
+        clear_microphone_playback();
+        live_microphone_.retry();
     }
     [[nodiscard]] LiveMicrophone& live_microphone() {
         return live_microphone_;
@@ -143,6 +146,8 @@ class EmulationSession {
   private:
     void sync_input();
     void submit_current_frame();
+    void suspend_live_microphone();
+    void clear_microphone_playback();
     [[nodiscard]] float smooth_audio_fill_ratio(float fill_ratio);
     void reset_audio_fill_ratio_history();
     [[nodiscard]] int max_queued_samples() const;

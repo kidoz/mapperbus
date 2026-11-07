@@ -2818,9 +2818,33 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
         microphone_group->add(pref_row("Sensitivity",
                                        FixedWidthSlot::create(180.0F, sensitivity),
                                        "Raise to detect quieter sounds."));
+        auto microphone_audio = nk::Switch::create();
+        microphone_audio->set_active(configuration_.microphone.audio_enabled);
+        (void)microphone_audio->on_toggled().connect([this](bool enabled) {
+            configuration_.microphone.audio_enabled = enabled;
+            session_->configure_live_microphone(configuration_.microphone);
+            save_configuration_state();
+        });
+        microphone_group->add(pref_row("Microphone audio",
+                                       microphone_audio,
+                                       "Play captured sound. Headphones avoid feedback."));
+        auto microphone_volume = nk::Slider::create();
+        microphone_volume->ensure_accessible().set_name("Microphone volume");
+        microphone_volume->set_range(0.0, 100.0);
+        microphone_volume->set_step(1.0);
+        microphone_volume->set_value(configuration_.microphone.volume_percent);
+        (void)microphone_volume->on_value_changed().connect([this](double value) {
+            configuration_.microphone.volume_percent =
+                std::clamp(static_cast<int>(std::lround(value)), 0, 100);
+            session_->configure_live_microphone(configuration_.microphone);
+            save_configuration_state();
+        });
+        microphone_group->add(pref_row("Microphone volume",
+                                       FixedWidthSlot::create(180.0F, microphone_volume),
+                                       "Requires Capture input."));
         auto retry = nk::Button::create("Retry / Refresh Devices");
         (void)retry->on_clicked().connect([this] {
-            session_->live_microphone().retry();
+            session_->retry_live_microphone();
             refresh_settings_dialog_sections();
         });
         microphone_group->add(pref_row("Connection", retry));

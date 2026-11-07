@@ -28,6 +28,8 @@ class AudioBackend {
     /// without a real device.
     virtual void pause() {}
     virtual void resume() {}
+    /// Discard queued playback, including host microphone sound, at lifecycle boundaries.
+    virtual void clear() {}
 };
 
 } // namespace mapperbus::platform

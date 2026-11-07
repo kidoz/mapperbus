@@ -1,6 +1,7 @@
 #include <array>
 #include <catch2/catch_test_macros.hpp>
 
+#include "frontends/sdl3/sdl3_audio.hpp"
 #include "frontends/sdl3/sdl3_microphone.hpp"
 
 TEST_CASE("SDL recording opens, polls and closes a dummy input without hardware",
@@ -23,4 +24,19 @@ TEST_CASE("SDL recording opens, polls and closes a dummy input without hardware"
     REQUIRE(microphone.start(devices->front()));
     CHECK_FALSE(microphone.start("MapperBus missing test input"));
     CHECK_FALSE(microphone.read(samples));
+}
+
+TEST_CASE("SDL playback clear removes queued microphone sound while paused", "[sdl3][microphone]") {
+    mapperbus::frontend::Sdl3Audio playback;
+    REQUIRE(playback.initialize(48000, 256, 2));
+    playback.pause();
+    std::array<float, 4096> sound{};
+    sound.fill(0.25F);
+    playback.queue_samples(sound);
+    CHECK(playback.queued_samples() >= 2048);
+    playback.clear();
+    CHECK(playback.queued_samples() == 0);
+    playback.resume();
+    playback.shutdown();
+    playback.clear();
 }

@@ -134,7 +134,7 @@ does not release or re-clock the current output-enable line.
 adds Controller wiring beside Controller timing in General → Hardware; CLI and
 SDL3 accept `--controller-wiring`. Set both choices to `rf-famicom` for RF input
 hardware. Wiring is independent of CPU revision and region, while the RF timing
-choice affects NTSC only. Live audio capture/mixing, expansion controllers and
+choice affects NTSC only. Microphone analog circuitry, expansion controllers and
 other accessories remain separate work.
 
 The APU activation diagnostic also requires the separate
@@ -170,8 +170,11 @@ The pending capture queue is bounded to 2048 samples; old backlogs are discarded
 Pause/stop/wiring changes close capture; playback backpressure discards queued
 sound. A successful snapshot load closes capture without altering the restored
 core bytes. The next unpaused RF frame opens fresh capture and updates activity.
-Host settings, raw PCM, and the recording device are not serialized. Microphone
-audio is not mixed. This carrier is an emulator input policy, not a claim about a
+Host settings, raw PCM, and the recording device are not serialized. Optional
+microphone audio is mixed at session playback after draining core audio; it does
+not enter the APU, snapshot ring buffer, or activity gate. Its independent volume,
+bounded PCM queue, resampler, clipping and playback clearing have deterministic
+coverage. This carrier is an emulator input policy, not a claim about a
 physical Famicom's microphone frequency, sensitivity, or analog response.
 
 ## Snapshots
@@ -345,7 +348,7 @@ MAPPERBUS_CPU_DMA_DIAGNOSTICS="$PWD/tmp/dmc-timing" \
 These tests verify CPU-visible conflict values and OAM transfers. They do not
 measure the DMC sample latch's audio payload under electrical contention. PAL
 repeated-read addresses and register conflicts, expansion
-accessory behavior, physical microphone capture/audio mixing, CPU revision
+accessory behavior, physical microphone analog circuitry, CPU revision
 selection, and
 adjacent PPUDATA read quirks remain outside this coverage. Passing the eight selected AccuracyCoin tests does not certify the
 whole ROM. Reset bus cycles and analog power-on alignment remain outside the

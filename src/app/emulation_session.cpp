@@ -19,7 +19,7 @@ EmulationSession::EmulationSession(std::unique_ptr<platform::VideoBackend> video
       audio_(std::move(audio)), input_(std::move(input)), audio_staging_(kAudioStagingSamples) {}
 
 EmulationSession::~EmulationSession() {
-    live_microphone_.suspend();
+    suspend_live_microphone();
     if (audio_) {
         audio_->shutdown();
     }
@@ -71,7 +71,7 @@ core::Result<void> EmulationSession::open_rom(const std::string& rom_path,
         return std::unexpected(result.error());
     }
 
-    live_microphone_.suspend();
+    suspend_live_microphone();
     emulator_.set_microphone_active(false);
     emulator_.reset();
     turbo_input_.reset();
@@ -133,7 +133,7 @@ void EmulationSession::close_rom() {
         return;
     }
     emulator_.unload_cartridge();
-    live_microphone_.suspend();
+    suspend_live_microphone();
     emulator_.set_microphone_active(false);
     turbo_input_.reset();
     rom_loaded_ = false;
@@ -148,24 +148,24 @@ void EmulationSession::close_rom() {
 
 TickResult EmulationSession::tick() {
     if (!running_) {
-        live_microphone_.suspend();
+        suspend_live_microphone();
         return TickResult::Stopped;
     }
 
     input_->poll();
     if (input_->should_quit()) {
-        live_microphone_.suspend();
+        suspend_live_microphone();
         running_ = false;
         return TickResult::Stopped;
     }
 
     if (!rom_loaded_) {
-        live_microphone_.suspend();
+        suspend_live_microphone();
         return TickResult::NoCartridge;
     }
 
     if (paused_) {
-        live_microphone_.suspend();
+        suspend_live_microphone();
         return TickResult::Paused;
     }
 
@@ -190,18 +190,18 @@ TickResult EmulationSession::tick() {
 
 TickResult EmulationSession::step_frame() {
     if (!running_) {
-        live_microphone_.suspend();
+        suspend_live_microphone();
         return TickResult::Stopped;
     }
 
     if (!rom_loaded_) {
-        live_microphone_.suspend();
+        suspend_live_microphone();
         return TickResult::NoCartridge;
     }
 
     input_->poll();
     if (input_->should_quit()) {
-        live_microphone_.suspend();
+        suspend_live_microphone();
         running_ = false;
         return TickResult::Stopped;
     }
@@ -213,6 +213,7 @@ TickResult EmulationSession::step_frame() {
 }
 
 void EmulationSession::reset() {
+    suspend_live_microphone();
     emulator_.reset();
     turbo_input_.reset();
 }
@@ -221,13 +222,14 @@ void EmulationSession::power_cycle() {
     if (!rom_loaded_) {
         return;
     }
+    suspend_live_microphone();
     emulator_.reset();
     turbo_input_.reset();
     set_paused(false);
 }
 
 void EmulationSession::request_stop() {
-    live_microphone_.suspend();
+    suspend_live_microphone();
     running_ = false;
 }
 
@@ -240,11 +242,33 @@ void EmulationSession::set_paused(bool paused) {
     // pause (a dry device underruns into hard silence and then snaps to
     // full amplitude on resume — an audible pop).
     if (paused) {
-        live_microphone_.suspend();
+        suspend_live_microphone();
         audio_->pause();
     } else {
         audio_->resume();
     }
+}
+
+void EmulationSession::clear_microphone_playback() {
+    if (audio_ && live_microphone_.settings().audio_enabled) {
+        audio_->clear();
+        reset_audio_fill_ratio_history();
+    }
+}
+
+void EmulationSession::suspend_live_microphone() {
+    if (live_microphone_.recording())
+        clear_microphone_playback();
+    live_microphone_.suspend();
+}
+
+void EmulationSession::configure_live_microphone(LiveMicrophoneSettings settings) {
+    const auto& previous = live_microphone_.settings();
+    if (settings.enabled != previous.enabled || settings.device != previous.device ||
+        settings.audio_enabled != previous.audio_enabled ||
+        settings.volume_percent != previous.volume_percent)
+        clear_microphone_playback();
+    live_microphone_.configure(std::move(settings));
 }
 
 void EmulationSession::set_region(core::Region region) {
@@ -264,6 +288,7 @@ int EmulationSession::audio_high_watermark_samples() const {
 }
 
 core::Result<void> EmulationSession::apply_audio_settings(const core::AudioSettings& settings) {
+    suspend_live_microphone();
     const auto previous_settings = audio_settings_;
     audio_settings_ = settings;
     emulator_.apply_audio_settings(audio_settings_);
@@ -360,7 +385,7 @@ core::Result<void> EmulationSession::load_state(int slot) {
     }
     auto result = emulator_.load_state_from_file(*path, legacy);
     if (result) {
-        live_microphone_.suspend();
+        suspend_live_microphone();
         turbo_input_.reset();
     }
     return result;
@@ -402,8 +427,11 @@ void EmulationSession::sync_input() {
                                    Button::Left,
                                    Button::Right};
 
+    const bool was_recording = live_microphone_.recording();
     const bool live = live_microphone_.poll(!paused_ && emulator_.controller_wiring() ==
                                                             core::ControllerWiring::RfFamicom);
+    if (was_recording && !live_microphone_.recording())
+        clear_microphone_playback();
     emulator_.set_microphone_active(
         live || input_->is_action_pressed(0, platform::InputAction::Microphone) ||
         input_->is_action_pressed(1, platform::InputAction::Microphone));
@@ -430,6 +458,9 @@ void EmulationSession::submit_current_frame() {
 
     const std::size_t count = emulator_.drain_audio(audio_staging_.data(), audio_staging_.size());
     if (count > 0) {
+        const int channels = audio_settings_.stereo_mode == core::StereoMode::PseudoStereo ? 2 : 1;
+        live_microphone_.mix_into(
+            {audio_staging_.data(), count}, audio_settings_.sample_rate, channels);
         audio_->queue_samples({audio_staging_.data(), count});
     }
 

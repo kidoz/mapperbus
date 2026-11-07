@@ -201,7 +201,7 @@ shows `$67FF` / `$6E25`; both captured values match in MapperBus.
   All four combinations of NES/AV or RF timing and NES or RF data wiring pass six
   additional targeted checks each. RF built-in controller 2 omits Start/Select.
   Synthetic microphone activity has normal/DMA read and snapshot coverage;
-  microphone analog response/audio mixing, expansion accessories, and electrical
+  microphone analog circuitry, expansion accessories, and electrical
   DMC sample capture remain outside those timing checks. Reset-cycle bus activity,
   analog DRAM decay, 2C33 test mode, and mechanical disk effects are not modeled.
 - CRC coverage includes the public BIOS-dumper write/readback flows, independent
@@ -254,11 +254,11 @@ or a comparison with recordings from hardware.
   write protection and retry, either CRC-byte fault, and mid-write replay.
 - All ten public NTSC [PPU timing diagnostics](ppu-timing.md) passed, including
   vblank flag reads, NMI enable/disable races and odd-frame clock timing.
-- With live microphone support, the regular build passed all 35 suite executables
+- With optional microphone playback, the regular build passed all 35 suite executables
   with the public diagnostics and eight licensed workflows enabled. The generated
-  24 game frames match the preceding digital-microphone build byte-for-byte.
+  24 game frames match the preceding capture-only build byte-for-byte.
 - The GUI-disabled ASan/UBSan build passed all 32 suite executables with public
-  diagnostics, including capture/session and SDL dummy-device coverage. The
+  diagnostics, including mixing/session and SDL dummy-device queue clearing. The
   licensed workflows were not repeated under sanitizers for this host-only
   change; all eight passed on the preceding unchanged core. Leak detection was
   disabled because this macOS runtime does not support it.
@@ -271,6 +271,21 @@ or a comparison with recordings from hardware.
   Source BIOS and disk SHA-256 values were unchanged.
 
 ### GUI workflow validation
+
+Optional microphone playback was reviewed in the rebuilt packaged GUI with
+Metroid, RF wiring/timing, the MacBook microphone and FIIO output. It defaulted
+off at volume 25; volume 0/100 and the switch worked. With microphone volume 100
+and master volume 40, the user confirmed hearing their voice through headphones.
+Pause changed capture to waiting, resume restarted it, and disabling microphone
+audio left capture recording. No raw PCM was saved; the app was closed and the
+original configuration restored to the hash below. These checks do not certify
+Famicom analog audio fidelity or fresh OS permission prompts.
+
+Deterministic tests cover mono/stereo addition, clipping, nonfinite samples,
+resampling, queue bounds/underruns, mute independent of activity, device failure,
+pause and successful state loads. Mixing on/off produces byte-identical machine
+snapshots while changing only the submitted playback samples. SDL dummy output
+also verifies clearing a paused stream's queued samples.
 
 Real-device live capture was checked in the packaged macOS GUI at commit
 `30810dd`, with Metroid and RF Famicom wiring/timing. Both MacBook Pro Microphone

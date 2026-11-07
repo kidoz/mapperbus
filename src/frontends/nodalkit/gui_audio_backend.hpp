@@ -19,6 +19,7 @@ class GuiAudioBackend : public platform::AudioBackend {
     int queued_samples() const override;
     void pause() override;
     void resume() override;
+    void clear() override;
 
     [[nodiscard]] std::string_view status_text() const;
     [[nodiscard]] bool is_muted() const;

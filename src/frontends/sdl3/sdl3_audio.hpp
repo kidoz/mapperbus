@@ -17,6 +17,7 @@ class Sdl3Audio : public platform::AudioBackend {
     [[nodiscard]] int actual_sample_rate() const override;
     void pause() override;
     void resume() override;
+    void clear() override;
 
   private:
     SDL_AudioStream* stream_ = nullptr;

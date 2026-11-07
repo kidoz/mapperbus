@@ -9,6 +9,11 @@ Versioning.
 
 ### Added
 
+- Optional microphone audio playback with independent volume, SDL3 overrides,
+  bounded host-only PCM mixing, and queue clearing across pause, snapshots,
+  device failures, and settings changes. Playback starts off and leaves input
+  detection and save-state format unchanged.
+
 - Optional live Famicom microphone capture with device selection, sensitivity,
   retry/status controls, shared preferences, SDL3 overrides, and macOS purpose
   metadata. Pause and snapshot loads discard capture buffers; bound simulation

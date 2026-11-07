@@ -86,6 +86,11 @@ void GuiAudioBackend::resume() {
     }
 }
 
+void GuiAudioBackend::clear() {
+    if (active_)
+        active_->clear();
+}
+
 std::string_view GuiAudioBackend::status_text() const {
 #if defined(MAPPERBUS_HAVE_SDL3_AUDIO)
     if (muted_) {
@@ -109,6 +114,8 @@ bool GuiAudioBackend::uses_realtime_output() const {
 }
 
 void GuiAudioBackend::set_muted(bool muted) {
+    if (muted != muted_)
+        clear();
     muted_ = muted;
 }
 
