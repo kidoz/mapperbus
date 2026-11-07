@@ -65,6 +65,14 @@ class Sdl3GamepadSelection {
             SDL_CloseGamepad(gamepad_);
         gamepad_ = nullptr;
     }
+    void swap(Sdl3GamepadSelection& other) noexcept {
+        std::swap(gamepad_, other.gamepad_);
+        known_ids_.swap(other.known_ids_);
+        blocked_ids_.swap(other.blocked_ids_);
+        candidates_.swap(other.candidates_);
+        std::swap(changed_, other.changed_);
+        std::swap(inventory_changed_, other.inventory_changed_);
+    }
 
     void assign(platform::GamepadInputConfig& config, int index) {
         close();

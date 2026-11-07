@@ -6,12 +6,68 @@
 #include "app/configuration.hpp"
 #include "app/emulation_session.hpp"
 #include "core/mappers/mapper_registry.hpp"
+#include "frontends/sdl3/gamepad_assignment.hpp"
 #include "frontends/sdl3/sdl3_input.hpp"
 #include "platform/audio/null_audio.hpp"
 #include "platform/video/null_video.hpp"
 
 namespace mapperbus::frontend {
 namespace {
+
+TEST_CASE("Four-controller capture requires fresh distinct presses and release before finish",
+          "[sdl3][input][assignment]") {
+    tests::IdentityGamepads pads;
+    for (int pad = 0; pad < 4; ++pad)
+        pads.attach(pad, 0); // Four indistinguishable models still have distinct instance IDs.
+    pads.press(3, true);
+    Sdl3GamepadAssignment capture;
+    capture.poll();
+    CHECK(capture.assigned_count() == 0); // A button held on opening is ignored.
+    pads.press(3, false);
+    capture.poll();
+    pads.press(0, true);
+    capture.poll();
+    REQUIRE(capture.assigned_count() == 1);
+    capture.poll();
+    CHECK(capture.assigned_count() == 1); // Holding does not advance another step.
+    pads.press(0, false);
+    capture.poll();
+    pads.press(0, true);
+    capture.poll();
+    CHECK(capture.assigned_count() == 1);
+    CHECK(capture.status().find("already Hori 1") != std::string::npos);
+    pads.press(0, false);
+    capture.poll();
+    pads.press(1, true);
+    pads.press(2, true);
+    capture.poll();
+    CHECK(capture.assigned_count() == 1);
+    CHECK(capture.status().find("one controller") != std::string::npos);
+    pads.press(1, false);
+    pads.press(2, false);
+    capture.poll();
+    for (int pad : {2, 1, 3}) {
+        pads.press(pad, true);
+        capture.poll();
+        CHECK_FALSE(capture.ready());
+        pads.press(pad, false);
+        capture.poll();
+    }
+    REQUIRE(capture.ready());
+    const std::array expected = {pads.ids[0], pads.ids[2], pads.ids[1], pads.ids[3]};
+    CHECK(capture.assignments() == expected);
+    pads.detach(2);
+    capture.poll();
+    CHECK_FALSE(capture.ready());
+    CHECK(capture.assigned_count() == 1);
+    CHECK(capture.status().find("disconnected") != std::string::npos);
+    pads.attach(2, 0);
+    capture.poll();
+    CHECK(capture.assigned_count() == 1);
+    pads.press(2, true);
+    capture.poll();
+    CHECK(capture.assigned_count() == 2);
+}
 
 TEST_CASE("Gamepad serial identity and ambiguous model matching are explicit",
           "[sdl3][input][identity]") {

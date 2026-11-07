@@ -1090,6 +1090,7 @@ MapperBusGuiController::MapperBusGuiController(nk::Application& app, nk::Window&
 
     last_tick_time_ = std::chrono::steady_clock::now();
     tick_handle_ = app_.event_loop().set_interval(std::chrono::milliseconds(1), [this] {
+        poll_gamepad_assignment();
         poll_pending_rebind();
         update_input_test_status();
 
@@ -1341,6 +1342,7 @@ void MapperBusGuiController::wire_ui() {
             refresh_ui();
         });
     (void)window_.on_close_requested().connect([this] {
+        cancel_gamepad_assignment();
         save_configuration_state();
         app_.quit(0);
     });
@@ -1726,6 +1728,8 @@ void MapperBusGuiController::browse_for_rom() {
 }
 
 void MapperBusGuiController::attempt_open(std::string rom_path, std::string member) {
+    if (gamepad_assignment_dialog_)
+        return;
     if ((state_slot_dialog_ && state_slot_dialog_->is_presented()) ||
         (archive_dialog_ && archive_dialog_->is_presented()) ||
         (fds_dialog_ && fds_dialog_->is_presented())) {
@@ -2309,6 +2313,131 @@ void MapperBusGuiController::save_configuration_state() {
     update_settings_save_status("Saved automatically");
 }
 
+void MapperBusGuiController::open_gamepad_assignment() {
+#ifdef MAPPERBUS_HAVE_SDL3_GAMEPAD
+    if (gamepad_assignment_dialog_ || rebind_dialog_ ||
+        actions_->snapshot().controller_mode != core::ControllerMode::HoriFourPlayer)
+        return;
+    refresh_ui();
+    update_configuration_from_state();
+    const auto snapshot = actions_->snapshot();
+    resume_after_gamepad_assignment_ = snapshot.has_cartridge && !snapshot.paused;
+    if (resume_after_gamepad_assignment_)
+        actions_->pause();
+    input_backend_->set_assignment_capture(true);
+    gamepad_assignment_ = std::make_unique<Sdl3GamepadAssignment>();
+    auto dialog = nk::Dialog::create("Assign Four Gamepads");
+    gamepad_assignment_dialog_ = dialog;
+    dialog->set_presentation_style(nk::DialogPresentationStyle::Sheet);
+    dialog->set_minimum_panel_width(460.0F);
+    dialog->set_default_response(nk::DialogResponse::Cancel);
+    dialog->add_button("Cancel", nk::DialogResponse::Cancel);
+    auto content = Box::vertical(10.0F);
+    auto instructions = nk::Label::create(
+        "Press a button on each controller in Hori 1–4 order. Bindings are kept.");
+    instructions->set_wrapping(true);
+    content->append(instructions);
+    gamepad_assignment_status_ = nk::Label::create(gamepad_assignment_->status());
+    gamepad_assignment_status_->set_wrapping(true);
+    content->append(gamepad_assignment_status_);
+    for (int player = 0; player < 4; ++player) {
+        auto label = nk::Label::create("Hori " + std::to_string(player + 1) + ": Not assigned");
+        label->set_wrapping(true);
+        gamepad_assignment_labels_[player] = label;
+        content->append(label);
+    }
+    auto finish_help =
+        nk::Label::create("Changes are saved after all four controllers are assigned and buttons "
+                          "are released. Cancel keeps existing assignments.");
+    finish_help->set_wrapping(true);
+    content->append(finish_help);
+    dialog->set_content(content);
+    (void)dialog->on_response().connect(
+        [this, weak_dialog = std::weak_ptr<nk::Dialog>(dialog)](nk::DialogResponse response) {
+            const auto closed = weak_dialog.lock();
+            if (!closed || gamepad_assignment_dialog_ != closed)
+                return;
+            gamepad_assignment_dialog_.reset();
+            gamepad_assignment_.reset();
+            gamepad_assignment_status_.reset();
+            gamepad_assignment_labels_.fill(nullptr);
+            input_backend_->set_assignment_capture(false);
+            if (response == nk::DialogResponse::Accept) {
+                (void)input_backend_->consume_gamepad_assignment_changes();
+                set_message("Four Hori gamepads assigned. Button bindings retained.");
+            } else {
+                set_message("Gamepad assignment cancelled.");
+            }
+            if (resume_after_gamepad_assignment_)
+                actions_->resume();
+            resume_after_gamepad_assignment_ = false;
+            refresh_ui();
+            refresh_settings_dialog_sections();
+            if (settings_tabs_)
+                settings_tabs_->grab_focus();
+        });
+    gamepad_assignment_last_poll_ = std::chrono::steady_clock::now();
+    dialog->present(settings_host_window());
+#else
+    set_message("Gamepad support is unavailable in this build.");
+#endif
+}
+
+void MapperBusGuiController::cancel_gamepad_assignment() {
+    if (gamepad_assignment_dialog_) {
+        const auto dialog = gamepad_assignment_dialog_;
+        dialog->close(nk::DialogResponse::Cancel);
+    }
+}
+
+void MapperBusGuiController::poll_gamepad_assignment() {
+#ifdef MAPPERBUS_HAVE_SDL3_GAMEPAD
+    if (!gamepad_assignment_ || !gamepad_assignment_dialog_)
+        return;
+    const auto now = std::chrono::steady_clock::now();
+    if (now - gamepad_assignment_last_poll_ < std::chrono::milliseconds(16))
+        return;
+    gamepad_assignment_last_poll_ = now;
+    gamepad_assignment_->poll();
+    const auto& status = gamepad_assignment_->status();
+    if (gamepad_assignment_status_->text() != status)
+        gamepad_assignment_status_->set_text(status);
+    for (int player = 0; player < 4; ++player) {
+        const auto text =
+            "Hori " + std::to_string(player + 1) + ": " + gamepad_assignment_->device_name(player);
+        if (gamepad_assignment_labels_[player]->text() != text)
+            gamepad_assignment_labels_[player]->set_text(text);
+    }
+    if (!gamepad_assignment_->ready())
+        return;
+    std::string save_error;
+    const auto commit = [this,
+                         &save_error](const std::array<platform::GamepadInputConfig, 4>& proposed) {
+        auto updated = configuration_;
+        for (int player = 0; player < 4; ++player)
+            updated.input.gamepad_profile(player + 2) = proposed[player];
+        if (auto saved = app::save_mapperbus_configuration(updated); !saved) {
+            save_error = "Could not save gamepad assignments: " + saved.error();
+            return false;
+        }
+        configuration_ = std::move(updated);
+        return true;
+    };
+    const auto dialog = gamepad_assignment_dialog_;
+    if (input_backend_->assign_four_hori_gamepads(gamepad_assignment_->assignments(), commit)) {
+        dialog->close(nk::DialogResponse::Accept);
+    } else {
+        dialog->close(nk::DialogResponse::Cancel);
+        const auto message = save_error.empty() ? "A controller changed before assignment. "
+                                                  "Existing assignments were kept; try again."
+                                                : save_error;
+        set_message(message);
+        if (!save_error.empty())
+            update_settings_save_status(message);
+    }
+#endif
+}
+
 void MapperBusGuiController::open_rebind_dialog(RebindDevice device, platform::InputAction button) {
     pending_rebind_ = PendingInputRebind{
         .device = device,
@@ -2839,6 +2968,13 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
             configure->ensure_accessible().set_description(
                 "Assign and enable Gamepads 1–4 for Hori 1–4. Keep bindings and deadzones.");
             setup_group->add(setup_row);
+            auto assign_by_button = nk::Button::create("Assign by Button…");
+            assign_by_button->set_sensitive(gamepad_support);
+            (void)assign_by_button->on_clicked().connect([this] { open_gamepad_assignment(); });
+            auto by_button_row =
+                pref_row("Player order", assign_by_button, "Press a button for each Hori player.");
+            assign_by_button->ensure_accessible().set_name("Assign Four Hori Gamepads by Button");
+            setup_group->add(by_button_row);
             page->append(setup_group);
         }
 
@@ -3396,6 +3532,7 @@ void MapperBusGuiController::open_settings_dialog() {
                 .action_name = "settings.close",
             });
             (void)settings_window_->on_close_requested().connect([this] {
+                cancel_gamepad_assignment();
                 if (rebind_dialog_) {
                     cancel_rebind_dialog();
                 }
@@ -3424,6 +3561,7 @@ void MapperBusGuiController::open_settings_dialog() {
                 if (settings_dialog_ != dialog) {
                     return;
                 }
+                cancel_gamepad_assignment();
                 settings_tabs_.reset();
                 settings_page_slot_.reset();
                 settings_footer_slot_.reset();
@@ -3441,6 +3579,10 @@ void MapperBusGuiController::open_settings_dialog() {
 }
 
 void MapperBusGuiController::close_settings() {
+    if (gamepad_assignment_dialog_) {
+        cancel_gamepad_assignment();
+        return;
+    }
     if (settings_window_) {
         settings_window_->request_close();
     } else if (settings_dialog_) {
@@ -3453,7 +3595,8 @@ nk::Window& MapperBusGuiController::settings_host_window() {
 }
 
 bool MapperBusGuiController::modal_dialog_presented() const {
-    return (settings_dialog_ && settings_dialog_->is_presented()) ||
+    return (gamepad_assignment_dialog_ && gamepad_assignment_dialog_->is_presented()) ||
+           (settings_dialog_ && settings_dialog_->is_presented()) ||
            (rebind_dialog_ && rebind_dialog_->is_presented()) ||
            (state_slot_dialog_ && state_slot_dialog_->is_presented()) ||
            (archive_dialog_ && archive_dialog_->is_presented()) ||
@@ -3461,6 +3604,8 @@ bool MapperBusGuiController::modal_dialog_presented() const {
 }
 
 void MapperBusGuiController::handle_menu_action(std::string_view action) {
+    if (gamepad_assignment_dialog_ && action != "file.quit")
+        return;
     if (((archive_dialog_ && archive_dialog_->is_presented()) ||
          (fds_dialog_ && fds_dialog_->is_presented())) &&
         action != "file.quit") {

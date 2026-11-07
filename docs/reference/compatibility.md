@@ -149,6 +149,8 @@ separate keyboard bindings or gamepad assignments. For four host gamepads, assig
 devices with **Input → Configure Four Gamepads**. This assigns indices **0–3**
 to those roles and enables them while keeping bindings. The fresh defaults
 before applying the preset are **2, 3, 4, 5**.
+Alternatively, use **Input → Assign by Button…** and press a button on each
+controller in Hori 1–4 order. This also works with identical controller models.
 Distinguishable controllers are remembered across reordered reconnections and
 restarts. If identical controllers require reassignment, choose **Preferred
 device → Use Selected Gamepad**; see [device identities](configuration.md).

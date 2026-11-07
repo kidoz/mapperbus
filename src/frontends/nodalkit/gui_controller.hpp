@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
@@ -27,6 +28,10 @@
 #include "frontends/nodalkit/gui_widgets.hpp"
 #include "frontends/nodalkit/nodalkit_input.hpp"
 #include "platform/video/upscaler.hpp"
+
+#ifdef MAPPERBUS_HAVE_SDL3_GAMEPAD
+#include "frontends/sdl3/gamepad_assignment.hpp"
+#endif
 
 namespace nk {
 class Headerbar;
@@ -117,6 +122,9 @@ class MapperBusGuiController {
     void close_rebind_dialog();
     void cancel_rebind_dialog();
     void poll_pending_rebind();
+    void open_gamepad_assignment();
+    void poll_gamepad_assignment();
+    void cancel_gamepad_assignment();
     void apply_keyboard_rebind(platform::InputAction button, nk::KeyCode key);
     void apply_gamepad_rebind(platform::InputAction button, platform::GamepadControl control);
     void apply_audio_settings_change(std::string message);
@@ -167,6 +175,14 @@ class MapperBusGuiController {
     std::shared_ptr<nk::Dialog> settings_dialog_;
     std::unique_ptr<nk::Window> settings_window_;
     std::shared_ptr<nk::Dialog> rebind_dialog_;
+    std::shared_ptr<nk::Dialog> gamepad_assignment_dialog_;
+    std::shared_ptr<nk::Label> gamepad_assignment_status_;
+    std::array<std::shared_ptr<nk::Label>, 4> gamepad_assignment_labels_{};
+#ifdef MAPPERBUS_HAVE_SDL3_GAMEPAD
+    std::unique_ptr<Sdl3GamepadAssignment> gamepad_assignment_;
+    bool resume_after_gamepad_assignment_ = false;
+    std::chrono::steady_clock::time_point gamepad_assignment_last_poll_{};
+#endif
     std::shared_ptr<nk::SegmentedControl> settings_tabs_;
     std::shared_ptr<ContentSlot> settings_page_slot_;
     std::shared_ptr<ContentSlot> settings_footer_slot_;

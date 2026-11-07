@@ -9,6 +9,9 @@ Versioning.
 
 ### Added
 
+- Hori four-controller assignment wizard using fresh button presses, duplicate
+  detection, disconnect recovery, and atomic save/application with safe Cancel.
+
 - Saved controller identities across reconnects and reordered startup in SDL3
   and GUI, with explicit reassignment for indistinguishable controllers.
 

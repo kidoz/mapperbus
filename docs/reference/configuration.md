@@ -138,6 +138,22 @@ bindings, deadzones, built-in profiles, and the startup controller mode. It save
 immediately and can be used before connecting devices. Other modes retain their
 usual per-profile controls. Reapplying deliberately replaces remembered identities
 with the current device order.
+
+**Assign by Button…** opens a wizard for Hori 1–4. Press a fresh button on each
+physical controller in the desired player order. Buttons already held when the
+wizard opens or a controller connects are ignored; release them and press again.
+The same controller cannot fill two roles, and simultaneous presses on different
+controllers require a retry. If a chosen controller disconnects, capture returns
+to its step and clears the later choices.
+
+The wizard pauses a running game and suppresses game input during capture. It
+applies and saves all four assignments together after every selected controller's
+buttons are released. **Cancel**, Escape, or closing Settings discards the pending
+choices; the prior pause state, bindings, deadzones, built-in profiles and startup
+mode are retained. A missing device or save failure prevents partial application.
+Identical models can be assigned by button for the current session; their usual
+identity limitations after reconnect/restart still apply. Physical testing is
+separate from the automated virtual-controller checks.
 Keyboard/gamepad settings, turbo phases and defaults remain independent for all
 six profiles. Every profile can bind the same shared microphone action.
 

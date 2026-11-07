@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <functional>
 #include <nk/platform/key_codes.h>
 #include <nk/platform/window.h>
 #include <optional>
@@ -93,6 +94,19 @@ class NodalKitPlayerInput {
         gamepad_config_.identity = {};
 #endif
     }
+
+#ifdef MAPPERBUS_HAVE_SDL3_GAMEPAD
+    bool prepare_gamepad_assignment() {
+        if (!gamepad_initialized_)
+            gamepad_initialized_ = SDL_InitSubSystem(SDL_INIT_GAMEPAD);
+        return gamepad_initialized_;
+    }
+    void commit_gamepad_assignment(Sdl3GamepadSelection& staged,
+                                   platform::GamepadInputConfig&& configuration) noexcept {
+        selection_.swap(staged);
+        gamepad_config_ = std::move(configuration);
+    }
+#endif
 
     bool consume_gamepad_assignment_changes() {
 #ifdef MAPPERBUS_HAVE_SDL3_GAMEPAD
@@ -526,6 +540,8 @@ class NodalKitInput : public platform::InputBackend {
                    NodalKitPlayerInput(window, profiles[5], 5)} {}
 
     void poll() override {
+        if (assignment_capture_)
+            return;
         for (auto& player : players_) {
             player.poll();
         }
@@ -536,11 +552,13 @@ class NodalKitInput : public platform::InputBackend {
     }
 
     bool is_action_pressed(int player, platform::InputAction action) const override {
-        return player >= 0 && player < platform::kInputProfileCount &&
+        return !assignment_capture_ && player >= 0 && player < platform::kInputProfileCount &&
                players_[player].is_action_pressed(action);
     }
 
     bool consume_gamepad_assignment_changes() {
+        if (assignment_capture_)
+            return false;
         bool changed = false;
         for (auto& player : players_)
             changed |= player.consume_gamepad_assignment_changes();
@@ -548,6 +566,8 @@ class NodalKitInput : public platform::InputBackend {
     }
 
     bool consume_gamepad_inventory_changes() {
+        if (assignment_capture_)
+            return false;
         bool changed = false;
         for (auto& player : players_)
             changed |= player.consume_gamepad_inventory_changes();
@@ -557,6 +577,52 @@ class NodalKitInput : public platform::InputBackend {
     bool should_quit() const override {
         return false;
     }
+
+    void set_assignment_capture(bool active) {
+        assignment_capture_ = active;
+    }
+
+#ifdef MAPPERBUS_HAVE_SDL3_GAMEPAD
+    // Stage every handle and config first. The callback may atomically save the
+    // proposal; rejecting it leaves all live assignments and bindings intact.
+    bool assign_four_hori_gamepads(
+        const std::array<SDL_JoystickID, 4>& chosen,
+        const std::function<bool(const std::array<platform::GamepadInputConfig, 4>&)>& confirm =
+            {}) {
+        int count = 0;
+        auto* ids = SDL_GetGamepads(&count);
+        if (!ids)
+            return false;
+        const std::vector<SDL_JoystickID> connected(ids, ids + count);
+        SDL_free(ids);
+        std::array<Sdl3GamepadSelection, 4> staged;
+        std::array<platform::GamepadInputConfig, 4> configurations;
+        for (int pad = 0; pad < 4; ++pad) {
+            const auto found = std::ranges::find(connected, chosen[pad]);
+            if (!chosen[pad] || found == connected.end() ||
+                std::ranges::find(std::span(chosen).first(pad), chosen[pad]) !=
+                    std::span(chosen).first(pad).end())
+                return false;
+            auto& player = players_[pad + 2];
+            if (!player.prepare_gamepad_assignment())
+                return false;
+            configurations[pad] = player.gamepad_config();
+            configurations[pad].enabled = true;
+            staged[pad].assign(configurations[pad], static_cast<int>(found - connected.begin()));
+            if (!staged[pad].gamepad() || SDL_GetGamepadID(staged[pad].gamepad()) != chosen[pad])
+                return false;
+        }
+        for (auto& selection : staged)
+            if (!SDL_GamepadConnected(selection.gamepad()))
+                return false;
+        if (confirm && !confirm(configurations))
+            return false;
+        for (int pad = 0; pad < 4; ++pad)
+            players_[pad + 2].commit_gamepad_assignment(staged[pad],
+                                                        std::move(configurations[pad]));
+        return true;
+    }
+#endif
 
     [[nodiscard]] NodalKitPlayerInput& player_input(int player) {
         return players_.at(player);
@@ -578,6 +644,7 @@ class NodalKitInput : public platform::InputBackend {
         return config;
     }
     std::array<NodalKitPlayerInput, platform::kInputProfileCount> players_;
+    bool assignment_capture_ = false;
 };
 
 } // namespace mapperbus::frontend

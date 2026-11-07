@@ -1,13 +1,116 @@
 #include <array>
 #include <catch2/catch_test_macros.hpp>
+#include <filesystem>
 #include <nk/platform/window.h>
 
 #include "../support/virtual_gamepads.hpp"
 #include "app/configuration.hpp"
 #include "frontends/nodalkit/nodalkit_input.hpp"
+#include "frontends/sdl3/gamepad_assignment.hpp"
 
 namespace mapperbus::frontend {
 namespace {
+
+TEST_CASE("Hori wizard cancels safely and commits all four assignments only after save succeeds",
+          "[gui][input][assignment]") {
+    tests::IdentityGamepads pads;
+    for (int pad = 0; pad < 4; ++pad)
+        pads.attach(pad, 0);
+    app::MapperBusConfiguration configuration;
+    configuration.input.configure_four_hori_gamepads();
+    configuration.input.gamepad.enabled = false;
+    configuration.input.player2_gamepad.enabled = false;
+    std::array<platform::GamepadInputConfig, 6> profiles;
+    for (int player = 0; player < 6; ++player) {
+        auto& config = configuration.input.gamepad_profile(player);
+        config.axis_deadzone = 15000 + player;
+        REQUIRE(platform::apply_gamepad_mapping(config, "a=west,b=north,microphone=rightshoulder"));
+        profiles[player] = config;
+    }
+    nk::Window window({.title = "Transactional gamepad assignment", .width = 600, .height = 300});
+    NodalKitInput input(window, profiles);
+    input.player_input(2).set_binding(platform::InputAction::A, nk::KeyCode::Z);
+    input.poll();
+    for (int player = 0; player < 6; ++player)
+        profiles[player] = input.player_input(player).gamepad_config();
+    const auto check_unchanged = [&] {
+        for (int player = 0; player < 6; ++player) {
+            const auto& actual = input.player_input(player).gamepad_config();
+            CHECK(actual.gamepad_index == profiles[player].gamepad_index);
+            CHECK(actual.identity == profiles[player].identity);
+            CHECK(actual.enabled == profiles[player].enabled);
+            CHECK(actual.axis_deadzone == profiles[player].axis_deadzone);
+            CHECK(actual.bindings == profiles[player].bindings);
+        }
+    };
+    REQUIRE(SDL_SetJoystickVirtualButton(pads.joysticks[0], SDL_GAMEPAD_BUTTON_WEST, true));
+    input.poll();
+    REQUIRE(input.is_button_pressed(2, core::Button::A));
+    input.set_assignment_capture(true);
+    CHECK_FALSE(input.is_button_pressed(2, core::Button::A));
+    REQUIRE(SDL_SetJoystickVirtualButton(pads.joysticks[0], SDL_GAMEPAD_BUTTON_WEST, false));
+    {
+        Sdl3GamepadAssignment cancelled;
+        for (int pad : {0, 1}) {
+            pads.press(pad, true);
+            cancelled.poll();
+            pads.press(pad, false);
+            cancelled.poll();
+        }
+        REQUIRE(cancelled.assigned_count() == 2);
+    }
+    check_unchanged(); // Discarding partial capture has no config or handle side effects.
+    const std::array chosen = {pads.ids[3], pads.ids[1], pads.ids[0], pads.ids[2]};
+    auto invalid = chosen;
+    invalid[3] = invalid[0];
+    bool save_called = false;
+    const auto reject_save = [&](const auto&) {
+        save_called = true;
+        return false;
+    };
+    CHECK_FALSE(input.assign_four_hori_gamepads(invalid, reject_save));
+    CHECK_FALSE(save_called);
+    CHECK_FALSE(input.assign_four_hori_gamepads(chosen, reject_save));
+    CHECK(save_called);
+    check_unchanged(); // Save rejection rolls back the entire proposal.
+    const auto path = std::filesystem::temp_directory_path() /
+                      ("mapperbus-wizard-" + std::to_string(SDL_GetTicksNS()) + ".conf");
+    const auto save = [&](const std::array<platform::GamepadInputConfig, 4>& proposed) {
+        for (int pad = 0; pad < 4; ++pad)
+            configuration.input.gamepad_profile(pad + 2) = proposed[pad];
+        return app::save_mapperbus_configuration_to_file(configuration, path).has_value();
+    };
+    REQUIRE(input.assign_four_hori_gamepads(chosen, save));
+    input.set_assignment_capture(false);
+    const auto restored = app::load_mapperbus_configuration_from_file(path);
+    for (int player = 0; player < 6; ++player) {
+        const auto& actual = input.player_input(player).gamepad_config();
+        CHECK(actual.axis_deadzone == profiles[player].axis_deadzone);
+        CHECK(actual.bindings == profiles[player].bindings);
+        if (player >= 2) {
+            CHECK(actual.enabled);
+            CHECK(actual.identity.ambiguous);
+            CHECK(restored.input.gamepad_profile(player).identity == actual.identity);
+            CHECK(restored.input.gamepad_profile(player).gamepad_index == actual.gamepad_index);
+        } else {
+            CHECK(actual.identity == profiles[player].identity);
+            CHECK(actual.gamepad_index == profiles[player].gamepad_index);
+            CHECK(actual.enabled == profiles[player].enabled);
+        }
+    }
+    CHECK(input.player_input(2).binding(platform::InputAction::A) == nk::KeyCode::Z);
+    constexpr std::array kPadForPlayer = {3, 1, 0, 2};
+    for (int active = 0; active < 4; ++active) {
+        for (int pad = 0; pad < 4; ++pad)
+            REQUIRE(SDL_SetJoystickVirtualButton(
+                pads.joysticks[pad], SDL_GAMEPAD_BUTTON_WEST, pad == active));
+        input.poll();
+        for (int player = 0; player < 4; ++player)
+            CHECK(input.is_button_pressed(player + 2, core::Button::A) ==
+                  (kPadForPlayer[player] == active));
+    }
+    std::filesystem::remove(path);
+}
 
 TEST_CASE(
     "NodalKit explains identical controllers and explicitly reassigns without resetting bindings",
