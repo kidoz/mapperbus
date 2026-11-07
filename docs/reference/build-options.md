@@ -26,7 +26,7 @@ shadercross path. It is evaluated when the SDL3 backend is enabled.
 | Core library | C++23 compiler and standard library; no external dependencies |
 | Application library and all frontends | libarchive ≥ 3.6.0, installed dependency or pinned 3.8.9-1 Meson wrap fallback (zlib/liblzma required) |
 | SDL3 frontend | SDL3 ≥ 3.4.0, installed dependency or Meson wrap fallback |
-| NodalKit GUI | Installed NodalKit ≥ 0.3.4 or bundled 0.3.4 fallback; bundled build requires Meson ≥ 1.11 |
+| NodalKit GUI | Installed NodalKit ≥ 0.4.0 or bundled 0.4.0 fallback; bundled build requires Meson ≥ 1.11 |
 | GUI audio and gamepads | SDL3 dependency probe in the GUI build, independent of `enable_sdl3` |
 | Tests | Catch2 v3 via `catch2-with-main`, installed dependency or wrap fallback |
 | Vulkan shaders | `glslangValidator` at build time; compatible Vulkan runtime and driver at execution |
