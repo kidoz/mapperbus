@@ -466,6 +466,10 @@ void Ppu::write_vram(Address addr, Byte value) {
 }
 
 Address Ppu::mirror_nametable_address(Address addr) const {
+    if (cartridge_ != nullptr) {
+        if (const auto mapped = cartridge_->nametable_address(addr))
+            return static_cast<Address>(*mapped % vram_.size());
+    }
     Address index = static_cast<Address>((addr - 0x2000) % 0x1000);
     Address table = index / 0x0400;
     Address offset = index % 0x0400;

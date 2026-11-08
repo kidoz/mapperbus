@@ -280,6 +280,8 @@ void MemoryBus::begin_cpu_cycle(Address addr) {
     }
     if (apu_ != nullptr)
         apu_->step(1);
+    if (cartridge_ != nullptr)
+        cartridge_->clock_cpu();
     if (cartridge_ != nullptr && cartridge_->has_expansion_audio())
         cartridge_->clock_audio();
     if (fds_ != nullptr && fds_->is_loaded())
@@ -427,7 +429,8 @@ Byte MemoryBus::read_expansion(Address addr) {
         if (!cartridge_->maps_expansion(addr)) {
             return open_bus_;
         }
-        return cartridge_->read_expansion(addr);
+        const auto mask = cartridge_->expansion_read_mask(addr);
+        return static_cast<Byte>((cartridge_->read_expansion(addr) & mask) | (open_bus_ & ~mask));
     }
     return open_bus_;
 }
@@ -437,7 +440,8 @@ Byte MemoryBus::read_prg(Address addr) {
         if (!cartridge_->maps_prg(addr)) {
             return open_bus_;
         }
-        return cartridge_->read_prg(addr);
+        const auto mask = cartridge_->prg_read_mask(addr);
+        return static_cast<Byte>((cartridge_->read_prg(addr) & mask) | (open_bus_ & ~mask));
     }
     return open_bus_;
 }

@@ -85,6 +85,20 @@ Result<INesHeader> parse_ines_header(std::span<const Byte> rom_data) {
     header.prg_rom_size = *prg_size;
     header.chr_rom_size = *chr_size;
     if (header.is_nes2) {
+        const auto ram_size = [](Byte shift) -> std::size_t {
+            return shift == 0 ? 0 : std::size_t{64} << shift;
+        };
+        header.prg_ram_size = ram_size(rom_data[10] & 15);
+        header.prg_nvram_size = ram_size(rom_data[10] >> 4);
+        header.chr_ram_size = ram_size(rom_data[11] & 15);
+        header.chr_nvram_size = ram_size(rom_data[11] >> 4);
+    } else {
+        const std::size_t ram_size = (rom_data[8] == 0 ? 1 : rom_data[8]) * std::size_t{8192};
+        header.prg_ram_size = header.has_battery ? 0 : ram_size;
+        header.prg_nvram_size = header.has_battery ? ram_size : 0;
+        header.chr_ram_size = *chr_size == 0 ? 8192 : 0;
+    }
+    if (header.is_nes2) {
         header.prg_rom_banks =
             (rom_data[9] & 0x0F) == 0x0F
                 ? 0

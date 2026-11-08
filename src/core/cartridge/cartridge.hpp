@@ -49,6 +49,9 @@ class Cartridge {
     void write_prg(Address addr, Byte value);
     void write_prg_cpu(Address addr, Byte value, bool consecutive);
     [[nodiscard]] bool maps_prg(Address addr) const;
+    [[nodiscard]] Byte prg_read_mask(Address addr) const {
+        return mapper_->prg_read_mask(addr);
+    }
     [[nodiscard]] Byte read_chr(Address addr);
     void write_chr(Address addr, Byte value);
 
@@ -64,6 +67,9 @@ class Cartridge {
     [[nodiscard]] MirrorMode mirror_mode() const {
         return mapper_->mirror_mode();
     }
+    [[nodiscard]] std::optional<Address> nametable_address(Address addr) const {
+        return mapper_->nametable_address(addr);
+    }
     [[nodiscard]] bool irq_pending() const {
         return mapper_->irq_pending();
     }
@@ -72,6 +78,9 @@ class Cartridge {
     }
     void clock_irq_counter() {
         mapper_->clock_irq_counter();
+    }
+    void clock_cpu() {
+        mapper_->clock_cpu();
     }
     void on_ppu_frame_start() {
         mapper_->on_ppu_frame_start();
@@ -87,6 +96,9 @@ class Cartridge {
     }
     [[nodiscard]] Byte read_expansion(Address addr) {
         return mapper_->read_expansion(addr);
+    }
+    [[nodiscard]] Byte expansion_read_mask(Address addr) const {
+        return mapper_->expansion_read_mask(addr);
     }
     [[nodiscard]] bool maps_expansion(Address addr) const {
         return mapper_->maps_expansion(addr);

@@ -22,6 +22,10 @@ struct INesHeader {
     bool is_nes2;
     std::size_t prg_rom_size = 0;
     std::size_t chr_rom_size = 0;
+    std::size_t prg_ram_size = 0;
+    std::size_t prg_nvram_size = 0;
+    std::size_t chr_ram_size = 0;
+    std::size_t chr_nvram_size = 0;
 };
 
 Result<INesHeader> parse_ines_header(std::span<const Byte> rom_data);
