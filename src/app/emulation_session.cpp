@@ -68,7 +68,8 @@ core::Result<void> EmulationSession::load_rom(const std::string& rom_path) {
 }
 
 core::Result<void> EmulationSession::open_rom(const std::string& rom_path,
-                                              std::string_view member) {
+                                              std::string_view member,
+                                              const std::string& dcs_option_path) {
     if (!initialized_) {
         auto init_result = initialize();
         if (!init_result) {
@@ -80,7 +81,8 @@ core::Result<void> EmulationSession::open_rom(const std::string& rom_path,
         if (auto saved = flush_disk_changes(); !saved)
             return saved;
     }
-    auto result = load_rom_source(*emulator_, rom_path, member, fds_bios_path_);
+    auto result =
+        load_rom_source(*emulator_, rom_path, member, fds_bios_path_, {}, {}, dcs_option_path);
     if (!result) {
         return std::unexpected(result.error());
     }

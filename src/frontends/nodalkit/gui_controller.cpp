@@ -1288,7 +1288,9 @@ void MapperBusGuiController::finish_startup(app::LoadedConfiguration loaded, boo
         set_message("No saved settings found. Using defaults.");
     focus_game_surface();
     if (auto request = std::exchange(initial_rom_request_, {}))
-        attempt_open(std::move(request->first), std::move(request->second));
+        attempt_open(std::move(request->path),
+                     std::move(request->member),
+                     std::move(request->dcs_option_path));
 }
 
 bool MapperBusGuiController::configure_session() {
@@ -1346,9 +1348,10 @@ bool MapperBusGuiController::configure_session() {
     return replaced_reserved_binding;
 }
 
-void MapperBusGuiController::open_initial_rom(std::string_view rom_path) {
+void MapperBusGuiController::open_initial_rom(std::string_view rom_path,
+                                              std::string_view dcs_option_path) {
     if (!rom_path.empty()) {
-        attempt_open(std::string(rom_path));
+        attempt_open(std::string(rom_path), {}, std::string(dcs_option_path));
     }
 }
 
@@ -1968,12 +1971,16 @@ void MapperBusGuiController::browse_for_rom(bool recovering) {
         });
 }
 
-void MapperBusGuiController::attempt_open(std::string rom_path, std::string member) {
+void MapperBusGuiController::attempt_open(std::string rom_path,
+                                          std::string member,
+                                          std::string dcs_option_path) {
     if (close_authorized_)
         return;
     if (!startup_ready_) {
         if (!rom_path.empty()) {
-            initial_rom_request_ = std::pair{std::move(rom_path), std::move(member)};
+            initial_rom_request_ = InitialRomRequest{.path = std::move(rom_path),
+                                                     .member = std::move(member),
+                                                     .dcs_option_path = std::move(dcs_option_path)};
             show_startup_view();
         }
         return;
@@ -2001,6 +2008,7 @@ void MapperBusGuiController::attempt_open(std::string rom_path, std::string memb
         .audio_settings = session_->audio_settings(),
         .state_storage = configuration_.save_states,
         .persistence_directory = {},
+        .dcs_option_path = std::move(dcs_option_path),
     };
     if (session_->has_cartridge()) {
         // Save before reading replacement persistence, including reopening the same game.
@@ -2083,13 +2091,14 @@ void MapperBusGuiController::abandon_rom_load(std::string message) {
 
 void MapperBusGuiController::show_rom_load_error(std::string error,
                                                  std::optional<std::string> bios_member) {
-    if (close_intent_) {
+    if (close_intent_ || !loading_request_) {
         abandon_rom_load("Failed to open ROM: " + error);
         return;
     }
     failed_rom_load_ = std::make_shared<FailedRomLoad>(FailedRomLoad{
         .path = loading_request_->path,
         .member = bios_member.value_or(loading_request_->member),
+        .dcs_option_path = loading_request_->dcs_option_path,
         .error = std::move(error),
         .chooser_error = {},
         .needs_bios = bios_member.has_value(),
@@ -2141,7 +2150,7 @@ void MapperBusGuiController::present_rom_load_error() {
                         dismiss_rom_load_error();
                         if (response == nk::DialogResponse::Accept) {
                             // Recheck outgoing persistence and use current BIOS/settings.
-                            attempt_open(failure->path, failure->member);
+                            attempt_open(failure->path, failure->member, failure->dcs_option_path);
                         } else {
                             set_message(session_->has_cartridge() ? "Kept current game."
                                                                   : "Opening ROM cancelled.");
@@ -2232,7 +2241,7 @@ void MapperBusGuiController::poll_recovery_bios() {
                     if (failed_rom_load_ != failure || close_intent_ || close_authorized_)
                         return;
                     dismiss_rom_load_error();
-                    attempt_open(failure->path, failure->member);
+                    attempt_open(failure->path, failure->member, failure->dcs_option_path);
                 },
                 "mapperbus.bios-retry");
         },
@@ -2409,17 +2418,21 @@ void MapperBusGuiController::poll_rom_load() {
     }
     auto path = media.path;
     auto member = media.member;
+    const bool dcs_pair = loading_request_ && !loading_request_->dcs_option_path.empty();
     session_->adopt_rom(std::move(media));
     loading_request_.reset();
     dismiss_rom_loading();
-    finish_rom_open(std::move(path), std::move(member));
+    finish_rom_open(path, member, dcs_pair);
 }
 
-void MapperBusGuiController::finish_rom_open(std::string rom_path, std::string member) {
+void MapperBusGuiController::finish_rom_open(const std::string& rom_path,
+                                             const std::string& member,
+                                             bool dcs_pair) {
     input_backend_->set_gamepad_assignments(
         app::gamepad_assignments_for_game(configuration_, session_->game_identity()));
     active_state_slot_ = app::selected_state_slot(configuration_, session_->game_identity());
-    touch_recent_rom(configuration_, rom_path, session_->current_rom_member());
+    if (!dcs_pair)
+        touch_recent_rom(configuration_, rom_path, session_->current_rom_member());
     save_configuration_state();
     detected_region_ = actions_->snapshot().region;
     app::apply_controller_hardware(
@@ -2431,7 +2444,8 @@ void MapperBusGuiController::finish_rom_open(std::string rom_path, std::string m
     frame_accumulator_ = std::chrono::nanoseconds{0};
     last_tick_time_ = std::chrono::steady_clock::now();
     refresh_preview();
-    set_message("Loaded " + title_for_display(member.empty() ? rom_path : member) + ".");
+    set_message("Loaded " + title_for_display(member.empty() ? rom_path : member) +
+                (dcs_pair ? " with DCS option ROM." : "."));
     refresh_ui();
     focus_game_surface();
 }

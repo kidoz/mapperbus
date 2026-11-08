@@ -3,6 +3,7 @@
 #include <archive.h>
 #include <archive_entry.h>
 #include <array>
+#include <bit>
 #include <cctype>
 #include <memory>
 #include <set>
@@ -244,22 +245,55 @@ core::Result<std::vector<core::Byte>> read_fds_bios(const std::string& path) {
     return bios;
 }
 
+core::Result<std::vector<core::Byte>> read_dcs_option_rom(const std::string& path) {
+    auto data =
+        core::read_binary_file_capped(path, core::kMaxDcsOptionBytes + 16U, "DCS option ROM");
+    if (!data)
+        return std::unexpected(data.error());
+    if (data->size() % 0x4000U != 0U && data->size() >= 4U && (*data)[0U] == 'N' &&
+        (*data)[1U] == 'E' && (*data)[2U] == 'S' && (*data)[3U] == 0x1AU) {
+        auto header = core::parse_ines_header(*data);
+        if (!header)
+            return std::unexpected("Invalid DCS option image: " + header.error());
+        if (header->has_trainer || header->chr_rom_size != 0U ||
+            header->prg_rom_size != data->size() - 16U)
+            return std::unexpected("DCS option image must contain only its header and PRG ROM");
+        data->erase(data->begin(), data->begin() + 16U);
+    }
+    if (data->size() < 0x4000U || data->size() > core::kMaxDcsOptionBytes ||
+        !std::has_single_bit(data->size()))
+        return std::unexpected("DCS option ROM must be 16, 32, 64, or 128 KiB of PRG data");
+    return data;
+}
+
 core::Result<std::string> load_rom_source(core::Emulator& emulator,
                                           const std::string& path,
                                           std::string_view member,
                                           const std::string& fds_bios_path,
                                           const std::filesystem::path& persistence_directory,
-                                          const RomReadControl& control) {
+                                          const RomReadControl& control,
+                                          const std::string& dcs_option_path) {
     if (control.stop.stop_requested())
         return cancelled_error();
     const auto storage =
         persistence_directory.empty() ? mapperbus_data_directory() : persistence_directory;
+    std::vector<core::Byte> option;
+    if (!dcs_option_path.empty()) {
+        auto read = read_dcs_option_rom(dcs_option_path);
+        if (control.stop.stop_requested())
+            return cancelled_error();
+        if (!read)
+            return std::unexpected(read.error());
+        option = std::move(*read);
+    }
     if (!is_rom_archive(path)) {
         if (!member.empty()) {
             return std::unexpected("A ROM member can only be selected in a .zip or .7z archive");
         }
         core::Result<void> loaded;
         if (lower_extension(path) == ".fds") {
+            if (!option.empty())
+                return std::unexpected("DCS option ROM cannot be attached to an FDS disk");
             auto disk = core::read_binary_file_capped(
                 path, core::Fds::kMaxDiskImageBytes + 16, "FDS disk image");
             if (control.stop.stop_requested())
@@ -268,7 +302,7 @@ core::Result<std::string> load_rom_source(core::Emulator& emulator,
                 return std::unexpected(disk.error());
             loaded = load_fds_source(emulator, *disk, fds_bios_path, storage, control);
         } else {
-            auto cartridge = core::Cartridge::from_file(path);
+            auto cartridge = core::Cartridge::from_file(path, option);
             if (control.stop.stop_requested())
                 return cancelled_error();
             if (!cartridge)
@@ -308,6 +342,8 @@ core::Result<std::string> load_rom_source(core::Emulator& emulator,
         return std::unexpected("ROM archive member not found: " + selected);
     }
     if (lower_extension(selected) == ".fds") {
+        if (!option.empty())
+            return std::unexpected("DCS option ROM cannot be attached to an FDS disk");
         auto loaded = load_fds_source(emulator, contents->data, fds_bios_path, storage, control);
         if (!loaded)
             return std::unexpected(loaded.error());
@@ -315,14 +351,14 @@ core::Result<std::string> load_rom_source(core::Emulator& emulator,
     }
     if (control.stop.stop_requested())
         return cancelled_error();
-    auto cartridge = core::Cartridge::from_data(contents->data, selected);
+    auto cartridge = core::Cartridge::from_data(contents->data, selected, option);
     if (control.stop.stop_requested())
         return cancelled_error();
     if (!cartridge) {
         return std::unexpected(cartridge.error());
     }
     const auto battery_path =
-        storage / "battery" / (core::sha256_hex(cartridge->content_hash()) + ".sav");
+        storage / "battery" / (core::sha256_hex(cartridge->base_content_hash()) + ".sav");
     if (cartridge->has_battery()) {
         auto created = ensure_state_directory(battery_path.parent_path());
         if (!created) {

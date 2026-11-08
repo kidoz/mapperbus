@@ -15,7 +15,9 @@ class App {
         const core::AudioSettings& audio_settings = {});
     ~App();
 
-    core::Result<void> initialize(const std::string& rom_path, std::string_view member = {});
+    core::Result<void> initialize(const std::string& rom_path,
+                                  std::string_view member = {},
+                                  const std::string& dcs_option_path = {});
     void run(const std::function<void(EmulationSession&)>& after_tick = {});
 
     core::Emulator& emulator() {

@@ -51,6 +51,13 @@ class Mapper {
     // Immutable ROM data is never serialized.
     virtual void save_state(StateWriter&) const {}
     virtual void load_state(StateReader&) {}
+    virtual void load_state_version(StateReader& reader, std::uint32_t /*version*/) {
+        load_state(reader);
+    }
+    /// Configure immutable option media before installing the cartridge.
+    virtual Result<void> configure_dcs_option_rom(std::span<const Byte> /*data*/) {
+        return std::unexpected("DCS option ROM requires NES 2.0 mapper 68 submapper 1");
+    }
 
     // Battery-backed PRG-RAM ($6000-$7FFF). Mappers without persistent RAM
     // return an empty span; the cartridge only persists this when the iNES

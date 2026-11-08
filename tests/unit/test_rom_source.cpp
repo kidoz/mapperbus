@@ -15,6 +15,7 @@
 #include <thread>
 #include <vector>
 
+#include "../support/dcs_rom.hpp"
 #include "../support/fds_image.hpp"
 #include "../support/rom_archive.hpp"
 #include "app/async_fds_bios_validation.hpp"
@@ -350,6 +351,117 @@ TEST_CASE("Archived battery saves are isolated by ROM content", "[app][archive]"
     CHECK(emulator.read_cpu(0x6000) == 11);
     CHECK_FALSE(std::filesystem::exists(fixture.root / "games.sav"));
     CHECK_FALSE(std::filesystem::exists(fixture.root / "first.nes"));
+}
+
+TEST_CASE("DCS source preparation loads raw and headered options with transactional failures",
+          "[rom-source][dcs]") {
+    ArchiveFixture fixture;
+    const auto base = fixture.root / "base.nes";
+    const auto option = fixture.root / "option.bin";
+    const auto wrapped = fixture.root / "option.nes";
+    const auto archive = fixture.root / "base.zip";
+    const auto image = mapperbus::tests::make_dcs_base_rom();
+    const std::vector<Byte> chip(0x4000U, 0x5AU);
+    REQUIRE(core::write_binary_file_atomic(base.string(), image, "DCS base"));
+    REQUIRE(core::write_binary_file_atomic(option.string(), chip, "DCS option"));
+    std::vector<Byte> headered(16U + chip.size(), 0U);
+    const std::array<Byte, 6U> header{'N', 'E', 'S', 0x1AU, 1U, 0U};
+    std::ranges::copy(header, headered.begin());
+    std::ranges::copy(chip, headered.begin() + 16U);
+    REQUIRE(core::write_binary_file_atomic(wrapped.string(), headered, "DCS option"));
+    write_archive(archive, {{"base.nes", image}});
+    core::Emulator emulator;
+    REQUIRE(load_rom_source(emulator, base.string(), {}, {}, fixture.root, {}, option.string()));
+    emulator.reset();
+    for (unsigned i = 0U; i < 3U; ++i)
+        emulator.step_instruction();
+    REQUIRE(emulator.read_cpu(0x8000U) == 0x5AU);
+    const auto identity = emulator.content_hash();
+    const auto before = emulator.save_state();
+    REQUIRE_FALSE(load_rom_source(emulator,
+                                  base.string(),
+                                  {},
+                                  {},
+                                  fixture.root,
+                                  {},
+                                  (fixture.root / "missing.bin").string()));
+    REQUIRE(emulator.save_state() == before);
+    REQUIRE(core::write_binary_file_atomic(option.string(), std::vector<Byte>(1U), "bad option"));
+    REQUIRE_FALSE(
+        load_rom_source(emulator, base.string(), {}, {}, fixture.root, {}, option.string()));
+    REQUIRE(emulator.save_state() == before);
+    REQUIRE(load_rom_source(
+        emulator, archive.string(), "base.nes", {}, fixture.root, {}, wrapped.string()));
+    REQUIRE(emulator.content_hash() == identity);
+    RomLoadRequest request;
+    request.path = archive.string();
+    request.member = "base.nes";
+    request.dcs_option_path = wrapped.string();
+    request.persistence_directory = fixture.root;
+    request.state_storage.directory = fixture.root / "states";
+    auto prepared = prepare_rom(request);
+    REQUIRE(prepared);
+    REQUIRE(prepared->emulator);
+    REQUIRE(prepared->emulator->content_hash() == identity);
+    for (unsigned i = 0U; i < 3U; ++i)
+        prepared->emulator->step_instruction();
+    REQUIRE(prepared->emulator->read_cpu(0x8000U) == 0x5AU);
+    std::stop_source cancelled;
+    cancelled.request_stop();
+    REQUIRE_FALSE(prepare_rom(request, cancelled.get_token()));
+    const auto ordinary = fixture.root / "ordinary.nes";
+    REQUIRE(core::write_binary_file_atomic(ordinary.string(), make_rom(), "ordinary ROM"));
+    REQUIRE_FALSE(
+        load_rom_source(emulator, ordinary.string(), {}, {}, fixture.root, {}, wrapped.string()));
+    REQUIRE(emulator.content_hash() == identity);
+    headered[5U] = 1U;
+    REQUIRE(core::write_binary_file_atomic(option.string(), headered, "CHR option"));
+    REQUIRE_FALSE(read_dcs_option_rom(option.string()));
+    std::vector<Byte> magic_chip(0x4000U, 0U);
+    std::ranges::copy(header, magic_chip.begin()); // A raw ROM may start with NES magic.
+    REQUIRE(core::write_binary_file_atomic(option.string(), magic_chip, "raw option"));
+    auto raw = read_dcs_option_rom(option.string());
+    REQUIRE(raw);
+    REQUIRE(*raw == magic_chip);
+}
+
+TEST_CASE("Archived DCS pairs share the base cartridge battery file",
+          "[rom-source][dcs][battery]") {
+    ArchiveFixture fixture;
+    auto image = mapperbus::tests::make_dcs_base_rom();
+    image[6U] |= 2U;
+    image[10U] = 0x70U; // 8 KiB NVRAM.
+    const std::array<Byte, 8U> program = {0xA9U, 0x18U, 0x8DU, 0x00U, 0xF0U, 0x4CU, 0x05U, 0xE0U};
+    std::ranges::copy(program, image.begin() + 16U + 0x1E000U);
+    const auto option_path = fixture.root / "option.bin";
+    const auto archive = fixture.root / "base.zip";
+    const std::vector<Byte> option(0x4000U, 0x5AU);
+    REQUIRE(core::write_binary_file_atomic(option_path.string(), option, "DCS option"));
+    write_archive(archive, {{"base.nes", image}});
+    auto base = core::Cartridge::from_data(image);
+    REQUIRE(base);
+    auto pair = core::Cartridge::from_data(image, {}, option);
+    REQUIRE(pair);
+    REQUIRE(base->content_hash() == pair->base_content_hash());
+    REQUIRE(base->content_hash() != pair->content_hash());
+    const auto directory = fixture.root / "battery";
+    std::filesystem::create_directories(directory);
+    const auto save = directory / (core::sha256_hex(base->content_hash()) + ".sav");
+    const auto wrong = directory / (core::sha256_hex(pair->content_hash()) + ".sav");
+    const std::vector<Byte> battery(0x2000U, 0x33U);
+    REQUIRE(core::write_binary_file_atomic(save.string(), battery, "battery"));
+    core::Emulator emulator;
+    REQUIRE(load_rom_source(
+        emulator, archive.string(), "base.nes", {}, fixture.root, {}, option_path.string()));
+    emulator.reset();
+    emulator.step_instruction();
+    emulator.step_instruction();
+    REQUIRE(emulator.read_cpu(0x6000U) == 0x33U);
+    emulator.flush_battery_ram();
+    auto persisted = core::read_binary_file_capped(save.string(), 0x2000U, "battery");
+    REQUIRE(persisted);
+    REQUIRE(*persisted == battery);
+    REQUIRE_FALSE(std::filesystem::exists(wrong));
 }
 
 } // namespace mapperbus::app

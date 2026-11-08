@@ -1,10 +1,25 @@
 #include "core/mappers/sunsoft34.hpp"
 
 #include <algorithm>
+#include <bit>
 
 #include "core/state/state.hpp"
 
 namespace mapperbus::core {
+namespace {
+// The published interval is 107516..107575 M2 cycles; 1024*105 is inferred.
+constexpr std::uint32_t kOptionCycles = 107520U;
+} // namespace
+
+Result<void> Sunsoft34::configure_dcs_option_rom(std::span<const Byte> data) {
+    if (!dcs_)
+        return std::unexpected("DCS option ROM requires NES 2.0 mapper 68 submapper 1");
+    if (data.size() < 0x4000U || data.size() > 0x20000U || !std::has_single_bit(data.size()))
+        return std::unexpected("DCS option ROM must be 16, 32, 64, or 128 KiB of PRG data");
+    option_rom_.assign(data.begin(), data.end());
+    option_cycles_ = 0U;
+    return {};
+}
 
 // NESdev mapper 67 r23676, mapper 68 r23720, and NES 2.0 submapper 68:1.
 Sunsoft34::Sunsoft34(const INesHeader& header, std::vector<Byte> prg, std::vector<Byte> chr)
@@ -28,6 +43,7 @@ void Sunsoft34::reset() {
     irq_low_next_ = 0U;
     irq_enabled_ = 0U;
     irq_pending_ = 0U;
+    option_cycles_ = 0U;
 }
 
 bool Sunsoft34::ram_enabled() const {
@@ -41,14 +57,21 @@ bool Sunsoft34::maps_prg(Address addr) const {
 Byte Sunsoft34::prg_read_mask(Address addr) const {
     if (addr < 0x8000U)
         return addr >= 0x6000U && ram_enabled() ? 0xFFU : 0U;
-    return dcs_ && addr < 0xC000U && (prg_control_ & 8U) == 0U ? 0U : 0xFFU;
+    return dcs_ && addr < 0xC000U && (prg_control_ & 8U) == 0U &&
+                   (option_rom_.empty() || option_cycles_ == 0U)
+               ? 0U
+               : 0xFFU;
 }
 
 Byte Sunsoft34::read_prg(Address addr) {
     if (addr < 0x8000U)
         return addr >= 0x6000U && ram_enabled() ? prg_ram_[(addr & 0x1FFFU) % prg_ram_size_] : 0U;
     if (prg_read_mask(addr) == 0U)
-        return 0U; // Empty DCS option slot drives no CPU data lines.
+        return 0U; // Absent or expired option media drives no CPU data lines.
+    if (dcs_ && addr < 0xC000U && (prg_control_ & 8U) == 0U) {
+        const auto bank = static_cast<std::size_t>(prg_control_ & 7U);
+        return option_rom_[(bank * 0x4000U + (addr & 0x3FFFU)) % option_rom_.size()];
+    }
     const std::size_t bank =
         addr < 0xC000U ? prg_control_ & (dcs_ ? 7U : 15U) : prg_rom_.size() / 0x4000U - 1U;
     return prg_rom_[(bank * 0x4000U + (addr & 0x3FFFU)) % prg_rom_.size()];
@@ -59,7 +82,8 @@ void Sunsoft34::write_prg(Address address, Byte value) {
     if (addr < 0x8000U) {
         if (addr >= 0x6000U && ram_enabled())
             prg_ram_[(addr & 0x1FFFU) % prg_ram_size_] = value;
-        // A licensing strobe has no observable effect without an option ROM.
+        if (addr >= 0x6000U && dcs_ && (prg_control_ & 0x10U) == 0U)
+            option_cycles_ = kOptionCycles;
         return;
     }
     if (sunsoft4_) {
@@ -158,6 +182,8 @@ bool Sunsoft34::write_nametable(Address /*addr*/, Byte /*value*/) {
 }
 
 void Sunsoft34::clock_cpu() {
+    if (dcs_ && option_cycles_ != 0U)
+        --option_cycles_;
     if (!sunsoft4_ && irq_enabled_ != 0U) {
         const bool underflow = irq_counter_ == 0U;
         --irq_counter_;
@@ -193,9 +219,17 @@ void Sunsoft34::save_state(StateWriter& writer) const {
     writer.write(irq_pending_);
     writer.write_array(prg_ram_);
     writer.write_array(chr_ram_);
+    if (dcs_)
+        writer.write(option_cycles_);
 }
 
 void Sunsoft34::load_state(StateReader& reader) {
+    load_state_version(reader, 20U);
+}
+
+void Sunsoft34::load_state_version(StateReader& reader, std::uint32_t version) {
+    if (dcs_ && !option_rom_.empty() && version < 20U)
+        reader.fail(); // Older machines never recorded option-ROM state or identity.
     reader.read(prg_control_);
     reader.read_array(chr_banks_);
     reader.read_array(nametable_banks_);
@@ -206,8 +240,10 @@ void Sunsoft34::load_state(StateReader& reader) {
     reader.read(irq_pending_);
     reader.read_array(prg_ram_);
     reader.read_array(chr_ram_);
+    option_cycles_ = dcs_ && version >= 20U ? reader.read<std::uint32_t>() : 0U;
     if (!reader.ok() || prg_control_ > 0x1FU || irq_low_next_ > 1U || irq_enabled_ > 1U ||
-        irq_pending_ > 1U || (nametable_control_ & ~(sunsoft4_ ? 0x13U : 3U)) != 0U ||
+        option_cycles_ > kOptionCycles || irq_pending_ > 1U ||
+        (nametable_control_ & ~(sunsoft4_ ? 0x13U : 3U)) != 0U ||
         std::ranges::any_of(chr_banks_,
                             [this](Byte bank) { return bank > (sunsoft4_ ? 127U : 63U); }) ||
         std::ranges::any_of(nametable_banks_, [](Byte bank) { return bank > 127U; }) ||

@@ -13,6 +13,7 @@
 int main(int argc, char* argv[]) {
     std::string path;
     std::string member;
+    std::string dcs_option;
     const auto configuration = mapperbus::app::load_mapperbus_configuration();
     auto bios = configuration.fds_bios_path;
     mapperbus::app::ControllerHardwareOverrides controller_overrides;
@@ -20,17 +21,23 @@ int main(int argc, char* argv[]) {
     int frames = 60;
     for (int index = 1; index < argc; ++index) {
         const std::string_view argument(argv[index]);
-        if ((argument == "--entry" || argument == "--fds-bios" || argument == "--frames" ||
-             argument == "--region" || argument == "--controller-timing" ||
-             argument == "--controller-wiring" || argument == "--controller-mode" ||
-             argument == "--expansion-controllers") &&
+        if ((argument == "--entry" || argument == "--fds-bios" || argument == "--dcs-option" ||
+             argument == "--frames" || argument == "--region" ||
+             argument == "--controller-timing" || argument == "--controller-wiring" ||
+             argument == "--controller-mode" || argument == "--expansion-controllers") &&
             index + 1 < argc) {
             const std::string_view value(argv[++index]);
             if (argument == "--entry")
                 member = value;
             else if (argument == "--fds-bios")
                 bios = value;
-            else if (argument == "--region") {
+            else if (argument == "--dcs-option") {
+                if (value.empty() || value.starts_with("--")) {
+                    mapperbus::core::logger::error("--dcs-option requires a ROM path");
+                    return EXIT_FAILURE;
+                }
+                dcs_option = value;
+            } else if (argument == "--region") {
                 region_override = mapperbus::app::parse_region_override(value);
                 if (!region_override) {
                     mapperbus::core::logger::error("--region requires ntsc, pal, or hybrid");
@@ -86,17 +93,18 @@ int main(int argc, char* argv[]) {
         }
     }
     if (path.empty()) {
-        mapperbus::core::logger::error("Usage: mapperbus-cli <rom-file|archive> [--entry NAME] "
-                                       "[--fds-bios PATH] [--frames N] [--region ntsc|pal|hybrid] "
-                                       "[--controller-timing nes-av-famicom|rf-famicom] "
-                                       "[--controller-wiring nes|rf-famicom] [--controller-mode "
-                                       "standard|four-score|hori-4-player] "
-                                       "[--expansion-controllers none|1|2|both]");
+        mapperbus::core::logger::error(
+            "Usage: mapperbus-cli <rom-file|archive> [--entry NAME] "
+            "[--fds-bios PATH] [--dcs-option PATH] [--frames N] [--region ntsc|pal|hybrid] "
+            "[--controller-timing nes-av-famicom|rf-famicom] "
+            "[--controller-wiring nes|rf-famicom] [--controller-mode "
+            "standard|four-score|hori-4-player] "
+            "[--expansion-controllers none|1|2|both]");
         return EXIT_FAILURE;
     }
     mapperbus::core::register_builtin_mappers();
     mapperbus::core::Emulator emulator;
-    auto result = mapperbus::app::load_rom_source(emulator, path, member, bios);
+    auto result = mapperbus::app::load_rom_source(emulator, path, member, bios, {}, {}, dcs_option);
     if (!result) {
         mapperbus::core::logger::error("{}", result.error());
         return EXIT_FAILURE;

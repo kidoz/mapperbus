@@ -8,7 +8,7 @@
 
 namespace mapperbus::core {
 
-/// Sunsoft-3 (67) and Sunsoft-4 (68), including the DCS base with an empty slot.
+/// Sunsoft-3 (67) and Sunsoft-4 (68), including DCS option ROM and licensing.
 class Sunsoft34 final : public Mapper {
   public:
     Sunsoft34(const INesHeader& header, std::vector<Byte> prg, std::vector<Byte> chr);
@@ -26,6 +26,8 @@ class Sunsoft34 final : public Mapper {
     bool irq_pending() const override;
     void save_state(StateWriter& writer) const override;
     void load_state(StateReader& reader) override;
+    void load_state_version(StateReader& reader, std::uint32_t version) override;
+    Result<void> configure_dcs_option_rom(std::span<const Byte> data) override;
     std::span<const Byte> battery_ram() const override;
     void set_battery_ram(std::span<const Byte> data) override;
 
@@ -34,6 +36,7 @@ class Sunsoft34 final : public Mapper {
     [[nodiscard]] std::size_t chr_offset(Address addr) const;
     std::vector<Byte> prg_rom_;
     std::vector<Byte> chr_rom_;
+    std::vector<Byte> option_rom_;
     std::array<Byte, 0x2000> prg_ram_{};
     std::array<Byte, 0x2000> chr_ram_{};
     const bool sunsoft4_;
@@ -50,6 +53,7 @@ class Sunsoft34 final : public Mapper {
     Byte irq_low_next_ = 0U;
     Byte irq_enabled_ = 0U;
     Byte irq_pending_ = 0U;
+    std::uint32_t option_cycles_ = 0U;
 };
 
 } // namespace mapperbus::core

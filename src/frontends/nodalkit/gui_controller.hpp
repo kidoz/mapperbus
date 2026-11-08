@@ -74,7 +74,7 @@ class MapperBusGuiController {
         app::AsyncRomLoader::CancellablePrepare rom_prepare = app::prepare_rom,
         app::FdsBiosRead bios_read = app::read_fds_bios);
 
-    void open_initial_rom(std::string_view rom_path);
+    void open_initial_rom(std::string_view rom_path, std::string_view dcs_option_path = {});
 
     enum class PreviewScaleOption {
         PixelPerfect,
@@ -125,7 +125,9 @@ class MapperBusGuiController {
     void update_native_menu();
     void update_native_toolbar();
     void browse_for_rom(bool recovering = false);
-    void attempt_open(std::string rom_path, std::string member = {});
+    void attempt_open(std::string rom_path,
+                      std::string member = {},
+                      std::string dcs_option_path = {});
     void start_rom_read();
     void poll_rom_load();
     void present_rom_loading(bool saving);
@@ -140,7 +142,9 @@ class MapperBusGuiController {
     void poll_settings_bios();
     void cancel_settings_bios();
     void update_settings_bios_status(std::string text);
-    void finish_rom_open(std::string rom_path, std::string member);
+    void finish_rom_open(const std::string& rom_path,
+                         const std::string& member,
+                         bool dcs_pair = false);
     void choose_archive_rom(std::string rom_path, std::vector<std::string> members);
     void open_disk_controls();
     void choose_disk_export();
@@ -239,7 +243,12 @@ class MapperBusGuiController {
     bool startup_loading_ = false;
     bool configuration_saves_enabled_ = true;
     std::string startup_error_;
-    std::optional<std::pair<std::string, std::string>> initial_rom_request_;
+    struct InitialRomRequest {
+        std::string path;
+        std::string member;
+        std::string dcs_option_path;
+    };
+    std::optional<InitialRomRequest> initial_rom_request_;
     app::AsyncConfigurationSave configuration_saver_;
     struct PendingConfigurationChange {
         std::uint64_t revision;
@@ -271,6 +280,7 @@ class MapperBusGuiController {
     struct FailedRomLoad {
         std::string path;
         std::string member;
+        std::string dcs_option_path;
         std::string error;
         std::string chooser_error;
         bool choosing_file = false;

@@ -6,18 +6,39 @@
 #include <windows.h>
 #endif
 
+#include <cstdlib>
 #include <nk/platform/application.h>
 #include <nk/platform/window.h>
 #include <nk/style/theme_selection.h>
+#include <string_view>
 
 #if defined(MAPPERBUS_HAVE_SDL3_AUDIO) || defined(MAPPERBUS_HAVE_SDL3_GAMEPAD)
 #include <SDL3/SDL.h>
 #endif
 
+#include "core/logger.hpp"
 #include "core/mappers/mapper_registry.hpp"
 #include "frontends/nodalkit/gui_controller.hpp"
 
-int main(int argc, char** argv) {
+int main(int argc, char** argv) try {
+    std::string_view rom_path;
+    std::string_view dcs_option_path;
+    for (int i = 1; i < argc; ++i) {
+        const std::string_view argument(argv[i]);
+        if (argument == "--dcs-option" && i + 1 < argc && !std::string_view(argv[i + 1]).empty() &&
+            !std::string_view(argv[i + 1]).starts_with("--")) {
+            dcs_option_path = argv[++i];
+        } else if (!argument.starts_with("--") && rom_path.empty()) {
+            rom_path = argument;
+        } else {
+            mapperbus::core::logger::error("Usage: mapperbus-gui [BASE_ROM [--dcs-option PATH]]");
+            return EXIT_FAILURE;
+        }
+    }
+    if (!dcs_option_path.empty() && rom_path.empty()) {
+        mapperbus::core::logger::error("--dcs-option requires a base cartridge");
+        return EXIT_FAILURE;
+    }
 #if defined(MAPPERBUS_HAVE_SDL3_AUDIO) || defined(MAPPERBUS_HAVE_SDL3_GAMEPAD)
     // NodalKit owns the event loop. SDL quit events produced by its POSIX
     // signal handlers would otherwise go unconsumed in this frontend.
@@ -38,8 +59,8 @@ int main(int argc, char** argv) {
     });
 
     mapperbus::frontend::MapperBusGuiController controller(app, window);
-    if (argc > 1 && argv[1] != nullptr) {
-        controller.open_initial_rom(argv[1]);
+    if (!rom_path.empty()) {
+        controller.open_initial_rom(rom_path, dcs_option_path);
     }
 
     window.present();
@@ -69,4 +90,6 @@ int main(int argc, char** argv) {
     }
 #endif
     return app.run();
+} catch (...) {
+    return EXIT_FAILURE;
 }

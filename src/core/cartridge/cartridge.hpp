@@ -17,12 +17,15 @@ class StateReader;
 /// Largest accepted iNES/NES 2.0 image, including header, trainer, PRG, and CHR.
 /// The cap applies before allocation and to both linear and exponent/multiplier sizes.
 inline constexpr std::size_t kMaxRomBytes = 16 * 1024 * 1024;
+inline constexpr std::size_t kMaxDcsOptionBytes = 128UZ * 1024UZ;
 
 class Cartridge {
   public:
-    [[nodiscard]] static Result<Cartridge> from_file(const std::string& path);
+    [[nodiscard]] static Result<Cartridge> from_file(const std::string& path,
+                                                     std::span<const Byte> dcs_option = {});
     [[nodiscard]] static Result<Cartridge> from_data(std::span<const Byte> rom_data,
-                                                     std::string_view filename = {});
+                                                     std::string_view filename = {},
+                                                     std::span<const Byte> dcs_option = {});
 
     [[nodiscard]] static Result<Cartridge> from_fds_bios(std::span<const Byte> bios,
                                                          const Fds& drive);
@@ -31,7 +34,7 @@ class Cartridge {
     Cartridge& operator=(Cartridge&&) = default;
 
     void save_state(StateWriter& writer) const;
-    void load_state(StateReader& reader);
+    void load_state(StateReader& reader, std::uint32_t version = 20U);
 
     /// True when the iNES/NES 2.0 header marks the board as battery-backed.
     [[nodiscard]] bool has_battery() const {
@@ -60,6 +63,10 @@ class Cartridge {
     }
     [[nodiscard]] const Sha256Digest& content_hash() const {
         return content_hash_;
+    }
+    /// Battery saves belong to the base cartridge, independently of its option.
+    [[nodiscard]] const Sha256Digest& base_content_hash() const {
+        return base_content_hash_;
     }
     void reset() {
         mapper_->reset();
@@ -117,6 +124,7 @@ class Cartridge {
     Cartridge(INesHeader header, std::unique_ptr<Mapper> mapper);
 
     Sha256Digest content_hash_{};
+    Sha256Digest base_content_hash_{};
     INesHeader header_;
     std::unique_ptr<Mapper> mapper_;
 };

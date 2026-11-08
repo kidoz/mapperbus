@@ -47,7 +47,8 @@ core::Result<PreparedRom> prepare_rom(const RomLoadRequest& request, std::stop_t
                                   media.member,
                                   request.fds_bios_path,
                                   request.persistence_directory,
-                                  control);
+                                  control,
+                                  request.dcs_option_path);
     if (!loaded)
         return std::unexpected(loaded.error());
     if (stop.stop_requested())

@@ -144,6 +144,8 @@ int main(int argc, char* argv[]) {
             "  --entry NAME          ROM member inside a .zip or .7z archive");
         mapperbus::core::logger::info("  --fds-bios PATH       8 KiB Famicom Disk System BIOS");
         mapperbus::core::logger::info(
+            "  --dcs-option PATH     Sunsoft DCS option ROM (16-128 KiB)");
+        mapperbus::core::logger::info(
             "FDS: F6 next side, Shift+F6 eject/insert, F8 toggle write protection");
         mapperbus::core::logger::info("  --state-dir PATH      absolute save-state root override");
         mapperbus::core::logger::info(
@@ -160,6 +162,7 @@ int main(int argc, char* argv[]) {
     const char* rom_path = nullptr;
     std::string_view rom_member;
     std::string fds_bios;
+    std::string dcs_option;
     auto mapperbus_config = mapperbus::app::load_mapperbus_configuration();
     auto microphone_settings = mapperbus_config.microphone;
     mapperbus::app::ControllerHardwareOverrides controller_overrides;
@@ -304,6 +307,13 @@ int main(int argc, char* argv[]) {
             fds_bios = argv[++i];
         } else if (std::strcmp(argv[i], "--entry") == 0 && i + 1 < argc) {
             rom_member = argv[++i];
+        } else if (std::strcmp(argv[i], "--dcs-option") == 0) {
+            if (i + 1 >= argc || std::string_view(argv[i + 1]).empty() ||
+                std::string_view(argv[i + 1]).starts_with("--")) {
+                mapperbus::core::logger::error("--dcs-option requires a ROM path");
+                return EXIT_FAILURE;
+            }
+            dcs_option = argv[++i];
         } else if (std::strcmp(argv[i], "--live-microphone") == 0) {
             microphone_settings.enabled = true;
         } else if (std::strcmp(argv[i], "--no-live-microphone") == 0) {
@@ -410,7 +420,7 @@ int main(int argc, char* argv[]) {
     app.session().set_fds_bios_path(fds_bios);
     app.session().set_microphone_backend(std::make_unique<mapperbus::frontend::Sdl3Microphone>());
     app.session().configure_live_microphone(microphone_settings);
-    auto result = app.initialize(rom_path, rom_member);
+    auto result = app.initialize(rom_path, rom_member, dcs_option);
     if (!result) {
         mapperbus::core::logger::error("{}", result.error());
         return EXIT_FAILURE;

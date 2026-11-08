@@ -1,5 +1,7 @@
 #include "core/cartridge/cartridge.hpp"
 
+#include <algorithm>
+
 #include "core/binary_file.hpp"
 #include "core/cartridge/rom_crc32.hpp"
 #include "core/cartridge/rom_database.hpp"
@@ -16,20 +18,22 @@ void Cartridge::save_state(StateWriter& writer) const {
     mapper_->save_state(writer);
 }
 
-void Cartridge::load_state(StateReader& reader) {
-    mapper_->load_state(reader);
+void Cartridge::load_state(StateReader& reader, std::uint32_t version) {
+    mapper_->load_state_version(reader, version);
 }
 
-Result<Cartridge> Cartridge::from_file(const std::string& path) {
+Result<Cartridge> Cartridge::from_file(const std::string& path, std::span<const Byte> dcs_option) {
     auto data = read_binary_file_capped(path, kMaxRomBytes, "ROM file");
     if (!data) {
         return std::unexpected(data.error());
     }
 
-    return from_data(*data, path);
+    return from_data(*data, path, dcs_option);
 }
 
-Result<Cartridge> Cartridge::from_data(std::span<const Byte> rom_data, std::string_view filename) {
+Result<Cartridge> Cartridge::from_data(std::span<const Byte> rom_data,
+                                       std::string_view filename,
+                                       std::span<const Byte> dcs_option) {
     if (rom_data.size() > kMaxRomBytes) {
         return std::unexpected("ROM data exceeds maximum size");
     }
@@ -65,9 +69,21 @@ Result<Cartridge> Cartridge::from_data(std::span<const Byte> rom_data, std::stri
     if (!mapper_result) {
         return std::unexpected(mapper_result.error());
     }
+    if (!dcs_option.empty()) {
+        if (auto configured = (*mapper_result)->configure_dcs_option_rom(dcs_option); !configured)
+            return std::unexpected(configured.error());
+    }
 
     Cartridge cartridge(header, std::move(*mapper_result));
     cartridge.content_hash_ = rom_sha256(rom_data);
+    cartridge.base_content_hash_ = cartridge.content_hash_;
+    if (!dcs_option.empty()) {
+        // Domain-separated, fixed-length composition; file paths are not identity.
+        std::array<Byte, 72U> identity{'M', 'B', 'D', 'C', 'S', 0U, 0U, 1U};
+        std::ranges::copy(cartridge.base_content_hash_, identity.begin() + 8U);
+        std::ranges::copy(rom_sha256(dcs_option), identity.begin() + 40U);
+        cartridge.content_hash_ = rom_sha256(identity);
+    }
     // Header wins, then content database, then the logical ROM filename.
     if (!header.is_nes2) {
         if (auto region = lookup_region_by_crc32(rom_crc32(rom_data))) {
@@ -90,6 +106,7 @@ Result<Cartridge> Cartridge::from_fds_bios(std::span<const Byte> bios, const Fds
     header.mirror_mode = MirrorMode::Vertical;
     Cartridge cartridge(header, std::make_unique<FdsMapper>(bios, drive));
     cartridge.content_hash_ = rom_sha256(bios);
+    cartridge.base_content_hash_ = cartridge.content_hash_;
     return cartridge;
 }
 

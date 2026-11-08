@@ -17,6 +17,7 @@
 #include <utility>
 #include <vector>
 
+#include "../support/dcs_rom.hpp"
 #include "../support/fds_image.hpp"
 #include "../support/rom_archive.hpp"
 #include "core/binary_file.hpp"
@@ -36,6 +37,9 @@ struct MapperBusGuiTestAccess {
     }
     static auto state(MapperBusGuiController& gui) {
         return gui.session_->emulator().save_state();
+    }
+    static auto identity(MapperBusGuiController& gui) {
+        return gui.session_->emulator().content_hash();
     }
     static const auto& bios(MapperBusGuiController& gui) {
         return gui.configuration_.fds_bios_path;
@@ -747,6 +751,32 @@ TEST_CASE("Quit drains a pending BIOS settings save and does not launch a retire
         CHECK(Access::bios(*fixture.gui) == fixture.valid.string());
         CHECK(fixture.work->loads().size() == count);
     }
+}
+
+TEST_CASE("GUI DCS startup requests preserve option identity through failure and retry",
+          "[gui][dcs]") {
+    Fixture fixture;
+    const auto base = fixture.root / "dcs.nes";
+    const auto option = fixture.root / "option.bin";
+    const auto image = tests::make_dcs_base_rom();
+    const std::vector<core::Byte> chip(0x4000U, 0x5AU);
+    REQUIRE(core::write_binary_file_atomic(base.string(), image, "DCS base"));
+    const auto before = Access::state(*fixture.gui);
+    fixture.gui->open_initial_rom(base.string(), option.string());
+    fixture.wait([&] { return Access::recovery(*fixture.gui) != nullptr; });
+    REQUIRE(contains(*Access::recovery(*fixture.gui), "DCS option ROM"));
+    REQUIRE(Access::state(*fixture.gui) == before);
+    REQUIRE(core::write_binary_file_atomic(option.string(), chip, "DCS option"));
+    const auto expected = core::Cartridge::from_data(image, {}, chip);
+    REQUIRE(expected);
+    click(*Access::recovery(*fixture.gui), "Retry");
+    fixture.wait([&] { return Access::identity(*fixture.gui) == expected->content_hash(); });
+    {
+        const std::lock_guard lock(fixture.work->mutex);
+        REQUIRE(fixture.work->requests.back().dcs_option_path == option.string());
+    }
+    fixture.action("emu.pause");
+    REQUIRE(Access::snapshot(*fixture.gui).paused);
 }
 
 } // namespace

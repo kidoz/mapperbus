@@ -45,6 +45,10 @@ if get_option('enable_cli')
         args : [files('integration/test_cli_region.py'), mapperbus_cli],
         depends : mapperbus_cli,
     )
+    test('cli-dcs', cli_python,
+        args : [files('integration/test_cli_dcs.py'), mapperbus_cli],
+        depends : mapperbus_cli,
+    )
 endif
 
 test_rom_database = executable('test-rom-database',
@@ -64,6 +68,7 @@ test_mappers = executable('test-mappers',
     'unit/test_mapper_boards.cpp',
     'unit/test_irem.cpp',
     'unit/test_sunsoft_boards.cpp',
+    'unit/test_dcs.cpp',
     dependencies : [mapperbus_core_dep, catch2_dep],
 )
 test('mappers', test_mappers)
