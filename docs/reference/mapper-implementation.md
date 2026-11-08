@@ -4,8 +4,8 @@ This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
 complete.** Updated 2026-11-09 against the working-tree registry.
 
-There are **73 registered cartridge IDs**: the original 14, 53 added in the first
-batch, and Irem 32/65, Sunsoft 67/68, and Taito 33/48 in the follow-ups below.
+There are **75 registered cartridge IDs**: the original 14, 53 added in the first
+batch, and Irem 32/65, Sunsoft 67/68, and Taito 33/48/80/207 in the follow-ups below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
 unusual ROM geometry.
@@ -18,6 +18,7 @@ unusual ROM geometry.
 | Irem G-101 / H3001 (follow-up) | 32, 65 | Two switchable 8 KiB PRG banks, layout swap, eight 1 KiB CHR banks, Major League submapper, mirroring, CPU-cycle down counter, RAM and snapshots. |
 | Sunsoft-3 / Sunsoft-4 (follow-up) | 67, 68 | 16 KiB PRG and 2 KiB CHR banks, four mirroring modes, Sunsoft-3 live IRQ counter and acknowledgement aliases, Sunsoft-4 ROM nametables and WRAM gate, DCS options with licensing and paired snapshot identity. |
 | Taito TC0190 / TC0690 (follow-up) | 33, 48 | Two 8 KiB PRG windows, full-width 2/1 KiB CHR banks, distinct mirroring decoders, mapper-48 latched IRQ and submapper timing profiles, CPU/PPU and snapshot replay. |
+| Taito X1-005 (follow-up) | 80, 207 | Three 8 KiB PRG windows, aligned 2/1 KiB CHR banks, exact register aliases, protected 128-byte RAM and battery persistence, H/V and CHR-driven CIRAM routing. |
 | Namco 108 family | 76, 88, 95, 154, 206 | Register decode, fixed and switchable PRG, 1/2 KiB CHR wiring, fixed-PRG submapper, CHR-driven CIRAM, one-screen mirroring. |
 | Konami VRC1–4 | 21, 22, 23, 25, 73, 75 | Submapper address-line permutations, chip-specific banking and mirroring, one-bit VRC2 latch, CPU and prescaled IRQs, enabled WRAM and NVRAM. |
 | Homebrew latches | 28, 31 | Action 53 mode/size matrix, banked CHR RAM, mirroring control; mapper 31's eight 4 KiB PRG windows; power-up versus soft reset. |
@@ -52,6 +53,7 @@ See [mapper tests](../../tests/unit/test_mapper_boards.cpp),
 [Irem tests](../../tests/unit/test_irem.cpp),
 [Sunsoft tests](../../tests/unit/test_sunsoft_boards.cpp),
 [Taito tests](../../tests/unit/test_taito.cpp),
+[X1-005 tests](../../tests/unit/test_taito_x1005.cpp),
 [factory](../../src/core/mappers/mapper_registry.cpp), and
 [compatibility](compatibility.md).
 
@@ -287,6 +289,64 @@ checks passed, and clang-tidy reported no diagnostics on `taito_tc.cpp` or the
 added registry lines. Optional external-ROM and GPU cases retain their existing
 environment-dependent skips.
 
+## X1-005 follow-up: RAM protection and CIRAM wiring
+
+The implementation follows [X1-005 revision 24449](https://www.nesdev.org/w/index.php?oldid=24449),
+[mapper 207 revision 24116](https://www.nesdev.org/w/index.php?oldid=24116), and
+[pinout revision 22506](https://www.nesdev.org/w/index.php?oldid=22506).
+The chip provides three six-bit 8 KiB PRG windows and a fixed final 8 KiB.
+Its two 2 KiB CHR selectors ignore bit 0; the four 1 KiB selectors retain all
+eight bits. Unlike TC0190, the 2 KiB selectors are aligned 1 KiB indices rather
+than full 2 KiB indices.
+
+Register writes decode only `$7EF0–$7EFF` and `$7E70–$7E7F`, because CPU A7 is
+unconnected. PRG registers and permission control also have their documented
+adjacent-byte aliases. `$7EF7` is not a mirroring alias and is left without an
+observable effect, consistent with the
+[hardware tests](https://forums.nesdev.org/viewtopic.php?p=278102).
+Registers are write-only. Internal RAM is 128 bytes at `$7F00–$7F7F`, mirrored
+at `$7F80–$7FFF`. Permission writes must equal `$A3` exactly; every other byte
+locks reads and writes. Locked RAM and register reads use CPU open bus.
+
+Mapper 80's `$7EF6` bit 0 selects PPU A11 when clear (horizontal mirroring),
+or PPU A10 when set (vertical mirroring). These address-line definitions avoid
+confusing nametable arrangement names with mirroring names. Mapper 207 ignores
+that register: bit 7 of the first CHR selector routes `$2000/$2400`, and bit 7
+of the second routes `$2800/$2C00`. The existing `nametable_address()` hook
+preserves both one-screen modes and either physical horizontal page order.
+The shared CHR A17 output also remains part of CHR selection; larger CHR images
+therefore couple bank selection and CIRAM, while 128 KiB images fold that bit.
+
+Supported geometry is up to 512 KiB PRG ROM and 256 KiB CHR ROM. An absent CHR
+ROM uses up to 8 KiB volatile banked CHR RAM as a compatibility extension. The
+on-chip 128-byte RAM always exists; legacy implied 8 KiB WRAM is not mapped.
+NES 2.0 can leave PRG memory unspecified or declare one 128-byte volatile or
+nonvolatile region. Explicit NVRAM requires the battery flag. Larger/separate
+PRG memories, CHR NVRAM, mixed CHR ROM/RAM and unknown submappers are rejected.
+The external WRAM-select pin is not used to fabricate an additional RAM board.
+
+Battery-backed boards expose precisely 128 bytes for `.sav` persistence even
+when CPU access is locked. Reset preserves both RAM arrays, locks internal RAM,
+restores deterministic PRG banks 0/1/2 and zero CHR selectors, and retains header
+H/V startup policy for mapper 80. Mapper 207 starts on CIRAM page zero. Physical
+power-up values are not certified. New payloads leave snapshot version 20 and
+existing mapper layouts unchanged.
+
+Tests cover all 256 permission values, every internal RAM byte and its mirror,
+register pairs and A7 aliases, CHR alignment and reachability, open bus and write
+protection, all mapper-207 CIRAM combinations through the PPU, CPU register-write
+programs, exact snapshot replay/rollback, malformed states, and actual 128-byte
+battery files with oversized-file rejection. Both IDs join the shared 61-board
+boot/replay matrix. No commercial-title or physical-cartridge validation is claimed.
+
+X1-005 validation: `just build` passed; the regular suite command above reported
+42 successful executables, zero failures, and 5,321 assertions in 125 mapper
+cases. The seven targeted ASan/UBSan executables (`mappers bus ppu region
+save-state mapper-timing battery-save`) all passed, using the macOS leak-detection
+exception documented above. Formatting and whitespace checks passed; clang-tidy
+reported no diagnostics on `taito_x1005.cpp` or the new registry lines. Optional
+external-ROM and GPU cases retain their existing environment-dependent skips.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -382,7 +442,7 @@ fallback. The registry rejects unsupported IDs.
 | 077 | Irem Napoleon Senki board | Not registered | [r24538](https://www.nesdev.org/w/index.php?oldid=24538) |
 | 078 | Holy Diver / Cosmo Carrier | New implementation: DiscreteMapper | [r21584](https://www.nesdev.org/w/index.php?oldid=21584) |
 | 079 | NINA-03 / NINA-06 | New implementation: DiscreteMapper | [r22985](https://www.nesdev.org/w/index.php?oldid=22985) |
-| 080 | Taito X1-005 | Not registered | [r24449](https://www.nesdev.org/w/index.php?oldid=24449) |
+| 080 | Taito X1-005 | New implementation: TaitoX1005 | [r24449](https://www.nesdev.org/w/index.php?oldid=24449) |
 | 081 | Board-specific specification | New implementation: DiscreteMapper | [r4583](https://www.nesdev.org/w/index.php?oldid=4583) |
 | 082 | Taito X1-017 | Not registered | [r24125](https://www.nesdev.org/w/index.php?oldid=24125) |
 | 083 | Cony / Yoko | Not registered | [r24580](https://www.nesdev.org/w/index.php?oldid=24580) |
@@ -509,7 +569,7 @@ fallback. The registry rejects unsupported IDs.
 | 204 | Board-specific specification | Not registered | [r5557](https://www.nesdev.org/w/index.php?oldid=5557) |
 | 205 | Board-specific specification | Not registered | [r5566](https://www.nesdev.org/w/index.php?oldid=5566) |
 | 206 | Namco 108/118 / DxROM | New implementation: Namco108 | [r23830](https://www.nesdev.org/w/index.php?oldid=23830) |
-| 207 | Taito X1-005 nametable variant | Not registered | [r24116](https://www.nesdev.org/w/index.php?oldid=24116) |
+| 207 | Taito X1-005 nametable variant | New implementation: TaitoX1005 | [r24116](https://www.nesdev.org/w/index.php?oldid=24116) |
 | 208 | Board-specific specification | Not registered | [r5614](https://www.nesdev.org/w/index.php?oldid=5614) |
 | 209 | J.Y. Company ASIC | Not registered | [r24184](https://www.nesdev.org/w/index.php?oldid=24184) |
 | 210 | Namco 175/340 | Not registered | [r23707](https://www.nesdev.org/w/index.php?oldid=23707) |
