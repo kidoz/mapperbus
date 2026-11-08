@@ -205,6 +205,11 @@ Byte MemoryBus::read_cpu(Address addr) {
     return read_cycle(addr, addr, false);
 }
 
+Byte MemoryBus::open_bus() const {
+    return cartridge_ != nullptr ? static_cast<Byte>(open_bus_ & cartridge_->cpu_open_bus_mask())
+                                 : open_bus_;
+}
+
 Byte MemoryBus::read_cycle(Address addr, Address cpu_address, bool dma) {
     io_access_ = true;
     const bool split_decode = dma && ntsc_io();
@@ -215,7 +220,7 @@ Byte MemoryBus::read_cycle(Address addr, Address cpu_address, bool dma) {
     set_controller_oe(ntsc_io() && joypad ? static_cast<Byte>(internal - 0x4015) : Byte{0});
     // External memory still sees the DMA address, even when the internal APU
     // decoder selects a register. Its $4015 read never drives external open bus.
-    Byte external = open_bus_;
+    Byte external = open_bus();
     if (addr < 0x4000 || addr >= 0x4018)
         external = (this->*(read_map_[static_cast<uint32_t>(addr) >> 10U]))(addr);
     if (internal == 0x4015 && apu_enabled) {
@@ -410,44 +415,44 @@ Byte MemoryBus::read_ppu(Address addr) {
 Byte MemoryBus::read_apu_io(Address addr) {
     if (addr < 0x4018) {
         if (addr == 0x4016 || addr == 0x4017) {
-            return read_controller(addr - 0x4016, open_bus_, false);
+            return read_controller(addr - 0x4016, open_bus(), false);
         }
         if (addr == 0x4015)
-            return static_cast<Byte>((open_bus_ & 0x20U) |
+            return static_cast<Byte>((open_bus() & 0x20U) |
                                      (apu_ != nullptr ? apu_->read_register(addr) : Byte{0}));
-        return open_bus_; // other APU registers, including $4014, are write-only
+        return open_bus(); // other APU registers, including $4014, are write-only
     }
     // $4020-$409F: FDS disk drive ($4030-$4033) and audio ($4040-$4092)
     if (addr >= 0x4020 && addr <= 0x409F && fds_ && fds_->is_loaded()) {
         return fds_->read(addr);
     }
-    return open_bus_;
+    return open_bus();
 }
 
 Byte MemoryBus::read_expansion(Address addr) {
     if (cartridge_) {
         if (!cartridge_->maps_expansion(addr)) {
-            return open_bus_;
+            return open_bus();
         }
         const auto mask = cartridge_->expansion_read_mask(addr);
-        return static_cast<Byte>((cartridge_->read_expansion(addr) & mask) | (open_bus_ & ~mask));
+        return static_cast<Byte>((cartridge_->read_expansion(addr) & mask) | (open_bus() & ~mask));
     }
-    return open_bus_;
+    return open_bus();
 }
 
 Byte MemoryBus::read_prg(Address addr) {
     if (cartridge_) {
         if (!cartridge_->maps_prg(addr)) {
-            return open_bus_;
+            return open_bus();
         }
         const auto mask = cartridge_->prg_read_mask(addr);
-        return static_cast<Byte>((cartridge_->read_prg(addr) & mask) | (open_bus_ & ~mask));
+        return static_cast<Byte>((cartridge_->read_prg(addr) & mask) | (open_bus() & ~mask));
     }
-    return open_bus_;
+    return open_bus();
 }
 
 Byte MemoryBus::read_open_bus(Address) {
-    return open_bus_;
+    return open_bus();
 }
 
 void MemoryBus::write_ram(Address addr, Byte value) {

@@ -14,11 +14,11 @@ using namespace mapperbus::core;
 
 namespace {
 
-constexpr std::array<uint16_t, 61> kNewBoards = {
+constexpr std::array<uint16_t, 63> kNewBoards = {
     10,  13,  34,  66,  70,  71,  76,  78,  79,  87,  88,  89,  93,  94,  95,  97,
     113, 140, 152, 154, 180, 184, 206, 38,  46,  58,  61,  62,  81,  107, 145, 148,
     149, 193, 200, 201, 203, 212, 213, 225, 226, 229, 231, 232, 240, 21,  22,  23,
-    25,  73,  75,  28,  31,  32,  65,  67,  68,  33,  48,  80,  207};
+    25,  73,  75,  28,  31,  32,  65,  67,  68,  33,  48,  80,  207, 82,  552};
 
 std::vector<Byte> bank_rom(std::size_t size, std::size_t bank_size) {
     std::vector<Byte> rom(size);
@@ -46,7 +46,7 @@ std::unique_ptr<Mapper> board(uint16_t id, uint8_t submapper = 0, bool ram = fal
     register_builtin_mappers();
     auto result = MapperRegistry::instance().create(
         board_header(id, submapper),
-        bank_rom(0x40000, 0x4000),
+        bank_rom(id == 82 ? 0x20000 : 0x40000, 0x4000),
         ram ? std::vector<Byte>{} : bank_rom(id == 67 ? 0x20000 : 0x40000, 0x1000));
     REQUIRE(result);
     return std::move(*result);
@@ -59,28 +59,27 @@ void set_namco_bank(Mapper& mapper, Byte reg, Byte value) {
 
 Cartridge cartridge(uint16_t id) {
     register_builtin_mappers();
-    std::vector<Byte> image(16 + 0x40000 + 0x40000, 0xEA);
+    const std::size_t prg_size = id == 82 ? 0x20000U : 0x40000U;
+    const std::size_t chr_size = id == 67 ? 0x20000U : 0x40000U;
+    std::vector<Byte> image(16 + prg_size + chr_size, 0xEA);
     std::fill_n(image.begin(), 16, 0);
     image[0] = 'N';
     image[1] = 'E';
     image[2] = 'S';
     image[3] = 0x1A;
-    image[4] = 16;
-    image[5] = 32;
+    image[4] = static_cast<Byte>(prg_size / 0x4000U);
+    image[5] = static_cast<Byte>(chr_size / 0x2000U);
     image[6] = static_cast<Byte>((id & 15) << 4);
     image[7] = static_cast<Byte>((id & 0xF0) | 8);
-    if (id == 67) {
-        image[5] = 16;
-        image.resize(16 + 0x40000 + 0x20000);
-    }
+    image[8] = static_cast<Byte>(id >> 8U);
     if (id == 13 || id == 28 || id == 31 || id == 71 || id == 73 || id == 93 || id == 94 ||
         id == 180 || id == 226 || id == 231 || id == 232) {
         image[5] = 0;
-        image.resize(16 + 0x40000);
+        image.resize(16 + prg_size);
     }
     // An original JMP $8000 program and vectors in every page let every
     // board's reset bank boot without depending on a commercial image.
-    for (std::size_t page = 16; page < 16 + 0x40000; page += 0x1000) {
+    for (std::size_t page = 16; page < 16 + prg_size; page += 0x1000) {
         image[page] = 0x4C;
         image[page + 1] = 0;
         image[page + 2] = 0x80;

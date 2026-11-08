@@ -26,6 +26,11 @@ class Mapper {
     virtual Byte prg_read_mask(Address /*addr*/) const {
         return 0xFF;
     }
+    /// Bits allowed to float on the external CPU bus. ASIC pull-downs may
+    /// ground undriven bits even when a console I/O register is selected.
+    virtual Byte cpu_open_bus_mask() const {
+        return 0xFF;
+    }
     virtual Byte read_chr(Address addr) = 0;
     virtual void write_chr(Address addr, Byte value) = 0;
 

@@ -55,6 +55,9 @@ class Cartridge {
     [[nodiscard]] Byte prg_read_mask(Address addr) const {
         return mapper_->prg_read_mask(addr);
     }
+    [[nodiscard]] Byte cpu_open_bus_mask() const {
+        return mapper_->cpu_open_bus_mask();
+    }
     [[nodiscard]] Byte read_chr(Address addr);
     void write_chr(Address addr, Byte value);
 

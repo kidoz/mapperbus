@@ -110,9 +110,8 @@ class MemoryBus {
     void reset_interrupts();
     bool poll_irq();
     uint32_t take_dma_cycles();
-    [[nodiscard]] Byte open_bus() const {
-        return open_bus_;
-    }
+    /// Undriven external CPU bus value after cartridge pull-downs.
+    [[nodiscard]] Byte open_bus() const;
 
     void connect_cartridge(Cartridge* cartridge) {
         cartridge_ = cartridge;
