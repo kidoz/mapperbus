@@ -44,7 +44,7 @@ jobs:
       - name: Install build dependencies
         run: >-
           pacman -Syu --noconfirm --needed git clang meson ninja pkgconf libarchive sdl3
-          wayland wayland-protocols libxkbcommon freetype2 fontconfig harfbuzz glib2
+          wayland wayland-protocols libxkbcommon freetype2 fontconfig harfbuzz glib2 ttf-dejavu
           glslang vulkan-headers vulkan-icd-loader vulkan-swrast mesa
           desktop-file-utils
       - uses: actions/checkout@v4

@@ -135,7 +135,7 @@ TEST_CASE("xBRZ compares sums and ratios of linear color distances", "[xbrz]") {
 }
 
 TEST_CASE("xBRZ borders match an explicitly edge-padded image", "[xbrz]") {
-    for (const auto [width, height] : {std::pair{1, 1}, {1, 5}, {5, 1}, {7, 5}}) {
+    for (const auto& [width, height] : {std::pair{1, 1}, {1, 5}, {5, 1}, {7, 5}}) {
         CAPTURE(width, height);
         Pixels source(static_cast<std::size_t>(width) * height);
         for (int i = 0; i < width * height; ++i) {

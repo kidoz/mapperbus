@@ -58,8 +58,12 @@ TEST_CASE("Long ROM load errors scroll while recovery actions remain in the wind
           "[gui][rom-source][recovery]") {
     nk::Window window({.title = "ROM recovery", .width = 500, .height = 350});
     window.present();
+    // Force overflow independently of platform-specific word breaking.
+    std::string error(6000, 'E');
+    for (std::size_t index = 59; index < error.size(); index += 60)
+        error[index] = '\n';
     auto dialog = mapperbus::frontend::make_rom_load_error_dialog(
-        "/archive.zip", std::string(4096, 'M') + ".fds", std::string(6000, 'E'), true);
+        "/archive.zip", std::string(4096, 'M') + ".fds", error, true);
     dialog->present(window);
     dialog->allocate({0, 0, 500, 350});
     nk::ScrollArea* scroll = nullptr;

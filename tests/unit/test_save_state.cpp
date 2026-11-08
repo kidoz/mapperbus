@@ -65,9 +65,9 @@ TEST_CASE("Version 17 restores partially shifted external pads and validates the
     MemoryBus{}.save_state(bus);
     const auto attachment_offset =
         43 + cpu.data().size() + ppu.data().size() + apu.data().size() + bus.data().size() - 10;
-    for (const auto [offset, value] : {std::pair{attachment_offset, Byte{4}},
-                                       {after.size() - 1, Byte{2}},
-                                       {after.size() - 1, Byte{1}}}) {
+    for (const auto& [offset, value] : {std::pair{attachment_offset, Byte{4}},
+                                        {after.size() - 1, Byte{2}},
+                                        {after.size() - 1, Byte{1}}}) {
         auto corrupt = before;
         corrupt[offset] = value;
         REQUIRE_FALSE(emulator.load_state(corrupt));
@@ -189,10 +189,10 @@ TEST_CASE("Four Score snapshots resume independent partially read 24-bit reports
     MemoryBus{}.save_state(bus);
     const auto end =
         43 + cpu.data().size() + ppu.data().size() + apu.data().size() + bus.data().size();
-    for (const auto [offset, value] : {std::pair{end - 9, Byte{3}},
-                                       {end - 5, Byte{1}},
-                                       {end - 1, Byte{0xFF}},
-                                       {end - 9, Byte{0}}}) {
+    for (const auto& [offset, value] : {std::pair{end - 9, Byte{3}},
+                                        {end - 5, Byte{1}},
+                                        {end - 1, Byte{0xFF}},
+                                        {end - 9, Byte{0}}}) {
         auto invalid = before;
         invalid[offset] = value;
         REQUIRE_FALSE(emulator.load_state(invalid));

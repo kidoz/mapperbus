@@ -319,15 +319,15 @@ TEST_CASE("Accepted IRQ survives snapshots with I set and rejects invalid interr
     const auto ppu_end = cpu_end + ppu.data().size();
     const auto apu_end = ppu_end + apu.data().size();
     const auto bus_end = apu_end + bus.data().size() - 10;
-    for (const auto [offset, invalid] : {std::pair{cpu_end - 1, Byte{3}},
-                                         {ppu_end - 2, Byte{2}},
-                                         {ppu_end - 2, Byte{1}},
-                                         {ppu_end - 3, Byte{2}},
-                                         {ppu_end - 4, Byte{2}},
-                                         {apu_end - 7, Byte{5}},
-                                         {bus_end - 8, Byte{1}},
-                                         {bus_end - 9, Byte{2}},
-                                         {bus_end - 10, Byte{2}}}) {
+    for (const auto& [offset, invalid] : {std::pair{cpu_end - 1, Byte{3}},
+                                          {ppu_end - 2, Byte{2}},
+                                          {ppu_end - 2, Byte{1}},
+                                          {ppu_end - 3, Byte{2}},
+                                          {ppu_end - 4, Byte{2}},
+                                          {apu_end - 7, Byte{5}},
+                                          {bus_end - 8, Byte{1}},
+                                          {bus_end - 9, Byte{2}},
+                                          {bus_end - 10, Byte{2}}}) {
         auto corrupt = before;
         corrupt[offset] = invalid;
         CHECK_FALSE(emulator.load_state(corrupt));
@@ -385,7 +385,7 @@ TEST_CASE("DMC halt waits through CPU writes and realigns its get", "[cpu][dma]"
 }
 
 TEST_CASE("DMC and OAM overlap setup and preserve every implemented OAM bit", "[cpu][dma]") {
-    for (const auto [reload, cost] : {std::pair{9U, 515U}, {509U, 514U}, {511U, 516U}}) {
+    for (const auto& [reload, cost] : {std::pair{9U, 515U}, {509U, 514U}, {511U, 516U}}) {
         CAPTURE(reload, cost);
         DmaMachine machine({0xEA});
         machine.reload_on_cycle(static_cast<uint16_t>(reload));
@@ -476,16 +476,16 @@ TEST_CASE("Pending DMC loads survive snapshots and reject corrupt scheduling sta
         StateWriter apu_state;
         Apu{}.save_state(apu_state);
         const auto dma_end = 43 + prefix.data().size() + apu_state.data().size();
-        for (const auto [back, value] : {std::pair{18U, Byte{0}},
-                                         {10U, Byte{4}},
-                                         {9U, Byte{2}},
-                                         {8U, Byte{2}},
-                                         {7U, Byte{5}},
-                                         {6U, Byte{0}},
-                                         {5U, Byte{3}},
-                                         {4U, Byte{2}},
-                                         {2U, Byte{0}},
-                                         {1U, Byte{2}}}) {
+        for (const auto& [back, value] : {std::pair{18U, Byte{0}},
+                                          {10U, Byte{4}},
+                                          {9U, Byte{2}},
+                                          {8U, Byte{2}},
+                                          {7U, Byte{5}},
+                                          {6U, Byte{0}},
+                                          {5U, Byte{3}},
+                                          {4U, Byte{2}},
+                                          {2U, Byte{0}},
+                                          {1U, Byte{2}}}) {
             auto corrupt = before;
             corrupt[dma_end - back] = value;
             CHECK_FALSE(emulator.load_state(corrupt));
@@ -928,13 +928,13 @@ TEST_CASE("Malformed DMC stop latches reject machine snapshots with rollback",
     emulator.ppu().save_state(ppu);
     Apu{}.save_state(apu);
     const auto end = 43 + cpu.data().size() + ppu.data().size() + apu.data().size();
-    for (const auto [back, value] : {std::pair{6U, Byte{2}},
-                                     {5U, Byte{3}},
-                                     {5U, Byte{1}},
-                                     {4U, Byte{2}},
-                                     {4U, Byte{1}},
-                                     {1U, Byte{2}},
-                                     {1U, Byte{1}}}) {
+    for (const auto& [back, value] : {std::pair{6U, Byte{2}},
+                                      {5U, Byte{3}},
+                                      {5U, Byte{1}},
+                                      {4U, Byte{2}},
+                                      {4U, Byte{1}},
+                                      {1U, Byte{2}},
+                                      {1U, Byte{1}}}) {
         auto corrupt = before;
         corrupt[end - back] = value;
         CHECK_FALSE(emulator.load_state(corrupt));
@@ -1087,11 +1087,11 @@ TEST_CASE("Invalid controller line states reject snapshots with rollback",
     Controller{}.save_state(controller);
     const auto end =
         43 + cpu.data().size() + ppu.data().size() + apu.data().size() + bus.data().size() - 10;
-    for (const auto [offset, value] : {std::pair{end - 4, Byte{2}},
-                                       {end - 5, Byte{2}},
-                                       {end - 6, Byte{2}},
-                                       {end - 7, Byte{3}},
-                                       {end + 9 + controller.data().size(), Byte{2}}}) {
+    for (const auto& [offset, value] : {std::pair{end - 4, Byte{2}},
+                                        {end - 5, Byte{2}},
+                                        {end - 6, Byte{2}},
+                                        {end - 7, Byte{3}},
+                                        {end + 9 + controller.data().size(), Byte{2}}}) {
         auto corrupt = before;
         corrupt[offset] = value;
         CHECK_FALSE(emulator.load_state(corrupt));
