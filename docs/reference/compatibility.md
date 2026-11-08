@@ -30,10 +30,11 @@ contains the following mapper IDs:
 | 28, 31 | Action 53, NSF-subset cartridge banking | — |
 | 32, 65 | Irem G-101 (including submapper 1), H3001 with CPU timer IRQ | — |
 | 67, 68 | Sunsoft-3 with CPU IRQ, Sunsoft-4 with ROM nametables and DCS licensing | — |
+| 33, 48 | Taito TC0190/TC0690, including mapper-48 scanline IRQ profiles | — |
 | 13, 34, 66, 70, 71, 78, 79, 87, 89, 93, 94, 97, 113, 140, 152, 180, 184 | Discrete cartridge boards | — |
 | 38, 46, 58, 61, 62, 81, 107, 145, 148, 149, 193, 200, 201, 203, 212, 213, 225, 226, 229, 231, 232, 240 | Additional latch boards and multicarts | — |
 
-The registry contains 71 cartridge IDs. See [mapper implementation coverage](mapper-implementation.md)
+The registry contains 73 cartridge IDs. See [mapper implementation coverage](mapper-implementation.md)
 for individual specifications, tested behavior, board limitations, and the full
 inventory of documented IDs still awaiting implementation. The expanded set has
 synthetic banking, IRQ, CPU/PPU integration and save-state coverage; this does

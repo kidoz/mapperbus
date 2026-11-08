@@ -2,10 +2,10 @@
 
 This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
-complete.** Updated 2026-11-08 against the working-tree registry.
+complete.** Updated 2026-11-09 against the working-tree registry.
 
-There are **71 registered cartridge IDs**: the original 14, 53 added in the first
-batch, Irem 32/65, and Sunsoft 67/68 added in the follow-ups below.
+There are **73 registered cartridge IDs**: the original 14, 53 added in the first
+batch, and Irem 32/65, Sunsoft 67/68, and Taito 33/48 in the follow-ups below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
 unusual ROM geometry.
@@ -17,6 +17,7 @@ unusual ROM geometry.
 | MMC4 | 10 | 16 KiB PRG, both eight-byte CHR trigger ranges, old-bank trigger fetch, mirroring, RAM, persistence. |
 | Irem G-101 / H3001 (follow-up) | 32, 65 | Two switchable 8 KiB PRG banks, layout swap, eight 1 KiB CHR banks, Major League submapper, mirroring, CPU-cycle down counter, RAM and snapshots. |
 | Sunsoft-3 / Sunsoft-4 (follow-up) | 67, 68 | 16 KiB PRG and 2 KiB CHR banks, four mirroring modes, Sunsoft-3 live IRQ counter and acknowledgement aliases, Sunsoft-4 ROM nametables and WRAM gate, DCS options with licensing and paired snapshot identity. |
+| Taito TC0190 / TC0690 (follow-up) | 33, 48 | Two 8 KiB PRG windows, full-width 2/1 KiB CHR banks, distinct mirroring decoders, mapper-48 latched IRQ and submapper timing profiles, CPU/PPU and snapshot replay. |
 | Namco 108 family | 76, 88, 95, 154, 206 | Register decode, fixed and switchable PRG, 1/2 KiB CHR wiring, fixed-PRG submapper, CHR-driven CIRAM, one-screen mirroring. |
 | Konami VRC1–4 | 21, 22, 23, 25, 73, 75 | Submapper address-line permutations, chip-specific banking and mirroring, one-bit VRC2 latch, CPU and prescaled IRQs, enabled WRAM and NVRAM. |
 | Homebrew latches | 28, 31 | Action 53 mode/size matrix, banked CHR RAM, mirroring control; mapper 31's eight 4 KiB PRG windows; power-up versus soft reset. |
@@ -50,6 +51,7 @@ All implementation code is original; no external emulator source was incorporate
 See [mapper tests](../../tests/unit/test_mapper_boards.cpp),
 [Irem tests](../../tests/unit/test_irem.cpp),
 [Sunsoft tests](../../tests/unit/test_sunsoft_boards.cpp),
+[Taito tests](../../tests/unit/test_taito.cpp),
 [factory](../../src/core/mappers/mapper_registry.cpp), and
 [compatibility](compatibility.md).
 
@@ -65,7 +67,7 @@ See [mapper tests](../../tests/unit/test_mapper_boards.cpp),
   certified; normal `$7000–$7FFF` decoding is implemented.
 - Action 53 implements its standard no-PRG-RAM configuration; the optional
   implementation-specific WRAM extension is not supplied.
-- Larger remaining families include Bandai/EEPROM, Jaleco SS88006, Taito,
+- Larger remaining families include Bandai/EEPROM, Jaleco SS88006, other Taito boards,
   RAMBO-1, MMC3 derivatives and outer-bank variants,
   J.Y./Sachen/TXC ASICs, flash-saving UNROM 512/GTROM, and Rainbow.
 - Enhanced consoles and copier/educational adapters may require machine or
@@ -226,6 +228,65 @@ units passed clang-tidy, including a final full GUI-entry-point check.
 Optional asset-dependent cases retain their existing skips. No new commercial
 or physical-cartridge compatibility claim is made.
 
+## Taito follow-up: hardware decisions and timing limits
+
+Mapper 33 implements TC0190 and the non-IRQ subset of TC0350; mapper 48 supplies
+TC0690 IRQ and mirroring registers. Both use two six-bit 8 KiB PRG registers,
+fixed final 16 KiB, two full eight-bit 2 KiB CHR registers and four eight-bit
+1 KiB CHR registers. The 2 KiB banks retain odd indices and reach 512 KiB CHR;
+the 1 KiB banks reach only the first 256 KiB. Mapper 33 decodes `$8000–$BFFF`
+with `$A003`, controlling mirroring in `$8000` bit 6. Mapper 48 uses `$E003`
+through `$FFFF` and mirroring at `$E000` bit 6. Sources:
+[mapper 33 revision 24359](https://www.nesdev.org/w/index.php?oldid=24359) and
+[mapper 48 revision 22585](https://www.nesdev.org/w/index.php?oldid=22585).
+
+The [original TC0690 hardware investigation](https://forums.nesdev.org/viewtopic.php?t=18277)
+finds an up counter clocked by read-qualified falling PPU A12 transitions,
+with no M2 edge filter. `$C000` sets the raw latch; `$C001` reloads and clears
+pending IRQ. `$C002` enables output and `$C003` disables it without clearing the
+pending latch. Counting and pending capture continue with output disabled;
+reenabling an expired latch asserts output. This deliberately follows the
+measurement over the older wiki's MMC3 disable/acknowledge analogy.
+
+The current PPU emits a single dot-260 scanline callback while rendering on
+visible/pre-render lines. It does not expose the full read-qualified A12 bus.
+Mapper 48 therefore uses explicit compatibility profiles: submapper 0 loads
+the count immediately on `$C001`, increments to wrap, and delays output by
+22 CPU/M2 cycles from the existing callback. Submapper 1 defers reload to the
+next callback and uses six cycles. The latter follows the Jetsons convention
+[reported by emulator/database maintainers](https://forums.nesdev.org/viewtopic.php?p=301097).
+The extra reload edge and offsets are software compatibility choices, not
+new physical chip measurements or guarantees for every timing revision.
+
+In particular, these offsets must not be read as measured ASIC propagation
+delays. True per-read PPU A12 edges, pattern-table-dependent edge placement,
+mid-scanline interactions and CPU `$2007` clocks remain outside this renderer's
+timing model. Existing PPU timing and all other mapper callbacks are unchanged.
+Mislabelled mapper-33 dumps are not promoted by hash; they need a corrected
+header. Mapper 33 intentionally has no IRQ.
+
+ROM limits are 512 KiB each for PRG and CHR, with complete 8 KiB PRG and 1 KiB
+CHR banks. An absent CHR ROM uses up to 8 KiB banked volatile CHR RAM as a
+compatibility extension; zero declared size falls back to 8 KiB. PRG RAM is
+not mapped, including the implicit legacy default. Explicit NES 2.0 PRG memory,
+mixed CHR ROM/RAM, CHR NVRAM, larger memory and unknown submappers are rejected.
+Reset preserves CHR RAM and restores deterministic PRG 0/1, zero CHR banks,
+header H/V mirroring and cleared IRQ state; hardware power-up is not certified.
+New mapper payloads retain snapshot version 20 and do not alter other IDs.
+
+Tests cover bank reachability and aliases, ROM protection, mirroring through
+the PPU, IRQ latch/enable/reload/delay rules, DMA clocking, CHR RAM aliases,
+corrupt/truncated state rejection, and full CPU IRQ replay under both profiles.
+Both IDs join the shared 59-board boot/replay matrix. No commercial-title or
+physical-cartridge validation is claimed.
+
+Taito validation: `just build` passed; the regular suite command above reported
+42 successful executables, zero failures, and 2,728 assertions in 115 mapper
+cases. All six targeted ASan/UBSan executables passed. Formatting and whitespace
+checks passed, and clang-tidy reported no diagnostics on `taito_tc.cpp` or the
+added registry lines. Optional external-ROM and GPU cases retain their existing
+environment-dependent skips.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -274,7 +335,7 @@ fallback. The registry rejects unsupported IDs.
 | 030 | UNROM 512 | Not registered | [r23183](https://www.nesdev.org/w/index.php?oldid=23183) |
 | 031 | NSF-subset cartridge | New implementation: DiscreteMapper | [r19421](https://www.nesdev.org/w/index.php?oldid=19421) |
 | 032 | Irem G-101 | New implementation: Irem | [r23869](https://www.nesdev.org/w/index.php?oldid=23869) |
-| 033 | Taito TC0190 / TC0350 subset | Not registered | [r24359](https://www.nesdev.org/w/index.php?oldid=24359) |
+| 033 | Taito TC0190 / TC0350 subset | New implementation: TaitoTc | [r24359](https://www.nesdev.org/w/index.php?oldid=24359) |
 | 034 | BNROM / NINA-001 | New implementation: DiscreteMapper | [r24073](https://www.nesdev.org/w/index.php?oldid=24073) |
 | 035 | J.Y. Company ASIC | Not registered | [r24184](https://www.nesdev.org/w/index.php?oldid=24184) |
 | 036 | TXC 01-22000-400 | Not registered | [r4196](https://www.nesdev.org/w/index.php?oldid=4196) |
@@ -289,7 +350,7 @@ fallback. The registry rejects unsupported IDs.
 | 045 | Board-specific specification | Not registered | [r22818](https://www.nesdev.org/w/index.php?oldid=22818) |
 | 046 | Board-specific specification | New implementation: DiscreteMapper | [r4278](https://www.nesdev.org/w/index.php?oldid=4278) |
 | 047 | Board-specific specification | Not registered | [r4284](https://www.nesdev.org/w/index.php?oldid=4284) |
-| 048 | Taito TC0690 | Not registered | [r22585](https://www.nesdev.org/w/index.php?oldid=22585) |
+| 048 | Taito TC0690 | New implementation: TaitoTc | [r22585](https://www.nesdev.org/w/index.php?oldid=22585) |
 | 049 | Board-specific specification | Not registered | [r4300](https://www.nesdev.org/w/index.php?oldid=4300) |
 | 050 | Board-specific specification | Not registered | [r4310](https://www.nesdev.org/w/index.php?oldid=4310) |
 | 051 | Board-specific specification | Not registered | [r4311](https://www.nesdev.org/w/index.php?oldid=4311) |
