@@ -3,10 +3,14 @@
 #include "core/mappers/axrom.hpp"
 #include "core/mappers/cnrom.hpp"
 #include "core/mappers/color_dreams.hpp"
+#include "core/mappers/discrete.hpp"
+#include "core/mappers/konami_vrc.hpp"
 #include "core/mappers/mmc1.hpp"
 #include "core/mappers/mmc2.hpp"
 #include "core/mappers/mmc3.hpp"
+#include "core/mappers/mmc4.hpp"
 #include "core/mappers/mmc5.hpp"
+#include "core/mappers/namco108.hpp"
 #include "core/mappers/namco163.hpp"
 #include "core/mappers/nrom.hpp"
 #include "core/mappers/sunsoft5b.hpp"
@@ -20,7 +24,10 @@ namespace {
 [[nodiscard]] Result<void> validate_geometry(const INesHeader& header,
                                              std::size_t prg_size,
                                              std::size_t chr_size) {
-    if (prg_size < 16 * 1024) {
+    if (header.mapper_number == 31 && prg_size < 4096) {
+        return std::unexpected("Mapper 31 requires at least a 4 KiB PRG ROM");
+    }
+    if (header.mapper_number != 31 && prg_size < 16 * 1024) {
         return std::unexpected("Mapper requires at least a 16 KiB PRG ROM");
     }
     if (header.mapper_number == 0 && prg_size != 16 * 1024 && prg_size != 32 * 1024) {
@@ -43,6 +50,52 @@ namespace {
     }
     if (header.mapper_number == 9 && prg_size < 32 * 1024) {
         return std::unexpected("MMC2 requires at least a 32 KiB PRG ROM");
+    }
+    switch (header.mapper_number) {
+    case 10:
+    case 21:
+    case 22:
+    case 23:
+    case 25:
+    case 75:
+    case 76:
+    case 88:
+    case 95:
+    case 154:
+    case 193:
+    case 206:
+        if (prg_size < 32 * 1024)
+            return std::unexpected("Mapper requires at least a 32 KiB PRG ROM");
+        break;
+    case 13:
+        if (chr_size != 0)
+            return std::unexpected("CPROM requires CHR RAM, not CHR ROM");
+        break;
+    default:
+        break;
+    }
+    if ((header.mapper_number == 21 || header.mapper_number == 22 || header.mapper_number == 23 ||
+         header.mapper_number == 25 || header.mapper_number == 73 || header.mapper_number == 75) &&
+        (header.prg_ram_size > 8192 || header.prg_nvram_size > 8192 ||
+         header.prg_ram_size + header.prg_nvram_size > 8192)) {
+        return std::unexpected("VRC board PRG RAM exceeds 8 KiB");
+    }
+    if (header.is_nes2) {
+        if (header.mapper_number == 21 && header.submapper > 2)
+            return std::unexpected("Unsupported VRC4 submapper");
+        if ((header.mapper_number == 23 || header.mapper_number == 25) && header.submapper > 3)
+            return std::unexpected("Unsupported VRC2/VRC4 submapper");
+        if (header.mapper_number == 34 && header.submapper > 2)
+            return std::unexpected("Unsupported mapper 34 submapper");
+        if (header.mapper_number == 71 && header.submapper > 1)
+            return std::unexpected("Unsupported mapper 71 submapper");
+        if (header.mapper_number == 78 && header.submapper != 0 && header.submapper != 1 &&
+            header.submapper != 3)
+            return std::unexpected("Unsupported mapper 78 submapper");
+        if ((header.mapper_number == 61 || header.mapper_number == 200 ||
+             header.mapper_number == 206 || header.mapper_number == 232) &&
+            header.submapper > 1)
+            return std::unexpected("Unsupported board submapper");
     }
     return {};
 }
@@ -107,6 +160,22 @@ void register_builtin_mappers() {
     registry.register_mapper(26, make_factory<Vrc6>());
     registry.register_mapper(69, make_factory<Sunsoft5b>());
     registry.register_mapper(85, make_factory<Vrc7>());
+    registry.register_mapper(10, make_factory<Mmc4>());
+    registry.register_mapper(28, make_factory<DiscreteMapper>());
+    registry.register_mapper(31, make_factory<DiscreteMapper>());
+    for (const uint16_t id : {21, 22, 23, 25, 73, 75})
+        registry.register_mapper(id, make_factory<KonamiVrc>());
+    for (const uint16_t id :
+         {13, 34, 66, 70, 71, 78, 79, 87, 89, 93, 94, 97, 113, 140, 152, 180, 184}) {
+        registry.register_mapper(id, make_factory<DiscreteMapper>());
+    }
+    for (const uint16_t id : {76, 88, 95, 154, 206}) {
+        registry.register_mapper(id, make_factory<Namco108>());
+    }
+    for (const uint16_t id : {38,  46,  58,  61,  62,  81,  107, 145, 148, 149, 193,
+                              200, 201, 203, 212, 213, 225, 226, 229, 231, 232, 240}) {
+        registry.register_mapper(id, make_factory<DiscreteMapper>());
+    }
 }
 
 } // namespace mapperbus::core
