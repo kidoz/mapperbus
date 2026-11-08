@@ -4,8 +4,8 @@ This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
 complete.** Updated 2026-11-08 against the working-tree registry.
 
-There are **69 registered cartridge IDs**: the original 14, 53 added in the first
-batch, and Irem 32/65 added in the follow-up below.
+There are **71 registered cartridge IDs**: the original 14, 53 added in the first
+batch, Irem 32/65, and Sunsoft 67/68 added in the follow-ups below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
 unusual ROM geometry.
@@ -16,6 +16,7 @@ unusual ROM geometry.
 |---|---|---|
 | MMC4 | 10 | 16 KiB PRG, both eight-byte CHR trigger ranges, old-bank trigger fetch, mirroring, RAM, persistence. |
 | Irem G-101 / H3001 (follow-up) | 32, 65 | Two switchable 8 KiB PRG banks, layout swap, eight 1 KiB CHR banks, Major League submapper, mirroring, CPU-cycle down counter, RAM and snapshots. |
+| Sunsoft-3 / Sunsoft-4 (follow-up) | 67, 68 | 16 KiB PRG and 2 KiB CHR banks, four mirroring modes, Sunsoft-3 live IRQ counter and acknowledgement aliases, Sunsoft-4 ROM nametables and WRAM gate, DCS base with empty option slot. |
 | Namco 108 family | 76, 88, 95, 154, 206 | Register decode, fixed and switchable PRG, 1/2 KiB CHR wiring, fixed-PRG submapper, CHR-driven CIRAM, one-screen mirroring. |
 | Konami VRC1–4 | 21, 22, 23, 25, 73, 75 | Submapper address-line permutations, chip-specific banking and mirroring, one-bit VRC2 latch, CPU and prescaled IRQs, enabled WRAM and NVRAM. |
 | Homebrew latches | 28, 31 | Action 53 mode/size matrix, banked CHR RAM, mirroring control; mapper 31's eight 4 KiB PRG windows; power-up versus soft reset. |
@@ -35,6 +36,10 @@ All implementation code is original; no external emulator source was incorporate
   ports exercise the new path.
 - Optional `nametable_address()` maps board-specific CIRAM wiring. Mapper 95 is
   tested through PPU registers, including reversed horizontal nametable pairs.
+- Optional `read_nametable()` / `write_nametable()` intercept normalized
+  `$2000–$2FFF` accesses before CIRAM mapping. Sunsoft-4 supplies ROM bytes and
+  consumes protected writes. Defaults retain existing mapper behavior; PPU
+  `$3000` mirrors and palette decoding remain distinct.
 - NES 2.0 header parsing retains volatile and nonvolatile PRG/CHR memory sizes.
   This does not imply that every existing mapper already uses those fields.
 - New mapper state includes registers, latches, RAM and IRQ progress. Existing
@@ -43,6 +48,7 @@ All implementation code is original; no external emulator source was incorporate
 
 See [mapper tests](../../tests/unit/test_mapper_boards.cpp),
 [Irem tests](../../tests/unit/test_irem.cpp),
+[Sunsoft tests](../../tests/unit/test_sunsoft_boards.cpp),
 [factory](../../src/core/mappers/mapper_registry.cpp), and
 [compatibility](compatibility.md).
 
@@ -58,8 +64,10 @@ See [mapper tests](../../tests/unit/test_mapper_boards.cpp),
   certified; normal `$7000–$7FFF` decoding is implemented.
 - Action 53 implements its standard no-PRG-RAM configuration; the optional
   implementation-specific WRAM extension is not supplied.
+- Sunsoft-4 DCS option-ROM loading and licensing-timer behavior require a separate
+  media attachment interface; this implementation models an empty option slot.
 - Larger remaining families include Bandai/EEPROM, Jaleco SS88006, Taito,
-  Sunsoft-3/4, RAMBO-1, MMC3 derivatives and outer-bank variants,
+  RAMBO-1, MMC3 derivatives and outer-bank variants,
   J.Y./Sachen/TXC ASICs, flash-saving UNROM 512/GTROM, and Rainbow.
 - Enhanced consoles and copier/educational adapters may require machine or
   peripheral support beyond a cartridge mapper. Duplicate and tool-reserved
@@ -145,6 +153,53 @@ passed. Optional external-ROM and GPU cases retain their environment-dependent
 skips. `just format-check`, `git diff --check`, and clang-tidy on `irem.cpp`
 passed with no diagnostics from the new implementation.
 
+## Sunsoft follow-up: hardware decisions and limits
+
+Sunsoft-3 uses four-bit PRG and six-bit CHR bank selection, with `$F800` register
+decoding. Its 16-bit CPU down counter interrupts on underflow, then stops.
+`$C800` writes change the live count, high byte first; `$D800` controls counting
+and resets the write phase without acknowledging. Acknowledgement uses the
+`$8000` aliases decoded by mask `$8800`. The unused external IRQ input is not
+exposed. See [mapper 67 revision 23676](https://www.nesdev.org/w/index.php?oldid=23676).
+
+Sunsoft-4 uses seven-bit 2 KiB pattern banks and two 1 KiB nametable banks whose
+top bit is forced high. All four mirroring modes apply to both CIRAM and ROM
+nametables; ROM writes leave CIRAM intact. `$F000` bit 4 gates WRAM reads and
+writes; a disabled window returns CPU open bus. See
+[mapper 68 revision 23720](https://www.nesdev.org/w/index.php?oldid=23720).
+
+Both implementations accept up to 256 KiB PRG, with fixed final 16 KiB, and
+8 KiB total declared PRG RAM/NVRAM. CHR ROM limits are 128 KiB for Sunsoft-3 and
+256 KiB for Sunsoft-4. Sunsoft-3 accepts up to 8 KiB volatile CHR RAM as a
+compatibility extension; Sunsoft-4 requires CHR ROM. Larger RAM, CHR NVRAM and
+unknown submappers fail creation. Explicit NES 2.0 memory sizes are honored;
+legacy Sunsoft-4 provides 8 KiB WRAM, while legacy Sunsoft-3 only supplies PRG
+memory with a battery flag. Nonvolatile bytes follow volatile bytes in the CPU
+window. Reset preserves RAM and uses deterministic register defaults; physical
+power-up states are not certified.
+
+[Submapper 68:1](https://www.nesdev.org/wiki/NES_2.0_submappers#068:_Sunsoft_4)
+selects the Dual Cartridge System base, limited to 128 KiB internal PRG.
+The fixed bank always remains internal; selecting an absent option ROM drives
+no CPU data bits. Reset selects internal bank zero. No option-ROM attachment
+or licensing timer is implemented, so expansion-cartridge workflows remain
+unfinished. Legacy hashes are not used to infer this board variant.
+
+Tests cover register masks, bank limits, mirroring, IRQ live writes and phase,
+underflow, pause, full counter range, pending/countdown snapshots, DMA clocks,
+CPU IRQ handling and machine rollback. PPU tests exercise all ROM nametable
+arrangements, attributes, `$3000` mirrors, palette isolation, ROM write protection
+and preserved CIRAM. Both IDs join the shared 57-board boot/replay matrix.
+No commercial-title or physical-cartridge validation is claimed.
+
+Sunsoft validation: `just build` passed; the regular suite command above reported
+41 successful executables and zero failures, with 2,280 assertions in 96 mapper
+cases. All six targeted ASan/UBSan executables passed; final mapper and PPU
+sanitizer reruns passed after the DCS snapshot assertions and unsigned PPU-mask
+cleanup. Formatting and whitespace checks passed. Clang-tidy reported no
+diagnostics on `sunsoft34.cpp` or the changed PPU/cartridge/mapper access-hook
+lines. Optional asset-dependent cases retain their existing skips.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -227,8 +282,8 @@ fallback. The registry rejects unsupported IDs.
 | 064 | Tengen RAMBO-1 | Not registered | [r23936](https://www.nesdev.org/w/index.php?oldid=23936) |
 | 065 | Irem H3001 | New implementation: Irem | [r24119](https://www.nesdev.org/w/index.php?oldid=24119) |
 | 066 | GxROM / MxROM | New implementation: DiscreteMapper | [r24003](https://www.nesdev.org/w/index.php?oldid=24003) |
-| 067 | Sunsoft 3 | Not registered | [r23676](https://www.nesdev.org/w/index.php?oldid=23676) |
-| 068 | Sunsoft 4 | Not registered | [r23720](https://www.nesdev.org/w/index.php?oldid=23720) |
+| 067 | Sunsoft 3 | New implementation: Sunsoft34 | [r23676](https://www.nesdev.org/w/index.php?oldid=23676) |
+| 068 | Sunsoft 4 | New implementation: Sunsoft34 | [r23720](https://www.nesdev.org/w/index.php?oldid=23720) |
 | 069 | FME-7 / Sunsoft 5A/5B | Existing registration: Sunsoft5b | [r24262](https://www.nesdev.org/w/index.php?oldid=24262) |
 | 070 | Bandai discrete board | New implementation: DiscreteMapper | [r24524](https://www.nesdev.org/w/index.php?oldid=24524) |
 | 071 | Camerica / Codemasters | New implementation: DiscreteMapper | [r21755](https://www.nesdev.org/w/index.php?oldid=21755) |
