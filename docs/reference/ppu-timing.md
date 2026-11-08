@@ -14,7 +14,7 @@ ratios follow the [NESdev cycle reference](https://www.nesdev.org/wiki/Cycle_ref
 |---|---|---|---|
 | NTSC / Multi fallback | 12 | 4 | 3 |
 | PAL | 16 | 5 | 3.2 |
-| Dendy | 15 | 5 | 3 |
+| Hybrid | 15 | 5 | 3 |
 
 A retained remainder carries incomplete PPU dots across both halves of each CPU
 bus cycle. This applies equally to instructions, dummy accesses, OAM DMA, and DMC
@@ -35,7 +35,7 @@ pattern is:
 
 This gives exactly 16 dots every five CPU cycles, with no floating-point drift.
 Two PAL frames contain 212784 dots and take exactly 66495 CPU cycles. NTSC and
-Dendy retain the existing two-dot/one-dot access split. Reset starts the divider
+Hybrid retain the existing two-dot/one-dot access split. Reset starts the divider
 at remainder zero. Changing region also clears it; reapplying the same region
 preserves it. These are deterministic emulator alignment choices; the tests do
 not establish every hardware power-on divider alignment or sub-dot register race.
@@ -63,7 +63,7 @@ writing the already enabled value does not retrigger it. See
 Frame parity toggles even while rendering is disabled. After reset, the first
 frame is even and full length. A rendered odd NTSC frame contains 89341 dots;
 the even frame contains 89342. Either background or sprites enables the skip.
-PAL and Dendy retain their full 341-by-312-dot frames.
+PAL and Hybrid retain their full 341-by-312-dot frames.
 
 The model retains the frame-length decision when pre-render dot 338 is processed
 and transitions from dot 339 to the next frame's dot 0. A later PPUMASK write
@@ -98,7 +98,7 @@ replay requires version 13; see [DMA/controller snapshots](dma-timing.md#snapsho
 for the two accompanying bus fields.
 
 Version 11 introduced one byte to the bus section: elapsed master clocks since the
-last PPU dot. PAL accepts remainders 0–4; NTSC/Dendy accept zero, as snapshots are
+last PPU dot. PAL accepts remainders 0–4; NTSC/Hybrid accept zero, as snapshots are
 taken between complete CPU cycles. Other values reject the entire snapshot with
 rollback. Restoring the region precedes validating its clock remainder.
 
@@ -134,7 +134,7 @@ MAPPERBUS_PPU_DIAGNOSTICS="$PWD/tmp/ppu-timing" \
 Before the frame-length change, tests 01–08 passed and 09/10 failed. All ten now
 pass, including the published `00 01 01 02` frame-count and `08 08 09 07`
 boundary captures. Synthetic tests cover exact frame lengths, background/sprite
-gates, PAL/Dendy exclusion, reset, masked-frame parity, mirrored status races,
+gates, PAL/Hybrid exclusion, reset, masked-frame parity, mirrored status races,
 and replay before/after the decision and across a shortened frame.
 
 Bus and CPU tests additionally check the PAL access pattern, exact two-frame

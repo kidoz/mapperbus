@@ -1,5 +1,6 @@
 #include <charconv>
 #include <cstdlib>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -15,19 +16,27 @@ int main(int argc, char* argv[]) {
     const auto configuration = mapperbus::app::load_mapperbus_configuration();
     auto bios = configuration.fds_bios_path;
     mapperbus::app::ControllerHardwareOverrides controller_overrides;
+    std::optional<mapperbus::core::Region> region_override;
     int frames = 60;
     for (int index = 1; index < argc; ++index) {
         const std::string_view argument(argv[index]);
         if ((argument == "--entry" || argument == "--fds-bios" || argument == "--frames" ||
-             argument == "--controller-timing" || argument == "--controller-wiring" ||
-             argument == "--controller-mode" || argument == "--expansion-controllers") &&
+             argument == "--region" || argument == "--controller-timing" ||
+             argument == "--controller-wiring" || argument == "--controller-mode" ||
+             argument == "--expansion-controllers") &&
             index + 1 < argc) {
             const std::string_view value(argv[++index]);
             if (argument == "--entry")
                 member = value;
             else if (argument == "--fds-bios")
                 bios = value;
-            else if (argument == "--controller-timing") {
+            else if (argument == "--region") {
+                region_override = mapperbus::app::parse_region_override(value);
+                if (!region_override) {
+                    mapperbus::core::logger::error("--region requires ntsc, pal, or hybrid");
+                    return EXIT_FAILURE;
+                }
+            } else if (argument == "--controller-timing") {
                 const auto timing = mapperbus::app::parse_controller_timing(value);
                 if (!timing) {
                     mapperbus::core::logger::error(
@@ -78,7 +87,7 @@ int main(int argc, char* argv[]) {
     }
     if (path.empty()) {
         mapperbus::core::logger::error("Usage: mapperbus-cli <rom-file|archive> [--entry NAME] "
-                                       "[--fds-bios PATH] [--frames N] "
+                                       "[--fds-bios PATH] [--frames N] [--region ntsc|pal|hybrid] "
                                        "[--controller-timing nes-av-famicom|rf-famicom] "
                                        "[--controller-wiring nes|rf-famicom] [--controller-mode "
                                        "standard|four-score|hori-4-player] "
@@ -98,6 +107,8 @@ int main(int argc, char* argv[]) {
             configuration,
             mapperbus::core::sha256_hex(emulator.content_hash()),
             controller_overrides));
+    if (region_override)
+        emulator.set_region(*region_override);
     emulator.reset();
     for (int frame = 0; frame < frames; ++frame)
         emulator.step_frame();

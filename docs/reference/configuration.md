@@ -92,7 +92,11 @@ as GUI presentation settings or as its startup region override.
 | `ui_density` | `0` | Index 0–3 in the GUI's density choices |
 | `audio_muted` | `false` | Boolean |
 | `audio_volume` | `100` | Integer percentage, 0–100 |
-| `region` | `auto` | `auto`, `ntsc`, `pal`, `dendy` |
+| `region` | `auto` | `auto`, `ntsc`, `pal`, `hybrid` |
+
+The region selector calls UA6527P/UA6538 timing **Hybrid**. Legacy `region=dendy`
+values still load and are written as `region=hybrid` on the next settings save.
+The machine's existing region identifier and save-state layout are preserved.
 
 Use the GUI to choose indexed preferences rather than treating the stored index
 as a literal scale multiplier or pixel density.

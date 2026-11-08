@@ -141,7 +141,7 @@ Result<void> Emulator::load_cartridge(Cartridge cartridge, const std::string& ba
     } else if (region_ == Region::PAL) {
         mapperbus::core::logger::info("Auto-detected PAL ROM");
     } else if (region_ == Region::Dendy) {
-        mapperbus::core::logger::info("Auto-detected Dendy ROM");
+        mapperbus::core::logger::info("Auto-detected Hybrid ROM");
     }
 
     ppu_.set_region(region_);

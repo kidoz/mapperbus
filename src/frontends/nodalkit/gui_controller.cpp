@@ -743,7 +743,7 @@ std::string region_name(core::Region region) {
     case core::Region::PAL:
         return "PAL";
     case core::Region::Dendy:
-        return "Dendy";
+        return "Hybrid";
     case core::Region::Multi:
         return "Multi";
     default:
@@ -4697,7 +4697,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
         display_group->add(pref_row("Density", density_combo));
 
         auto region_combo = nk::ComboBox::create();
-        region_combo->set_items({"Automatic", "NTSC", "PAL", "Dendy"});
+        region_combo->set_items({"Automatic", "NTSC", "PAL", "Hybrid"});
         const auto region_index = [this] {
             switch (configuration_.frontend.region) {
             case app::RegionPreference::Ntsc:

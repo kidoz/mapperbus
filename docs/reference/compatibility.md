@@ -32,10 +32,14 @@ Source: [Mapper registry](../../src/core/mappers/mapper_registry.cpp) and
 
 ## Regions
 
-NTSC, PAL, and Dendy affect emulation timing and audio. Region selection uses
+NTSC, PAL, and Hybrid affect emulation timing and audio. Region selection uses
 the parsed cartridge header and, for legacy headers, CRC32 database and filename
 fallbacks. A multi-region cartridge defaults to NTSC when loaded. SDL3 accepts
 a `--region` override; the GUI stores a region preference.
+
+Hybrid combines PAL-length frames with three PPU dots per CPU cycle, late vblank,
+and NTSC APU period tables. See [Hybrid mode](dendy-research.md) for the
+hardware comparison, implementation, and color-model limitations.
 
 Source: [Cartridge loading](../../src/core/cartridge/cartridge.cpp) and
 [Emulator](../../src/core/emulator.cpp).

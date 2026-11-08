@@ -27,7 +27,7 @@ and the hardware-derived [6502 interrupt recognition analysis](https://www.nesde
 
 ## Source timing
 
-For NTSC and Dendy, the bus advances two PPU dots before the access and one
+For NTSC and Hybrid, the bus advances two PPU dots before the access and one
 afterward. PAL advances 16 dots every five CPU cycles, retaining an integer
 remainder around each access; see [PPU clock scheduling](ppu-timing.md#cpuppu-clock-scheduling).
 These selected alignments keep the existing per-pixel renderer and scroll rules. PPUSTATUS read at the dot before vblank suppresses that frame's

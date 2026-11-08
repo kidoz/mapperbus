@@ -70,7 +70,7 @@ to cycle modes. `F11` toggles fullscreen and `V` toggles vsync.
 ./buildDir/src/app/mapperbus-sdl3 --region pal "/path/to/game.nes"
 ```
 
-Use `ntsc`, `pal`, or `dendy`. Omit the option to use automatic cartridge region
+Use `ntsc`, `pal`, or `hybrid`. Omit the option to use automatic cartridge region
 detection. The SDL3 startup path does not use the GUI's saved `frontend.region`
 preference.
 

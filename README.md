@@ -50,7 +50,7 @@ for dependencies, platform details, and reconfiguring an existing build.
 - MOS 6502 CPU with unofficial opcodes, per-pixel PPU rendering, and five-channel APU.
 - [Cartridge mappers](docs/reference/compatibility.md) including MMC1, MMC2, MMC3,
   MMC5, VRC6, VRC7, Namco 163, and Sunsoft 5B, with expansion audio.
-- NTSC, PAL, and Dendy region detection and overrides.
+- NTSC, PAL, and Hybrid region detection and overrides.
 - [Famicom Disk System](docs/how-to/play-fds-games.md) BIOS boot, disk sides, writes, and saves.
 - [ZIP and 7z ROM loading](docs/how-to/open-archived-roms.md) through libarchive.
 - CPU and GPU xBRZ and FSR 1 upscaling, using Metal or Vulkan where available.

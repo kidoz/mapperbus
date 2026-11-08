@@ -217,7 +217,7 @@ namespace {
     if (token == "pal") {
         return RegionPreference::Pal;
     }
-    if (token == "dendy") {
+    if (token == "hybrid" || token == "dendy") {
         return RegionPreference::Dendy;
     }
     if (token != "auto" && token != "automatic" && !token.empty()) {
@@ -233,7 +233,7 @@ namespace {
     case RegionPreference::Pal:
         return "pal";
     case RegionPreference::Dendy:
-        return "dendy";
+        return "hybrid";
     case RegionPreference::Automatic:
         break;
     }
@@ -726,6 +726,17 @@ void apply_setting(MapperBusConfiguration& configuration,
 }
 
 } // namespace
+
+std::optional<core::Region> parse_region_override(std::string_view value) {
+    const auto token = platform::normalized_token(value);
+    if (token == "ntsc")
+        return core::Region::NTSC;
+    if (token == "pal")
+        return core::Region::PAL;
+    if (token == "hybrid" || token == "dendy")
+        return core::Region::Dendy;
+    return std::nullopt;
+}
 
 std::optional<core::ControllerTiming> parse_controller_timing(std::string_view value) {
     if (value == "nes-av-famicom")

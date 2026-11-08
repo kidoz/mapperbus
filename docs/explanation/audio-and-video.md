@@ -56,7 +56,7 @@ the accelerated path.
 
 ## Region timing is a machine setting
 
-NTSC, PAL, and Dendy select different machine timing. They affect frame timing
+NTSC, PAL, and Hybrid select different machine timing. They affect frame timing
 and audio generation. Upscaling, fullscreen, and vsync are host presentation
 settings. This separation lets the same ROM timing feed different displays
 without treating a display's refresh rate as the emulated console's region.

@@ -56,6 +56,30 @@ TEST_CASE("Linux configuration ignores invalid XDG paths", "[app][configuration]
            ("mapperbus-config-test-" + std::to_string(stamp)) / "mapperbus.conf";
 }
 
+TEST_CASE("Hybrid region uses the new name and imports legacy Dendy preferences",
+          "[app][configuration][hybrid]") {
+    for (const auto* token : {"hybrid", "Hybrid", "dendy", "DENDY"}) {
+        CAPTURE(token);
+        CHECK(parse_region_override(token) == core::Region::Dendy);
+        const auto config =
+            parse_mapperbus_configuration(std::string("[frontend]\nregion=") + token + "\n");
+        CHECK(config.frontend.region == RegionPreference::Dendy);
+        const auto path = temporary_config_path();
+        REQUIRE(save_mapperbus_configuration_to_file(config, path));
+        std::ifstream file(path);
+        const std::string saved((std::istreambuf_iterator<char>(file)), {});
+        CHECK(saved.find("region=hybrid\n") != std::string::npos);
+        CHECK(load_mapperbus_configuration_from_file(path).frontend.region ==
+              RegionPreference::Dendy);
+        file.close();
+        std::filesystem::remove_all(path.parent_path());
+    }
+    CHECK(parse_region_override("ntsc") == core::Region::NTSC);
+    CHECK(parse_region_override("pal") == core::Region::PAL);
+    for (const auto* token : {"", "auto", "multiple", "hybridd", "--frames"})
+        CHECK_FALSE(parse_region_override(token));
+}
+
 TEST_CASE("Per-game device assignments preserve global choices and shared controls",
           "[app][configuration][game-assignments]") {
     MapperBusConfiguration config;

@@ -33,7 +33,7 @@ enum class MirrorMode : std::uint8_t {
 enum class Region : std::uint8_t {
     NTSC,  // RP2C02 — 262 scanlines, 60.0988 Hz
     PAL,   // RP2C07 — 312 scanlines, 50.007 Hz
-    Dendy, // UA6538 — 312 scanlines, 50 Hz (NTSC-like CPU speed)
+    Dendy, // Hybrid (UA6527P/UA6538); legacy identifier, serialized value 2
     Multi, // Multiple-region (game self-detects)
 };
 

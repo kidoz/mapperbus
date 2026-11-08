@@ -29,7 +29,7 @@ region use their own startup defaults.
 | `--controller-wiring W` | `nes`, `rf-famicom` | Saved preference, fresh default NES |
 | `--expansion-controllers P` | `none`, `1`, `2`, `both` | Attach external Famicom pads; fresh default `none` |
 | `--controller-timing T` | `nes-av-famicom`, `rf-famicom` | Saved preference, fresh default NES/AV Famicom |
-| `--region R` | `ntsc`, `pal`, `dendy` | Automatic detection when omitted |
+| `--region R` | `ntsc`, `pal`, `hybrid` | Automatic detection when omitted |
 | `--stereo` | Flag | Enable pseudo-stereo; fresh default is mono |
 | `--dither` | Flag | Enable dithering; fresh default is disabled |
 | `--expansion-mixing M` | `simple`, `resistance` | `simple` |
@@ -53,6 +53,10 @@ and exits with failure. The parser does not consistently reject unknown flags
 or invalid values; use the documented spellings.
 
 Source: [SDL3 composition root](../../src/app/main.cpp).
+
+Hybrid reproduces UA6527P/UA6538 timing, commonly called Dendy timing. The legacy
+`--region dendy` spelling remains accepted. Both region parsers reject missing
+or invalid values. See [Hybrid timing and color](dendy-research.md).
 
 ### Four Score
 
@@ -116,7 +120,7 @@ Hold Turbo A or Turbo B to repeat that button; release to stop. Ordinary A/B
 remain continuous holds, including when their turbo action is also held.
 Settings → Input → Turbo → Speed selects Slow (3 frames pressed, 3 released),
 Normal (2 + 2, default), or Fast (1 + 1). Rates at 60 fps are 10, 15, and 30
-presses per second; PAL/Dendy rates are approximately 8.3, 12.5, and 25. Use Slow if a
+presses per second; PAL/Hybrid rates are approximately 8.3, 12.5, and 25. Use Slow if a
 game misses presses. The shared `[input.turbo]` setting is `period_frames=6`,
 `4`, or `2`, respectively.
 
@@ -200,7 +204,7 @@ and volume accepts 0–100. The headless CLI does not open capture. See
 ## Headless CLI
 
 ```text
-./buildDir/src/frontends/cli/mapperbus-cli <rom-file|archive> [--entry NAME] [--fds-bios PATH] [--frames N] [--controller-timing T] [--controller-wiring W] [--controller-mode standard|four-score|hori-4-player] [--expansion-controllers none|1|2|both]
+./buildDir/src/frontends/cli/mapperbus-cli <rom-file|archive> [--entry NAME] [--fds-bios PATH] [--frames N] [--region ntsc|pal|hybrid] [--controller-timing T] [--controller-wiring W] [--controller-mode standard|four-score|hori-4-player] [--expansion-controllers none|1|2|both]
 ```
 
 Loads NES/FDS media, resets the emulator, executes 60 frames by default, and
@@ -208,6 +212,9 @@ exits. `--frames` accepts 1–1000000. `--controller-timing` accepts
 `nes-av-famicom` or `rf-famicom` and overrides the shared preference for this run.
 `--controller-wiring` accepts `nes` or `rf-famicom` independently of timing.
 Select `rf-famicom` for both options to use RF Famicom timing and wiring.
+`--region ntsc|pal|hybrid` overrides cartridge detection for this run; `dendy`
+remains an alias for `hybrid`. Without an override, cartridge detection applies;
+the headless CLI does not use the GUI's saved region preference.
 The CLI reads the shared FDS BIOS path;
 `--fds-bios` overrides it. It presents no video, audio device, or interactive
 input. Invalid arguments and load/save failures return failure.

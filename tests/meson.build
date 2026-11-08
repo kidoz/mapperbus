@@ -39,6 +39,14 @@ test_region = executable('test-region',
 )
 test('region', test_region)
 
+if get_option('enable_cli')
+    cli_python = import('python').find_installation()
+    test('cli-region', cli_python,
+        args : [files('integration/test_cli_region.py'), mapperbus_cli],
+        depends : mapperbus_cli,
+    )
+endif
+
 test_rom_database = executable('test-rom-database',
     'unit/test_rom_database.cpp',
     dependencies : [mapperbus_core_dep, catch2_dep],

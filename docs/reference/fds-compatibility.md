@@ -156,7 +156,7 @@ uses the last page written by a read-modify-write instruction, and performs real
 halt/alignment and source reads between PPU writes. DMC loads and reloads schedule
 on APU get/put phases and halt the next eligible CPU read. Halt/dummy/alignment
 and sample fetch take three or four cycles; setup overlaps OAM and DMC gets take
-priority. NTSC/Dendy repeat halted reads; PAL performs the initial halt read and
+priority. NTSC/Hybrid repeat halted reads; PAL performs the initial halt read and
 suppresses repeats pending separate validation.
 Untimed host debugger/test accesses do not advance these clocks. The emulator
 does not step the FDS drive, APU, or expansion audio a second time after an

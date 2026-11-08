@@ -104,7 +104,7 @@ int main(int argc, char* argv[]) {
         mapperbus::core::logger::info(
             "  --filter-mode MODE    accurate, enhanced, or unfiltered (default: accurate)");
         mapperbus::core::logger::info(
-            "  --region R            ntsc, pal, or dendy (default: auto)");
+            "  --region R            ntsc, pal, or hybrid (default: auto)");
         mapperbus::core::logger::info(
             "  --controller-timing T nes-av-famicom (default) or rf-famicom");
         mapperbus::core::logger::info("  --controller-wiring W nes (default) or rf-famicom");
@@ -156,7 +156,7 @@ int main(int argc, char* argv[]) {
     bool use_gpu = false;
     bool use_gpu_fsr = false;
     bool use_fsr = false;
-    const char* region_override = nullptr;
+    std::optional<mapperbus::core::Region> region_override;
     const char* rom_path = nullptr;
     std::string_view rom_member;
     std::string fds_bios;
@@ -358,8 +358,13 @@ int main(int argc, char* argv[]) {
                 return EXIT_FAILURE;
             }
             controller_overrides.wiring = *wiring;
-        } else if (std::strcmp(argv[i], "--region") == 0 && i + 1 < argc) {
-            region_override = argv[++i];
+        } else if (std::strcmp(argv[i], "--region") == 0) {
+            region_override =
+                i + 1 < argc ? mapperbus::app::parse_region_override(argv[++i]) : std::nullopt;
+            if (!region_override) {
+                mapperbus::core::logger::error("--region requires ntsc, pal, or hybrid");
+                return EXIT_FAILURE;
+            }
         } else {
             rom_path = argv[i];
         }
@@ -437,19 +442,13 @@ int main(int argc, char* argv[]) {
         }
     };
 
-    if (region_override != nullptr) {
-        if (std::strcmp(region_override, "ntsc") == 0) {
-            app.session().set_region(mapperbus::core::Region::NTSC);
-            mapperbus::core::logger::info("Forcing region to NTSC");
-        } else if (std::strcmp(region_override, "pal") == 0) {
-            app.session().set_region(mapperbus::core::Region::PAL);
-            mapperbus::core::logger::info("Forcing region to PAL");
-        } else if (std::strcmp(region_override, "dendy") == 0) {
-            app.session().set_region(mapperbus::core::Region::Dendy);
-            mapperbus::core::logger::info("Forcing region to Dendy");
-        } else {
-            mapperbus::core::logger::warn("Unknown region '{}', ignoring", region_override);
-        }
+    if (region_override) {
+        app.session().set_region(*region_override);
+        mapperbus::core::logger::info("Forcing region to {}",
+                                      *region_override == mapperbus::core::Region::NTSC ? "NTSC"
+                                      : *region_override == mapperbus::core::Region::PAL
+                                          ? "PAL"
+                                          : "Hybrid");
     }
 
     RuntimeScalerMode runtime_scaler_mode =

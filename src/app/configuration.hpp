@@ -186,6 +186,8 @@ void remove_recent_rom(MapperBusConfiguration& configuration,
 void clear_recent_roms(MapperBusConfiguration& configuration);
 
 [[nodiscard]] std::string controller_button_name(platform::InputAction button);
+/// CLI machine override. "dendy" remains a legacy alias for "hybrid".
+[[nodiscard]] std::optional<core::Region> parse_region_override(std::string_view value);
 [[nodiscard]] std::optional<core::ControllerTiming> parse_controller_timing(std::string_view value);
 [[nodiscard]] const char* controller_timing_token(core::ControllerTiming timing);
 [[nodiscard]] std::optional<core::ControllerWiring> parse_controller_wiring(std::string_view value);

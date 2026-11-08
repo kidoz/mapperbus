@@ -79,7 +79,7 @@ instruction's hardware polling points. Accepted decisions survive source
 acknowledgements and I-flag changes; late NMI can redirect IRQ/BRK vectoring. See
 [interrupt timing](../reference/interrupt-timing.md). CPU/PPU scheduling uses
 integer master-clock dividers from `RegionTiming`: PAL carries its fractional
-dot remainder across accesses and DMA, while NTSC/Dendy retain three dots per
+dot remainder across accesses and DMA, while NTSC/Hybrid retain three dots per
 CPU cycle. Audio and disk clocks remain CPU-based.
 
 ## Persistence belongs at different boundaries

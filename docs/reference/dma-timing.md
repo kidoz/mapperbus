@@ -1,7 +1,7 @@
 # DMA timing
 
 The PPU, APU and expansion audio advance with CPU/DMA bus cycles. PPU access
-timing uses the regional master-clock dividers: NTSC/Dendy retain two dots before
+timing uses the regional master-clock dividers: NTSC/Hybrid retain two dots before
 an access and one afterward; PAL advances 16 dots every five CPU cycles. See
 [PPU clock scheduling](ppu-timing.md#cpuppu-clock-scheduling).
 [Interrupt timing](interrupt-timing.md) describes IRQ/NMI polling and edge
@@ -24,7 +24,7 @@ gets, even indices are puts. Hardware can power on in either alignment.
 - OAM and DMC setup can overlap OAM accesses. A DMC get wins over an OAM get;
   OAM preserves its offset and realigns before continuing. Common overlap adds
   two cycles; a halt on the penultimate/last OAM put adds one/three cycles.
-- Idle DMA cycles repeat the halted read on NTSC/Dendy. PAL performs the initial
+- Idle DMA cycles repeat the halted read on NTSC/Hybrid. PAL performs the initial
   halt read but suppresses repeats. FDS clocks advance before every bus access,
   allowing newly arriving disk bytes to be consumed during DMA.
 
@@ -54,7 +54,7 @@ It does not expose a CPU-revision selector.
   steal an OAM data transfer.
 
 These quirks are enabled only for NTSC (including the Multi fallback). PAL and
-Dendy retain their previous cancellation behavior. NESdev marks 2A07 behavior
+Hybrid retain their previous cancellation behavior. NESdev marks 2A07 behavior
 unknown and reports different timing on affected clones; the NTSC tables do not
 establish those hardware contracts.
 
@@ -93,7 +93,7 @@ a connected standard controller shifts in ones after the eighth bit.
 The bus owns line history and pending strobe requests; `Controller::peek` and
 `clock` separate sampling from the clock edge. Timed CPU/DMA reads use this path.
 Untimed debugger reads retain their immediate read side effects and do not
-change the timed output-enable history. PAL/Dendy retain their previous per-read
+change the timed output-enable history. PAL/Hybrid retain their previous per-read
 controller clocking and DMA register behavior.
 
 Select `rf-famicom` for the original RF Famicom's half-cycle output-enable gate:
@@ -108,7 +108,7 @@ exposes Settings → General → Hardware → Controller timing; CLI and SDL3 ac
 `--controller-timing` with the same tokens. Changes apply immediately to both
 ports. The setting is retained through reset. Snapshots restore their own timing
 without rewriting the saved preference; opening another game in the GUI applies
-the preference again. PAL/Dendy execution ignores this NTSC timing selection.
+the preference again. PAL/Hybrid execution ignores this NTSC timing selection.
 
 ### Controller data wiring
 

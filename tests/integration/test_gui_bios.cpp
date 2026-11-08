@@ -392,6 +392,29 @@ struct Fixture {
     }
 };
 
+TEST_CASE("Video settings select and persist Hybrid while keeping the game paused",
+          "[gui][hybrid][saved-settings]") {
+    Fixture fixture(SettingsMode::Saved);
+    fixture.settings();
+    Access::tabs(*fixture.gui)->set_selected_index(1);
+    fixture.settle_saves();
+    auto* combo = find_widget<nk::ComboBox>(*Access::settings(*fixture.gui), [](const auto& item) {
+        return item.item_count() == 4 && item.item(0) == "Automatic";
+    });
+    REQUIRE(combo);
+    CHECK(combo->item(3) == "Hybrid");
+    combo->set_selected_index(3);
+    fixture.settle_saves();
+    CHECK(combo->selected_text() == "Hybrid");
+    CHECK(Access::snapshot(*fixture.gui).region == core::Region::Dendy);
+    CHECK(Access::snapshot(*fixture.gui).paused);
+    const auto bytes = fixture.saved_bytes();
+    CHECK(std::string(bytes.begin(), bytes.end()).find("region=hybrid\n") != std::string::npos);
+    combo->set_selected_index(0);
+    fixture.settle_saves();
+    CHECK(Access::snapshot(*fixture.gui).region == core::Region::NTSC);
+}
+
 TEST_CASE("Settings BIOS selection applies in memory and preserves a paused game on rejection",
           "[gui][fds][bios][session-only]") {
     Fixture fixture;
