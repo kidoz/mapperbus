@@ -4,8 +4,9 @@ This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
 complete.** Updated 2026-11-09 against the working-tree registry.
 
-There are **77 registered cartridge IDs**: the original 14, 53 added in the first
-batch, and Irem 32/65, Sunsoft 67/68, and Taito 33/48/80/207/82/552 in the follow-ups below.
+There are **78 registered cartridge IDs**: the original 14, 53 added in the first
+batch, and Irem 32/65, Sunsoft 67/68, Taito 33/48/80/207/82/552, and Jaleco 18
+in the follow-ups below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
 unusual ROM geometry.
@@ -20,6 +21,7 @@ unusual ROM geometry.
 | Taito TC0190 / TC0690 (follow-up) | 33, 48 | Two 8 KiB PRG windows, full-width 2/1 KiB CHR banks, distinct mirroring decoders, mapper-48 latched IRQ and submapper timing profiles, CPU/PPU and snapshot replay. |
 | Taito X1-005 (follow-up) | 80, 207 | Three 8 KiB PRG windows, aligned 2/1 KiB CHR banks, exact register aliases, protected 128-byte RAM and battery persistence, H/V and CHR-driven CIRAM routing. |
 | Taito X1-017 (follow-up) | 82, 552 | Legacy/physical PRG wiring, CHR half swap, three independently protected RAM regions, 5 KiB persistence, CPU bus pull-downs and M2 IRQ timer. |
+| Jaleco SS88006 (follow-up) | 18 | Nibble-written PRG/CHR banks, four CIRAM arrangements, separate RAM chip/write enables, 4/8/12/16-bit wrapping M2 IRQ, persistence and snapshots. Optional external speech playback remains unsupported. |
 | Namco 108 family | 76, 88, 95, 154, 206 | Register decode, fixed and switchable PRG, 1/2 KiB CHR wiring, fixed-PRG submapper, CHR-driven CIRAM, one-screen mirroring. |
 | Konami VRC1–4 | 21, 22, 23, 25, 73, 75 | Submapper address-line permutations, chip-specific banking and mirroring, one-bit VRC2 latch, CPU and prescaled IRQs, enabled WRAM and NVRAM. |
 | Homebrew latches | 28, 31 | Action 53 mode/size matrix, banked CHR RAM, mirroring control; mapper 31's eight 4 KiB PRG windows; power-up versus soft reset. |
@@ -59,6 +61,7 @@ See [mapper tests](../../tests/unit/test_mapper_boards.cpp),
 [Taito tests](../../tests/unit/test_taito.cpp),
 [X1-005 tests](../../tests/unit/test_taito_x1005.cpp),
 [X1-017 tests](../../tests/unit/test_taito_x1017.cpp),
+[SS88006 tests](../../tests/unit/test_jaleco_ss88006.cpp),
 [factory](../../src/core/mappers/mapper_registry.cpp), and
 [compatibility](compatibility.md).
 
@@ -74,9 +77,11 @@ See [mapper tests](../../tests/unit/test_mapper_boards.cpp),
   certified; normal `$7000–$7FFF` decoding is implemented.
 - Action 53 implements its standard no-PRG-RAM configuration; the optional
   implementation-specific WRAM extension is not supplied.
-- Larger remaining families include Bandai/EEPROM, Jaleco SS88006, other Taito boards,
+- Larger remaining families include Bandai/EEPROM, other Jaleco and Taito boards,
   RAMBO-1, MMC3 derivatives and outer-bank variants,
   J.Y./Sachen/TXC ASICs, flash-saving UNROM 512/GTROM, and Rainbow.
+- Jaleco's optional external ADPCM speech chips and sample-media loading remain
+  unimplemented, including on some mapper-18 boards.
 - Enhanced consoles and copier/educational adapters may require machine or
   peripheral support beyond a cartridge mapper. Duplicate and tool-reserved
   numbers require classification rather than fabricated hardware.
@@ -410,6 +415,71 @@ leak-detection exception. Both synthetic mapper images ran two frames through
 for the new implementation and changed bus/registry lines. The isolated agent
 documentation validator reported zero errors and 52 existing warnings.
 
+## SS88006 follow-up: nibble registers and variable-width IRQ
+
+Mapper 18 follows [specification revision 3918](https://www.nesdev.org/w/index.php?oldid=3918)
+and [pinout revision 22246](https://www.nesdev.org/w/index.php?oldid=22246).
+Only CPU A12–A14 and A0–A1 select registers, so writes decode with `$F003`.
+The three switchable 8 KiB PRG registers have six bits, split into low four
+and high two; the final 8 KiB bank is fixed. Eight 1 KiB CHR registers use
+two four-bit writes each. Register data bits 4–7 are ignored by the mapper.
+PRG ROM supports 512 KiB, CHR ROM 256 KiB. ROM writes do not cause bus conflicts.
+`$F002` selects horizontal, vertical, lower single-screen or upper single-screen
+CIRAM using its low two bits.
+
+The optional RAM window at `$6000–$7FFF` has independent chip-enable and
+write-permission bits at `$9002.0/.1`, both active high. Disabled reads leave
+CPU data lines undriven. NES 2.0 sizes determine whether RAM exists; up to
+8 KiB total volatile/nonvolatile memory is supported, with NVRAM following
+volatile bytes. Smaller declarations mirror within the CPU window. Legacy
+iNES's implied 8 KiB is retained as a compatibility default because that header
+cannot reliably distinguish RAM-equipped boards; its battery flag selects
+NVRAM. Only the nonvolatile portion is exposed for persistence, independent of
+CPU permissions. NVRAM requires the battery flag. Unknown submappers, larger
+memories, CHR RAM/NVRAM and four-screen nametable requests are rejected.
+
+Four nibble writes at `$E000–$E003` set a full 16-bit IRQ reload latch without
+changing the active counter. Any `$F000` write copies all 16 latch bits and
+acknowledges. `$F001` writes acknowledge and select count enable plus 4/8/12/16-bit
+width; the shortest selected width takes priority. Every M2, including CPU
+stalls and DMA, decrements only the selected low bits. An IRQ latches on
+underflow; upper bits survive narrow modes, and counting keeps wrapping after
+expiry. Disabling counting pauses the live value. CPU interrupt service alone
+does not acknowledge the mapper.
+
+Reset retains RAM but locks it, clears IRQ state, selects PRG banks 0/1/2 and
+zero CHR banks, and uses header H/V mirroring. These are deterministic emulator
+defaults; physical power-up state is not certified. New mapper payloads retain
+machine snapshot version 20 and do not alter existing IDs or bus timing.
+
+Some boards add a separate µPD7755C/µPD7756C ADPCM device with its own mask-ROM
+samples. `$F003` controls that device; the SS88006 ASIC has no audio generator.
+The cartridge pipeline currently supplies PRG/CHR media and DCS options, but
+does not attach this speech media. This implementation models the mapper
+without that optional device: `$F003` has no observable effect and no substitute
+samples or speech audio are generated. Shared ADPCM emulation and media loading
+remain a separate implementation item.
+
+Tests cover both halves of every bank register and address aliases, high-bit
+masks, ROM protection, PPU CIRAM routing, all 256 RAM-control bytes, absent and
+mirrored RAM, mixed volatile/NVRAM persistence, every IRQ size-bit combination,
+repeated wrapping, preserved upper bits, full reloads, live-latch independence,
+DMA/sample timing, CPU IRQ service and active/pending snapshot replay. Corrupt
+fields, truncation and oversized battery files are rejected. Mapper 18 joins
+the shared 64-board boot/replay/rollback matrix. No commercial-title or
+physical-cartridge validation is claimed.
+
+SS88006 validation: `just build` passed; `meson test -C buildDir --print-errorlogs
+--suite=mapperbus` reported 42 successful executables, zero failures, and 10,132
+assertions in 148 mapper cases. The seven targeted ASan/UBSan executables
+(`mappers bus ppu region save-state mapper-timing battery-save`) passed with the
+documented macOS leak-detection exception. NES 2.0 and legacy iNES versions of
+the original CPU IRQ program each ran two frames through `mapperbus-cli` and
+persisted an 8 KiB battery file containing the expected RAM write. Formatting,
+whitespace and clang-tidy checks passed for the implementation and added
+registry lines. The isolated agent documentation validator reported zero
+errors and 52 existing warnings.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -443,7 +513,7 @@ fallback. The registry rejects unsupported IDs.
 | 015 | Board-specific specification | Not registered | [r19956](https://www.nesdev.org/w/index.php?oldid=19956) |
 | 016 | Bandai FCG / LZ93D50 | Not registered | [r3876](https://www.nesdev.org/w/index.php?oldid=3876) |
 | 017 | FFE Super Magic Card | Not registered | [r18933](https://www.nesdev.org/w/index.php?oldid=18933) |
-| 018 | Jaleco SS88006 | Not registered | [r3918](https://www.nesdev.org/w/index.php?oldid=3918) |
+| 018 | Jaleco SS88006 | New implementation: JalecoSs88006 (external speech unsupported) | [r3918](https://www.nesdev.org/w/index.php?oldid=3918) |
 | 019 | Namco 129/163 | Existing registration: Namco163 | [r24377](https://www.nesdev.org/w/index.php?oldid=24377) |
 | 020 | Famicom Disk System | Separate FDS subsystem | [r23632](https://www.nesdev.org/w/index.php?oldid=23632) |
 | 021 | VRC4 | New implementation: KonamiVrc | [r24169](https://www.nesdev.org/w/index.php?oldid=24169) |
