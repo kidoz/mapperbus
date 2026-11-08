@@ -3551,8 +3551,10 @@ void MapperBusGuiController::begin_configuration_change(app::MapperBusConfigurat
     refresh_configuration_save_status();
     app_.event_loop().post(
         [this, revision] {
+            // A fast failure may already have presented its dialog. Preserve
+            // that dialog even after it closes while its response is queued.
             if (configuration_change_ && configuration_change_->revision == revision &&
-                !close_intent_)
+                !close_intent_ && !configuration_change_dialog_)
                 show_configuration_change(!configuration_saver_.error().empty());
         },
         "mapperbus.configuration-start");

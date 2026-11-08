@@ -75,9 +75,10 @@ meson test -C buildDir-gui gui-bios --print-errorlogs
 
 These tests run the production controller with software windows and controlled
 file pickers. They use synthetic ROMs and BIOS files, require no display, audio
-device, gamepad, or commercial files, and isolate all media/state I/O in temporary
-directories. They cover session-only BIOS selection, exact archive-member
-recovery, cancellation, and late callbacks. The Linux GUI CI job runs them as
+device, gamepad, or commercial files, and isolate media, state, and configuration
+I/O in temporary directories. They cover session-only and saved BIOS selection,
+save failures with Retry/Keep actions, exact archive-member recovery, cancellation,
+late callbacks, and Quit during a settings save. The Linux GUI CI job runs them as
 part of the MapperBus suite.
 
 ## Build only the headless CLI and tests

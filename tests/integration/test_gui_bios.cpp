@@ -4,10 +4,12 @@
 #include <catch2/catch_test_macros.hpp>
 #include <chrono>
 #include <condition_variable>
+#include <deque>
 #include <filesystem>
 #include <memory>
 #include <mutex>
 #include <nk/widgets/label.h>
+#include <source_location>
 #include <stop_token>
 #include <string>
 #include <string_view>
@@ -50,6 +52,16 @@ struct MapperBusGuiTestAccess {
     static auto recovery(MapperBusGuiController& gui) {
         return gui.rom_error_dialog_;
     }
+    static auto change(MapperBusGuiController& gui) {
+        return gui.configuration_change_dialog_;
+    }
+    static auto closing(MapperBusGuiController& gui) {
+        return gui.close_save_dialog_;
+    }
+    static bool unsaved(MapperBusGuiController& gui) {
+        return gui.configuration_saver_.busy() || gui.configuration_saver_.unsaved() ||
+               gui.configuration_change_.has_value();
+    }
     static auto archive(MapperBusGuiController& gui) {
         return gui.archive_dialog_;
     }
@@ -85,16 +97,57 @@ struct Gate {
         finished = true;
         changed.notify_all();
     }
+    bool reached(bool Gate::* flag) {
+        const std::lock_guard lock(mutex);
+        return this->*flag;
+    }
     bool wait(bool Gate::* flag) {
         std::unique_lock lock(mutex);
         return changed.wait_for(lock, 5s, [&] { return this->*flag; });
     }
 };
 
+struct SaveStep {
+    std::string bios;
+    std::shared_ptr<Gate> gate;
+    bool fail = false;
+};
+
 struct Work {
     std::mutex mutex;
     std::vector<app::RomLoadRequest> requests;
     std::atomic<int> writes{0};
+    std::deque<SaveStep> save_steps;
+    std::vector<std::shared_ptr<Gate>> save_gates;
+
+    void plan_save(const std::filesystem::path& bios,
+                   std::shared_ptr<Gate> gate = {},
+                   bool fail = false) {
+        const std::lock_guard lock(mutex);
+        save_steps.push_back({bios.string(), gate, fail});
+        if (gate)
+            save_gates.push_back(std::move(gate));
+    }
+    core::Result<void> save(const app::MapperBusConfiguration& configuration,
+                            const std::filesystem::path& path) {
+        ++writes;
+        SaveStep step;
+        {
+            const std::lock_guard lock(mutex);
+            if (!save_steps.empty() && save_steps.front().bios == configuration.fds_bios_path) {
+                step = std::move(save_steps.front());
+                save_steps.pop_front();
+            }
+        }
+        if (step.gate)
+            step.gate->block();
+        auto result = step.fail
+                          ? core::Result<void>(std::unexpected("Injected settings save failure"))
+                          : app::save_mapperbus_configuration_to_file(configuration, path);
+        if (step.gate)
+            step.gate->finish();
+        return result;
+    }
     std::shared_ptr<Gate> first = std::make_shared<Gate>();
     std::shared_ptr<Gate> second = std::make_shared<Gate>();
 
@@ -132,12 +185,17 @@ void click(nk::Widget& root, std::string_view label) {
         button->handle_key_event({.type = nk::KeyEvent::Type::Press, .key = nk::KeyCode::Return}));
 }
 
+enum class SettingsMode { SessionOnly, Saved };
+
 struct Fixture {
     const std::filesystem::path root =
         std::filesystem::temp_directory_path() /
         ("mapperbus-gui-bios-" +
          std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const std::filesystem::path configuration = root / "mapperbus.conf";
+    const std::filesystem::path original_bios = root / "original.bin";
     const std::filesystem::path current = root / "current.nes";
+    const SettingsMode mode;
     const std::filesystem::path valid = root / "valid.bin";
     const std::filesystem::path invalid = root / "invalid.bin";
     const std::filesystem::path first = root / "first.bin";
@@ -148,7 +206,7 @@ struct Fixture {
     std::vector<nk::Application::OpenFileDialogCallback> pickers;
     std::unique_ptr<MapperBusGuiController> gui;
 
-    Fixture() {
+    explicit Fixture(SettingsMode settings_mode = SettingsMode::SessionOnly) : mode(settings_mode) {
         core::register_builtin_mappers();
         std::filesystem::create_directory(root);
         std::vector<core::Byte> rom(16 + 16384 + 8192);
@@ -159,12 +217,18 @@ struct Fixture {
         for (int offset : {16384 - 6, 16384 - 4, 16384 - 2})
             rom[16 + offset + 1] = 0x80;
         REQUIRE(core::write_binary_file_atomic(current.string(), rom, "ROM"));
-        for (const auto& path : {valid, first, second})
+        for (const auto& path : {original_bios, valid, first, second})
             REQUIRE(core::write_binary_file_atomic(path.string(), tests::make_fds_bios(), "BIOS"));
         REQUIRE(core::write_binary_file_atomic(
             invalid.string(), std::vector<core::Byte>(8191), "BIOS"));
-        // The write tripwire is the only possible settings writer. Neither it
-        // nor the startup reader touches a real user configuration path.
+        app::MapperBusConfiguration initial;
+        initial.fds_bios_path = original_bios.string();
+        initial.frontend.settings_page_index = 3;
+        initial.save_states.directory = root / "states";
+        REQUIRE(app::save_mapperbus_configuration_to_file(initial, configuration));
+        // Both modes redirect all configuration I/O to the fixture. Session-only
+        // mode keeps the original write tripwire; saved mode uses the real atomic
+        // writer with optional failure/gate steps for BIOS proposals.
         gui = std::make_unique<MapperBusGuiController>(
             GuiHost(loop,
                     [this](std::string_view title, const auto& filters, auto callback) {
@@ -174,11 +238,17 @@ struct Fixture {
                     }),
             window,
             app::write_disk_export,
-            [work = work](const auto&, const auto&) -> core::Result<void> {
+            [work = work, mode = mode, path = configuration](const auto& proposal,
+                                                             const auto&) -> core::Result<void> {
+                if (mode == SettingsMode::Saved)
+                    return work->save(proposal, path);
                 ++work->writes;
                 return std::unexpected("Unexpected settings write");
             },
-            [](const auto&) -> core::Result<app::LoadedConfiguration> {
+            [mode = mode,
+             path = configuration](const auto&) -> core::Result<app::LoadedConfiguration> {
+                if (mode == SettingsMode::Saved)
+                    return app::read_startup_configuration({path, {}});
                 return std::unexpected("Settings unavailable for session-only regression");
             },
             [work = work, root = root](const app::RomLoadRequest& original, std::stop_token stop) {
@@ -209,19 +279,26 @@ struct Fixture {
         REQUIRE(nk::Application::instance() == nullptr);
         window.present();
         CHECK(window.native_surface() == nullptr);
-        wait([&] { return contains(*window.child(), "Settings unavailable for"); });
-        click(*window.child(), "Continue Without Saving");
+        if (mode == SettingsMode::SessionOnly) {
+            wait([&] { return contains(*window.child(), "Settings unavailable for"); });
+            click(*window.child(), "Continue Without Saving");
+        }
         wait([&] { return Access::ready(*gui); });
         gui->open_initial_rom(current.string());
         wait([&] { return Access::snapshot(*gui).has_cartridge; });
         action("emu.pause");
         REQUIRE(Access::snapshot(*gui).paused);
+        if (mode == SettingsMode::Saved)
+            settle_saves();
     }
     ~Fixture() {
-        work->first->release();
-        work->second->release();
-        // Wait for file reads before removing their owned fixtures.
-        for (const auto& gate : {work->first, work->second}) {
+        auto gates = work->save_gates;
+        gates.push_back(work->first);
+        gates.push_back(work->second);
+        for (const auto& gate : gates)
+            gate->release();
+        // Release blocked I/O before retiring the controller and its fixtures.
+        for (const auto& gate : gates) {
             std::unique_lock lock(gate->mutex);
             if (gate->entered)
                 (void)gate->changed.wait_for(lock, 5s, [&] { return gate->finished; });
@@ -231,7 +308,9 @@ struct Fixture {
         std::filesystem::remove_all(root, error);
         nk::Theme::set_active(nullptr);
     }
-    template <typename Predicate> void wait(Predicate ready) {
+    template <typename Predicate>
+    void wait(Predicate ready, std::source_location location = std::source_location::current()) {
+        INFO(location.file_name() << ":" << location.line());
         const auto deadline = std::chrono::steady_clock::now() + 5s;
         while (!ready() && std::chrono::steady_clock::now() < deadline) {
             loop.poll();
@@ -251,7 +330,25 @@ struct Fixture {
         action("settings.open");
         REQUIRE(Access::settings(*gui));
         Access::tabs(*gui)->set_selected_index(3);
-        REQUIRE(contains(*Access::settings(*gui), "Changes are not saved"));
+        if (mode == SettingsMode::Saved)
+            settle_saves();
+        REQUIRE(contains(*Access::settings(*gui),
+                         mode == SettingsMode::Saved ? "Saved automatically"
+                                                     : "Changes are not saved"));
+    }
+    void settle_saves() {
+        wait([&] { return !Access::unsaved(*gui); });
+    }
+    auto saved_bytes() const {
+        auto bytes = core::read_binary_file_capped(
+            configuration.string(), app::kMaxConfigurationBytes, "test settings");
+        REQUIRE(bytes);
+        return *bytes;
+    }
+    auto saved_bios() const {
+        const auto bytes = saved_bytes();
+        return app::parse_mapperbus_configuration(std::string(bytes.begin(), bytes.end()))
+            .fds_bios_path;
     }
     auto take_picker() {
         REQUIRE(pickers.size() == 1);
@@ -433,5 +530,201 @@ TEST_CASE("Recovery Cancel rejects late reads and obsolete dialog responses",
     CHECK(fixture.work->loads().back().member == "folder/disk.fds");
     CHECK(fixture.work->writes == 0);
 }
+TEST_CASE("Saved Settings applies a BIOS only after the atomic write and matching UI receipt",
+          "[gui][fds][bios][saved-settings]") {
+    Fixture fixture(SettingsMode::Saved);
+    const auto before = Access::state(*fixture.gui);
+    fixture.settings();
+    const auto saved_before = fixture.saved_bytes();
+    auto gate = std::make_shared<Gate>();
+    fixture.work->plan_save(fixture.valid, gate);
+    fixture.choose(*Access::settings(*fixture.gui), fixture.valid);
+    fixture.wait([&] {
+        auto dialog = Access::change(*fixture.gui);
+        return dialog && contains(*dialog, "Saving settings before applying");
+    });
+    fixture.wait([&] { return gate->reached(&Gate::entered); });
+    CHECK(Access::bios(*fixture.gui) == fixture.original_bios.string());
+    CHECK(fixture.saved_bytes() == saved_before);
+    CHECK(Access::state(*fixture.gui) == before);
+    CHECK(fixture.work->loads().size() == 1);
+    fixture.window.dispatch_key_event(
+        {.type = nk::KeyEvent::Type::Press, .key = nk::KeyCode::Escape});
+    CHECK(Access::change(*fixture.gui)->is_presented());
+    gate->release();
+    REQUIRE(gate->wait(&Gate::finished));
+    // The worker has written the new file; no UI poll has accepted its receipt.
+    CHECK(fixture.saved_bios() == fixture.valid.string());
+    CHECK(Access::bios(*fixture.gui) == fixture.original_bios.string());
+    fixture.settle_saves();
+    CHECK(Access::bios(*fixture.gui) == fixture.valid.string());
+    CHECK(Access::state(*fixture.gui) == before);
+    CHECK(fixture.work->loads().size() == 1);
+    auto* selected =
+        find_widget<nk::Button>(*Access::settings(*fixture.gui), [](const auto& button) {
+            return button.accessible() && button.accessible()->name() == "Choose FDS BIOS";
+        });
+    REQUIRE(selected);
+    CHECK(selected->accessible()->description() == fixture.valid.string());
+}
+
+TEST_CASE("Failed saved Settings BIOS proposals retain the original selection for Keep or Retry",
+          "[gui][fds][bios][saved-settings][failure]") {
+    for (bool retry : {false, true}) {
+        INFO(retry);
+        Fixture fixture(SettingsMode::Saved);
+        const auto before = Access::state(*fixture.gui);
+        fixture.settings();
+        const auto saved_before = fixture.saved_bytes();
+        fixture.work->plan_save(fixture.valid, {}, true);
+        fixture.choose(*Access::settings(*fixture.gui), fixture.valid);
+        fixture.wait([&] {
+            auto dialog = Access::change(*fixture.gui);
+            return dialog && contains(*dialog, "Injected settings save failure");
+        });
+        CHECK(Access::bios(*fixture.gui) == fixture.original_bios.string());
+        CHECK(fixture.saved_bytes() == saved_before);
+        CHECK(Access::state(*fixture.gui) == before);
+        if (retry) {
+            auto gate = std::make_shared<Gate>();
+            fixture.work->plan_save(fixture.valid, gate);
+            click(*Access::change(*fixture.gui), "Retry");
+            fixture.drain();
+            fixture.wait([&] { return gate->reached(&Gate::entered); });
+            CHECK(Access::bios(*fixture.gui) == fixture.original_bios.string());
+            CHECK(fixture.saved_bytes() == saved_before);
+            gate->release();
+            REQUIRE(gate->wait(&Gate::finished));
+            fixture.settle_saves();
+            CHECK(Access::bios(*fixture.gui) == fixture.valid.string());
+            CHECK(fixture.saved_bios() == fixture.valid.string());
+        } else {
+            click(*Access::change(*fixture.gui), "Keep Current Settings");
+            fixture.drain();
+            fixture.settle_saves();
+            CHECK(Access::bios(*fixture.gui) == fixture.original_bios.string());
+            CHECK(fixture.saved_bios() == fixture.original_bios.string());
+            CHECK(contains(*Access::settings(*fixture.gui), "The previous BIOS remains selected"));
+        }
+        CHECK(Access::state(*fixture.gui) == before);
+        CHECK(Access::snapshot(*fixture.gui).paused);
+        CHECK(fixture.work->loads().size() == 1);
+    }
+}
+
+TEST_CASE("Saved BIOS recovery retries its exact member only after a successful settings save",
+          "[gui][fds][bios][saved-settings][recovery]") {
+    for (const auto format : {"fds", "zip", "7z"}) {
+        for (bool retry : {false, true}) {
+            INFO(format);
+            INFO(retry);
+            Fixture fixture(SettingsMode::Saved);
+            const auto before = Access::state(*fixture.gui);
+            REQUIRE(std::filesystem::remove(fixture.original_bios));
+            const auto disk = fixture.open_disk(format);
+            fixture.wait([&] { return Access::recovery(*fixture.gui) != nullptr; });
+            fixture.settle_saves();
+            const auto saved_before = fixture.saved_bytes();
+            const auto count = fixture.work->loads().size();
+            const auto member = std::string(format) == "fds" ? "" : "folder/disk.fds";
+            fixture.work->plan_save(fixture.valid, {}, true);
+            fixture.choose_recovery(fixture.valid);
+            fixture.wait([&] {
+                auto dialog = Access::change(*fixture.gui);
+                return dialog && contains(*dialog, "Injected settings save failure");
+            });
+            CHECK(fixture.saved_bytes() == saved_before);
+            CHECK(Access::bios(*fixture.gui) == fixture.original_bios.string());
+            CHECK(Access::state(*fixture.gui) == before);
+            CHECK(fixture.work->loads().size() == count);
+            auto gate = std::make_shared<Gate>();
+            fixture.work->plan_save(fixture.valid, gate);
+            if (retry) {
+                click(*Access::change(*fixture.gui), "Retry");
+                fixture.drain();
+            } else {
+                click(*Access::change(*fixture.gui), "Keep Current Settings");
+                fixture.drain();
+                fixture.settle_saves();
+                auto recovery = Access::recovery(*fixture.gui);
+                REQUIRE(recovery);
+                CHECK(contains(*recovery, disk.string()));
+                if (std::string(format) != "fds")
+                    CHECK(contains(*recovery, member));
+                CHECK(fixture.saved_bios() == fixture.original_bios.string());
+                CHECK(fixture.work->loads().size() == count);
+                fixture.choose_recovery(fixture.valid);
+                fixture.wait([&] { return Access::change(*fixture.gui) != nullptr; });
+            }
+            fixture.wait([&] { return gate->reached(&Gate::entered); });
+            CHECK(Access::bios(*fixture.gui) == fixture.original_bios.string());
+            CHECK(fixture.saved_bios() == fixture.original_bios.string());
+            CHECK(fixture.work->loads().size() == count);
+            CHECK(Access::state(*fixture.gui) == before);
+            gate->release();
+            REQUIRE(gate->wait(&Gate::finished));
+            CHECK(fixture.saved_bios() == fixture.valid.string());
+            CHECK(Access::bios(*fixture.gui) == fixture.original_bios.string());
+            CHECK(fixture.work->loads().size() == count);
+            fixture.wait([&] { return Access::snapshot(*fixture.gui).is_fds; });
+            fixture.settle_saves();
+            CHECK(Access::snapshot(*fixture.gui).rom_path == disk.string());
+            CHECK(Access::snapshot(*fixture.gui).rom_member == member);
+            CHECK(fixture.work->loads().size() == count + 1);
+            CHECK(fixture.work->loads().back().member == member);
+            CHECK(fixture.work->loads().back().fds_bios_path == fixture.valid.string());
+            CHECK(Access::bios(*fixture.gui) == fixture.valid.string());
+            CHECK(fixture.saved_bios() == fixture.valid.string());
+        }
+    }
+}
+
+TEST_CASE("Quit drains a pending BIOS settings save and does not launch a retired recovery",
+          "[gui][fds][bios][saved-settings][quit]") {
+    for (bool recovery : {false, true}) {
+        INFO(recovery);
+        Fixture fixture(SettingsMode::Saved);
+        const auto before = Access::state(*fixture.gui);
+        if (recovery) {
+            REQUIRE(std::filesystem::remove(fixture.original_bios));
+            fixture.open_disk("7z");
+            fixture.wait([&] { return Access::recovery(*fixture.gui) != nullptr; });
+            fixture.settle_saves();
+        } else {
+            fixture.settings();
+        }
+        const auto saved_before = fixture.saved_bytes();
+        const auto count = fixture.work->loads().size();
+        auto gate = std::make_shared<Gate>();
+        fixture.work->plan_save(fixture.valid, gate);
+        if (recovery)
+            fixture.choose_recovery(fixture.valid);
+        else
+            fixture.choose(*Access::settings(*fixture.gui), fixture.valid);
+        fixture.wait([&] { return Access::change(*fixture.gui) != nullptr; });
+        fixture.wait([&] { return gate->reached(&Gate::entered); });
+        int closed = 0;
+        (void)fixture.window.on_close_requested().connect([&] { ++closed; });
+        fixture.action("file.quit");
+        fixture.wait([&] {
+            auto dialog = Access::closing(*fixture.gui);
+            return dialog && contains(*dialog, "Saving settings before quitting");
+        });
+        CHECK(fixture.window.is_visible());
+        CHECK(closed == 0);
+        CHECK(fixture.saved_bytes() == saved_before);
+        CHECK(Access::bios(*fixture.gui) == fixture.original_bios.string());
+        CHECK(Access::state(*fixture.gui) == before);
+        CHECK(fixture.work->loads().size() == count);
+        gate->release();
+        REQUIRE(gate->wait(&Gate::finished));
+        fixture.wait([&] { return !fixture.window.is_visible(); });
+        CHECK(closed == 1);
+        CHECK(fixture.saved_bios() == fixture.valid.string());
+        CHECK(Access::bios(*fixture.gui) == fixture.valid.string());
+        CHECK(fixture.work->loads().size() == count);
+    }
+}
+
 } // namespace
 } // namespace mapperbus::frontend
