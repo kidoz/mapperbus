@@ -14,11 +14,11 @@ using namespace mapperbus::core;
 
 namespace {
 
-constexpr std::array<uint16_t, 63> kNewBoards = {
+constexpr std::array<uint16_t, 64> kNewBoards = {
     10,  13,  34,  66,  70,  71,  76,  78,  79,  87,  88,  89,  93,  94,  95,  97,
     113, 140, 152, 154, 180, 184, 206, 38,  46,  58,  61,  62,  81,  107, 145, 148,
     149, 193, 200, 201, 203, 212, 213, 225, 226, 229, 231, 232, 240, 21,  22,  23,
-    25,  73,  75,  28,  31,  32,  65,  67,  68,  33,  48,  80,  207, 82,  552};
+    25,  73,  75,  28,  31,  32,  65,  67,  68,  33,  48,  80,  207, 82,  552, 18};
 
 std::vector<Byte> bank_rom(std::size_t size, std::size_t bank_size) {
     std::vector<Byte> rom(size);

@@ -24,6 +24,7 @@ core_sources = files(
     'mappers/taito_tc.cpp',
     'mappers/taito_x1005.cpp',
     'mappers/taito_x1017.cpp',
+    'mappers/jaleco_ss88006.cpp',
     'mappers/konami_vrc.cpp',
     'mappers/uxrom.cpp',
     'mappers/cnrom.cpp',

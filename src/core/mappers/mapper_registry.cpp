@@ -5,6 +5,7 @@
 #include "core/mappers/color_dreams.hpp"
 #include "core/mappers/discrete.hpp"
 #include "core/mappers/irem.hpp"
+#include "core/mappers/jaleco_ss88006.hpp"
 #include "core/mappers/konami_vrc.hpp"
 #include "core/mappers/mmc1.hpp"
 #include "core/mappers/mmc2.hpp"
@@ -156,6 +157,21 @@ namespace {
             (chr_size != 0U && header.chr_ram_size != 0U))
             return std::unexpected("Unsupported X1-005 CHR RAM geometry");
     }
+    if (header.mapper_number == 18) {
+        if (header.is_nes2 && header.submapper != 0)
+            return std::unexpected("Unsupported SS88006 submapper");
+        if (prg_size < 0x8000U || prg_size > 0x80000U || prg_size % 0x2000U != 0U ||
+            chr_size == 0U || chr_size > 0x40000U || chr_size % 0x400U != 0U)
+            return std::unexpected("Unsupported SS88006 ROM geometry");
+        if (header.prg_ram_size > 0x2000U || header.prg_nvram_size > 0x2000U ||
+            header.prg_ram_size + header.prg_nvram_size > 0x2000U || header.chr_ram_size != 0U ||
+            header.chr_nvram_size != 0U)
+            return std::unexpected("Unsupported SS88006 RAM geometry");
+        if (header.prg_nvram_size != 0U && !header.has_battery)
+            return std::unexpected("SS88006 NVRAM requires the battery flag");
+        if (header.mirror_mode == MirrorMode::FourScreen)
+            return std::unexpected("SS88006 does not support four-screen nametables");
+    }
     if (header.mapper_number == 82 || header.mapper_number == 552) {
         if (header.is_nes2 && header.submapper != 0)
             return std::unexpected("Unsupported X1-017 submapper");
@@ -249,6 +265,7 @@ void register_builtin_mappers() {
     registry.register_mapper(207, make_factory<TaitoX1005>());
     registry.register_mapper(82, make_factory<TaitoX1017>());
     registry.register_mapper(552, make_factory<TaitoX1017>());
+    registry.register_mapper(18, make_factory<JalecoSs88006>());
     for (const uint16_t id : {21, 22, 23, 25, 73, 75})
         registry.register_mapper(id, make_factory<KonamiVrc>());
     for (const uint16_t id :
