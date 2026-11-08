@@ -14,10 +14,10 @@ using namespace mapperbus::core;
 
 namespace {
 
-constexpr std::array<uint16_t, 53> kNewBoards = {
-    10,  13,  34,  66,  70,  71,  76,  78,  79,  87, 88, 89,  93,  94,  95,  97,  113, 140,
-    152, 154, 180, 184, 206, 38,  46,  58,  61,  62, 81, 107, 145, 148, 149, 193, 200, 201,
-    203, 212, 213, 225, 226, 229, 231, 232, 240, 21, 22, 23,  25,  73,  75,  28,  31};
+constexpr std::array<uint16_t, 55> kNewBoards = {
+    10,  13,  34,  66,  70,  71,  76,  78, 79, 87, 88,  89,  93,  94,  95,  97,  113, 140, 152,
+    154, 180, 184, 206, 38,  46,  58,  61, 62, 81, 107, 145, 148, 149, 193, 200, 201, 203, 212,
+    213, 225, 226, 229, 231, 232, 240, 21, 22, 23, 25,  73,  75,  28,  31,  32,  65};
 
 std::vector<Byte> bank_rom(std::size_t size, std::size_t bank_size) {
     std::vector<Byte> rom(size);
@@ -638,6 +638,97 @@ TEST_CASE("CPU bus cycles advance non-audio VRC IRQs", "[mappers][vrc][bus]") {
     REQUIRE(cart.irq_pending());
 }
 
+TEST_CASE("H3001 IRQ counts CPU and OAM DMA cycles with rendering disabled",
+          "[mappers][irem][bus][irq]") {
+    auto cart = cartridge(65U);
+    MemoryBus bus;
+    Ppu ppu;
+    bus.connect_cartridge(&cart);
+    bus.connect_ppu(&ppu);
+    REQUIRE_FALSE(cart.has_expansion_audio());
+    // No PPU tick or audio callback may clock the CPU timer.
+    cart.write_prg(0x9005U, 2U);
+    cart.write_prg(0x9006U, 2U);
+    cart.write_prg(0x9004U, 0U);
+    cart.write_prg(0x9003U, 0x80U);
+    for (unsigned i = 0U; i < 600U; ++i) {
+        cart.clock_irq_counter();
+        cart.clock_audio();
+    }
+    REQUIRE_FALSE(bus.poll_irq());
+    const auto cycles = bus.run_oam_dma(0U, 0x8000U, false);
+    REQUIRE(cycles == 513U);
+    REQUIRE_FALSE(bus.poll_irq());
+    bus.clock_cpu_bus(0U);
+    REQUIRE(bus.poll_irq());
+    cart.acknowledge_irq(); // CPU servicing the level does not clear the ASIC.
+    REQUIRE(bus.poll_irq());
+    bus.write(0x9003U, 0U);
+    REQUIRE_FALSE(bus.poll_irq());
+}
+
+TEST_CASE("H3001 running IRQ snapshots replay through the CPU and reject corrupt state",
+          "[mappers][irem][state]") {
+    register_builtin_mappers();
+    std::vector<Byte> image(16U + 0x8000U, 0xEAU);
+    std::fill_n(image.begin(), 16U, 0U);
+    image[0U] = 'N';
+    image[1U] = 'E';
+    image[2U] = 'S';
+    image[3U] = 0x1AU;
+    image[4U] = 2U;
+    image[6U] = 0x10U;
+    image[7U] = 0x48U;                                           // NES 2.0 mapper 65.
+    const std::array<Byte, 27U> program = {0x78U,                // SEI
+                                           0xA9U, 0x00U,         // LDA #0
+                                           0x85U, 0x00U,         // STA $00
+                                           0x8DU, 0x05U, 0x90U,  // STA $9005
+                                           0xA9U, 0x20U,         // LDA #32
+                                           0x8DU, 0x06U, 0x90U,  // STA $9006
+                                           0xA9U, 0x00U,         // LDA #0
+                                           0x8DU, 0x04U, 0x90U,  // STA $9004
+                                           0xA9U, 0x80U,         // LDA #$80
+                                           0x8DU, 0x03U, 0x90U,  // STA $9003
+                                           0x58U,                // CLI
+                                           0x4CU, 0x18U, 0x80U}; // JMP $8018
+    const std::array<Byte, 8U> handler = {0xE6U,
+                                          0x00U, // INC $00
+                                          0xA9U,
+                                          0x00U, // LDA #0
+                                          0x8DU,
+                                          0x03U,
+                                          0x90U,  // STA $9003 (acknowledge and disable)
+                                          0x40U}; // RTI
+    std::copy(program.begin(), program.end(), image.begin() + 16U);
+    std::copy(handler.begin(), handler.end(), image.begin() + 16U + 0x100U);
+    for (std::size_t offset = image.size() - 6U; offset < image.size(); offset += 2U) {
+        image[offset] = 0U;
+        image[offset + 1U] = offset == image.size() - 2U ? 0x81U : 0x80U;
+    }
+    auto cart = Cartridge::from_data(image);
+    REQUIRE(cart);
+    Emulator emulator;
+    REQUIRE(emulator.load_cartridge(std::move(*cart), {}));
+    emulator.reset();
+    REQUIRE(emulator.cpu().pc() == 0x8000U);
+    for (unsigned i = 0U; i < 10U; ++i)
+        emulator.step_instruction();
+    REQUIRE(emulator.read_cpu(0U) == 0U);
+    const auto saved = emulator.save_state();
+    for (unsigned i = 0U; i < 30U; ++i)
+        emulator.step_instruction();
+    REQUIRE(emulator.read_cpu(0U) == 1U);
+    const auto expected = emulator.save_state();
+    REQUIRE(emulator.load_state(saved));
+    REQUIRE(emulator.read_cpu(0U) == 0U);
+    for (unsigned i = 0U; i < 30U; ++i)
+        emulator.step_instruction();
+    REQUIRE(emulator.read_cpu(0U) == 1U);
+    REQUIRE(emulator.save_state() == expected);
+    REQUIRE_FALSE(emulator.load_state(std::span(saved).first(saved.size() / 2U)));
+    REQUIRE(emulator.save_state() == expected);
+}
+
 TEST_CASE("VRC3 supports full and low-byte counter modes", "[mappers][vrc][irq]") {
     auto mapper = board(73, 0, true);
     mapper->write_prg(0xF000, 3);
@@ -780,6 +871,8 @@ TEST_CASE("Every new cartridge boots and replays a full machine snapshot",
         INFO(id);
         Emulator emulator;
         REQUIRE(emulator.load_cartridge(cartridge(id), ""));
+        emulator.reset();
+        REQUIRE(emulator.cpu().pc() == 0x8000U);
         for (int instruction = 0; instruction < 50; ++instruction)
             emulator.step_instruction();
         const auto before = emulator.save_state();

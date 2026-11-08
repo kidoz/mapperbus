@@ -19,6 +19,7 @@ core_sources = files(
     'mappers/mmc4.cpp',
     'mappers/discrete.cpp',
     'mappers/namco108.cpp',
+    'mappers/irem.cpp',
     'mappers/konami_vrc.cpp',
     'mappers/uxrom.cpp',
     'mappers/cnrom.cpp',

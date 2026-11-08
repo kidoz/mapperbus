@@ -4,6 +4,7 @@
 #include "core/mappers/cnrom.hpp"
 #include "core/mappers/color_dreams.hpp"
 #include "core/mappers/discrete.hpp"
+#include "core/mappers/irem.hpp"
 #include "core/mappers/konami_vrc.hpp"
 #include "core/mappers/mmc1.hpp"
 #include "core/mappers/mmc2.hpp"
@@ -81,6 +82,9 @@ namespace {
         return std::unexpected("VRC board PRG RAM exceeds 8 KiB");
     }
     if (header.is_nes2) {
+        if ((header.mapper_number == 32 && header.submapper > 1) ||
+            (header.mapper_number == 65 && header.submapper != 0))
+            return std::unexpected("Unsupported Irem submapper");
         if (header.mapper_number == 21 && header.submapper > 2)
             return std::unexpected("Unsupported VRC4 submapper");
         if ((header.mapper_number == 23 || header.mapper_number == 25) && header.submapper > 3)
@@ -96,6 +100,16 @@ namespace {
              header.mapper_number == 206 || header.mapper_number == 232) &&
             header.submapper > 1)
             return std::unexpected("Unsupported board submapper");
+    }
+    if (header.mapper_number == 32 || header.mapper_number == 65) {
+        const std::size_t max_prg = header.mapper_number == 32 ? 0x40000U : 0x80000U;
+        if (prg_size < 0x8000U || prg_size > max_prg || prg_size % 0x2000U != 0U ||
+            chr_size > 0x40000U || chr_size % 0x400U != 0U)
+            return std::unexpected("Unsupported Irem ROM geometry");
+        if (header.prg_ram_size > 0x2000U || header.prg_nvram_size > 0x2000U ||
+            header.prg_ram_size + header.prg_nvram_size > 0x2000U ||
+            header.chr_ram_size > 0x2000U || header.chr_nvram_size != 0U)
+            return std::unexpected("Unsupported Irem RAM geometry");
     }
     return {};
 }
@@ -163,6 +177,8 @@ void register_builtin_mappers() {
     registry.register_mapper(10, make_factory<Mmc4>());
     registry.register_mapper(28, make_factory<DiscreteMapper>());
     registry.register_mapper(31, make_factory<DiscreteMapper>());
+    registry.register_mapper(32, make_factory<Irem>());
+    registry.register_mapper(65, make_factory<Irem>());
     for (const uint16_t id : {21, 22, 23, 25, 73, 75})
         registry.register_mapper(id, make_factory<KonamiVrc>());
     for (const uint16_t id :
