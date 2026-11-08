@@ -4,7 +4,8 @@ This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
 complete.** Updated 2026-11-08 against the working-tree registry.
 
-There are **67 registered cartridge IDs**, including **53 added in this batch**.
+There are **69 registered cartridge IDs**: the original 14, 53 added in the first
+batch, and Irem 32/65 added in the follow-up below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
 unusual ROM geometry.
@@ -14,6 +15,7 @@ unusual ROM geometry.
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
 | MMC4 | 10 | 16 KiB PRG, both eight-byte CHR trigger ranges, old-bank trigger fetch, mirroring, RAM, persistence. |
+| Irem G-101 / H3001 (follow-up) | 32, 65 | Two switchable 8 KiB PRG banks, layout swap, eight 1 KiB CHR banks, Major League submapper, mirroring, CPU-cycle down counter, RAM and snapshots. |
 | Namco 108 family | 76, 88, 95, 154, 206 | Register decode, fixed and switchable PRG, 1/2 KiB CHR wiring, fixed-PRG submapper, CHR-driven CIRAM, one-screen mirroring. |
 | Konami VRC1–4 | 21, 22, 23, 25, 73, 75 | Submapper address-line permutations, chip-specific banking and mirroring, one-bit VRC2 latch, CPU and prescaled IRQs, enabled WRAM and NVRAM. |
 | Homebrew latches | 28, 31 | Action 53 mode/size matrix, banked CHR RAM, mirroring control; mapper 31's eight 4 KiB PRG windows; power-up versus soft reset. |
@@ -40,6 +42,7 @@ All implementation code is original; no external emulator source was incorporate
   not have compatible historical mapper payloads.
 
 See [mapper tests](../../tests/unit/test_mapper_boards.cpp),
+[Irem tests](../../tests/unit/test_irem.cpp),
 [factory](../../src/core/mappers/mapper_registry.cpp), and
 [compatibility](compatibility.md).
 
@@ -55,8 +58,8 @@ See [mapper tests](../../tests/unit/test_mapper_boards.cpp),
   certified; normal `$7000–$7FFF` decoding is implemented.
 - Action 53 implements its standard no-PRG-RAM configuration; the optional
   implementation-specific WRAM extension is not supplied.
-- Larger remaining families include Bandai/EEPROM, Jaleco SS88006, Irem G-101 and
-  H3001, Taito, Sunsoft-3/4, RAMBO-1, MMC3 derivatives and outer-bank variants,
+- Larger remaining families include Bandai/EEPROM, Jaleco SS88006, Taito,
+  Sunsoft-3/4, RAMBO-1, MMC3 derivatives and outer-bank variants,
   J.Y./Sachen/TXC ASICs, flash-saving UNROM 512/GTROM, and Rainbow.
 - Enhanced consoles and copier/educational adapters may require machine or
   peripheral support beyond a cartridge mapper. Duplicate and tool-reserved
@@ -84,11 +87,63 @@ Leak detection is disabled because this macOS ASan runtime rejects
 sanitizers remain enabled. Static analysis uses the repository clang-tidy checks
 on the four new mapper implementation files.
 
-Validation for this batch: `just build` passed; the regular suite reported
+Validation for the first batch: `just build` passed; the regular suite reported
 41 passed and zero failed; the six targeted ASan/UBSan suites passed. The final
 MMC4 CHR-RAM fix was followed by another successful mapper sanitizer run and
 41-suite regular run. Clang-tidy reported zero diagnostics on the four new
 mapper implementation files, and formatting/whitespace checks passed.
+
+## Irem follow-up: hardware decisions and limits
+
+G-101 uses five PRG bank bits and eight CHR bank bits. Submapper 1 fixes CIRAM
+to its upper page and disables the entire `$9000` register. See
+[mapper 32 revision 23869](https://www.nesdev.org/w/index.php?oldid=23869) and
+[G-101 pinout revision 6038](https://www.nesdev.org/w/index.php?oldid=6038).
+
+H3001 implements the physically tested two-register PRG layout. `$9000` bit 7
+swaps the first programmable bank with the fixed second-last bank; writes at
+`$C000` do not select a third bank. `$9001` supports vertical, horizontal and
+lower one-screen mirroring. Register mirrors use `$F007` decoding, with all
+eight `$800x`/`$A00x` aliases selecting the same respective PRG register. See
+[the original hardware investigation](https://forums.nesdev.org/viewtopic.php?t=19778).
+
+The H3001 timer follows [mapper 65 revision 24119](https://www.nesdev.org/w/index.php?oldid=24119):
+it asserts IRQ on the decrement to zero, holds at zero, and acknowledges on
+`$9003`/`$9004` writes. Enable changes pause/resume without reloading; latch writes
+leave the running count intact. Reloading zero remains idle in this model;
+that boundary has no independent hardware timing measurement here. IRQ service
+does not acknowledge the ASIC. CPU cycles, including OAM DMA, advance it with
+rendering and expansion audio disabled.
+
+Both implementations use deterministic reset defaults (PRG banks 0/1, layout 0,
+zeroed CHR registers, header mirroring) while preserving RAM. Physical H3001
+power-up values are not guaranteed by the investigation. Major League always
+uses upper one-screen mirroring. Legacy Major League images require a corrected
+NES 2.0 submapper; automatic title/hash detection is not supplied.
+
+Memory bounds are 256 KiB PRG for G-101, 512 KiB for H3001, and 256 KiB CHR ROM.
+CHR RAM falls back to 8 KiB; smaller declared volatile sizes mirror within that
+space. Explicit NES 2.0 PRG memory maps at `$6000–$7FFF`, up to 8 KiB total,
+with nonvolatile bytes following volatile bytes. Legacy battery headers provide
+8 KiB NVRAM; the legacy implicit RAM default alone does not create RAM. H3001's
+RAM-select output is hardware-observed; optional external RAM on G-101 is a
+header-directed compatibility extension, not a claim about original boards.
+Larger RAM and CHR NVRAM configurations are rejected.
+
+The follow-up tests exercise both boards' banking, aliases and ROM write
+protection; G-101 submapper 1; H3001 mirroring, pause/reload/acknowledgement and
+terminal IRQ behavior; writable memory and persistence; countdown/pending
+snapshot replay; corrupt-register rejection; DMA clocking; and a synthetic
+6502 IRQ handler with full-machine replay/rollback. The shared 55-board boot
+matrix now explicitly resets the CPU and checks the cartridge reset vector.
+No commercial-title or physical-cartridge validation is claimed.
+
+Follow-up validation: `just build` passed; the regular command above reported
+41 successful suite executables and zero failures (the mapper executable passed
+1,974 assertions across 82 cases). All six targeted ASan/UBSan executables
+passed. Optional external-ROM and GPU cases retain their environment-dependent
+skips. `just format-check`, `git diff --check`, and clang-tidy on `irem.cpp`
+passed with no diagnostics from the new implementation.
 
 ## Every documented registry slot
 
@@ -137,7 +192,7 @@ fallback. The registry rejects unsupported IDs.
 | 029 | RET-CUFROM | Not registered | [r4093](https://www.nesdev.org/w/index.php?oldid=4093) |
 | 030 | UNROM 512 | Not registered | [r23183](https://www.nesdev.org/w/index.php?oldid=23183) |
 | 031 | NSF-subset cartridge | New implementation: DiscreteMapper | [r19421](https://www.nesdev.org/w/index.php?oldid=19421) |
-| 032 | Irem G-101 | Not registered | [r23869](https://www.nesdev.org/w/index.php?oldid=23869) |
+| 032 | Irem G-101 | New implementation: Irem | [r23869](https://www.nesdev.org/w/index.php?oldid=23869) |
 | 033 | Taito TC0190 / TC0350 subset | Not registered | [r24359](https://www.nesdev.org/w/index.php?oldid=24359) |
 | 034 | BNROM / NINA-001 | New implementation: DiscreteMapper | [r24073](https://www.nesdev.org/w/index.php?oldid=24073) |
 | 035 | J.Y. Company ASIC | Not registered | [r24184](https://www.nesdev.org/w/index.php?oldid=24184) |
@@ -170,7 +225,7 @@ fallback. The registry rejects unsupported IDs.
 | 062 | Board-specific specification | New implementation: DiscreteMapper | [r4357](https://www.nesdev.org/w/index.php?oldid=4357) |
 | 063 | Board-specific specification | Not registered | [r19134](https://www.nesdev.org/w/index.php?oldid=19134) |
 | 064 | Tengen RAMBO-1 | Not registered | [r23936](https://www.nesdev.org/w/index.php?oldid=23936) |
-| 065 | Irem H3001 | Not registered | [r24119](https://www.nesdev.org/w/index.php?oldid=24119) |
+| 065 | Irem H3001 | New implementation: Irem | [r24119](https://www.nesdev.org/w/index.php?oldid=24119) |
 | 066 | GxROM / MxROM | New implementation: DiscreteMapper | [r24003](https://www.nesdev.org/w/index.php?oldid=24003) |
 | 067 | Sunsoft 3 | Not registered | [r23676](https://www.nesdev.org/w/index.php?oldid=23676) |
 | 068 | Sunsoft 4 | Not registered | [r23720](https://www.nesdev.org/w/index.php?oldid=23720) |
