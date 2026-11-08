@@ -29,7 +29,7 @@ contains the following mapper IDs:
 | 76, 88, 95, 154, 206 | Namco 108 family | — |
 | 28, 31 | Action 53, NSF-subset cartridge banking | — |
 | 32, 65 | Irem G-101 (including submapper 1), H3001 with CPU timer IRQ | — |
-| 67, 68 | Sunsoft-3 with CPU IRQ, Sunsoft-4 with ROM nametables (DCS base only) | — |
+| 67, 68 | Sunsoft-3 with CPU IRQ, Sunsoft-4 with ROM nametables and DCS licensing | — |
 | 13, 34, 66, 70, 71, 78, 79, 87, 89, 93, 94, 97, 113, 140, 152, 180, 184 | Discrete cartridge boards | — |
 | 38, 46, 58, 61, 62, 81, 107, 145, 148, 149, 193, 200, 201, 203, 212, 213, 225, 226, 229, 231, 232, 240 | Additional latch boards and multicarts | — |
 
@@ -40,6 +40,8 @@ synthetic banking, IRQ, CPU/PPU integration and save-state coverage; this does
 not establish commercial-title compatibility for every new board.
 
 Unsupported IDs fail cartridge creation with an `Unsupported mapper` error.
+Sunsoft DCS option cartridges load alongside a submapper 68:1 base using
+`--dcs-option PATH`; see [DCS loading and snapshot identity](../how-to/play-dcs-games.md).
 The registry also rejects invalid or unsupported ROM geometries.
 
 Source: [Mapper registry](../../src/core/mappers/mapper_registry.cpp) and

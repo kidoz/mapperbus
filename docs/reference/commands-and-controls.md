@@ -34,6 +34,7 @@ region use their own startup defaults.
 | `--dither` | Flag | Enable dithering; fresh default is disabled |
 | `--expansion-mixing M` | `simple`, `resistance` | `simple` |
 | `--fds-bios PATH` | 8 KiB BIOS file | Saved `[fds] bios_path`, then application data `bios/disksys.rom` |
+| `--dcs-option PATH` | 16–128 KiB option PRG | Attach to a NES 2.0 mapper 68 submapper 1 base; [DCS loading](../how-to/play-dcs-games.md) |
 | `--gamepad N` | Nonnegative SDL gamepad index | `0` for player 1 |
 | `--gamepad-deadzone N` | 1–32767 | `12000`; command-line value is clamped |
 | `--gamepad-map MAP` | Comma-separated `NES=SDL` pairs | Override named player 1 bindings |
@@ -204,7 +205,7 @@ and volume accepts 0–100. The headless CLI does not open capture. See
 ## Headless CLI
 
 ```text
-./buildDir/src/frontends/cli/mapperbus-cli <rom-file|archive> [--entry NAME] [--fds-bios PATH] [--frames N] [--region ntsc|pal|hybrid] [--controller-timing T] [--controller-wiring W] [--controller-mode standard|four-score|hori-4-player] [--expansion-controllers none|1|2|both]
+./buildDir/src/frontends/cli/mapperbus-cli <rom-file|archive> [--entry NAME] [--fds-bios PATH] [--dcs-option PATH] [--frames N] [--region ntsc|pal|hybrid] [--controller-timing T] [--controller-wiring W] [--controller-mode standard|four-score|hori-4-player] [--expansion-controllers none|1|2|both]
 ```
 
 Loads NES/FDS media, resets the emulator, executes 60 frames by default, and

@@ -16,7 +16,7 @@ unusual ROM geometry.
 |---|---|---|
 | MMC4 | 10 | 16 KiB PRG, both eight-byte CHR trigger ranges, old-bank trigger fetch, mirroring, RAM, persistence. |
 | Irem G-101 / H3001 (follow-up) | 32, 65 | Two switchable 8 KiB PRG banks, layout swap, eight 1 KiB CHR banks, Major League submapper, mirroring, CPU-cycle down counter, RAM and snapshots. |
-| Sunsoft-3 / Sunsoft-4 (follow-up) | 67, 68 | 16 KiB PRG and 2 KiB CHR banks, four mirroring modes, Sunsoft-3 live IRQ counter and acknowledgement aliases, Sunsoft-4 ROM nametables and WRAM gate, DCS base with empty option slot. |
+| Sunsoft-3 / Sunsoft-4 (follow-up) | 67, 68 | 16 KiB PRG and 2 KiB CHR banks, four mirroring modes, Sunsoft-3 live IRQ counter and acknowledgement aliases, Sunsoft-4 ROM nametables and WRAM gate, DCS options with licensing and paired snapshot identity. |
 | Namco 108 family | 76, 88, 95, 154, 206 | Register decode, fixed and switchable PRG, 1/2 KiB CHR wiring, fixed-PRG submapper, CHR-driven CIRAM, one-screen mirroring. |
 | Konami VRC1–4 | 21, 22, 23, 25, 73, 75 | Submapper address-line permutations, chip-specific banking and mirroring, one-bit VRC2 latch, CPU and prescaled IRQs, enabled WRAM and NVRAM. |
 | Homebrew latches | 28, 31 | Action 53 mode/size matrix, banked CHR RAM, mirroring control; mapper 31's eight 4 KiB PRG windows; power-up versus soft reset. |
@@ -42,9 +42,10 @@ All implementation code is original; no external emulator source was incorporate
   `$3000` mirrors and palette decoding remain distinct.
 - NES 2.0 header parsing retains volatile and nonvolatile PRG/CHR memory sizes.
   This does not imply that every existing mapper already uses those fields.
-- New mapper state includes registers, latches, RAM and IRQ progress. Existing
-  mapper payloads and machine snapshot version 19 remain unchanged. New IDs did
-  not have compatible historical mapper payloads.
+- New mapper state includes registers, latches, RAM and IRQ progress. The DCS
+  follow-up advances machine snapshots to version 20 for its licensing counter;
+  other mapper payloads remain unchanged. Older snapshots retain the existing
+  import path, including version 19 DCS snapshots with an empty option slot.
 
 See [mapper tests](../../tests/unit/test_mapper_boards.cpp),
 [Irem tests](../../tests/unit/test_irem.cpp),
@@ -64,8 +65,6 @@ See [mapper tests](../../tests/unit/test_mapper_boards.cpp),
   certified; normal `$7000–$7FFF` decoding is implemented.
 - Action 53 implements its standard no-PRG-RAM configuration; the optional
   implementation-specific WRAM extension is not supplied.
-- Sunsoft-4 DCS option-ROM loading and licensing-timer behavior require a separate
-  media attachment interface; this implementation models an empty option slot.
 - Larger remaining families include Bandai/EEPROM, Jaleco SS88006, Taito,
   RAMBO-1, MMC3 derivatives and outer-bank variants,
   J.Y./Sachen/TXC ASICs, flash-saving UNROM 512/GTROM, and Rainbow.
@@ -180,10 +179,12 @@ power-up states are not certified.
 
 [Submapper 68:1](https://www.nesdev.org/wiki/NES_2.0_submappers#068:_Sunsoft_4)
 selects the Dual Cartridge System base, limited to 128 KiB internal PRG.
-The fixed bank always remains internal; selecting an absent option ROM drives
-no CPU data bits. Reset selects internal bank zero. No option-ROM attachment
-or licensing timer is implemented, so expansion-cartridge workflows remain
-unfinished. Legacy hashes are not used to infer this board variant.
+The fixed bank always remains internal; absent or expired option ROM drives
+no CPU data bits. Reset selects internal bank zero. Option media is attached
+during preparation using `--dcs-option PATH`, with CPU/M2 licensing expiry,
+retriggering and paired save-state identity. See [DCS loading](../how-to/play-dcs-games.md)
+for formats, the inferred timer period, snapshot compatibility, and launch/UI
+limits. Legacy hashes are not used to infer this board variant.
 
 Tests cover register masks, bank limits, mirroring, IRQ live writes and phase,
 underflow, pause, full counter range, pending/countdown snapshots, DMA clocks,
@@ -199,6 +200,31 @@ sanitizer reruns passed after the DCS snapshot assertions and unsigned PPU-mask
 cleanup. Formatting and whitespace checks passed. Clang-tidy reported no
 diagnostics on `sunsoft34.cpp` or the changed PPU/cartridge/mapper access-hook
 lines. Optional asset-dependent cases retain their existing skips.
+
+## DCS option follow-up
+
+Option ROMs now load through `Cartridge::from_data/from_file` and the shared
+ROM-source loader before installation. CLI, SDL3 and GUI startup accept
+`--dcs-option PATH`. The mapper models licensing expiry and retriggering with
+CPU open bus after expiry; snapshots bind both immutable images and retain
+the remaining cycle count in version 20. Battery persistence retains the base
+identity. See [the DCS guide](../how-to/play-dcs-games.md) for formats and limits.
+
+Validation: `just build` passed; `meson test -C buildDir --print-errorlogs
+--suite=mapperbus` reported 42 successful executables, zero failures, and 2,472
+assertions in 102 mapper cases. This includes CPU/M2 expiry and DMA boundaries,
+reactivation, bank mirroring, WRAM gating, invalid timer rollback, mismatched
+options, empty-slot v19 import, raw/headered and archived source preparation,
+base battery paths, CLI launches, and software GUI failure/Retry identity.
+
+Nine targeted ASan/UBSan executables passed (`mappers bus ppu region save-state
+mapper-timing rom-source emulation-session cli-dcs`), followed by successful
+mapper/source reruns after the final rollback and battery assertions.
+Leak detection retains the macOS runtime exception documented above. Formatting
+and whitespace checks passed; changed production lines in eleven translation
+units passed clang-tidy, including a final full GUI-entry-point check.
+Optional asset-dependent cases retain their existing skips. No new commercial
+or physical-cartridge compatibility claim is made.
 
 ## Every documented registry slot
 
