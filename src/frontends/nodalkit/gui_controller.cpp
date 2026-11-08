@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <ctime>
 #include <filesystem>
+#include <format>
 #include <functional>
 #include <nk/widgets/spinner.h>
 
@@ -1969,6 +1970,11 @@ void MapperBusGuiController::present_rom_loading(bool saving) {
                                                 : "Reading and checking the selected ROM…");
     explanation->set_wrapping(true);
     content->append(explanation);
+    if (!saving) {
+        loading_status_ = explanation;
+        if (app::is_rom_archive(loading_request_->path))
+            explanation->set_text("Opening archive…");
+    }
     auto filename =
         nk::Label::create(std::filesystem::path(loading_request_->path).filename().string());
     filename->set_wrapping(true);
@@ -1996,6 +2002,7 @@ void MapperBusGuiController::present_rom_loading(bool saving) {
 }
 
 void MapperBusGuiController::dismiss_rom_loading() {
+    loading_status_.reset();
     auto dialog = std::exchange(loading_dialog_, {});
     if (dialog && dialog->is_presented())
         dialog->close();
@@ -2019,6 +2026,29 @@ void MapperBusGuiController::abandon_rom_load(std::string message) {
 }
 
 void MapperBusGuiController::poll_rom_load() {
+    if (auto status = loading_status_.lock()) {
+        if (auto progress = rom_loader_.archive_progress()) {
+            switch (progress->phase) {
+            case app::ArchiveReadPhase::Open:
+                status->set_text("Opening archive…");
+                break;
+            case app::ArchiveReadPhase::Header:
+            case app::ArchiveReadPhase::Skip:
+                status->set_text(
+                    std::format("{}\n{} {} scanned",
+                                progress->bytes == 0 ? "Scanning archive…" : "Checking archive…",
+                                progress->entries,
+                                progress->entries == 1 ? "entry" : "entries"));
+                break;
+            case app::ArchiveReadPhase::Data:
+                status->set_text(std::format("Loading ROM…\n{} bytes decoded", progress->bytes));
+                break;
+            case app::ArchiveReadPhase::Close:
+                status->set_text(progress->bytes == 0 ? "Checking archive…" : "Checking ROM…");
+                break;
+            }
+        }
+    }
     const auto phase = rom_loader_.phase();
     auto completed = rom_loader_.poll();
     if (!completed)

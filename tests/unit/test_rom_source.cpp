@@ -820,6 +820,7 @@ std::vector<Byte> large_cancel_rom() {
     return data;
 }
 struct ArchiveCheckpointGate {
+    ArchiveReadPhase phase = ArchiveReadPhase::Data;
     std::mutex mutex;
     std::condition_variable changed;
     bool entered = false;
@@ -828,7 +829,8 @@ struct ArchiveCheckpointGate {
     std::string error;
     std::size_t bytes = 0;
     void observe(ArchiveReadProgress progress) {
-        if (progress.phase != ArchiveReadPhase::Data || progress.bytes == 0)
+        if (progress.phase != phase || (phase == ArchiveReadPhase::Data && progress.bytes == 0) ||
+            (phase == ArchiveReadPhase::Header && progress.entries == 0))
             return;
         std::unique_lock lock(mutex);
         if (entered)
@@ -1078,6 +1080,138 @@ TEST_CASE("Retiring a noncancellable writer does not request its stop token",
     gate->release();
     REQUIRE(gate->wait(&ArchiveCheckpointGate::finished));
     CHECK_FALSE(*stopped);
+}
+
+TEST_CASE("Archive progress reports real scan and decode checkpoints for NES and FDS",
+          "[rom-source][archive][async][progress]") {
+    ArchiveFixture fixture;
+    const auto bios = fixture.root / "bios.bin";
+    REQUIRE(
+        core::write_binary_file_atomic(bios.string(), mapperbus::tests::make_fds_bios(), "BIOS"));
+    auto padded_rom = make_rom();
+    padded_rom.resize(128 * 1024, 0); // Valid NROM with padding beyond one decoder chunk.
+    for (bool seven_zip : {false, true}) {
+        for (bool fds : {false, true}) {
+            INFO((seven_zip ? "7z" : "deflated ZIP"));
+            INFO(fds);
+            const auto bytes = fds ? mapperbus::tests::make_fds_image(2) : padded_rom;
+            const std::string member = fds ? "game.fds" : "game.nes";
+            const auto path = fixture.root / (seven_zip ? "progress.7z" : "progress.zip");
+            write_archive(
+                path, {{"readme.txt", {1, 2, 3}}, {member, bytes}}, seven_zip, false, true);
+            for (auto phase :
+                 {ArchiveReadPhase::Header, ArchiveReadPhase::Data, ArchiveReadPhase::Close}) {
+                INFO(static_cast<int>(phase));
+                auto gate = std::make_shared<ArchiveCheckpointGate>();
+                gate->phase = phase;
+                const ReleaseArchiveCheckpoint cleanup{gate};
+                AsyncRomLoader loader;
+                CHECK_FALSE(loader.archive_progress());
+                RomLoadRequest request;
+                request.path = path.string();
+                // Exercise automatic member scanning as well as exact-member decoding.
+                request.member = phase == ArchiveReadPhase::Header ? "" : member;
+                request.fds_bios_path = bios.string();
+                request.persistence_directory = fixture.root / "data";
+                request.state_storage.directory = fixture.root / "states";
+                request.archive_observer = [gate](auto update) { gate->observe(update); };
+                REQUIRE(loader.start(request));
+                REQUIRE(gate->wait(&ArchiveCheckpointGate::entered));
+                auto progress = loader.archive_progress();
+                REQUIRE(progress);
+                CHECK(progress->phase == phase);
+                CHECK(progress->entries > 0);
+                if (phase == ArchiveReadPhase::Data) {
+                    CHECK(progress->bytes == 65536);
+                    CHECK(progress->bytes < bytes.size());
+                } else if (phase == ArchiveReadPhase::Close) {
+                    CHECK(progress->bytes == bytes.size());
+                } else {
+                    CHECK(progress->bytes == 0);
+                }
+                // A rejected duplicate start must not clear the active snapshot.
+                CHECK_FALSE(loader.start(request));
+                REQUIRE(loader.archive_progress());
+                CHECK(loader.archive_progress()->phase == phase);
+                gate->release();
+                auto result = wait_for_rom(loader);
+                REQUIRE(result);
+                REQUIRE(result->emulator);
+                CHECK(result->emulator->is_fds() == fds);
+                CHECK(result->member == member);
+                CHECK_FALSE(loader.archive_progress());
+                CHECK(loader.phase() == AsyncRomLoader::Phase::Idle);
+            }
+        }
+    }
+}
+
+TEST_CASE("Cancelled archive progress cannot overwrite a newer job or survive failure",
+          "[rom-source][archive][async][progress]") {
+    ArchiveFixture fixture;
+    const auto old_path = fixture.root / "old.zip";
+    const auto new_path = fixture.root / "new.zip";
+    auto padded_rom = make_rom();
+    padded_rom.resize(128 * 1024, 0);
+    write_archive(old_path, {{"game.nes", padded_rom}}, false, false, true);
+    write_archive(new_path, {{"readme.txt", {}}, {"game.nes", make_rom()}});
+    auto old_gate = std::make_shared<ArchiveCheckpointGate>();
+    auto new_gate = std::make_shared<ArchiveCheckpointGate>();
+    new_gate->phase = ArchiveReadPhase::Header;
+    const ReleaseArchiveCheckpoint release_old{old_gate};
+    const ReleaseArchiveCheckpoint release_new{new_gate};
+    AsyncRomLoader loader(AsyncRomLoader::CancellablePrepare{
+        [old_gate, old_path](const auto& request, std::stop_token stop) {
+            auto result = prepare_rom(request, stop);
+            if (request.path == old_path.string()) {
+                // Even a misbehaving injected reader can only write its own mailbox.
+                request.archive_observer({ArchiveReadPhase::Close, 999, 777});
+                old_gate->finish(result ? "unexpected success" : result.error());
+            }
+            return result;
+        }});
+    RomLoadRequest request;
+    request.path = old_path.string();
+    request.member = "game.nes";
+    request.state_storage.directory = fixture.root / "states";
+    request.archive_observer = [old_gate](auto update) { old_gate->observe(update); };
+    REQUIRE(loader.start(request));
+    REQUIRE(old_gate->wait(&ArchiveCheckpointGate::entered));
+    REQUIRE(loader.archive_progress());
+    CHECK(loader.archive_progress()->phase == ArchiveReadPhase::Data);
+    REQUIRE(loader.cancel());
+    CHECK_FALSE(loader.archive_progress());
+    request.path = new_path.string();
+    request.archive_observer = [new_gate](auto update) { new_gate->observe(update); };
+    REQUIRE(loader.start(request));
+    REQUIRE(new_gate->wait(&ArchiveCheckpointGate::entered));
+    old_gate->release();
+    REQUIRE(old_gate->wait(&ArchiveCheckpointGate::finished));
+    CHECK(old_gate->error == kRomLoadCancelled);
+    auto progress = loader.archive_progress();
+    REQUIRE(progress);
+    CHECK(progress->phase == ArchiveReadPhase::Header);
+    CHECK(progress->entries == 1);
+    CHECK(progress->bytes == 0);
+    new_gate->release();
+    REQUIRE(wait_for_rom(loader));
+    CHECK_FALSE(loader.archive_progress());
+
+    const auto broken = fixture.root / "broken.zip";
+    write_archive(broken, {{"broken.nes", {1, 2, 3}}});
+    request.path = broken.string();
+    request.member.clear();
+    request.archive_observer = {};
+    REQUIRE(start_after_cleanup(loader, request));
+    CHECK_FALSE(wait_for_rom(loader));
+    CHECK_FALSE(loader.archive_progress());
+
+    const auto raw = fixture.root / "raw.nes";
+    REQUIRE(core::write_binary_file_atomic(raw.string(), make_rom(), "ROM"));
+    request.path = raw.string();
+    REQUIRE(start_after_cleanup(loader, request));
+    REQUIRE(wait_for_rom(loader));
+    CHECK_FALSE(loader.archive_progress());
 }
 
 } // namespace mapperbus::app

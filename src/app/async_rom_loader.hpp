@@ -59,6 +59,9 @@ class AsyncRomLoader {
     [[nodiscard]] core::Result<void> save_current(std::shared_ptr<core::Emulator> current,
                                                   PersistenceFence fence = {});
     [[nodiscard]] std::optional<core::Result<PreparedRom>> poll();
+    /// Latest coalesced archive checkpoint for this job, never an abandoned job.
+    /// A busy mailbox returns no update rather than blocking the caller.
+    [[nodiscard]] std::optional<ArchiveReadProgress> archive_progress() const;
     bool cancel();
     [[nodiscard]] Phase phase() const {
         return phase_;
@@ -69,6 +72,8 @@ class AsyncRomLoader {
                                             Phase phase);
     CancellablePrepare prepare_;
     BackgroundTask<PreparedRom> task_;
+    struct ProgressState;
+    std::shared_ptr<ProgressState> progress_;
     Phase phase_ = Phase::Idle;
 };
 

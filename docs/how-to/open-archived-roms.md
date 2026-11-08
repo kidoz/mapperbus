@@ -69,6 +69,9 @@ load, preserving the previous game. These checks bound application buffers;
 libarchive also allocates decoder memory internally, especially for solid 7z
 archives. The GUI scans archives and prepares raw or archived media in the
 background. A loading sheet shows the selected filename and offers Cancel.
+It reports entries scanned, bytes decoded while loading the selected ROM, and
+the final checking phase. The indicator remains indeterminate because scanning,
+decompression, BIOS checks, and save loading do not share a reliable total.
 Cancelling or failing to load keeps the current game and its previous pause state.
 The outgoing game is saved first; that save step cannot be cancelled. If saving
 fails, the current game stays available for recovery. This also ensures reopening

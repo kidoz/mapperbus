@@ -232,6 +232,7 @@ class MapperBusGuiController {
     app::AsyncRomLoader rom_loader_;
     std::optional<app::RomLoadRequest> loading_request_;
     std::shared_ptr<nk::Dialog> loading_dialog_;
+    std::weak_ptr<nk::Label> loading_status_;
     bool paused_before_rom_load_ = false;
     struct PendingStateOperation {
         int slot;

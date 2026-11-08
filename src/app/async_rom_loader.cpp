@@ -1,10 +1,16 @@
 #include "app/async_rom_loader.hpp"
 
+#include <mutex>
 #include <utility>
 
 #include "app/rom_source.hpp"
 
 namespace mapperbus::app {
+
+struct AsyncRomLoader::ProgressState {
+    std::mutex mutex;
+    std::optional<ArchiveReadProgress> latest;
+};
 
 core::Result<PreparedRom> prepare_rom(const RomLoadRequest& request, std::stop_token stop) {
     const auto cancelled = [&] { return std::unexpected(std::string(kRomLoadCancelled)); };
@@ -66,9 +72,22 @@ core::Result<void> AsyncRomLoader::launch(BackgroundTask<PreparedRom>::Cancellab
 }
 
 core::Result<void> AsyncRomLoader::start(RomLoadRequest request) {
-    return launch([prepare = prepare_, request = std::move(request)](
-                      std::stop_token stop) { return prepare(request, stop); },
-                  Phase::Loading);
+    auto progress = std::make_shared<ProgressState>();
+    request.archive_observer =
+        [progress, observer = std::move(request.archive_observer)](ArchiveReadProgress update) {
+            {
+                const std::lock_guard lock(progress->mutex);
+                progress->latest = update;
+            }
+            if (observer)
+                observer(update);
+        };
+    auto started = launch([prepare = prepare_, request = std::move(request)](
+                              std::stop_token stop) { return prepare(request, stop); },
+                          Phase::Loading);
+    if (started)
+        progress_ = std::move(progress);
+    return started;
 }
 
 core::Result<void> AsyncRomLoader::save_current(std::shared_ptr<core::Emulator> current,
@@ -87,8 +106,10 @@ core::Result<void> AsyncRomLoader::save_current(std::shared_ptr<core::Emulator> 
 
 std::optional<core::Result<PreparedRom>> AsyncRomLoader::poll() {
     auto result = task_.poll();
-    if (result)
+    if (result) {
         phase_ = Phase::Idle;
+        progress_.reset();
+    }
     return result;
 }
 
@@ -96,7 +117,15 @@ bool AsyncRomLoader::cancel() {
     if (!task_.cancel())
         return false;
     phase_ = Phase::Idle;
+    progress_.reset();
     return true;
+}
+
+std::optional<ArchiveReadProgress> AsyncRomLoader::archive_progress() const {
+    if (phase_ != Phase::Loading || !progress_)
+        return std::nullopt;
+    const std::unique_lock lock(progress_->mutex, std::try_to_lock);
+    return lock.owns_lock() ? progress_->latest : std::nullopt;
 }
 
 } // namespace mapperbus::app
