@@ -31,9 +31,25 @@ std::string archive_error(archive* reader) {
            (message != nullptr ? message : "unknown error");
 }
 
-core::Result<ArchiveReader> open_archive(const std::string& path) {
+bool cancelled(const RomReadControl& control, ArchiveReadProgress progress) {
+    if (control.stop.stop_requested())
+        return true;
+    if (control.observe)
+        control.observe(progress);
+    return control.stop.stop_requested();
+}
+
+auto cancelled_error() {
+    return std::unexpected(std::string(kRomLoadCancelled));
+}
+
+core::Result<ArchiveReader> open_archive(const std::string& path, const RomReadControl& control) {
+    if (cancelled(control, {ArchiveReadPhase::Open, 0, 0}))
+        return cancelled_error();
     std::error_code error;
     const auto size = std::filesystem::file_size(path, error);
+    if (control.stop.stop_requested())
+        return cancelled_error();
     if (error) {
         return std::unexpected("Cannot open ROM archive: " + path + ": " + error.message());
     }
@@ -48,8 +64,12 @@ core::Result<ArchiveReader> open_archive(const std::string& path) {
     if (archive_read_support_format_zip(reader.get()) != ARCHIVE_OK ||
         archive_read_support_format_7zip(reader.get()) != ARCHIVE_OK ||
         archive_read_open_filename(reader.get(), path.c_str(), 64UZ * 1024) != ARCHIVE_OK) {
+        if (control.stop.stop_requested())
+            return cancelled_error();
         return std::unexpected(archive_error(reader.get()));
     }
+    if (control.stop.stop_requested())
+        return cancelled_error();
     return reader;
 }
 
@@ -59,8 +79,10 @@ struct ArchiveContents {
     bool found = false;
 };
 
-core::Result<ArchiveContents> scan_archive(const std::string& path, std::string_view selected) {
-    auto opened = open_archive(path);
+core::Result<ArchiveContents> scan_archive(const std::string& path,
+                                           std::string_view selected,
+                                           const RomReadControl& control) {
+    auto opened = open_archive(path, control);
     if (!opened) {
         return std::unexpected(opened.error());
     }
@@ -72,7 +94,11 @@ core::Result<ArchiveContents> scan_archive(const std::string& path, std::string_
     std::uintmax_t declared_bytes = 0;
     archive_entry* entry = nullptr;
     while (true) {
+        if (cancelled(control, {ArchiveReadPhase::Header, entry_count, contents.data.size()}))
+            return cancelled_error();
         const int status = archive_read_next_header(reader.get(), &entry);
+        if (control.stop.stop_requested())
+            return cancelled_error();
         if (status == ARCHIVE_EOF) {
             break;
         }
@@ -119,7 +145,11 @@ core::Result<ArchiveContents> scan_archive(const std::string& path, std::string_
             }
             std::array<core::Byte, 64UZ * 1024> buffer{};
             while (true) {
+                if (cancelled(control, {ArchiveReadPhase::Data, entry_count, contents.data.size()}))
+                    return cancelled_error();
                 const auto count = archive_read_data(reader.get(), buffer.data(), buffer.size());
+                if (control.stop.stop_requested())
+                    return cancelled_error();
                 if (count < 0) {
                     return std::unexpected(archive_error(reader.get()));
                 }
@@ -136,11 +166,22 @@ core::Result<ArchiveContents> scan_archive(const std::string& path, std::string_
                 return std::unexpected("Archived ROM size does not match its header");
             }
             contents.found = true;
-        } else if (archive_read_data_skip(reader.get()) != ARCHIVE_OK) {
-            return std::unexpected(archive_error(reader.get()));
+        } else {
+            if (cancelled(control, {ArchiveReadPhase::Skip, entry_count, contents.data.size()}))
+                return cancelled_error();
+            const auto skipped = archive_read_data_skip(reader.get());
+            if (control.stop.stop_requested())
+                return cancelled_error();
+            if (skipped != ARCHIVE_OK)
+                return std::unexpected(archive_error(reader.get()));
         }
     }
-    if (archive_read_close(reader.get()) != ARCHIVE_OK) {
+    if (cancelled(control, {ArchiveReadPhase::Close, entry_count, contents.data.size()}))
+        return cancelled_error();
+    const auto closed = archive_read_close(reader.get());
+    if (control.stop.stop_requested())
+        return cancelled_error();
+    if (closed != ARCHIVE_OK) {
         return std::unexpected(archive_error(reader.get()));
     }
     return contents;
@@ -152,8 +193,9 @@ bool is_rom_archive(const std::filesystem::path& path) {
     return extension == ".zip" || extension == ".7z";
 }
 
-core::Result<std::vector<std::string>> list_archive_roms(const std::string& path) {
-    auto contents = scan_archive(path, {});
+core::Result<std::vector<std::string>> list_archive_roms(const std::string& path,
+                                                         const RomReadControl& control) {
+    auto contents = scan_archive(path, {}, control);
     if (!contents) {
         return std::unexpected(contents.error());
     }
@@ -164,10 +206,15 @@ namespace {
 core::Result<void> load_fds_source(core::Emulator& emulator,
                                    std::span<const core::Byte> disk,
                                    const std::string& bios_path,
-                                   const std::filesystem::path& persistence_directory) {
+                                   const std::filesystem::path& persistence_directory,
+                                   const RomReadControl& control) {
+    if (control.stop.stop_requested())
+        return cancelled_error();
     const auto bios_file = bios_path.empty() ? persistence_directory / "bios" / "disksys.rom"
                                              : std::filesystem::path(bios_path);
     auto bios = core::read_binary_file_capped(bios_file.string(), 8192, "FDS BIOS");
+    if (control.stop.stop_requested())
+        return cancelled_error();
     if (!bios)
         return std::unexpected(
             bios.error() +
@@ -179,6 +226,8 @@ core::Result<void> load_fds_source(core::Emulator& emulator,
     if (auto created = ensure_state_directory(directory); !created)
         return created;
     const auto save_path = directory / (core::sha256_hex(core::rom_sha256(payload)) + ".fds-save");
+    if (control.stop.stop_requested())
+        return cancelled_error();
     return emulator.load_fds(*bios, disk, save_path.string());
 }
 } // namespace
@@ -187,7 +236,10 @@ core::Result<std::string> load_rom_source(core::Emulator& emulator,
                                           const std::string& path,
                                           std::string_view member,
                                           const std::string& fds_bios_path,
-                                          const std::filesystem::path& persistence_directory) {
+                                          const std::filesystem::path& persistence_directory,
+                                          const RomReadControl& control) {
+    if (control.stop.stop_requested())
+        return cancelled_error();
     const auto storage =
         persistence_directory.empty() ? mapperbus_data_directory() : persistence_directory;
     if (!is_rom_archive(path)) {
@@ -198,11 +250,20 @@ core::Result<std::string> load_rom_source(core::Emulator& emulator,
         if (lower_extension(path) == ".fds") {
             auto disk = core::read_binary_file_capped(
                 path, core::Fds::kMaxDiskImageBytes + 16, "FDS disk image");
+            if (control.stop.stop_requested())
+                return cancelled_error();
             if (!disk)
                 return std::unexpected(disk.error());
-            loaded = load_fds_source(emulator, *disk, fds_bios_path, storage);
+            loaded = load_fds_source(emulator, *disk, fds_bios_path, storage, control);
         } else {
-            loaded = emulator.load_cartridge(path);
+            auto cartridge = core::Cartridge::from_file(path);
+            if (control.stop.stop_requested())
+                return cancelled_error();
+            if (!cartridge)
+                return std::unexpected(cartridge.error());
+            loaded = emulator.load_cartridge(
+                std::move(*cartridge),
+                std::filesystem::path(path).replace_extension(".sav").string());
         }
         if (!loaded) {
             return std::unexpected(loaded.error());
@@ -211,7 +272,7 @@ core::Result<std::string> load_rom_source(core::Emulator& emulator,
     }
     std::string selected(member);
     if (selected.empty()) {
-        auto members = list_archive_roms(path);
+        auto members = list_archive_roms(path, control);
         if (!members) {
             return std::unexpected(members.error());
         }
@@ -227,7 +288,7 @@ core::Result<std::string> load_rom_source(core::Emulator& emulator,
         }
         selected = members->front();
     }
-    auto contents = scan_archive(path, selected);
+    auto contents = scan_archive(path, selected, control);
     if (!contents) {
         return std::unexpected(contents.error());
     }
@@ -235,12 +296,16 @@ core::Result<std::string> load_rom_source(core::Emulator& emulator,
         return std::unexpected("ROM archive member not found: " + selected);
     }
     if (lower_extension(selected) == ".fds") {
-        auto loaded = load_fds_source(emulator, contents->data, fds_bios_path, storage);
+        auto loaded = load_fds_source(emulator, contents->data, fds_bios_path, storage, control);
         if (!loaded)
             return std::unexpected(loaded.error());
         return selected;
     }
+    if (control.stop.stop_requested())
+        return cancelled_error();
     auto cartridge = core::Cartridge::from_data(contents->data, selected);
+    if (control.stop.stop_requested())
+        return cancelled_error();
     if (!cartridge) {
         return std::unexpected(cartridge.error());
     }
@@ -252,6 +317,10 @@ core::Result<std::string> load_rom_source(core::Emulator& emulator,
             return std::unexpected(created.error());
         }
     }
+    // The synchronous install is a commit boundary. Cancellation after it is
+    // handled by the staging loader, never reported as a rollback of this machine.
+    if (control.stop.stop_requested())
+        return cancelled_error();
     auto loaded = emulator.load_cartridge(std::move(*cartridge), battery_path.string());
     if (!loaded) {
         return std::unexpected(loaded.error());

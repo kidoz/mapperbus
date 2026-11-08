@@ -9,6 +9,7 @@
 
 #include "app/async_disk_save.hpp"
 #include "app/background_task.hpp"
+#include "app/rom_source.hpp"
 #include "app/state_storage.hpp"
 #include "core/emulator.hpp"
 
@@ -21,6 +22,7 @@ struct RomLoadRequest {
     core::AudioSettings audio_settings;
     StateStorageSettings state_storage;
     std::filesystem::path persistence_directory;
+    ArchiveReadObserver archive_observer = {};
 };
 
 struct PreparedRom {
@@ -32,7 +34,8 @@ struct PreparedRom {
     std::vector<std::string> members;
 };
 
-[[nodiscard]] core::Result<PreparedRom> prepare_rom(const RomLoadRequest& request);
+[[nodiscard]] core::Result<PreparedRom> prepare_rom(const RomLoadRequest& request,
+                                                    std::stop_token stop = {});
 
 /// Owns bounded, isolated I/O jobs. Cancellation/destruction never joins a blocked
 /// file operation. Workers own their inputs/results and never call the frontend.
@@ -40,8 +43,12 @@ class AsyncRomLoader {
   public:
     enum class Phase { Idle, Saving, Loading };
     using Prepare = std::function<core::Result<PreparedRom>(const RomLoadRequest&)>;
+    using CancellablePrepare =
+        std::function<core::Result<PreparedRom>(const RomLoadRequest&, std::stop_token)>;
 
-    explicit AsyncRomLoader(Prepare prepare = prepare_rom);
+    explicit AsyncRomLoader(CancellablePrepare prepare = prepare_rom);
+    /// Compatibility for injected readers that cannot cooperate with cancellation.
+    explicit AsyncRomLoader(Prepare prepare);
     ~AsyncRomLoader() = default;
     AsyncRomLoader(const AsyncRomLoader&) = delete;
     AsyncRomLoader& operator=(const AsyncRomLoader&) = delete;
@@ -58,9 +65,9 @@ class AsyncRomLoader {
     }
 
   private:
-    [[nodiscard]] core::Result<void> launch(std::function<core::Result<PreparedRom>()> task,
+    [[nodiscard]] core::Result<void> launch(BackgroundTask<PreparedRom>::CancellableTask task,
                                             Phase phase);
-    Prepare prepare_;
+    CancellablePrepare prepare_;
     BackgroundTask<PreparedRom> task_;
     Phase phase_ = Phase::Idle;
 };

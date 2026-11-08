@@ -59,7 +59,8 @@ class MapperBusGuiController {
         app::AsyncDiskExport::Write disk_export_write = app::write_disk_export,
         app::AsyncConfigurationSave::Write configuration_write =
             app::save_mapperbus_configuration_to_file,
-        app::AsyncConfigurationLoad::Read configuration_read = app::read_startup_configuration);
+        app::AsyncConfigurationLoad::Read configuration_read = app::read_startup_configuration,
+        app::AsyncRomLoader::CancellablePrepare rom_prepare = app::prepare_rom);
 
     void open_initial_rom(std::string_view rom_path);
 

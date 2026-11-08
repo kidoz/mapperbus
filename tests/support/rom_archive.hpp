@@ -22,14 +22,17 @@ struct ArchiveMember {
 inline void write_archive(const std::filesystem::path& path,
                           const std::vector<ArchiveMember>& members,
                           bool seven_zip = false,
-                          bool encrypt = false) {
+                          bool encrypt = false,
+                          bool compress = false) {
     std::unique_ptr<archive, decltype(&archive_write_free)> writer(archive_write_new(),
                                                                    archive_write_free);
     REQUIRE(writer);
     REQUIRE((seven_zip ? archive_write_set_format_7zip(writer.get())
                        : archive_write_set_format_zip(writer.get())) == ARCHIVE_OK);
     if (!seven_zip) {
-        REQUIRE(archive_write_set_options(writer.get(), "zip:compression=store") == ARCHIVE_OK);
+        REQUIRE(archive_write_set_options(writer.get(),
+                                          compress ? "zip:compression=deflate"
+                                                   : "zip:compression=store") == ARCHIVE_OK);
     }
     if (encrypt) {
         REQUIRE(archive_write_set_passphrase(writer.get(), "test-password") == ARCHIVE_OK);

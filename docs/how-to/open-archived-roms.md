@@ -74,10 +74,14 @@ The outgoing game is saved first; that save step cannot be cancelled. If saving
 fails, the current game stays available for recovery. This also ensures reopening
 the same game reads its latest battery or disk save.
 
-An OS file operation may remain blocked after Cancel. Its eventual result is
-discarded, and it cannot replace the game or write the staged game's saves. Up to
-four outstanding file operations are allowed; further opens report that earlier
-operations are still waiting. Closing the app does not wait for abandoned reads.
+Cancel signals the reader to stop at the next checkpoint: before or after an
+archive entry, a 64 KiB selected-data read, or a skip operation. Skipping unselected
+entries retains libarchive's fast skip path. A libarchive or OS call already in
+progress must return before the worker can stop and release its capacity.
+Its eventual result is discarded, and it cannot replace the game or write the
+staged game's saves. Up to four outstanding file operations are allowed; further
+opens report that earlier operations are still waiting. Closing the app requests
+the same stop without waiting for abandoned reads.
 
 Entries are read into memory and never extracted to disk. Battery and state
 paths are computed independently of archive member paths.

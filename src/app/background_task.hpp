@@ -1,12 +1,14 @@
 #pragma once
 
 #include <atomic>
+#include <concepts>
 #include <condition_variable>
 #include <exception>
 #include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <stop_token>
 #include <string>
 #include <thread>
 #include <utility>
@@ -21,6 +23,7 @@ namespace mapperbus::app {
 template <typename T> class BackgroundTask {
   public:
     using Task = std::function<core::Result<T>()>;
+    using CancellableTask = std::function<core::Result<T>(std::stop_token)>;
 
     BackgroundTask() : workers_(std::make_shared<Workers>()) {}
     ~BackgroundTask() {
@@ -30,45 +33,11 @@ template <typename T> class BackgroundTask {
     BackgroundTask& operator=(const BackgroundTask&) = delete;
 
     [[nodiscard]] core::Result<void> start(Task task, bool cancellable) {
-        if (job_)
-            return std::unexpected("A file operation is already in progress");
-        auto job = std::make_shared<Job>();
-        constexpr int kMaxWorkers = 4;
-        if (workers_->count.fetch_add(1) >= kMaxWorkers) {
-            --workers_->count;
-            return std::unexpected("Previous file operations are still waiting. Try again later.");
-        }
-        try {
-            std::thread([job, workers = workers_, task = std::move(task)]() mutable {
-                {
-                    auto result = [&]() -> core::Result<T> {
-                        try {
-                            return task();
-                        } catch (const std::exception& error) {
-                            return std::unexpected("File operation failed: " +
-                                                   std::string(error.what()));
-                        } catch (...) {
-                            return std::unexpected("File operation failed unexpectedly");
-                        }
-                    }();
-                    const std::lock_guard lock(job->mutex);
-                    if (!job->abandoned)
-                        job->result = std::move(result);
-                    job->done = true;
-                    job->completed.notify_all();
-                }
-                // Release captured machines before returning the worker permit;
-                // their destructors may perform persistence during shutdown.
-                task = {};
-                --workers->count;
-            }).detach();
-        } catch (const std::exception& error) {
-            --workers_->count;
-            return std::unexpected("Cannot start file operation: " + std::string(error.what()));
-        }
-        job_ = std::move(job);
-        cancellable_ = cancellable;
-        return {};
+        return start_job(std::move(task), cancellable);
+    }
+
+    [[nodiscard]] core::Result<void> start(CancellableTask task, bool cancellable) {
+        return start_job(std::move(task), cancellable);
     }
 
     [[nodiscard]] std::optional<core::Result<T>> poll() {
@@ -110,14 +79,65 @@ template <typename T> class BackgroundTask {
         std::condition_variable completed;
         bool done = false;
         bool abandoned = false;
+        std::stop_source stop;
         std::optional<core::Result<T>> result;
     };
     struct Workers {
         std::atomic<int> count{0};
         std::shared_ptr<const core::MapperRegistry> registry = core::MapperRegistry::retain();
     };
+    template <typename Work>
+    [[nodiscard]] core::Result<void> start_job(Work task, bool cancellable) {
+        if (job_)
+            return std::unexpected("A file operation is already in progress");
+        auto job = std::make_shared<Job>();
+        constexpr int kMaxWorkers = 4;
+        if (workers_->count.fetch_add(1) >= kMaxWorkers) {
+            --workers_->count;
+            return std::unexpected("Previous file operations are still waiting. Try again later.");
+        }
+        try {
+            std::thread([job, workers = workers_, task = std::move(task)]() mutable {
+                {
+                    auto result = [&]() -> core::Result<T> {
+                        try {
+                            if constexpr (std::invocable<Work&, std::stop_token>)
+                                return task(job->stop.get_token());
+                            else
+                                return task();
+                        } catch (const std::exception& error) {
+                            return std::unexpected("File operation failed: " +
+                                                   std::string(error.what()));
+                        } catch (...) {
+                            return std::unexpected("File operation failed unexpectedly");
+                        }
+                    }();
+                    const std::lock_guard lock(job->mutex);
+                    if (!job->abandoned)
+                        job->result = std::move(result);
+                    job->done = true;
+                    job->completed.notify_all();
+                }
+                // Release captured machines before returning the worker permit;
+                // their destructors may perform persistence during shutdown.
+                task = {};
+                --workers->count;
+            }).detach();
+        } catch (const std::exception& error) {
+            --workers_->count;
+            return std::unexpected("Cannot start file operation: " + std::string(error.what()));
+        }
+        job_ = std::move(job);
+        cancellable_ = cancellable;
+        return {};
+    }
+
     void abandon() {
         if (job_) {
+            // Readers poll this token; no stop callback may block the caller.
+            // Noncancellable writers must finish even when their owner retires.
+            if (cancellable_)
+                job_->stop.request_stop();
             const std::lock_guard lock(job_->mutex);
             job_->abandoned = true;
         }

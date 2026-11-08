@@ -1012,10 +1012,11 @@ MapperBusGuiController::MapperBusGuiController(
     nk::Window& window,
     app::AsyncDiskExport::Write disk_export_write,
     app::AsyncConfigurationSave::Write configuration_write,
-    app::AsyncConfigurationLoad::Read configuration_read)
+    app::AsyncConfigurationLoad::Read configuration_read,
+    app::AsyncRomLoader::CancellablePrepare rom_prepare)
     : app_(app), window_(window), configuration_loader_(std::move(configuration_read)),
       configuration_saver_(app::mapperbus_configuration_path(), std::move(configuration_write)),
-      disk_export_(std::move(disk_export_write)) {
+      rom_loader_(std::move(rom_prepare)), disk_export_(std::move(disk_export_write)) {
     // Loading has no live host devices or media. Install configured backends
     // only after the owned settings result is adopted on the UI thread.
     session_ = std::make_unique<app::EmulationSession>(std::make_unique<platform::NullVideo>(),

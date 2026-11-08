@@ -5,9 +5,11 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <stop_token>
 #include <string>
 #include <thread>
 #include <vector>
@@ -808,6 +810,274 @@ TEST_CASE("Async FDS preparation validates BIOS and restores disk overlays",
     request.fds_bios_path = (fixture.root / "missing.bin").string();
     REQUIRE(loader.start(request));
     CHECK_FALSE(wait_for_rom(loader));
+}
+
+namespace {
+std::vector<Byte> large_cancel_rom() {
+    auto data = make_rom(17);
+    data.resize(16 + 512 * 1024, 0xEA);
+    data[4] = 32;
+    return data;
+}
+struct ArchiveCheckpointGate {
+    std::mutex mutex;
+    std::condition_variable changed;
+    bool entered = false;
+    bool released = false;
+    bool finished = false;
+    std::string error;
+    std::size_t bytes = 0;
+    void observe(ArchiveReadProgress progress) {
+        if (progress.phase != ArchiveReadPhase::Data || progress.bytes == 0)
+            return;
+        std::unique_lock lock(mutex);
+        if (entered)
+            return;
+        entered = true;
+        bytes = progress.bytes;
+        changed.notify_all();
+        changed.wait(lock, [this] { return released; });
+    }
+    bool wait(bool ArchiveCheckpointGate::* flag) {
+        std::unique_lock lock(mutex);
+        return changed.wait_for(
+            lock, std::chrono::seconds(5), [this, flag] { return this->*flag; });
+    }
+    void finish(std::string result_error) {
+        const std::lock_guard lock(mutex);
+        error = std::move(result_error);
+        finished = true;
+        changed.notify_all();
+    }
+    void release() {
+        const std::lock_guard lock(mutex);
+        released = true;
+        changed.notify_all();
+    }
+};
+struct ReleaseArchiveCheckpoint {
+    std::shared_ptr<ArchiveCheckpointGate> gate;
+    ~ReleaseArchiveCheckpoint() {
+        gate->release();
+    }
+};
+core::Result<void> start_after_cleanup(AsyncRomLoader& loader, const RomLoadRequest& request) {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < deadline) {
+        auto result = loader.start(request);
+        if (result || result.error().find("still waiting") == std::string::npos)
+            return result;
+        std::this_thread::yield(); // A finished worker may still be releasing its permit.
+    }
+    return std::unexpected("Cancelled archive workers did not release capacity");
+}
+} // namespace
+
+TEST_CASE("Archive cancellation checks scan and decoded-data boundaries without changing media",
+          "[rom-source][archive][cancel]") {
+    ArchiveFixture fixture;
+    const auto large = large_cancel_rom();
+    for (const bool seven_zip : {false, true}) {
+        INFO((seven_zip ? "7z" : "deflated ZIP"));
+        const auto path = fixture.root / (seven_zip ? "cancel.7z" : "cancel.zip");
+        write_archive(path,
+                      {{"readme.txt", std::vector<Byte>(100000, 7)},
+                       {"game.nes", large},
+                       {"tail.nes", make_rom()}},
+                      seven_zip,
+                      false,
+                      true);
+        auto original = core::read_binary_file_capped(path.string(), kMaxArchiveBytes, "archive");
+        REQUIRE(original);
+        core::Emulator current;
+        auto old = core::Cartridge::from_data(make_rom(99));
+        REQUIRE(old);
+        REQUIRE(current.load_cartridge(std::move(*old), ""));
+        current.reset();
+        current.step_frame();
+        const auto snapshot = current.save_state();
+        const auto identity = current.content_hash();
+        for (auto phase : {ArchiveReadPhase::Header,
+                           ArchiveReadPhase::Skip,
+                           ArchiveReadPhase::Data,
+                           ArchiveReadPhase::Close}) {
+            INFO(static_cast<int>(phase));
+            std::stop_source stop;
+            bool reached = false;
+            std::size_t bytes = 0;
+            RomReadControl control{
+                stop.get_token(), [&](ArchiveReadProgress progress) {
+                    if (progress.phase == phase &&
+                        (phase != ArchiveReadPhase::Header || progress.entries > 0) &&
+                        (phase != ArchiveReadPhase::Data || progress.bytes > 0)) {
+                        reached = true;
+                        bytes = progress.bytes;
+                        stop.request_stop();
+                    }
+                }};
+            if (phase == ArchiveReadPhase::Header || phase == ArchiveReadPhase::Skip) {
+                auto result = list_archive_roms(path.string(), control);
+                REQUIRE_FALSE(result);
+                CHECK(result.error() == kRomLoadCancelled);
+            } else {
+                auto result = load_rom_source(
+                    current, path.string(), "game.nes", {}, fixture.root / "data", control);
+                REQUIRE_FALSE(result);
+                CHECK(result.error() == kRomLoadCancelled);
+            }
+            REQUIRE(reached);
+            if (phase == ArchiveReadPhase::Data) {
+                CHECK(bytes > 0);
+                CHECK(bytes < large.size());
+            }
+            CHECK(current.content_hash() == identity);
+            CHECK(current.save_state() == snapshot);
+        }
+        auto retained = core::read_binary_file_capped(path.string(), kMaxArchiveBytes, "archive");
+        REQUIRE(retained);
+        CHECK(*retained == *original);
+        CHECK_FALSE(std::filesystem::exists(fixture.root / "data"));
+    }
+}
+
+TEST_CASE("A pre-cancelled ROM job does no source access or archive observer work",
+          "[rom-source][cancel]") {
+    std::stop_source stop;
+    stop.request_stop();
+    bool observed = false;
+    const RomReadControl control{stop.get_token(), [&](auto) { observed = true; }};
+    auto listed = list_archive_roms("missing.zip", control);
+    REQUIRE_FALSE(listed);
+    CHECK(listed.error() == kRomLoadCancelled);
+    core::Emulator current;
+    auto loaded = load_rom_source(current, "missing.nes", {}, {}, {}, control);
+    REQUIRE_FALSE(loaded);
+    CHECK(loaded.error() == kRomLoadCancelled);
+    RomLoadRequest request;
+    request.path = "missing.7z";
+    auto prepared = prepare_rom(request, stop.get_token());
+    REQUIRE_FALSE(prepared);
+    CHECK(prepared.error() == kRomLoadCancelled);
+    CHECK_FALSE(observed);
+}
+
+TEST_CASE("Repeated archive Cancel signals real decoding workers and recovers their capacity",
+          "[rom-source][archive][async][cancel]") {
+    ArchiveFixture fixture;
+    const auto large = large_cancel_rom();
+    const auto small = fixture.root / "ready.nes";
+    REQUIRE(core::write_binary_file_atomic(small.string(), make_rom(42), "ROM"));
+    core::Emulator current;
+    REQUIRE(current.load_cartridge(small.string()));
+    current.reset();
+    current.step_frame();
+    const auto before = current.save_state();
+    using Gates = std::map<std::string, std::shared_ptr<ArchiveCheckpointGate>>;
+    auto gates = std::make_shared<Gates>();
+    for (int cycle = 0; cycle < 8; ++cycle) {
+        const bool seven_zip = cycle % 2 != 0;
+        const auto path =
+            fixture.root / ("repeat-" + std::to_string(cycle) + (seven_zip ? ".7z" : ".zip"));
+        write_archive(path, {{"game.nes", large}}, seven_zip, false, true);
+        gates->emplace(path.string(), std::make_shared<ArchiveCheckpointGate>());
+    }
+    struct ReleasePool {
+        std::shared_ptr<Gates> gates;
+        ~ReleasePool() {
+            for (const auto& [path, gate] : *gates) {
+                (void)path;
+                gate->release();
+            }
+        }
+    } cleanup{gates};
+    // The map is immutable while workers run. Record the real prepare result
+    // before it is discarded, without invoking any frontend callback.
+    AsyncRomLoader loader(
+        AsyncRomLoader::CancellablePrepare{[gates](const auto& request, std::stop_token stop) {
+            auto result = prepare_rom(request, stop);
+            if (auto found = gates->find(request.path); found != gates->end())
+                found->second->finish(result ? "unexpected success" : result.error());
+            return result;
+        }});
+    for (const auto& [path, gate] : *gates) {
+        RomLoadRequest request;
+        request.path = path;
+        request.member = "game.nes";
+        request.state_storage.directory = fixture.root / "states";
+        request.archive_observer = [gate](auto progress) { gate->observe(progress); };
+        REQUIRE(start_after_cleanup(loader, request));
+        REQUIRE(gate->wait(&ArchiveCheckpointGate::entered));
+        REQUIRE(loader.cancel());
+        CHECK(loader.phase() == AsyncRomLoader::Phase::Idle);
+        CHECK_FALSE(loader.poll());
+        gate->release();
+        REQUIRE(gate->wait(&ArchiveCheckpointGate::finished));
+        CHECK(gate->error == kRomLoadCancelled);
+        CHECK(gate->bytes > 0);
+        CHECK(gate->bytes < large.size());
+        CHECK(current.save_state() == before);
+    }
+    // Repetition beyond the four-job cap and a fresh successful load prove
+    // cancelled decoding returns worker permits without publishing old media.
+    RomLoadRequest ready;
+    ready.path = small.string();
+    ready.state_storage.directory = fixture.root / "states";
+    REQUIRE(start_after_cleanup(loader, ready));
+    auto completed = wait_for_rom(loader);
+    REQUIRE(completed);
+    REQUIRE(completed->emulator);
+    completed->emulator->step_frame();
+    CHECK(completed->emulator->read_cpu(0x6000) == 42);
+    CHECK(current.save_state() == before);
+}
+
+TEST_CASE("Destroying an archive loader requests cooperative stop without joining its reader",
+          "[rom-source][archive][async][cancel]") {
+    ArchiveFixture fixture;
+    const auto path = fixture.root / "retired.7z";
+    write_archive(path, {{"game.nes", large_cancel_rom()}}, true);
+    auto gate = std::make_shared<ArchiveCheckpointGate>();
+    const ReleaseArchiveCheckpoint cleanup{gate};
+    {
+        AsyncRomLoader loader(
+            AsyncRomLoader::CancellablePrepare{[gate](const auto& request, std::stop_token stop) {
+                auto result = prepare_rom(request, stop);
+                gate->finish(result ? "unexpected success" : result.error());
+                return result;
+            }});
+        RomLoadRequest request;
+        request.path = path.string();
+        request.member = "game.nes";
+        request.archive_observer = [gate](auto progress) { gate->observe(progress); };
+        REQUIRE(loader.start(request));
+        REQUIRE(gate->wait(&ArchiveCheckpointGate::entered));
+    }
+    gate->release();
+    REQUIRE(gate->wait(&ArchiveCheckpointGate::finished));
+    CHECK(gate->error == kRomLoadCancelled);
+}
+
+TEST_CASE("Retiring a noncancellable writer does not request its stop token",
+          "[rom-source][async][cancel]") {
+    auto gate = std::make_shared<ArchiveCheckpointGate>();
+    const ReleaseArchiveCheckpoint cleanup{gate};
+    auto stopped = std::make_shared<bool>(true);
+    {
+        BackgroundTask<void> writer;
+        REQUIRE(writer.start(
+            [gate, stopped](std::stop_token stop) -> core::Result<void> {
+                gate->observe({ArchiveReadPhase::Data, 1, 1});
+                *stopped = stop.stop_requested();
+                gate->finish({});
+                return {};
+            },
+            false));
+        REQUIRE(gate->wait(&ArchiveCheckpointGate::entered));
+        CHECK_FALSE(writer.cancel());
+    }
+    gate->release();
+    REQUIRE(gate->wait(&ArchiveCheckpointGate::finished));
+    CHECK_FALSE(*stopped);
 }
 
 } // namespace mapperbus::app
