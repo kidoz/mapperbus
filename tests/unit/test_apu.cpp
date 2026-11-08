@@ -157,6 +157,98 @@ TEST_CASE("Noise period tables differ between regions", "[apu]") {
     REQUIRE(kNoisePeriodPal[8] == 188);
 }
 
+TEST_CASE("Hybrid selects NTSC noise and DMC periods for every register index", "[apu][hybrid]") {
+    constexpr std::array<uint16_t, 16> kNoise = {
+        4,
+        8,
+        16,
+        32,
+        64,
+        96,
+        128,
+        160,
+        202,
+        254,
+        380,
+        508,
+        762,
+        1016,
+        2034,
+        4068,
+    };
+    constexpr std::array<uint16_t, 16> kDmc = {
+        428,
+        380,
+        340,
+        320,
+        286,
+        254,
+        226,
+        214,
+        190,
+        160,
+        142,
+        128,
+        106,
+        84,
+        72,
+        54,
+    };
+    Apu apu;
+    apu.set_region(Region::Dendy);
+    apu.reset();
+    for (Byte index = 0; index < 16; ++index) {
+        CAPTURE(index);
+        apu.write_register(0x400E, index);
+        apu.write_register(0x4010, index);
+        StateWriter state;
+        apu.save_state(state);
+        StateReader reader(state.data());
+        (void)reader.read<PulseChannel>();
+        (void)reader.read<PulseChannel>();
+        (void)reader.read<TriangleChannel>();
+        CHECK(reader.read<NoiseChannel>().timer_period == kNoise[index]);
+        CHECK(reader.read<DmcChannel>().timer_period == kDmc[index]);
+        REQUIRE(reader.ok());
+    }
+}
+
+TEST_CASE("Hybrid frame sequencer retains NTSC cycle events independently of video",
+          "[apu][hybrid][interrupt]") {
+    for (const bool five_step : {false, true}) {
+        CAPTURE(five_step);
+        Apu apu;
+        apu.set_region(Region::Dendy);
+        apu.reset();
+        apu.write_register(0x4015, 1);
+        apu.write_register(0x4000, 0);
+        apu.write_register(0x4003, 0x08); // length 254, envelope period 0
+        if (five_step) {
+            apu.write_register(0x4017, 0x80);
+            apu.step(4); // delayed sequencer reset also clocks quarter + half
+        }
+        const auto pulse = [&apu] {
+            StateWriter state;
+            apu.save_state(state);
+            return StateReader(state.data()).read<PulseChannel>();
+        };
+        const std::array<uint32_t, 4> times = {7457, 14913, 22371, five_step ? 37281U : 29829U};
+        uint32_t elapsed = 0;
+        for (unsigned event = 0; event < times.size(); ++event) {
+            CAPTURE(event);
+            const auto before = pulse();
+            apu.step(times[event] - elapsed - 1);
+            CHECK(pulse().envelope.decay_level == before.envelope.decay_level);
+            CHECK(pulse().length_counter == before.length_counter);
+            apu.step(1);
+            CHECK(pulse().envelope.decay_level == 15 - event - (five_step ? 1 : 0));
+            CHECK(pulse().length_counter == 254 - (event + 1) / 2 - (five_step ? 1 : 0));
+            elapsed = times[event];
+        }
+        CHECK(apu.irq_pending() == !five_step);
+    }
+}
+
 TEST_CASE("DMC rate tables", "[apu]") {
     REQUIRE(kDmcRateNtsc[0] == 428);
     REQUIRE(kDmcRatePal[0] == 398);

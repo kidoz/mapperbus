@@ -98,6 +98,27 @@ TEST_CASE("BlipBuffer mode produces output", "[audio][blip]") {
     REQUIRE(has_nonzero);
 }
 
+TEST_CASE("Hybrid resamplers produce samples at the UA6527P clock", "[audio][hybrid]") {
+    for (const auto mode : {ResamplingMode::BlipBuffer, ResamplingMode::CubicHermite}) {
+        CAPTURE(mode);
+        AudioSettings settings;
+        settings.sample_rate = 48000;
+        settings.resampling = mode;
+        Apu apu(settings);
+        apu.set_region(Region::Dendy);
+        apu.reset();
+        std::array<float, 2048> buffer{};
+        std::size_t samples = 0;
+        for (int frame = 0; frame < 20; ++frame) {
+            apu.step(35'464);
+            apu.end_audio_frame();
+            samples += apu.drain_samples(buffer.data(), buffer.size());
+        }
+        // 20 full Hybrid frames at 1,773,447.5 CPU Hz and 48,000 samples/s.
+        CHECK(samples == 19'197);
+    }
+}
+
 TEST_CASE("Biquad lowpass attenuates high frequencies", "[audio][filter]") {
     auto lp = BiquadFilter::butterworth_lowpass(14000.0f, 48000.0f);
 

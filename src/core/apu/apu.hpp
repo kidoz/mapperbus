@@ -37,9 +37,9 @@ inline constexpr std::array<uint16_t, 16> kDmcRatePal = {
 };
 // clang-format on
 
-inline constexpr double kCpuClockNtsc = 1789773.0;
-inline constexpr double kCpuClockPal = 1662607.0;
-inline constexpr double kCpuClockDendy = 1773448.0;
+inline constexpr double kCpuClockNtsc = kNtscTiming.cpu_clock_hz();
+inline constexpr double kCpuClockPal = kPalTiming.cpu_clock_hz();
+inline constexpr double kCpuClockDendy = kDendyTiming.cpu_clock_hz();
 
 struct FrameCounterTiming {
     uint32_t step1;

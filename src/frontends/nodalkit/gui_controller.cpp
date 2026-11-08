@@ -621,7 +621,7 @@ std::string nominal_fps_label(core::Region region) {
     case core::Region::PAL:
         return "Target 50.01 FPS";
     case core::Region::Dendy:
-        return "Target 50.00 FPS";
+        return "Target 50.01 FPS";
     case core::Region::Multi:
     case core::Region::NTSC:
     default:
@@ -1103,7 +1103,7 @@ MapperBusGuiController::MapperBusGuiController(
 
         const auto snapshot = actions_->snapshot();
         const auto target_frame_duration =
-            std::chrono::nanoseconds(core::timing_for_region(snapshot.region).frame_duration_ns);
+            std::chrono::nanoseconds(core::timing_for_region(snapshot.region).frame_duration_ns());
         const auto max_accumulated = target_frame_duration * 4;
         if (elapsed > max_accumulated) {
             elapsed = max_accumulated;

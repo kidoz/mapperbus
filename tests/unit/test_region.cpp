@@ -133,3 +133,15 @@ TEST_CASE("Region timing constants", "[region]") {
     REQUIRE(&timing_for_region(Region::Dendy) == &kDendyTiming);
     REQUIRE(&timing_for_region(Region::Multi) == &kNtscTiming);
 }
+
+TEST_CASE("Hybrid clock and host pacing use the same nominal crystal", "[region][hybrid]") {
+    CHECK(kDendyTiming.cpu_clock_hz() == 1'773'447.5);
+    CHECK(kDendyTiming.cpu_clock_divider == 15);
+    CHECK(kDendyTiming.ppu_clock_divider == 5);
+    CHECK(kDendyTiming.frame_duration_ns() == 19'997'209);
+    CHECK(kPalTiming.frame_duration_ns() == kDendyTiming.frame_duration_ns());
+    CHECK(kNtscTiming.frame_duration_ns() == 16'639'263);
+    CHECK(kDendyTiming.scanlines_per_frame * 341 * kDendyTiming.ppu_clock_divider /
+              kDendyTiming.cpu_clock_divider ==
+          35'464);
+}

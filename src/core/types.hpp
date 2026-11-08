@@ -59,32 +59,45 @@ struct RegionTiming {
     int scanlines_per_frame;
     int vblank_scanline;
     int pre_render_scanline;
-    long frame_duration_ns; // nanoseconds per frame
     bool odd_frame_skip = false;
     unsigned cpu_clock_divider = 12;
     unsigned ppu_clock_divider = 4;
     // Selected divider alignment: retain the NTSC two-dot/one-dot bus split.
     unsigned cpu_access_master_clock = 8;
+    double master_clock_hz = 236'250'000.0 / 11.0;
+    bool swap_color_emphasis = false;
+
+    [[nodiscard]] constexpr double cpu_clock_hz() const {
+        return master_clock_hz / cpu_clock_divider;
+    }
+
+    /// Nominal host pacing; rendered NTSC frames average one skipped dot per pair.
+    [[nodiscard]] constexpr long frame_duration_ns() const {
+        const double dots = scanlines_per_frame * 341.0 - (odd_frame_skip ? 0.5 : 0.0);
+        return static_cast<long>(dots * ppu_clock_divider * 1'000'000'000.0 / master_clock_hz +
+                                 0.5);
+    }
 };
 
 inline constexpr RegionTiming kNtscTiming = {.scanlines_per_frame = 262,
                                              .vblank_scanline = 241,
                                              .pre_render_scanline = 261,
-                                             .frame_duration_ns = 16'639'267,
                                              .odd_frame_skip = true};
 inline constexpr RegionTiming kPalTiming = {.scanlines_per_frame = 312,
                                             .vblank_scanline = 241,
                                             .pre_render_scanline = 311,
-                                            .frame_duration_ns = 19'997'200,
                                             .cpu_clock_divider = 16,
-                                            .ppu_clock_divider = 5};
+                                            .ppu_clock_divider = 5,
+                                            .master_clock_hz = 26'601'712.5,
+                                            .swap_color_emphasis = true};
 inline constexpr RegionTiming kDendyTiming = {.scanlines_per_frame = 312,
                                               .vblank_scanline = 291,
                                               .pre_render_scanline = 311,
-                                              .frame_duration_ns = 20'000'000,
                                               .cpu_clock_divider = 15,
                                               .ppu_clock_divider = 5,
-                                              .cpu_access_master_clock = 10};
+                                              .cpu_access_master_clock = 10,
+                                              .master_clock_hz = 26'601'712.5,
+                                              .swap_color_emphasis = true};
 
 inline constexpr const RegionTiming& timing_for_region(Region region) {
     switch (region) {
