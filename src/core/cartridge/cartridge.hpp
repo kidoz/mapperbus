@@ -70,6 +70,12 @@ class Cartridge {
     [[nodiscard]] std::optional<Address> nametable_address(Address addr) const {
         return mapper_->nametable_address(addr);
     }
+    [[nodiscard]] std::optional<Byte> read_nametable(Address addr) const {
+        return mapper_->read_nametable(addr);
+    }
+    bool write_nametable(Address addr, Byte value) {
+        return mapper_->write_nametable(addr, value);
+    }
     [[nodiscard]] bool irq_pending() const {
         return mapper_->irq_pending();
     }

@@ -14,6 +14,7 @@
 #include "core/mappers/namco108.hpp"
 #include "core/mappers/namco163.hpp"
 #include "core/mappers/nrom.hpp"
+#include "core/mappers/sunsoft34.hpp"
 #include "core/mappers/sunsoft5b.hpp"
 #include "core/mappers/uxrom.hpp"
 #include "core/mappers/vrc6.hpp"
@@ -111,6 +112,20 @@ namespace {
             header.chr_ram_size > 0x2000U || header.chr_nvram_size != 0U)
             return std::unexpected("Unsupported Irem RAM geometry");
     }
+    if (header.mapper_number == 67 || header.mapper_number == 68) {
+        const bool sunsoft4 = header.mapper_number == 68;
+        const bool dcs = sunsoft4 && header.is_nes2 && header.submapper == 1;
+        if (header.is_nes2 && header.submapper > (sunsoft4 ? 1 : 0))
+            return std::unexpected("Unsupported Sunsoft-3/4 submapper");
+        if (prg_size < 0x8000U || prg_size > (dcs ? 0x20000U : 0x40000U) ||
+            prg_size % 0x4000U != 0U || chr_size > (sunsoft4 ? 0x40000U : 0x20000U) ||
+            chr_size % 0x800U != 0U || (sunsoft4 && chr_size == 0U))
+            return std::unexpected("Unsupported Sunsoft-3/4 ROM geometry");
+        if (header.prg_ram_size > 0x2000U || header.prg_nvram_size > 0x2000U ||
+            header.prg_ram_size + header.prg_nvram_size > 0x2000U ||
+            header.chr_ram_size > 0x2000U || header.chr_nvram_size != 0U)
+            return std::unexpected("Unsupported Sunsoft-3/4 RAM geometry");
+    }
     return {};
 }
 
@@ -179,6 +194,8 @@ void register_builtin_mappers() {
     registry.register_mapper(31, make_factory<DiscreteMapper>());
     registry.register_mapper(32, make_factory<Irem>());
     registry.register_mapper(65, make_factory<Irem>());
+    registry.register_mapper(67, make_factory<Sunsoft34>());
+    registry.register_mapper(68, make_factory<Sunsoft34>());
     for (const uint16_t id : {21, 22, 23, 25, 73, 75})
         registry.register_mapper(id, make_factory<KonamiVrc>());
     for (const uint16_t id :

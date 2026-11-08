@@ -440,18 +440,23 @@ void Ppu::write_oam_dma(Byte value) {
 // === VRAM access ===
 
 Byte Ppu::read_vram(Address addr) const {
-    addr &= 0x3FFF;
+    addr &= 0x3FFFU;
     if (addr < 0x2000) {
         return cartridge_ != nullptr ? cartridge_->read_chr(addr) : 0;
     }
     if (addr < 0x3F00) {
+        if (cartridge_ != nullptr) {
+            if (const auto value =
+                    cartridge_->read_nametable(static_cast<Address>(0x2000U | (addr & 0x0FFFU))))
+                return *value;
+        }
         return vram_[mirror_nametable_address(addr)];
     }
     return read_palette(addr);
 }
 
 void Ppu::write_vram(Address addr, Byte value) {
-    addr &= 0x3FFF;
+    addr &= 0x3FFFU;
     if (addr < 0x2000) {
         if (cartridge_ != nullptr) {
             cartridge_->write_chr(addr, value);
@@ -459,6 +464,9 @@ void Ppu::write_vram(Address addr, Byte value) {
         return;
     }
     if (addr < 0x3F00) {
+        if (cartridge_ != nullptr &&
+            cartridge_->write_nametable(static_cast<Address>(0x2000U | (addr & 0x0FFFU)), value))
+            return;
         vram_[mirror_nametable_address(addr)] = value;
         return;
     }

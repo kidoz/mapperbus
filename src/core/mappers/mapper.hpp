@@ -35,6 +35,15 @@ class Mapper {
     virtual std::optional<Address> nametable_address(Address /*addr*/) const {
         return std::nullopt;
     }
+    /// Override PPU nametable reads; nullopt leaves the access to CIRAM.
+    /// Addresses are normalized to $2000-$2FFF, including $3000 mirrors.
+    virtual std::optional<Byte> read_nametable(Address /*addr*/) const {
+        return std::nullopt;
+    }
+    /// Return true when the board consumes the write (including ROM protection).
+    virtual bool write_nametable(Address /*addr*/, Byte /*value*/) {
+        return false;
+    }
     virtual void reset() = 0;
 
     // Save-state hooks. Each mapper serializes its mutable runtime state
