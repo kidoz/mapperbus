@@ -17,6 +17,7 @@
 #include "core/mappers/sunsoft34.hpp"
 #include "core/mappers/sunsoft5b.hpp"
 #include "core/mappers/taito_tc.hpp"
+#include "core/mappers/taito_x1005.hpp"
 #include "core/mappers/uxrom.hpp"
 #include "core/mappers/vrc6.hpp"
 #include "core/mappers/vrc7.hpp"
@@ -138,6 +139,22 @@ namespace {
             (chr_size != 0U && header.chr_ram_size != 0U))
             return std::unexpected("Unsupported Taito TC RAM geometry");
     }
+    if (header.mapper_number == 80 || header.mapper_number == 207) {
+        if (header.is_nes2 && header.submapper != 0)
+            return std::unexpected("Unsupported X1-005 submapper");
+        if (prg_size < 0x8000U || prg_size > 0x80000U || prg_size % 0x2000U != 0U ||
+            chr_size > 0x40000U || chr_size % 0x400U != 0U)
+            return std::unexpected("Unsupported X1-005 ROM geometry");
+        if (header.is_nes2 && ((header.prg_ram_size != 0U && header.prg_ram_size != 128U) ||
+                               (header.prg_nvram_size != 0U && header.prg_nvram_size != 128U) ||
+                               header.prg_ram_size + header.prg_nvram_size > 128U))
+            return std::unexpected("X1-005 has only 128 bytes of internal PRG memory");
+        if (header.is_nes2 && header.prg_nvram_size != 0U && !header.has_battery)
+            return std::unexpected("X1-005 NVRAM requires the battery flag");
+        if (header.chr_ram_size > 0x2000U || header.chr_nvram_size != 0U ||
+            (chr_size != 0U && header.chr_ram_size != 0U))
+            return std::unexpected("Unsupported X1-005 CHR RAM geometry");
+    }
     return {};
 }
 
@@ -210,6 +227,8 @@ void register_builtin_mappers() {
     registry.register_mapper(68, make_factory<Sunsoft34>());
     registry.register_mapper(33, make_factory<TaitoTc>());
     registry.register_mapper(48, make_factory<TaitoTc>());
+    registry.register_mapper(80, make_factory<TaitoX1005>());
+    registry.register_mapper(207, make_factory<TaitoX1005>());
     for (const uint16_t id : {21, 22, 23, 25, 73, 75})
         registry.register_mapper(id, make_factory<KonamiVrc>());
     for (const uint16_t id :
