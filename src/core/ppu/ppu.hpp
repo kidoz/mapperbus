@@ -91,6 +91,29 @@ class Ppu {
     };
     // clang-format on
 
+    // RGB approximation of the analog tint circuitry. Each emphasis bit dims
+    // the other two components by 3/4; combined bits compound attenuation.
+    // Bit ordering is normalized to red/green/blue before indexing this table.
+    static constexpr auto kEmphasisPalette = [] {
+        std::array<std::array<std::uint32_t, 64>, 8> palettes{};
+        for (unsigned emphasis = 0; emphasis < palettes.size(); ++emphasis) {
+            for (unsigned color = 0; color < kNesPalette.size(); ++color) {
+                std::uint32_t rgb = 0xFF000000;
+                for (unsigned channel = 0; channel < 3; ++channel) {
+                    const unsigned shift = (2 - channel) * 8;
+                    auto component = (kNesPalette[color] >> shift) & 0xFFU;
+                    for (unsigned bit = 0; bit < 3; ++bit) {
+                        if (bit != channel && (emphasis & (1U << bit)) != 0)
+                            component = component * 3 / 4;
+                    }
+                    rgb |= component << shift;
+                }
+                palettes[emphasis][color] = rgb;
+            }
+        }
+        return palettes;
+    }();
+
     FrameBuffer frame_buffer_{};
     bool frame_ready_ = false;
     Cartridge* cartridge_ = nullptr;

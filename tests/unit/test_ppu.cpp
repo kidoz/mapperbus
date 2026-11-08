@@ -422,6 +422,70 @@ TEST_CASE("Dendy PPU starts VBlank at scanline 291, not 241", "[ppu][region][den
     REQUIRE((ppu.read_register(0x02) & 0x80) != 0);
 }
 
+TEST_CASE("Hybrid NMI asserts at line 291 dot 1 and clears at line 311 dot 1",
+          "[ppu][region][hybrid][nmi]") {
+    Ppu ppu;
+    ppu.set_region(Region::Dendy);
+    ppu.reset();
+    ppu.write_register(0, 0x80);
+    ppu.step_dots(291 * 341);
+    CHECK_FALSE(ppu.nmi_line());
+    CHECK_FALSE(ppu.consume_nmi());
+    ppu.step_dots(1);
+    CHECK(ppu.nmi_line());
+    CHECK(ppu.consume_nmi());
+    ppu.step_dots(20 * 341 - 1);
+    CHECK(ppu.nmi_line());
+    ppu.step_dots(1);
+    CHECK_FALSE(ppu.nmi_line());
+    ppu.step_dots(292 * 341 - 1);
+    CHECK_FALSE(ppu.nmi_line());
+    ppu.step_dots(1);
+    CHECK(ppu.nmi_line());
+    CHECK(ppu.consume_nmi());
+}
+
+TEST_CASE("Rendered emphasis swaps red and green for PAL and Hybrid", "[ppu][palette][hybrid]") {
+    const auto pixel = [](Region region, Byte mask, Byte color) {
+        Ppu ppu;
+        ppu.set_region(region);
+        ppu.reset();
+        ppu.write_register(6, 0x3F);
+        ppu.write_register(6, 0);
+        ppu.write_register(7, color);
+        ppu.write_register(6, 0x20);
+        ppu.write_register(6, 0);
+        ppu.write_register(1, mask);
+        ppu.step_dots(1);
+        return ppu.frame_buffer().pixels[0];
+    };
+    // Fixed rendered outputs from the documented 3/4 RGB attenuation model.
+    constexpr std::array<std::uint32_t, 8> kNtscWhite = {
+        0xFFFFFEFF,
+        0xFFFFBEBF,
+        0xFFBFFEBF,
+        0xFFBFBE8F,
+        0xFFBFBEFF,
+        0xFFBF8EBF,
+        0xFF8FBEBF,
+        0xFF8F8E8F,
+    };
+    constexpr std::array<unsigned, 8> kPalOrder = {0, 2, 1, 3, 4, 6, 5, 7};
+    for (unsigned emphasis = 0; emphasis < 8; ++emphasis) {
+        const auto mask = static_cast<Byte>(emphasis << 5);
+        CAPTURE(emphasis);
+        CHECK(pixel(Region::NTSC, mask, 0x20) == kNtscWhite[emphasis]);
+        CHECK(pixel(Region::Multi, mask, 0x20) == kNtscWhite[emphasis]);
+        CHECK(pixel(Region::PAL, mask, 0x20) == kNtscWhite[kPalOrder[emphasis]]);
+        CHECK(pixel(Region::Dendy, mask, 0x20) == kNtscWhite[kPalOrder[emphasis]]);
+    }
+    for (const auto region : {Region::NTSC, Region::PAL, Region::Dendy}) {
+        CHECK(pixel(region, 0, 0x16) == 0xFFB53120);
+        CHECK(pixel(region, 1, 0x16) == 0xFFADADAD);    // grayscale masks the palette index
+        CHECK(pixel(region, 0x81, 0x16) == 0xFF8181AD); // tint still applies to gray
+    }
+}
+
 TEST_CASE("PPU I/O latch is separate from its VRAM read buffer", "[ppu][bus]") {
     Ppu ppu;
     ppu.write_register(6, 0x20);

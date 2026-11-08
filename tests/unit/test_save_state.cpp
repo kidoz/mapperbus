@@ -31,6 +31,52 @@ namespace {
 
 } // namespace
 
+TEST_CASE("Hybrid snapshots restore timing, active audio and regional emphasis",
+          "[state][hybrid]") {
+    register_builtin_mappers();
+    // Continuous pulse and tinted backdrop, with no external media or BIOS.
+    constexpr Byte kProgram[] = {
+        0x78, 0xA9, 0x40, 0x8D, 0x17, 0x40, // SEI; inhibit frame IRQ
+        0xA9, 0x01, 0x8D, 0x15, 0x40,       // enable pulse 1
+        0xA9, 0xBF, 0x8D, 0x00, 0x40, 0xA9, 0xFD, 0x8D, 0x02, 0x40,
+        0xA9, 0x08, 0x8D, 0x03, 0x40, 0xA9, 0x3F, 0x8D, 0x06, 0x20,
+        0xA9, 0x00, 0x8D, 0x06, 0x20, 0xA9, 0x20, 0x8D, 0x07, 0x20, // white backdrop
+        0xA9, 0x20, 0x8D, 0x06, 0x20, 0xA9, 0x00, 0x8D, 0x06, 0x20,
+        0xA9, 0x20, 0x8D, 0x01, 0x20, // green emphasis on Hybrid
+        0x4C, 0x38, 0x80,             // JMP $8038 (idle)
+    };
+    const auto path = mapperbus::tests::build_ines_rom("hybrid-snapshot", 0, 1, 1, kProgram);
+    Emulator emulator;
+    REQUIRE(emulator.load_cartridge(path.string()));
+    emulator.set_region(Region::Dendy);
+    emulator.reset();
+    emulator.step_frame();
+    const auto checkpoint = emulator.save_state();
+    const auto replay = [&emulator] {
+        for (int frame = 0; frame < 3; ++frame)
+            emulator.step_frame();
+    };
+    replay();
+    const auto expected = emulator.save_state();
+    const auto pixels = emulator.frame_buffer().pixels;
+    CHECK(pixels[0] == 0xFFBFFEBF);
+    std::array<float, 8192> audio{};
+    const auto sample_count = emulator.drain_audio(audio.data(), audio.size());
+    REQUIRE(sample_count > 0);
+    bool audible = false;
+    for (std::size_t i = 0; i < sample_count; ++i)
+        audible = audible || audio[i] > 0.001f || audio[i] < -0.001f;
+    CHECK(audible);
+    emulator.set_region(Region::NTSC);
+    emulator.reset();
+    REQUIRE(emulator.load_state(checkpoint));
+    CHECK(emulator.region() == Region::Dendy);
+    replay();
+    CHECK(emulator.save_state() == expected);
+    CHECK(emulator.frame_buffer().pixels == pixels);
+    std::filesystem::remove(path);
+}
+
 TEST_CASE("Version 17 restores partially shifted external pads and validates their state",
           "[state][controller][expansion]") {
     Emulator emulator;

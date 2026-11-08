@@ -516,7 +516,11 @@ void Ppu::write_palette(Address addr, Byte value) {
 }
 
 std::uint32_t Ppu::palette_color(Byte palette_value) const {
-    return kNesPalette[palette_value & 0x3F];
+    const auto color = palette_value & ((ppumask_ & 1U) != 0 ? 0x30U : 0x3FU);
+    auto emphasis = static_cast<unsigned>(ppumask_ >> 5);
+    if (timing_->swap_color_emphasis)
+        emphasis = (emphasis & 4U) | ((emphasis & 1U) << 1) | ((emphasis & 2U) >> 1);
+    return kEmphasisPalette[emphasis][color];
 }
 
 // === Scanline-based rendering ===
