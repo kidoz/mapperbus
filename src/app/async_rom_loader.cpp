@@ -10,13 +10,14 @@ namespace mapperbus::app {
 struct AsyncRomLoader::ProgressState {
     std::mutex mutex;
     std::optional<ArchiveReadProgress> latest;
+    std::optional<std::string> fds_bios_error_member;
 };
 
 core::Result<PreparedRom> prepare_rom(const RomLoadRequest& request, std::stop_token stop) {
     const auto cancelled = [&] { return std::unexpected(std::string(kRomLoadCancelled)); };
     if (stop.stop_requested())
         return cancelled();
-    const RomReadControl control{stop, request.archive_observer};
+    RomReadControl control{stop, request.archive_observer};
     PreparedRom media;
     media.path = request.path;
     media.member = request.member;
@@ -35,6 +36,10 @@ core::Result<PreparedRom> prepare_rom(const RomLoadRequest& request, std::stop_t
     }
     if (stop.stop_requested())
         return cancelled();
+    control.on_fds_bios_error = [report = request.on_fds_bios_error, member = media.member] {
+        if (report)
+            report(member);
+    };
     media.emulator = std::make_shared<core::Emulator>(request.audio_settings);
     media.emulator->set_persistence_enabled(false);
     auto loaded = load_rom_source(*media.emulator,
@@ -73,6 +78,15 @@ core::Result<void> AsyncRomLoader::launch(BackgroundTask<PreparedRom>::Cancellab
 
 core::Result<void> AsyncRomLoader::start(RomLoadRequest request) {
     auto progress = std::make_shared<ProgressState>();
+    request.on_fds_bios_error =
+        [progress, report = std::move(request.on_fds_bios_error)](std::string member) {
+            {
+                const std::lock_guard lock(progress->mutex);
+                progress->fds_bios_error_member = member;
+            }
+            if (report)
+                report(std::move(member));
+        };
     request.archive_observer =
         [progress, observer = std::move(request.archive_observer)](ArchiveReadProgress update) {
             {
@@ -85,8 +99,10 @@ core::Result<void> AsyncRomLoader::start(RomLoadRequest request) {
     auto started = launch([prepare = prepare_, request = std::move(request)](
                               std::stop_token stop) { return prepare(request, stop); },
                           Phase::Loading);
-    if (started)
+    if (started) {
         progress_ = std::move(progress);
+        fds_bios_error_member_.reset();
+    }
     return started;
 }
 
@@ -107,6 +123,11 @@ core::Result<void> AsyncRomLoader::save_current(std::shared_ptr<core::Emulator> 
 std::optional<core::Result<PreparedRom>> AsyncRomLoader::poll() {
     auto result = task_.poll();
     if (result) {
+        fds_bios_error_member_.reset();
+        if (phase_ == Phase::Loading && !*result && progress_) {
+            const std::lock_guard lock(progress_->mutex);
+            fds_bios_error_member_ = progress_->fds_bios_error_member;
+        }
         phase_ = Phase::Idle;
         progress_.reset();
     }
@@ -118,6 +139,7 @@ bool AsyncRomLoader::cancel() {
         return false;
     phase_ = Phase::Idle;
     progress_.reset();
+    fds_bios_error_member_.reset();
     return true;
 }
 

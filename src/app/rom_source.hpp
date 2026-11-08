@@ -25,10 +25,15 @@ using ArchiveReadObserver = std::function<void(ArchiveReadProgress)>;
 struct RomReadControl {
     std::stop_token stop;
     ArchiveReadObserver observe;
+    /// Reader-thread diagnostic for an inaccessible/invalid BIOS; own state, never UI references.
+    std::function<void()> on_fds_bios_error = {};
 };
 inline constexpr std::string_view kRomLoadCancelled = "Opening ROM cancelled";
 
 [[nodiscard]] bool is_rom_archive(const std::filesystem::path& path);
+using FdsBiosRead = std::function<core::Result<std::vector<core::Byte>>(const std::string&)>;
+/// Reads a regular file capped at 8 KiB and requires exactly 8192 bytes.
+[[nodiscard]] core::Result<std::vector<core::Byte>> read_fds_bios(const std::string& path);
 /// Lists regular .nes and .fds members. Names are identifiers, never extraction paths.
 [[nodiscard]] core::Result<std::vector<std::string>> list_archive_roms(
     const std::string& path, const RomReadControl& control = {});

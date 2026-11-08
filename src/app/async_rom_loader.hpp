@@ -23,6 +23,8 @@ struct RomLoadRequest {
     StateStorageSettings state_storage;
     std::filesystem::path persistence_directory;
     ArchiveReadObserver archive_observer = {};
+    /// Owned reader-thread diagnostic carrying the resolved member (empty for raw media).
+    std::function<void(std::string)> on_fds_bios_error = {};
 };
 
 struct PreparedRom {
@@ -62,6 +64,10 @@ class AsyncRomLoader {
     /// Latest coalesced archive checkpoint for this job, never an abandoned job.
     /// A busy mailbox returns no update rather than blocking the caller.
     [[nodiscard]] std::optional<ArchiveReadProgress> archive_progress() const;
+    /// BIOS failure from the most recently polled load, including its resolved member.
+    [[nodiscard]] const std::optional<std::string>& fds_bios_error_member() const {
+        return fds_bios_error_member_;
+    }
     bool cancel();
     [[nodiscard]] Phase phase() const {
         return phase_;
@@ -74,6 +80,7 @@ class AsyncRomLoader {
     BackgroundTask<PreparedRom> task_;
     struct ProgressState;
     std::shared_ptr<ProgressState> progress_;
+    std::optional<std::string> fds_bios_error_member_;
     Phase phase_ = Phase::Idle;
 };
 

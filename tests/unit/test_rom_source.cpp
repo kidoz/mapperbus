@@ -1292,4 +1292,108 @@ TEST_CASE("Retrying an owned archive selection after repair preserves the active
     }
 }
 
+TEST_CASE("FDS BIOS validation reads only an exact capped regular 8 KiB file",
+          "[rom-source][fds][bios]") {
+    ArchiveFixture fixture;
+    const auto path = fixture.root / "selected.bin";
+    const auto good = mapperbus::tests::make_fds_bios();
+    for (std::size_t size : {0UZ, 8191UZ, 8192UZ, 8193UZ}) {
+        INFO(size);
+        auto bytes = good;
+        bytes.resize(size);
+        REQUIRE(core::write_binary_file_atomic(path.string(), bytes, "BIOS"));
+        auto result = read_fds_bios(path.string());
+        CHECK(result.has_value() == (size == 8192));
+        if (result)
+            CHECK(*result == good);
+    }
+    CHECK_FALSE(read_fds_bios(fixture.root.string()));
+    CHECK_FALSE(read_fds_bios((fixture.root / "missing.bin").string()));
+}
+
+TEST_CASE("FDS BIOS diagnostics retain raw and automatically resolved ZIP and 7z selections",
+          "[rom-source][fds][bios][async]") {
+    ArchiveFixture fixture;
+    const auto bios = fixture.root / "bios.bin";
+    const auto raw = fixture.root / "game.fds";
+    const auto disk = mapperbus::tests::make_fds_image(2);
+    REQUIRE(core::write_binary_file_atomic(raw.string(), disk, "disk"));
+    for (int format : {0, 1, 2}) {
+        const auto path = format == 0 ? raw : fixture.root / (format == 1 ? "disk.zip" : "disk.7z");
+        if (format != 0)
+            write_archive(path, {{"folder/Selected.fds", disk}}, format == 2);
+        RomLoadRequest request;
+        request.path = path.string();
+        request.fds_bios_path = bios.string();
+        request.persistence_directory = fixture.root / "data";
+        request.state_storage.directory = fixture.root / "states";
+        AsyncRomLoader loader;
+        for (bool short_bios : {false, true}) {
+            std::filesystem::remove(bios);
+            if (short_bios)
+                REQUIRE(
+                    core::write_binary_file_atomic(bios.string(), std::vector<Byte>(8191), "BIOS"));
+            REQUIRE(loader.start(request));
+            REQUIRE_FALSE(wait_for_rom(loader));
+            REQUIRE(loader.fds_bios_error_member());
+            CHECK(*loader.fds_bios_error_member() == (format == 0 ? "" : "folder/Selected.fds"));
+        }
+        REQUIRE(core::write_binary_file_atomic(
+            bios.string(), mapperbus::tests::make_fds_bios(), "BIOS"));
+        REQUIRE(start_after_cleanup(loader, request));
+        auto prepared = wait_for_rom(loader);
+        REQUIRE(prepared);
+        REQUIRE(prepared->emulator);
+        CHECK(prepared->emulator->is_fds());
+        CHECK_FALSE(loader.fds_bios_error_member());
+        if (format == 0)
+            REQUIRE(core::write_binary_file_atomic(
+                path.string(), std::vector<Byte>{1, 2, 3}, "bad disk"));
+        else
+            write_archive(path, {{"folder/Selected.fds", {1, 2, 3}}}, format == 2);
+        REQUIRE(start_after_cleanup(loader, request));
+        REQUIRE_FALSE(wait_for_rom(loader));
+        CHECK_FALSE(loader.fds_bios_error_member()); // Disk errors are not BIOS errors.
+    }
+}
+
+TEST_CASE("BIOS diagnostics ignore error text and late notifications from cancelled readers",
+          "[rom-source][bios][async][cancel]") {
+    ArchiveFixture fixture;
+    AsyncRomLoader text_only(
+        AsyncRomLoader::Prepare{[](const RomLoadRequest&) -> core::Result<PreparedRom> {
+            return std::unexpected("FDS BIOS in a generic archive error is not a BIOS diagnostic");
+        }});
+    REQUIRE(text_only.start({}));
+    REQUIRE_FALSE(wait_for_rom(text_only));
+    CHECK_FALSE(text_only.fds_bios_error_member());
+    const auto raw = fixture.root / "ready.nes";
+    REQUIRE(core::write_binary_file_atomic(raw.string(), make_rom(), "ROM"));
+    auto gate = std::make_shared<ArchiveCheckpointGate>();
+    const ReleaseArchiveCheckpoint cleanup{gate};
+    AsyncRomLoader loader(AsyncRomLoader::CancellablePrepare{
+        [gate](const RomLoadRequest& request, std::stop_token stop) -> core::Result<PreparedRom> {
+            if (request.path != "blocked")
+                return prepare_rom(request, stop);
+            gate->observe({ArchiveReadPhase::Data, 1, 1});
+            request.on_fds_bios_error("obsolete.fds");
+            gate->finish({});
+            return std::unexpected("obsolete");
+        }});
+    RomLoadRequest request;
+    request.path = "blocked";
+    REQUIRE(loader.start(request));
+    REQUIRE(gate->wait(&ArchiveCheckpointGate::entered));
+    REQUIRE(loader.cancel());
+    CHECK_FALSE(loader.fds_bios_error_member());
+    request.path = raw.string();
+    request.state_storage.directory = fixture.root / "states";
+    REQUIRE(loader.start(request));
+    REQUIRE(wait_for_rom(loader));
+    gate->release();
+    REQUIRE(gate->wait(&ArchiveCheckpointGate::finished));
+    CHECK_FALSE(loader.fds_bios_error_member());
+    CHECK_FALSE(loader.poll());
+}
+
 } // namespace mapperbus::app

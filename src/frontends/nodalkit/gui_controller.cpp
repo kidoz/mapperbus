@@ -1015,10 +1015,12 @@ MapperBusGuiController::MapperBusGuiController(
     app::AsyncDiskExport::Write disk_export_write,
     app::AsyncConfigurationSave::Write configuration_write,
     app::AsyncConfigurationLoad::Read configuration_read,
-    app::AsyncRomLoader::CancellablePrepare rom_prepare)
+    app::AsyncRomLoader::CancellablePrepare rom_prepare,
+    app::FdsBiosRead bios_read)
     : app_(app), window_(window), configuration_loader_(std::move(configuration_read)),
       configuration_saver_(app::mapperbus_configuration_path(), std::move(configuration_write)),
-      rom_loader_(std::move(rom_prepare)), disk_export_(std::move(disk_export_write)) {
+      rom_loader_(std::move(rom_prepare)), bios_read_(std::move(bios_read)),
+      disk_export_(std::move(disk_export_write)) {
     // Loading has no live host devices or media. Install configured backends
     // only after the owned settings result is adopted on the UI thread.
     session_ = std::make_unique<app::EmulationSession>(std::make_unique<platform::NullVideo>(),
@@ -1037,6 +1039,7 @@ MapperBusGuiController::MapperBusGuiController(
             return;
         }
         poll_rom_load();
+        poll_recovery_bios();
         poll_state_operation();
         poll_disk_export();
         if (!machine_worker_active())
@@ -2047,24 +2050,28 @@ void MapperBusGuiController::abandon_rom_load(std::string message) {
     focus_game_surface();
 }
 
-void MapperBusGuiController::show_rom_load_error(std::string error) {
+void MapperBusGuiController::show_rom_load_error(std::string error,
+                                                 std::optional<std::string> bios_member) {
     if (close_intent_) {
         abandon_rom_load("Failed to open ROM: " + error);
         return;
     }
     failed_rom_load_ = std::make_shared<FailedRomLoad>(FailedRomLoad{
         .path = loading_request_->path,
-        .member = loading_request_->member,
+        .member = bios_member.value_or(loading_request_->member),
         .error = std::move(error),
         .chooser_error = {},
+        .needs_bios = bios_member.has_value(),
     });
     abandon_rom_load("Failed to open ROM: " + failed_rom_load_->error);
     present_rom_load_error();
 }
 
 void MapperBusGuiController::dismiss_rom_load_error(bool keep_request) {
-    if (!keep_request)
+    if (!keep_request) {
+        (void)bios_validation_.cancel();
         failed_rom_load_.reset();
+    }
     auto dialog = std::exchange(rom_error_dialog_, {});
     if (dialog && dialog->is_presented())
         dialog->close();
@@ -2077,38 +2084,158 @@ void MapperBusGuiController::present_rom_load_error() {
                                                    failed_rom_load_->member,
                                                    failed_rom_load_->error,
                                                    session_->has_cartridge(),
-                                                   failed_rom_load_->chooser_error);
-    (void)rom_error_dialog_->on_response().connect([this](nk::DialogResponse response) {
-        if (!rom_error_dialog_ || !failed_rom_load_)
-            return;
-        auto dialog = rom_error_dialog_;
-        const int custom_id = dialog->custom_response_id();
-        app_.event_loop().post(
-            [this, dialog, response, custom_id] {
-                if (rom_error_dialog_ != dialog || !failed_rom_load_ || close_intent_ ||
-                    close_authorized_)
-                    return;
-                const auto failure = failed_rom_load_;
-                if (response == nk::DialogResponse::Custom && custom_id == kChooseAnotherRom) {
-                    dismiss_rom_load_error(true);
-                    browse_for_rom(true);
-                } else {
-                    dismiss_rom_load_error();
-                    if (response == nk::DialogResponse::Accept) {
-                        // Recheck outgoing persistence and use current BIOS/settings.
-                        attempt_open(failure->path, failure->member);
+                                                   failed_rom_load_->chooser_error,
+                                                   failed_rom_load_->needs_bios);
+    const std::weak_ptr<nk::Dialog> weak_dialog = rom_error_dialog_;
+    (void)rom_error_dialog_->on_response().connect(
+        [this, weak_dialog](nk::DialogResponse response) {
+            auto dialog = weak_dialog.lock();
+            if (!dialog || rom_error_dialog_ != dialog || !failed_rom_load_)
+                return;
+            const int custom_id = dialog->custom_response_id();
+            app_.event_loop().post(
+                [this, dialog, response, custom_id] {
+                    if (rom_error_dialog_ != dialog || !failed_rom_load_ || close_intent_ ||
+                        close_authorized_)
+                        return;
+                    const auto failure = failed_rom_load_;
+                    if (response == nk::DialogResponse::Custom && custom_id == kChooseAnotherRom) {
+                        dismiss_rom_load_error(true);
+                        browse_for_rom(true);
+                    } else if (response == nk::DialogResponse::Custom &&
+                               custom_id == kChooseRecoveryBios && failure->needs_bios) {
+                        dismiss_rom_load_error(true);
+                        choose_recovery_bios();
                     } else {
-                        set_message(session_->has_cartridge() ? "Kept current game."
-                                                              : "Opening ROM cancelled.");
-                        refresh_ui();
-                        focus_game_surface();
+                        dismiss_rom_load_error();
+                        if (response == nk::DialogResponse::Accept) {
+                            // Recheck outgoing persistence and use current BIOS/settings.
+                            attempt_open(failure->path, failure->member);
+                        } else {
+                            set_message(session_->has_cartridge() ? "Kept current game."
+                                                                  : "Opening ROM cancelled.");
+                            refresh_ui();
+                            focus_game_surface();
+                        }
                     }
-                }
-            },
-            "mapperbus.rom-error-response");
-    });
+                },
+                "mapperbus.rom-error-response");
+        });
     rom_error_dialog_->present(window_);
     update_native_toolbar();
+}
+
+void MapperBusGuiController::choose_recovery_bios() {
+    const auto failure = failed_rom_load_;
+    if (!failure || !failure->needs_bios || failure->choosing_file || failure->checking_bios ||
+        close_intent_ || close_authorized_)
+        return;
+    failure->choosing_file = true;
+    app_.open_file_dialog_async(
+        "Choose 8 KiB FDS BIOS",
+        {"*.rom", "*.bin"},
+        [this, failure](nk::OpenFileDialogResult result) {
+            if (failed_rom_load_ != failure || close_intent_ || close_authorized_)
+                return;
+            failure->choosing_file = false;
+            if (!result) {
+                if (result.error() != nk::FileDialogError::Cancelled)
+                    failure->chooser_error = file_dialog_error_text(result.error());
+                present_rom_load_error();
+                return;
+            }
+            auto started = bios_validation_.start(
+                [read = bios_read_,
+                 path = *result](std::stop_token stop) -> core::Result<std::string> {
+                    if (stop.stop_requested())
+                        return std::unexpected("Checking BIOS cancelled.");
+                    auto bios = read(path);
+                    if (stop.stop_requested())
+                        return std::unexpected("Checking BIOS cancelled.");
+                    if (!bios)
+                        return std::unexpected(bios.error());
+                    if (bios->size() != 8192)
+                        return std::unexpected("FDS BIOS must contain exactly 8192 bytes.");
+                    return path;
+                },
+                true);
+            if (!started) {
+                failure->chooser_error = started.error();
+                present_rom_load_error();
+                return;
+            }
+            failure->checking_bios = true;
+            auto content = Box::vertical(12.0F);
+            auto spinner = nk::Spinner::create();
+            spinner->set_spinning(true);
+            content->append(spinner);
+            auto label = nk::Label::create("Reading and checking the selected 8 KiB BIOS…");
+            label->set_wrapping(true);
+            content->append(label);
+            rom_error_dialog_ = std::make_shared<FileOperationDialog>("Checking BIOS", true);
+            rom_error_dialog_->set_content(FixedWidthSlot::create(480.0F, content));
+            rom_error_dialog_->add_button("Cancel", nk::DialogResponse::Cancel);
+            const std::weak_ptr<nk::Dialog> weak_dialog = rom_error_dialog_;
+            (void)rom_error_dialog_->on_response().connect(
+                [this, failure, weak_dialog](nk::DialogResponse) {
+                    auto dialog = weak_dialog.lock();
+                    if (!dialog || rom_error_dialog_ != dialog || failed_rom_load_ != failure ||
+                        !bios_validation_.cancel())
+                        return;
+                    app_.event_loop().post(
+                        [this, failure, dialog] {
+                            if (failed_rom_load_ != failure || rom_error_dialog_ != dialog ||
+                                close_intent_)
+                                return;
+                            dismiss_rom_load_error(true);
+                            failure->checking_bios = false;
+                            present_rom_load_error();
+                        },
+                        "mapperbus.bios-cancel");
+                });
+            rom_error_dialog_->present(window_);
+        });
+}
+
+void MapperBusGuiController::poll_recovery_bios() {
+    auto checked = bios_validation_.poll();
+    if (!checked)
+        return;
+    const auto failure = failed_rom_load_;
+    if (!failure || !failure->checking_bios || close_intent_ || close_authorized_)
+        return;
+    failure->checking_bios = false;
+    dismiss_rom_load_error(true);
+    if (!*checked) {
+        failure->chooser_error = checked->error();
+        present_rom_load_error();
+        return;
+    }
+    update_configuration_from_state();
+    auto proposed = configuration_;
+    proposed.fds_bios_path = **checked;
+    begin_configuration_change(
+        std::move(proposed),
+        [this, failure] {
+            session_->set_fds_bios_path(configuration_.fds_bios_path);
+            // Let configuration polling finish before a retry can take machine ownership.
+            app_.event_loop().post(
+                [this, failure] {
+                    if (failed_rom_load_ != failure || close_intent_ || close_authorized_)
+                        return;
+                    dismiss_rom_load_error();
+                    attempt_open(failure->path, failure->member);
+                },
+                "mapperbus.bios-retry");
+        },
+        {},
+        [this, failure] {
+            if (failed_rom_load_ == failure && !close_intent_ && !close_authorized_) {
+                failure->chooser_error =
+                    "The BIOS setting was not saved. The previous BIOS remains selected.";
+                present_rom_load_error();
+            }
+        });
 }
 
 void MapperBusGuiController::poll_rom_load() {
@@ -2146,7 +2273,10 @@ void MapperBusGuiController::poll_rom_load() {
         session_->finish_background_persistence(saved);
     }
     if (!*completed) {
-        show_rom_load_error(completed->error());
+        show_rom_load_error(completed->error(),
+                            phase == app::AsyncRomLoader::Phase::Loading
+                                ? rom_loader_.fds_bios_error_member()
+                                : std::nullopt);
         return;
     }
     if (phase == app::AsyncRomLoader::Phase::Saving) {
@@ -3289,12 +3419,16 @@ void MapperBusGuiController::show_configuration_change(bool failed) {
 
 void MapperBusGuiController::begin_configuration_change(app::MapperBusConfiguration proposed,
                                                         std::function<void()> apply,
-                                                        std::string success_message) {
+                                                        std::string success_message,
+                                                        std::function<void()> discarded) {
     if (!startup_ready_ || configuration_change_ || close_intent_)
         return;
     const auto revision = configuration_saves_enabled_ ? configuration_saver_.submit(proposed) : 0;
-    configuration_change_ = PendingConfigurationChange{
-        revision, std::move(proposed), std::move(apply), std::move(success_message)};
+    configuration_change_ = PendingConfigurationChange{revision,
+                                                       std::move(proposed),
+                                                       std::move(apply),
+                                                       std::move(success_message),
+                                                       std::move(discarded)};
     configuration_save_deferred_ = false;
     if (!configuration_saves_enabled_)
         return; // Applied on the next UI poll; no file writer is started.
@@ -3314,6 +3448,8 @@ void MapperBusGuiController::discard_configuration_change() {
     if (configuration_saver_.busy())
         return;
     dismiss_configuration_change();
+    auto discarded = configuration_change_ ? std::move(configuration_change_->discarded)
+                                           : std::function<void()>{};
     configuration_change_.reset();
     configuration_save_deferred_ = false;
     update_configuration_from_state();
@@ -3322,6 +3458,8 @@ void MapperBusGuiController::discard_configuration_change() {
     refresh_configuration_save_status();
     refresh_settings_dialog_sections();
     refresh_ui();
+    if (discarded)
+        discarded();
 }
 
 void MapperBusGuiController::poll_configuration_saves() {

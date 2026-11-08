@@ -11,6 +11,15 @@ and select the BIOS file. Then use **Open ROM** to open a `.fds` image.
 The BIOS path is remembered in the shared configuration. Changing the BIOS
 selection takes effect the next time a disk is opened.
 
+If opening fails because the BIOS is missing, unreadable, or the wrong size,
+the error dialog also offers **Choose BIOS…**. MapperBus checks the selected file
+in the background, saves its path, then retries the same disk and archive member.
+Cancel or a validation failure keeps the current game and previous BIOS selection.
+A settings-save failure offers **Retry** or **Keep Current Settings**; keeping
+the settings returns to disk recovery. The current game's pause state is preserved
+until a replacement loads successfully. In a session started with **Continue
+Without Saving**, the new BIOS path applies only for that session.
+
 For SDL3, pass the BIOS explicitly or use the saved path:
 
 ```sh

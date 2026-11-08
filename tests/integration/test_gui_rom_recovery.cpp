@@ -85,3 +85,37 @@ TEST_CASE("Long ROM load errors scroll while recovery actions remain in the wind
     window.dispatch_key_event({.type = nk::KeyEvent::Type::Press, .key = nk::KeyCode::Escape});
     CHECK_FALSE(dialog->is_presented());
 }
+
+TEST_CASE("BIOS recovery adds an explicit keyboard action without changing the safe default",
+          "[gui][fds][bios][recovery]") {
+    for (int tabs : {0, 2, 3}) {
+        nk::Window window({.title = "BIOS recovery", .width = 500, .height = 350});
+        window.present();
+        auto dialog = mapperbus::frontend::make_rom_load_error_dialog(
+            "/archive.zip", "disk.fds", "BIOS unavailable", true, {}, true);
+        auto response = nk::DialogResponse::None;
+        int custom_id = -1;
+        (void)dialog->on_response().connect([&](nk::DialogResponse value) {
+            response = value;
+            custom_id = dialog->custom_response_id();
+        });
+        dialog->present(window);
+        dialog->allocate({0, 0, 500, 350});
+        int buttons = 0;
+        for (const auto& child : dialog->children()) {
+            if (dynamic_cast<nk::Button*>(child.get())) {
+                ++buttons;
+                CHECK(child->allocation().y >= 0);
+                CHECK(child->allocation().bottom() <= 350);
+            }
+        }
+        CHECK(buttons == 4);
+        for (int tab = 0; tab < tabs; ++tab)
+            window.dispatch_key_event({.type = nk::KeyEvent::Type::Press, .key = nk::KeyCode::Tab});
+        window.dispatch_key_event({.type = nk::KeyEvent::Type::Press, .key = nk::KeyCode::Return});
+        CHECK(response == (tabs == 0   ? nk::DialogResponse::Cancel
+                           : tabs == 2 ? nk::DialogResponse::Custom
+                                       : nk::DialogResponse::Accept));
+        CHECK(custom_id == (tabs == 2 ? mapperbus::frontend::kChooseRecoveryBios : -1));
+    }
+}

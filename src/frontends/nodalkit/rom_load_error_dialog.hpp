@@ -10,13 +10,14 @@
 namespace mapperbus::frontend {
 
 inline constexpr int kChooseAnotherRom = 1;
+inline constexpr int kChooseRecoveryBios = 2;
 
-inline std::shared_ptr<nk::Dialog> make_rom_load_error_dialog(
-    const std::string& path,
-    const std::string& member,
-    const std::string& error,
-    bool has_current_game,
-    const std::string& chooser_error = {}) {
+inline std::shared_ptr<nk::Dialog> make_rom_load_error_dialog(const std::string& path,
+                                                              const std::string& member,
+                                                              const std::string& error,
+                                                              bool has_current_game,
+                                                              const std::string& chooser_error = {},
+                                                              bool needs_bios = false) {
     auto content = Box::vertical(12.0F);
     const auto append = [&](const std::string& text) {
         auto label = nk::Label::create(text);
@@ -38,6 +39,8 @@ inline std::shared_ptr<nk::Dialog> make_rom_load_error_dialog(
     dialog->add_button(has_current_game ? "Keep Current Game" : "Back to Start",
                        nk::DialogResponse::Cancel);
     dialog->add_custom_button("Choose Another File…", kChooseAnotherRom);
+    if (needs_bios)
+        dialog->add_custom_button("Choose BIOS…", kChooseRecoveryBios);
     dialog->add_button("Retry", nk::DialogResponse::Accept);
     dialog->set_default_response(nk::DialogResponse::Cancel);
     return dialog;

@@ -212,13 +212,16 @@ core::Result<void> load_fds_source(core::Emulator& emulator,
         return cancelled_error();
     const auto bios_file = bios_path.empty() ? persistence_directory / "bios" / "disksys.rom"
                                              : std::filesystem::path(bios_path);
-    auto bios = core::read_binary_file_capped(bios_file.string(), 8192, "FDS BIOS");
+    auto bios = read_fds_bios(bios_file.string());
     if (control.stop.stop_requested())
         return cancelled_error();
-    if (!bios)
+    if (!bios) {
+        if (control.on_fds_bios_error)
+            control.on_fds_bios_error();
         return std::unexpected(
             bios.error() +
             "; choose an 8 KiB BIOS in Settings > General > BIOS or use --fds-bios PATH");
+    }
     auto payload = disk;
     if (disk.size() >= 16 && disk[0] == 'F' && disk[1] == 'D' && disk[2] == 'S' && disk[3] == 0x1A)
         payload = disk.subspan(16);
@@ -231,6 +234,15 @@ core::Result<void> load_fds_source(core::Emulator& emulator,
     return emulator.load_fds(*bios, disk, save_path.string());
 }
 } // namespace
+
+core::Result<std::vector<core::Byte>> read_fds_bios(const std::string& path) {
+    auto bios = core::read_binary_file_capped(path, 8192, "FDS BIOS");
+    if (!bios)
+        return std::unexpected(bios.error());
+    if (bios->size() != 8192)
+        return std::unexpected("FDS BIOS must contain exactly 8192 bytes.");
+    return bios;
+}
 
 core::Result<std::string> load_rom_source(core::Emulator& emulator,
                                           const std::string& path,

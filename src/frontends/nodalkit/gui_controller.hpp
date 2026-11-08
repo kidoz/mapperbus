@@ -60,7 +60,8 @@ class MapperBusGuiController {
         app::AsyncConfigurationSave::Write configuration_write =
             app::save_mapperbus_configuration_to_file,
         app::AsyncConfigurationLoad::Read configuration_read = app::read_startup_configuration,
-        app::AsyncRomLoader::CancellablePrepare rom_prepare = app::prepare_rom);
+        app::AsyncRomLoader::CancellablePrepare rom_prepare = app::prepare_rom,
+        app::FdsBiosRead bios_read = app::read_fds_bios);
 
     void open_initial_rom(std::string_view rom_path);
 
@@ -117,9 +118,11 @@ class MapperBusGuiController {
     void present_rom_loading(bool saving);
     void dismiss_rom_loading();
     void abandon_rom_load(std::string message);
-    void show_rom_load_error(std::string error);
+    void show_rom_load_error(std::string error, std::optional<std::string> bios_member = {});
     void present_rom_load_error();
     void dismiss_rom_load_error(bool keep_request = false);
+    void choose_recovery_bios();
+    void poll_recovery_bios();
     void finish_rom_open(std::string rom_path, std::string member);
     void choose_archive_rom(std::string rom_path, std::vector<std::string> members);
     void open_disk_controls();
@@ -172,7 +175,8 @@ class MapperBusGuiController {
     void retry_configuration_save();
     void begin_configuration_change(app::MapperBusConfiguration proposed,
                                     std::function<void()> apply,
-                                    std::string success_message = {});
+                                    std::string success_message = {},
+                                    std::function<void()> discarded = {});
     void show_configuration_change(bool failed);
     void dismiss_configuration_change();
     void discard_configuration_change();
@@ -225,6 +229,7 @@ class MapperBusGuiController {
         app::MapperBusConfiguration proposed;
         std::function<void()> apply;
         std::string success_message;
+        std::function<void()> discarded = {};
     };
     std::optional<PendingConfigurationChange> configuration_change_;
     bool configuration_save_deferred_ = false;
@@ -233,6 +238,8 @@ class MapperBusGuiController {
     std::unique_ptr<app::SessionActions> actions_;
     core::FrameBuffer blank_frame_{};
     app::AsyncRomLoader rom_loader_;
+    app::FdsBiosRead bios_read_;
+    app::BackgroundTask<std::string> bios_validation_;
     std::optional<app::RomLoadRequest> loading_request_;
     std::shared_ptr<nk::Dialog> loading_dialog_;
     std::weak_ptr<nk::Label> loading_status_;
@@ -243,6 +250,8 @@ class MapperBusGuiController {
         std::string error;
         std::string chooser_error;
         bool choosing_file = false;
+        bool needs_bios = false;
+        bool checking_bios = false;
     };
     std::shared_ptr<FailedRomLoad> failed_rom_load_;
     std::shared_ptr<nk::Dialog> rom_error_dialog_;

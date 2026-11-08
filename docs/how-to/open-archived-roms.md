@@ -84,6 +84,8 @@ Another File…** opens the file picker; cancelling it returns to the same error
 its pause state. With no current game, this action is **Back to Start**. Keeping
 the session is the default keyboard action, including Escape. Failed loads leave
 recent entries available so temporary read or BIOS failures can be retried.
+FDS BIOS errors also offer [Choose BIOS…](play-fds-games.md#select-the-bios-and-open-a-disk),
+which validates and saves the selection before retrying the same archive member.
 
 Cancel signals the reader to stop at the next checkpoint: before or after an
 archive entry, a 64 KiB selected-data read, or a skip operation. Skipping unselected
