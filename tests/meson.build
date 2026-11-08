@@ -141,6 +141,16 @@ test_xbrz = executable('test-xbrz',
 test('xbrz', test_xbrz)
 
 if get_option('enable_nodalkit_gui')
+    # Compile the production controller without host audio/gamepad adapters.
+    # GuiHost supplies a software window/event loop and controlled file pickers.
+    test_gui_bios = executable('test-gui-bios',
+        'integration/test_gui_bios.cpp',
+        mapperbus_gui_controller_sources,
+        dependencies : [mapperbus_app_dep, nodalkit_dep, catch2_dep],
+        cpp_args : ['-DMAPPERBUS_VERSION="' + meson.project_version() + '"'],
+    )
+    test('gui-bios', test_gui_bios, timeout : 60)
+
     test_gui_rom_recovery = executable('test-gui-rom-recovery',
         'integration/test_gui_rom_recovery.cpp',
         dependencies : [mapperbus_app_dep, nodalkit_dep, catch2_dep],

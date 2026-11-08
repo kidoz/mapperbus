@@ -1031,7 +1031,23 @@ MapperBusGuiController::MapperBusGuiController(
     app::AsyncConfigurationLoad::Read configuration_read,
     app::AsyncRomLoader::CancellablePrepare rom_prepare,
     app::FdsBiosRead bios_read)
-    : app_(app), window_(window), configuration_loader_(std::move(configuration_read)),
+    : MapperBusGuiController(GuiHost(app),
+                             window,
+                             std::move(disk_export_write),
+                             std::move(configuration_write),
+                             std::move(configuration_read),
+                             std::move(rom_prepare),
+                             std::move(bios_read)) {}
+
+MapperBusGuiController::MapperBusGuiController(
+    GuiHost host,
+    nk::Window& window,
+    app::AsyncDiskExport::Write disk_export_write,
+    app::AsyncConfigurationSave::Write configuration_write,
+    app::AsyncConfigurationLoad::Read configuration_read,
+    app::AsyncRomLoader::CancellablePrepare rom_prepare,
+    app::FdsBiosRead bios_read)
+    : app_(std::move(host)), window_(window), configuration_loader_(std::move(configuration_read)),
       configuration_saver_(app::mapperbus_configuration_path(), std::move(configuration_write)),
       rom_loader_(std::move(rom_prepare)), bios_validation_(bios_read),
       settings_bios_validation_(std::move(bios_read)), disk_export_(std::move(disk_export_write)) {

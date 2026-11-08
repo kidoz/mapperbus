@@ -34,6 +34,7 @@
 #include "app/session_actions.hpp"
 #include "app/state_storage_tasks.hpp"
 #include "frontends/nodalkit/gui_audio_backend.hpp"
+#include "frontends/nodalkit/gui_host.hpp"
 #include "frontends/nodalkit/gui_widgets.hpp"
 #include "frontends/nodalkit/input_monitor_dialog.hpp"
 #include "frontends/nodalkit/nodalkit_input.hpp"
@@ -63,6 +64,15 @@ class MapperBusGuiController {
         app::AsyncConfigurationLoad::Read configuration_read = app::read_startup_configuration,
         app::AsyncRomLoader::CancellablePrepare rom_prepare = app::prepare_rom,
         app::FdsBiosRead bios_read = app::read_fds_bios);
+    MapperBusGuiController(
+        GuiHost host,
+        nk::Window& window,
+        app::AsyncDiskExport::Write disk_export_write = app::write_disk_export,
+        app::AsyncConfigurationSave::Write configuration_write =
+            app::save_mapperbus_configuration_to_file,
+        app::AsyncConfigurationLoad::Read configuration_read = app::read_startup_configuration,
+        app::AsyncRomLoader::CancellablePrepare rom_prepare = app::prepare_rom,
+        app::FdsBiosRead bios_read = app::read_fds_bios);
 
     void open_initial_rom(std::string_view rom_path);
 
@@ -74,6 +84,8 @@ class MapperBusGuiController {
     };
 
   private:
+    friend struct MapperBusGuiTestAccess;
+
     bool configure_session();
     void start_configuration_load();
     void poll_configuration_load();
@@ -216,7 +228,7 @@ class MapperBusGuiController {
     [[nodiscard]] std::string video_features_text() const;
     [[nodiscard]] std::string input_test_status_text() const;
 
-    nk::Application& app_;
+    GuiHost app_;
     nk::Window& window_;
 
     GuiAudioBackend* audio_backend_ = nullptr;

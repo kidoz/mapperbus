@@ -64,6 +64,22 @@ You can pass a ROM path as the first argument. Without one, use the GUI's open
 action. The Meson target `mapperbus-gui` works on both platforms; on macOS it is
 an alias for the differently named executable.
 
+## Run GUI BIOS regression tests without a display
+
+With the GUI build configured, run:
+
+```sh
+meson compile -C buildDir-gui test-gui-bios
+meson test -C buildDir-gui gui-bios --print-errorlogs
+```
+
+These tests run the production controller with software windows and controlled
+file pickers. They use synthetic ROMs and BIOS files, require no display, audio
+device, gamepad, or commercial files, and isolate all media/state I/O in temporary
+directories. They cover session-only BIOS selection, exact archive-member
+recovery, cancellation, and late callbacks. The Linux GUI CI job runs them as
+part of the MapperBus suite.
+
 ## Build only the headless CLI and tests
 
 ```sh
