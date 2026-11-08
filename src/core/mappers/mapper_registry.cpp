@@ -16,6 +16,7 @@
 #include "core/mappers/nrom.hpp"
 #include "core/mappers/sunsoft34.hpp"
 #include "core/mappers/sunsoft5b.hpp"
+#include "core/mappers/taito_tc.hpp"
 #include "core/mappers/uxrom.hpp"
 #include "core/mappers/vrc6.hpp"
 #include "core/mappers/vrc7.hpp"
@@ -126,6 +127,17 @@ namespace {
             header.chr_ram_size > 0x2000U || header.chr_nvram_size != 0U)
             return std::unexpected("Unsupported Sunsoft-3/4 RAM geometry");
     }
+    if (header.mapper_number == 33 || header.mapper_number == 48) {
+        if (header.is_nes2 && header.submapper > (header.mapper_number == 48 ? 1 : 0))
+            return std::unexpected("Unsupported Taito TC submapper");
+        if (prg_size < 0x8000U || prg_size > 0x80000U || prg_size % 0x2000U != 0U ||
+            chr_size > 0x80000U || chr_size % 0x400U != 0U)
+            return std::unexpected("Unsupported Taito TC ROM geometry");
+        if ((header.is_nes2 && (header.prg_ram_size != 0U || header.prg_nvram_size != 0U)) ||
+            header.chr_ram_size > 0x2000U || header.chr_nvram_size != 0U ||
+            (chr_size != 0U && header.chr_ram_size != 0U))
+            return std::unexpected("Unsupported Taito TC RAM geometry");
+    }
     return {};
 }
 
@@ -196,6 +208,8 @@ void register_builtin_mappers() {
     registry.register_mapper(65, make_factory<Irem>());
     registry.register_mapper(67, make_factory<Sunsoft34>());
     registry.register_mapper(68, make_factory<Sunsoft34>());
+    registry.register_mapper(33, make_factory<TaitoTc>());
+    registry.register_mapper(48, make_factory<TaitoTc>());
     for (const uint16_t id : {21, 22, 23, 25, 73, 75})
         registry.register_mapper(id, make_factory<KonamiVrc>());
     for (const uint16_t id :

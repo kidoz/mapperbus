@@ -69,6 +69,7 @@ test_mappers = executable('test-mappers',
     'unit/test_irem.cpp',
     'unit/test_sunsoft_boards.cpp',
     'unit/test_dcs.cpp',
+    'unit/test_taito.cpp',
     dependencies : [mapperbus_core_dep, catch2_dep],
 )
 test('mappers', test_mappers)
