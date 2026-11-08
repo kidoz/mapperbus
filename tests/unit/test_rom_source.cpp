@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <atomic>
 #include <catch2/catch_test_macros.hpp>
 #include <chrono>
 #include <condition_variable>
@@ -16,6 +17,7 @@
 
 #include "../support/fds_image.hpp"
 #include "../support/rom_archive.hpp"
+#include "app/async_fds_bios_validation.hpp"
 #include "app/async_rom_loader.hpp"
 #include "app/configuration.hpp"
 #include "app/emulation_session.hpp"
@@ -1394,6 +1396,86 @@ TEST_CASE("BIOS diagnostics ignore error text and late notifications from cancel
     REQUIRE(gate->wait(&ArchiveCheckpointGate::finished));
     CHECK_FALSE(loader.fds_bios_error_member());
     CHECK_FALSE(loader.poll());
+}
+
+namespace {
+core::Result<std::string> wait_for_bios(AsyncFdsBiosValidation& checking) {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (auto result = checking.poll())
+            return std::move(*result);
+        std::this_thread::yield();
+    }
+    return std::unexpected("Timed out waiting for BIOS validation");
+}
+} // namespace
+
+TEST_CASE("Background BIOS validation owns paths and drops cancelled checks without joining",
+          "[rom-source][fds][bios][async]") {
+    ArchiveFixture fixture;
+    const auto blocked = fixture.root / "blocked.bin";
+    const auto ready = fixture.root / "ready.bin";
+    const auto bytes = mapperbus::tests::make_fds_bios();
+    REQUIRE(core::write_binary_file_atomic(blocked.string(), bytes, "BIOS"));
+    REQUIRE(core::write_binary_file_atomic(ready.string(), bytes, "BIOS"));
+    const auto ui_thread = std::this_thread::get_id();
+    auto worker_only = std::make_shared<std::atomic_bool>(true);
+    auto gate = std::make_shared<ArchiveCheckpointGate>();
+    const ReleaseArchiveCheckpoint cleanup{gate};
+    AsyncFdsBiosValidation checking([gate, blocked, ui_thread, worker_only](const auto& path) {
+        if (std::this_thread::get_id() == ui_thread)
+            worker_only->store(false);
+        if (path == blocked.string())
+            gate->observe({ArchiveReadPhase::Data, 1, 1});
+        auto result = read_fds_bios(path);
+        if (path == blocked.string())
+            gate->finish(result ? "" : result.error());
+        return result;
+    });
+    std::string selected = blocked.string();
+    REQUIRE(checking.start(selected));
+    selected = ready.string();
+    REQUIRE(gate->wait(&ArchiveCheckpointGate::entered));
+    CHECK_FALSE(checking.start(selected));
+    REQUIRE(checking.cancel());
+    REQUIRE(checking.start(selected));
+    selected = "missing.bin";
+    auto result = wait_for_bios(checking);
+    REQUIRE(result);
+    CHECK(*result == ready.string());
+    gate->release();
+    REQUIRE(gate->wait(&ArchiveCheckpointGate::finished));
+    CHECK(gate->error.empty());
+    CHECK(worker_only->load());
+    CHECK_FALSE(checking.poll());
+    CHECK_FALSE(checking.cancel());
+    auto retained = read_fds_bios(ready.string());
+    REQUIRE(retained);
+    CHECK(*retained == bytes);
+}
+
+TEST_CASE("Background BIOS validation rechecks injected bytes and retires a blocked reader safely",
+          "[rom-source][fds][bios][async]") {
+    auto gate = std::make_shared<ArchiveCheckpointGate>();
+    const ReleaseArchiveCheckpoint cleanup{gate};
+    {
+        AsyncFdsBiosValidation checking(
+            [gate](const std::string& path) -> core::Result<std::vector<Byte>> {
+                if (path == "short")
+                    return std::vector<Byte>(8191);
+                gate->observe({ArchiveReadPhase::Data, 1, 1});
+                gate->finish({});
+                return std::vector<Byte>(8192);
+            });
+        REQUIRE(checking.start("short"));
+        auto result = wait_for_bios(checking);
+        REQUIRE_FALSE(result);
+        CHECK(result.error().find("8192") != std::string::npos);
+        REQUIRE(checking.start("blocked"));
+        REQUIRE(gate->wait(&ArchiveCheckpointGate::entered));
+    }
+    gate->release();
+    REQUIRE(gate->wait(&ArchiveCheckpointGate::finished));
 }
 
 } // namespace mapperbus::app

@@ -1007,6 +1007,20 @@ class FileOperationDialog final : public nk::Dialog {
     bool cancellable_;
 };
 
+std::shared_ptr<nk::Dialog> make_bios_validation_dialog() {
+    auto content = Box::vertical(12.0F);
+    auto spinner = nk::Spinner::create();
+    spinner->set_spinning(true);
+    content->append(spinner);
+    auto label = nk::Label::create("Reading and checking the selected 8 KiB BIOS…");
+    label->set_wrapping(true);
+    content->append(label);
+    auto dialog = std::make_shared<FileOperationDialog>("Checking BIOS", true);
+    dialog->set_content(FixedWidthSlot::create(480.0F, content));
+    dialog->add_button("Cancel", nk::DialogResponse::Cancel);
+    return dialog;
+}
+
 } // namespace
 
 MapperBusGuiController::MapperBusGuiController(
@@ -1019,8 +1033,8 @@ MapperBusGuiController::MapperBusGuiController(
     app::FdsBiosRead bios_read)
     : app_(app), window_(window), configuration_loader_(std::move(configuration_read)),
       configuration_saver_(app::mapperbus_configuration_path(), std::move(configuration_write)),
-      rom_loader_(std::move(rom_prepare)), bios_read_(std::move(bios_read)),
-      disk_export_(std::move(disk_export_write)) {
+      rom_loader_(std::move(rom_prepare)), bios_validation_(bios_read),
+      settings_bios_validation_(std::move(bios_read)), disk_export_(std::move(disk_export_write)) {
     // Loading has no live host devices or media. Install configured backends
     // only after the owned settings result is adopted on the UI thread.
     session_ = std::make_unique<app::EmulationSession>(std::make_unique<platform::NullVideo>(),
@@ -1040,6 +1054,7 @@ MapperBusGuiController::MapperBusGuiController(
         }
         poll_rom_load();
         poll_recovery_bios();
+        poll_settings_bios();
         poll_state_operation();
         poll_disk_export();
         if (!machine_worker_active())
@@ -2144,37 +2159,14 @@ void MapperBusGuiController::choose_recovery_bios() {
                 present_rom_load_error();
                 return;
             }
-            auto started = bios_validation_.start(
-                [read = bios_read_,
-                 path = *result](std::stop_token stop) -> core::Result<std::string> {
-                    if (stop.stop_requested())
-                        return std::unexpected("Checking BIOS cancelled.");
-                    auto bios = read(path);
-                    if (stop.stop_requested())
-                        return std::unexpected("Checking BIOS cancelled.");
-                    if (!bios)
-                        return std::unexpected(bios.error());
-                    if (bios->size() != 8192)
-                        return std::unexpected("FDS BIOS must contain exactly 8192 bytes.");
-                    return path;
-                },
-                true);
+            auto started = bios_validation_.start(*result);
             if (!started) {
                 failure->chooser_error = started.error();
                 present_rom_load_error();
                 return;
             }
             failure->checking_bios = true;
-            auto content = Box::vertical(12.0F);
-            auto spinner = nk::Spinner::create();
-            spinner->set_spinning(true);
-            content->append(spinner);
-            auto label = nk::Label::create("Reading and checking the selected 8 KiB BIOS…");
-            label->set_wrapping(true);
-            content->append(label);
-            rom_error_dialog_ = std::make_shared<FileOperationDialog>("Checking BIOS", true);
-            rom_error_dialog_->set_content(FixedWidthSlot::create(480.0F, content));
-            rom_error_dialog_->add_button("Cancel", nk::DialogResponse::Cancel);
+            rom_error_dialog_ = make_bios_validation_dialog();
             const std::weak_ptr<nk::Dialog> weak_dialog = rom_error_dialog_;
             (void)rom_error_dialog_->on_response().connect(
                 [this, failure, weak_dialog](nk::DialogResponse) {
@@ -2236,6 +2228,112 @@ void MapperBusGuiController::poll_recovery_bios() {
                 present_rom_load_error();
             }
         });
+}
+
+void MapperBusGuiController::update_settings_bios_status(std::string text) {
+    settings_bios_status_text_ = std::move(text);
+    if (auto status = settings_bios_status_.lock()) {
+        status->set_text(settings_bios_status_text_);
+        status->set_visible(!settings_bios_status_text_.empty());
+    }
+}
+
+void MapperBusGuiController::cancel_settings_bios() {
+    (void)settings_bios_validation_.cancel();
+    const bool changed = settings_bios_selection_ != nullptr;
+    if (auto selection = std::exchange(settings_bios_selection_, {})) {
+        if (auto row = selection->row.lock())
+            row->suffix()->set_sensitive(true);
+    }
+    auto dialog = std::exchange(settings_bios_dialog_, {});
+    if (dialog && dialog->is_presented())
+        dialog->close();
+    if (changed)
+        update_native_toolbar();
+}
+
+void MapperBusGuiController::choose_settings_bios(std::weak_ptr<nk::PreferencesRow> weak_row) {
+    if (settings_bios_selection_ || configuration_change_ || close_intent_ || close_authorized_ ||
+        loading_request_ || failed_rom_load_ || settings_page_ != SettingsPage::General)
+        return;
+    const auto row = weak_row.lock();
+    if (!row)
+        return;
+    auto selection = std::make_shared<SettingsBiosSelection>(SettingsBiosSelection{weak_row});
+    settings_bios_selection_ = selection;
+    row->suffix()->set_sensitive(false);
+    update_settings_bios_status({});
+    update_native_toolbar();
+    app_.open_file_dialog_async(
+        "Choose 8 KiB FDS BIOS",
+        {"*.rom", "*.bin"},
+        [this, selection](nk::OpenFileDialogResult result) {
+            if (settings_bios_selection_ != selection || close_intent_ || close_authorized_)
+                return;
+            if (settings_window_ && settings_window_->is_visible())
+                settings_window_->present();
+            if (!result) {
+                cancel_settings_bios();
+                if (result.error() != nk::FileDialogError::Cancelled)
+                    update_settings_bios_status(file_dialog_error_text(result.error()));
+                update_native_toolbar();
+                return;
+            }
+            if (auto started = settings_bios_validation_.start(*result); !started) {
+                cancel_settings_bios();
+                update_settings_bios_status(started.error());
+                update_native_toolbar();
+                return;
+            }
+            settings_bios_dialog_ = make_bios_validation_dialog();
+            const std::weak_ptr<nk::Dialog> weak_dialog = settings_bios_dialog_;
+            (void)settings_bios_dialog_->on_response().connect([this, selection, weak_dialog](
+                                                                   nk::DialogResponse) {
+                auto dialog = weak_dialog.lock();
+                if (!dialog || settings_bios_dialog_ != dialog ||
+                    settings_bios_selection_ != selection || !settings_bios_validation_.cancel())
+                    return;
+                app_.event_loop().post(
+                    [this, selection, dialog] {
+                        if (settings_bios_selection_ != selection ||
+                            settings_bios_dialog_ != dialog)
+                            return;
+                        cancel_settings_bios();
+                        update_settings_bios_status("BIOS check cancelled.");
+                        update_native_toolbar();
+                    },
+                    "mapperbus.settings-bios-cancel");
+            });
+            settings_bios_dialog_->present(settings_host_window());
+        });
+}
+
+void MapperBusGuiController::poll_settings_bios() {
+    auto checked = settings_bios_validation_.poll();
+    if (!checked)
+        return;
+    const bool visible = (settings_window_ && settings_window_->is_visible()) ||
+                         (settings_dialog_ && settings_dialog_->is_presented());
+    if (!settings_bios_selection_ || !visible || settings_page_ != SettingsPage::General ||
+        close_intent_ || close_authorized_) {
+        cancel_settings_bios();
+        return;
+    }
+    cancel_settings_bios();
+    if (!*checked) {
+        update_settings_bios_status(checked->error());
+        update_native_toolbar();
+        return;
+    }
+    update_configuration_from_state();
+    auto proposed = configuration_;
+    proposed.fds_bios_path = **checked;
+    begin_configuration_change(
+        std::move(proposed),
+        [this] { session_->set_fds_bios_path(configuration_.fds_bios_path); },
+        "FDS BIOS selected for the next disk load.",
+        [this] { update_settings_bios_status("The previous BIOS remains selected."); });
+    update_native_toolbar();
 }
 
 void MapperBusGuiController::poll_rom_load() {
@@ -4225,48 +4323,18 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
         const auto bios_path = configuration_.fds_bios_path.empty()
                                    ? app::mapperbus_data_directory() / "bios" / "disksys.rom"
                                    : std::filesystem::path(configuration_.fds_bios_path);
-        auto bios_status = nk::Label::create();
+        auto bios_status = nk::Label::create(settings_bios_status_text_);
         bios_status->set_wrapping(true);
-        bios_status->set_visible(false);
+        bios_status->set_visible(!settings_bios_status_text_.empty());
+        settings_bios_status_ = bios_status;
         auto browse = nk::Button::create("Choose BIOS…");
         auto bios_row = pref_row("Famicom Disk System", browse, bios_path.filename().string());
         bios_row->ensure_accessible().set_description(bios_path.string());
         browse->ensure_accessible().set_name("Choose FDS BIOS");
         browse->ensure_accessible().set_description(bios_path.string());
         const std::weak_ptr<nk::PreferencesRow> weak_bios_row = bios_row;
-        (void)browse->on_clicked().connect([this, weak_bios_row, bios_status] {
-            app_.open_file_dialog_async(
-                "Choose 8 KiB FDS BIOS",
-                {"*.rom", "*.bin"},
-                [this, weak_bios_row, bios_status](nk::OpenFileDialogResult result) {
-                    if (settings_window_ && settings_window_->is_visible()) {
-                        settings_window_->present();
-                    }
-                    if (!result) {
-                        if (result.error() != nk::FileDialogError::Cancelled) {
-                            bios_status->set_text(file_dialog_error_text(result.error()));
-                            bios_status->set_visible(true);
-                        }
-                        return;
-                    }
-                    auto bios = core::read_binary_file_capped(*result, 8192, "FDS BIOS");
-                    if (!bios || bios->size() != 8192) {
-                        bios_status->set_text(bios ? "FDS BIOS must contain exactly 8192 bytes."
-                                                   : bios.error());
-                        bios_status->set_visible(true);
-                        return;
-                    }
-                    configuration_.fds_bios_path = *result;
-                    session_->set_fds_bios_path(*result);
-                    save_configuration_state();
-                    if (const auto row = weak_bios_row.lock()) {
-                        row->set_subtitle(std::filesystem::path(*result).filename().string());
-                        row->ensure_accessible().set_description(*result);
-                        row->suffix()->ensure_accessible().set_description(*result);
-                    }
-                    bios_status->set_visible(false);
-                });
-        });
+        (void)browse->on_clicked().connect(
+            [this, weak_bios_row] { choose_settings_bios(weak_bios_row); });
         bios_group->add(bios_row);
         page->append(bios_group);
         page->append(bios_status);
@@ -4827,6 +4895,7 @@ void MapperBusGuiController::refresh_settings_dialog_sections() {
     if (!settings_dialog_ && !settings_window_) {
         return;
     }
+    cancel_settings_bios();
 
     const auto page_index = [this]() {
         switch (settings_page_) {
@@ -4931,6 +5000,7 @@ void MapperBusGuiController::open_settings_dialog() {
                 .action_name = "settings.close",
             });
             (void)settings_window_->on_close_requested().connect([this] {
+                cancel_settings_bios();
                 cancel_gamepad_assignment();
                 close_input_monitor();
                 if (rebind_dialog_) {
@@ -4953,6 +5023,8 @@ void MapperBusGuiController::open_settings_dialog() {
     settings_dialog_->set_minimum_panel_width(640.0F);
     auto dialog = settings_dialog_;
     (void)settings_dialog_->on_response().connect([this, dialog](nk::DialogResponse /*response*/) {
+        if (settings_dialog_ == dialog)
+            cancel_settings_bios();
         app_.event_loop().post(
             [this, dialog] {
                 // Reopening Settings before this deferred task runs replaces
@@ -4981,6 +5053,7 @@ void MapperBusGuiController::open_settings_dialog() {
 }
 
 void MapperBusGuiController::close_settings() {
+    cancel_settings_bios();
     if (input_monitor_dialog_) {
         close_input_monitor();
         return;
@@ -5002,8 +5075,9 @@ nk::Window& MapperBusGuiController::settings_host_window() {
 
 bool MapperBusGuiController::modal_dialog_presented() const {
     return !startup_ready_ || configuration_change_.has_value() || close_intent_.has_value() ||
-           loading_request_.has_value() || failed_rom_load_ || choosing_disk_export_ ||
-           disk_export_.busy() || (disk_export_dialog_ && disk_export_dialog_->is_presented()) ||
+           loading_request_.has_value() || failed_rom_load_ || settings_bios_selection_ ||
+           choosing_disk_export_ || disk_export_.busy() ||
+           (disk_export_dialog_ && disk_export_dialog_->is_presented()) ||
            pending_state_operation_.has_value() ||
            (input_monitor_dialog_ && input_monitor_dialog_->is_presented()) ||
            (gamepad_assignment_dialog_ && gamepad_assignment_dialog_->is_presented()) ||
@@ -5018,8 +5092,8 @@ void MapperBusGuiController::handle_menu_action(std::string_view action) {
     if (!startup_ready_ && action != "file.quit")
         return;
     if ((configuration_change_ || close_intent_ || loading_request_ || failed_rom_load_ ||
-         pending_state_operation_ || choosing_disk_export_ || disk_export_.busy() ||
-         (disk_export_dialog_ && disk_export_dialog_->is_presented())) &&
+         settings_bios_selection_ || pending_state_operation_ || choosing_disk_export_ ||
+         disk_export_.busy() || (disk_export_dialog_ && disk_export_dialog_->is_presented())) &&
         action != "file.quit")
         return;
     if ((gamepad_assignment_dialog_ || input_monitor_dialog_) && action != "file.quit")

@@ -26,6 +26,7 @@
 #include "app/async_configuration_load.hpp"
 #include "app/async_configuration_save.hpp"
 #include "app/async_disk_export.hpp"
+#include "app/async_fds_bios_validation.hpp"
 #include "app/async_rom_loader.hpp"
 #include "app/async_state_io.hpp"
 #include "app/configuration.hpp"
@@ -123,6 +124,10 @@ class MapperBusGuiController {
     void dismiss_rom_load_error(bool keep_request = false);
     void choose_recovery_bios();
     void poll_recovery_bios();
+    void choose_settings_bios(std::weak_ptr<nk::PreferencesRow> row);
+    void poll_settings_bios();
+    void cancel_settings_bios();
+    void update_settings_bios_status(std::string text);
     void finish_rom_open(std::string rom_path, std::string member);
     void choose_archive_rom(std::string rom_path, std::vector<std::string> members);
     void open_disk_controls();
@@ -238,8 +243,15 @@ class MapperBusGuiController {
     std::unique_ptr<app::SessionActions> actions_;
     core::FrameBuffer blank_frame_{};
     app::AsyncRomLoader rom_loader_;
-    app::FdsBiosRead bios_read_;
-    app::BackgroundTask<std::string> bios_validation_;
+    app::AsyncFdsBiosValidation bios_validation_;
+    app::AsyncFdsBiosValidation settings_bios_validation_;
+    struct SettingsBiosSelection {
+        std::weak_ptr<nk::PreferencesRow> row;
+    };
+    std::shared_ptr<SettingsBiosSelection> settings_bios_selection_;
+    std::shared_ptr<nk::Dialog> settings_bios_dialog_;
+    std::weak_ptr<nk::Label> settings_bios_status_;
+    std::string settings_bios_status_text_;
     std::optional<app::RomLoadRequest> loading_request_;
     std::shared_ptr<nk::Dialog> loading_dialog_;
     std::weak_ptr<nk::Label> loading_status_;

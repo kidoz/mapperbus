@@ -7,9 +7,12 @@ root after [building MapperBus](build-and-install.md).
 ## Select the BIOS and open a disk
 
 In the NodalKit GUI, open **Settings → General → BIOS**, click **Choose BIOS…**,
-and select the BIOS file. Then use **Open ROM** to open a `.fds` image.
-The BIOS path is remembered in the shared configuration. Changing the BIOS
-selection takes effect the next time a disk is opened.
+and select the BIOS file. MapperBus checks it in the background; **Cancel** keeps
+the previous selection. A valid path is saved before it is applied. If saving
+fails, use **Retry** or **Keep Current Settings**. The selected path changes only
+after a successful save. Then use **Open ROM** to open a `.fds` image.
+Changing the BIOS takes effect the next time a disk is opened; the active game
+continues with its existing BIOS. Closing Settings during the check discards it.
 
 If opening fails because the BIOS is missing, unreadable, or the wrong size,
 the error dialog also offers **Choose BIOS…**. MapperBus checks the selected file
