@@ -37,6 +37,7 @@
 #include "core/mappers/mapper_registry.hpp"
 #include "frontends/nodalkit/gui_close_policy.hpp"
 #include "frontends/nodalkit/input_binding_table.hpp"
+#include "frontends/nodalkit/rom_load_error_dialog.hpp"
 #include "platform/audio/null_audio.hpp"
 #include "platform/input/null_input.hpp"
 #include "platform/video/fsr1.hpp"
@@ -1894,22 +1895,43 @@ void MapperBusGuiController::update_fullscreen_chrome() {
     update_native_toolbar();
 }
 
-void MapperBusGuiController::browse_for_rom() {
-    if (!startup_ready_)
+void MapperBusGuiController::browse_for_rom(bool recovering) {
+    if (!startup_ready_ || close_intent_ || close_authorized_)
         return;
-    app_.open_file_dialog_async("Open ROM",
-                                {"*.nes", "*.fds", "*.zip", "*.7z"},
-                                [this](nk::OpenFileDialogResult dialog_result) {
-                                    if (dialog_result) {
-                                        attempt_open(*dialog_result);
-                                        return;
-                                    }
+    auto failure = recovering ? failed_rom_load_ : nullptr;
+    if (recovering) {
+        if (!failure || failure->choosing_file)
+            return;
+        failure->choosing_file = true;
+    } else if (modal_dialog_presented()) {
+        return;
+    }
+    app_.open_file_dialog_async(
+        "Open ROM",
+        {"*.nes", "*.fds", "*.zip", "*.7z"},
+        [this, failure](nk::OpenFileDialogResult dialog_result) {
+            if (failure) {
+                if (failed_rom_load_ != failure || close_intent_ || close_authorized_)
+                    return;
+                failure->choosing_file = false;
+                if (!dialog_result) {
+                    if (dialog_result.error() != nk::FileDialogError::Cancelled)
+                        failure->chooser_error = file_dialog_error_text(dialog_result.error());
+                    present_rom_load_error();
+                    return;
+                }
+                dismiss_rom_load_error();
+            }
+            if (dialog_result) {
+                attempt_open(*dialog_result);
+                return;
+            }
 
-                                    if (dialog_result.error() != nk::FileDialogError::Cancelled) {
-                                        set_message(file_dialog_error_text(dialog_result.error()));
-                                    }
-                                    focus_game_surface();
-                                });
+            if (dialog_result.error() != nk::FileDialogError::Cancelled) {
+                set_message(file_dialog_error_text(dialog_result.error()));
+            }
+            focus_game_surface();
+        });
 }
 
 void MapperBusGuiController::attempt_open(std::string rom_path, std::string member) {
@@ -1953,7 +1975,7 @@ void MapperBusGuiController::attempt_open(std::string rom_path, std::string memb
         if (auto started = rom_loader_.save_current(session_->emulator_handle(), std::move(fence));
             !started) {
             session_->cancel_background_persistence();
-            abandon_rom_load(started.error());
+            show_rom_load_error(started.error());
         }
     } else {
         start_rom_read();
@@ -2011,7 +2033,7 @@ void MapperBusGuiController::dismiss_rom_loading() {
 void MapperBusGuiController::start_rom_read() {
     present_rom_loading(false);
     if (auto started = rom_loader_.start(*loading_request_); !started)
-        abandon_rom_load(started.error());
+        show_rom_load_error(started.error());
 }
 
 void MapperBusGuiController::abandon_rom_load(std::string message) {
@@ -2023,6 +2045,70 @@ void MapperBusGuiController::abandon_rom_load(std::string message) {
     set_message(std::move(message));
     refresh_ui();
     focus_game_surface();
+}
+
+void MapperBusGuiController::show_rom_load_error(std::string error) {
+    if (close_intent_) {
+        abandon_rom_load("Failed to open ROM: " + error);
+        return;
+    }
+    failed_rom_load_ = std::make_shared<FailedRomLoad>(FailedRomLoad{
+        .path = loading_request_->path,
+        .member = loading_request_->member,
+        .error = std::move(error),
+        .chooser_error = {},
+    });
+    abandon_rom_load("Failed to open ROM: " + failed_rom_load_->error);
+    present_rom_load_error();
+}
+
+void MapperBusGuiController::dismiss_rom_load_error(bool keep_request) {
+    if (!keep_request)
+        failed_rom_load_.reset();
+    auto dialog = std::exchange(rom_error_dialog_, {});
+    if (dialog && dialog->is_presented())
+        dialog->close();
+}
+
+void MapperBusGuiController::present_rom_load_error() {
+    if (!failed_rom_load_ || close_intent_ || close_authorized_)
+        return;
+    rom_error_dialog_ = make_rom_load_error_dialog(failed_rom_load_->path,
+                                                   failed_rom_load_->member,
+                                                   failed_rom_load_->error,
+                                                   session_->has_cartridge(),
+                                                   failed_rom_load_->chooser_error);
+    (void)rom_error_dialog_->on_response().connect([this](nk::DialogResponse response) {
+        if (!rom_error_dialog_ || !failed_rom_load_)
+            return;
+        auto dialog = rom_error_dialog_;
+        const int custom_id = dialog->custom_response_id();
+        app_.event_loop().post(
+            [this, dialog, response, custom_id] {
+                if (rom_error_dialog_ != dialog || !failed_rom_load_ || close_intent_ ||
+                    close_authorized_)
+                    return;
+                const auto failure = failed_rom_load_;
+                if (response == nk::DialogResponse::Custom && custom_id == kChooseAnotherRom) {
+                    dismiss_rom_load_error(true);
+                    browse_for_rom(true);
+                } else {
+                    dismiss_rom_load_error();
+                    if (response == nk::DialogResponse::Accept) {
+                        // Recheck outgoing persistence and use current BIOS/settings.
+                        attempt_open(failure->path, failure->member);
+                    } else {
+                        set_message(session_->has_cartridge() ? "Kept current game."
+                                                              : "Opening ROM cancelled.");
+                        refresh_ui();
+                        focus_game_surface();
+                    }
+                }
+            },
+            "mapperbus.rom-error-response");
+    });
+    rom_error_dialog_->present(window_);
+    update_native_toolbar();
 }
 
 void MapperBusGuiController::poll_rom_load() {
@@ -2060,13 +2146,7 @@ void MapperBusGuiController::poll_rom_load() {
         session_->finish_background_persistence(saved);
     }
     if (!*completed) {
-        if (phase == app::AsyncRomLoader::Phase::Loading) {
-            remove_recent_rom(configuration_, loading_request_->path, loading_request_->member);
-            save_configuration_state();
-            if (welcome_active_)
-                refresh_welcome_view();
-        }
-        abandon_rom_load("Failed to open ROM: " + completed->error());
+        show_rom_load_error(completed->error());
         return;
     }
     if (phase == app::AsyncRomLoader::Phase::Saving) {
@@ -2820,6 +2900,7 @@ void MapperBusGuiController::request_session_close(bool quit) {
     close_configuration_submitted_ = false;
     close_waiting_configuration_ = false;
     dismiss_configuration_change();
+    dismiss_rom_load_error();
     if (disk_export_.busy()) {
         if (auto status = disk_export_status_.lock())
             status->set_text(quit ? "Finishing disk export before quitting…"
@@ -4783,8 +4864,8 @@ nk::Window& MapperBusGuiController::settings_host_window() {
 
 bool MapperBusGuiController::modal_dialog_presented() const {
     return !startup_ready_ || configuration_change_.has_value() || close_intent_.has_value() ||
-           loading_request_.has_value() || choosing_disk_export_ || disk_export_.busy() ||
-           (disk_export_dialog_ && disk_export_dialog_->is_presented()) ||
+           loading_request_.has_value() || failed_rom_load_ || choosing_disk_export_ ||
+           disk_export_.busy() || (disk_export_dialog_ && disk_export_dialog_->is_presented()) ||
            pending_state_operation_.has_value() ||
            (input_monitor_dialog_ && input_monitor_dialog_->is_presented()) ||
            (gamepad_assignment_dialog_ && gamepad_assignment_dialog_->is_presented()) ||
@@ -4798,8 +4879,8 @@ bool MapperBusGuiController::modal_dialog_presented() const {
 void MapperBusGuiController::handle_menu_action(std::string_view action) {
     if (!startup_ready_ && action != "file.quit")
         return;
-    if ((configuration_change_ || close_intent_ || loading_request_ || pending_state_operation_ ||
-         choosing_disk_export_ || disk_export_.busy() ||
+    if ((configuration_change_ || close_intent_ || loading_request_ || failed_rom_load_ ||
+         pending_state_operation_ || choosing_disk_export_ || disk_export_.busy() ||
          (disk_export_dialog_ && disk_export_dialog_->is_presented())) &&
         action != "file.quit")
         return;

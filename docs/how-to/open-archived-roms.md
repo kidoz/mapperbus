@@ -77,6 +77,14 @@ The outgoing game is saved first; that save step cannot be cancelled. If saving
 fails, the current game stays available for recovery. This also ensures reopening
 the same game reads its latest battery or disk save.
 
+If opening fails, **Could Not Open ROM** retains the file and exact selected
+archive member. **Retry** repeats the normal save-before-open flow. **Choose
+Another File…** opens the file picker; cancelling it returns to the same error.
+**Keep Current Game** restores the session without replacing its media or changing
+its pause state. With no current game, this action is **Back to Start**. Keeping
+the session is the default keyboard action, including Escape. Failed loads leave
+recent entries available so temporary read or BIOS failures can be retried.
+
 Cancel signals the reader to stop at the next checkpoint: before or after an
 archive entry, a 64 KiB selected-data read, or a skip operation. Skipping unselected
 entries retains libarchive's fast skip path. A libarchive or OS call already in

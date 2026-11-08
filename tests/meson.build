@@ -141,6 +141,12 @@ test_xbrz = executable('test-xbrz',
 test('xbrz', test_xbrz)
 
 if get_option('enable_nodalkit_gui')
+    test_gui_rom_recovery = executable('test-gui-rom-recovery',
+        'integration/test_gui_rom_recovery.cpp',
+        dependencies : [mapperbus_app_dep, nodalkit_dep, catch2_dep],
+    )
+    test('gui-rom-recovery', test_gui_rom_recovery)
+
     test_gui_close = executable('test-gui-close',
         'integration/test_gui_close.cpp',
         dependencies : [mapperbus_app_dep, nodalkit_dep, catch2_dep],

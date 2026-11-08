@@ -1214,4 +1214,82 @@ TEST_CASE("Cancelled archive progress cannot overwrite a newer job or survive fa
     CHECK_FALSE(loader.archive_progress());
 }
 
+TEST_CASE("Retrying an owned archive selection after repair preserves the active session",
+          "[rom-source][archive][async][recovery]") {
+    ArchiveFixture fixture;
+    const auto current = fixture.root / "current.nes";
+    REQUIRE(core::write_binary_file_atomic(current.string(), make_rom(63), "ROM"));
+    for (bool seven_zip : {false, true}) {
+        for (int failure : {0, 1, 2}) {
+            for (bool paused : {false, true}) {
+                INFO(seven_zip);
+                INFO(failure);
+                INFO(paused);
+                const bool fds = failure == 1;
+                const auto path = fixture.root / (seven_zip ? "retry.7z" : "retry.zip");
+                const auto bios = fixture.root / "retry-bios.bin";
+                std::filesystem::remove(path);
+                std::filesystem::remove(bios);
+                const std::string member = fds ? "selected.fds" : "selected.nes";
+                const auto bytes = fds ? mapperbus::tests::make_fds_image(2) : make_rom(77);
+                if (failure == 0) {
+                    REQUIRE(core::write_binary_file_atomic(
+                        path.string(), std::vector<Byte>{1, 2, 3}, "archive"));
+                } else if (fds) {
+                    write_archive(path, {{member, bytes}}, seven_zip);
+                } else {
+                    // Metadata/read failure, recoverable without choosing a new path.
+                    std::filesystem::create_directory(path);
+                }
+                EmulationSession session(std::make_unique<platform::NullVideo>(),
+                                         std::make_unique<platform::NullAudio>(),
+                                         std::make_unique<platform::NullInput>());
+                StateStorageSettings storage;
+                storage.directory = fixture.root / "states";
+                session.set_state_storage(storage);
+                REQUIRE(session.open_rom(current.string()));
+                session.emulator().step_frame();
+                session.set_paused(paused);
+                const auto snapshot = session.emulator().save_state();
+                const auto identity = session.game_identity();
+                RomLoadRequest request;
+                request.path = path.string();
+                request.member = member;
+                request.fds_bios_path = bios.string();
+                request.persistence_directory = fixture.root / "data";
+                request.state_storage = storage;
+                AsyncRomLoader loader;
+                REQUIRE(loader.start(request));
+                auto failed = wait_for_rom(loader);
+                REQUIRE_FALSE(failed);
+                CHECK(session.paused() == paused);
+                CHECK(session.game_identity() == identity);
+                CHECK(session.emulator().save_state() == snapshot);
+                std::filesystem::remove(path);
+                // A second candidate ensures Retry must retain the exact selection.
+                write_archive(path, {{"other.nes", make_rom(22)}, {member, bytes}}, seven_zip);
+                REQUIRE(core::write_binary_file_atomic(
+                    bios.string(), mapperbus::tests::make_fds_bios(), "BIOS"));
+                REQUIRE(start_after_cleanup(loader, request));
+                auto prepared = wait_for_rom(loader);
+                REQUIRE(prepared);
+                REQUIRE(prepared->emulator);
+                CHECK(prepared->member == member);
+                CHECK(prepared->path == path.string());
+                CHECK(session.paused() == paused);
+                CHECK(session.emulator().save_state() == snapshot);
+                session.adopt_rom(std::move(*prepared));
+                CHECK(session.current_rom_member() == member);
+                CHECK(session.emulator().is_fds() == fds);
+                if (fds) {
+                    CHECK(session.emulator().fds().side_count() == 2);
+                } else {
+                    session.emulator().step_frame();
+                    CHECK(session.emulator().read_cpu(0x6000) == 77);
+                }
+            }
+        }
+    }
+}
+
 } // namespace mapperbus::app

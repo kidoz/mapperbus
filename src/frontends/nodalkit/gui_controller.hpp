@@ -110,13 +110,16 @@ class MapperBusGuiController {
     void update_fullscreen_chrome();
     void update_native_menu();
     void update_native_toolbar();
-    void browse_for_rom();
+    void browse_for_rom(bool recovering = false);
     void attempt_open(std::string rom_path, std::string member = {});
     void start_rom_read();
     void poll_rom_load();
     void present_rom_loading(bool saving);
     void dismiss_rom_loading();
     void abandon_rom_load(std::string message);
+    void show_rom_load_error(std::string error);
+    void present_rom_load_error();
+    void dismiss_rom_load_error(bool keep_request = false);
     void finish_rom_open(std::string rom_path, std::string member);
     void choose_archive_rom(std::string rom_path, std::vector<std::string> members);
     void open_disk_controls();
@@ -234,6 +237,15 @@ class MapperBusGuiController {
     std::shared_ptr<nk::Dialog> loading_dialog_;
     std::weak_ptr<nk::Label> loading_status_;
     bool paused_before_rom_load_ = false;
+    struct FailedRomLoad {
+        std::string path;
+        std::string member;
+        std::string error;
+        std::string chooser_error;
+        bool choosing_file = false;
+    };
+    std::shared_ptr<FailedRomLoad> failed_rom_load_;
+    std::shared_ptr<nk::Dialog> rom_error_dialog_;
     struct PendingStateOperation {
         int slot;
         bool save;
