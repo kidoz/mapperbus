@@ -64,6 +64,13 @@ Expansion audio follows the same boundary. Mappers can clock their own sound
 hardware and expose an output that the APU mixes. Register routing and IRQ
 polling remain coordinated through the bus and emulator timing.
 
+CPU-clocked mapper devices also receive `clock_cpu()` independently of sound,
+including during DMA stalls. Board read masks preserve CPU open-bus bits when a
+device drives only part of the data bus. A separate optional nametable-address
+hook handles board-specific CIRAM wiring without changing the renderer's scroll
+model. See [mapper coverage](../reference/mapper-implementation.md) for the current
+implementations and remaining hardware families.
+
 CPU accesses, including dummy reads and both read-modify-write writes, pass through
 the bus with their side effects. The bus advances FDS disk, timer, and watchdog
 clocks before each CPU/DMA access, along with APU and expansion audio. PPU stepping
