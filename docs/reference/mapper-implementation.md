@@ -4,8 +4,8 @@ This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
 complete.** Updated 2026-11-09 against the working-tree registry.
 
-There are **75 registered cartridge IDs**: the original 14, 53 added in the first
-batch, and Irem 32/65, Sunsoft 67/68, and Taito 33/48/80/207 in the follow-ups below.
+There are **77 registered cartridge IDs**: the original 14, 53 added in the first
+batch, and Irem 32/65, Sunsoft 67/68, and Taito 33/48/80/207/82/552 in the follow-ups below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
 unusual ROM geometry.
@@ -19,6 +19,7 @@ unusual ROM geometry.
 | Sunsoft-3 / Sunsoft-4 (follow-up) | 67, 68 | 16 KiB PRG and 2 KiB CHR banks, four mirroring modes, Sunsoft-3 live IRQ counter and acknowledgement aliases, Sunsoft-4 ROM nametables and WRAM gate, DCS options with licensing and paired snapshot identity. |
 | Taito TC0190 / TC0690 (follow-up) | 33, 48 | Two 8 KiB PRG windows, full-width 2/1 KiB CHR banks, distinct mirroring decoders, mapper-48 latched IRQ and submapper timing profiles, CPU/PPU and snapshot replay. |
 | Taito X1-005 (follow-up) | 80, 207 | Three 8 KiB PRG windows, aligned 2/1 KiB CHR banks, exact register aliases, protected 128-byte RAM and battery persistence, H/V and CHR-driven CIRAM routing. |
+| Taito X1-017 (follow-up) | 82, 552 | Legacy/physical PRG wiring, CHR half swap, three independently protected RAM regions, 5 KiB persistence, CPU bus pull-downs and M2 IRQ timer. |
 | Namco 108 family | 76, 88, 95, 154, 206 | Register decode, fixed and switchable PRG, 1/2 KiB CHR wiring, fixed-PRG submapper, CHR-driven CIRAM, one-screen mirroring. |
 | Konami VRC1–4 | 21, 22, 23, 25, 73, 75 | Submapper address-line permutations, chip-specific banking and mirroring, one-bit VRC2 latch, CPU and prescaled IRQs, enabled WRAM and NVRAM. |
 | Homebrew latches | 28, 31 | Action 53 mode/size matrix, banked CHR RAM, mirroring control; mapper 31's eight 4 KiB PRG windows; power-up versus soft reset. |
@@ -36,6 +37,9 @@ All implementation code is original; no external emulator source was incorporate
 - PRG and expansion read masks merge undriven data bits with CPU open bus. The
   default mask preserves existing mapper behavior. VRC2 and multicart status/RAM
   ports exercise the new path.
+- `Mapper::cpu_open_bus_mask()` models cartridge pull-downs on undriven CPU
+  bits, including console APU/controller reads. X1-017 grounds floating bits;
+  the default preserves the latched bus value. Driven data remains intact.
 - Optional `nametable_address()` maps board-specific CIRAM wiring. Mapper 95 is
   tested through PPU registers, including reversed horizontal nametable pairs.
 - Optional `read_nametable()` / `write_nametable()` intercept normalized
@@ -54,6 +58,7 @@ See [mapper tests](../../tests/unit/test_mapper_boards.cpp),
 [Sunsoft tests](../../tests/unit/test_sunsoft_boards.cpp),
 [Taito tests](../../tests/unit/test_taito.cpp),
 [X1-005 tests](../../tests/unit/test_taito_x1005.cpp),
+[X1-017 tests](../../tests/unit/test_taito_x1017.cpp),
 [factory](../../src/core/mappers/mapper_registry.cpp), and
 [compatibility](compatibility.md).
 
@@ -347,6 +352,64 @@ exception documented above. Formatting and whitespace checks passed; clang-tidy
 reported no diagnostics on `taito_x1005.cpp` or the new registry lines. Optional
 external-ROM and GPU cases retain their existing environment-dependent skips.
 
+## X1-017 follow-up: PRG wiring, protected RAM and CPU pull-downs
+
+Both IDs follow [X1-017 revision 24125](https://www.nesdev.org/w/index.php?oldid=24125),
+[pinout revision 11701](https://www.nesdev.org/w/index.php?oldid=11701), and
+[the original hardware tests](https://forums.nesdev.org/viewtopic.php?p=246602).
+The [later correction](https://forums.nesdev.org/viewtopic.php?p=246709)
+establishes that IRQ control bit 2 must be clear for M2 counting.
+
+Mapper 82 selects PRG banks with bits 2–5 and retains historical dump order,
+limited to 128 KiB. Mapper 552 reverses bits 0–5 into PRG A18–A13 and supports
+512 KiB. Neither uses register bits 6–7. Three 8 KiB windows switch independently;
+the last 8 KiB stays fixed. Registers decode only `$7EF0–$7EFF`, with no A7 or
+adjacent-byte aliases. CHR ROM supports 256 KiB in two aligned 2 KiB and four
+1 KiB windows. `$7EF6.1` swaps the pattern-table halves; bit 0 selects PPU A11
+(horizontal mirroring) or A10 (vertical mirroring) for CIRAM A10.
+
+The physical 5 KiB RAM is unbanked: `$6000–$67FF`, `$6800–$6FFF`, `$7000–$73FF`.
+Their independent permission keys are exactly `$CA`, `$69`, `$84` at
+`$7EF7/$7EF8/$7EF9`. Other values lock both reads and writes in that region.
+`$7400–$7FFF` contains no RAM. ASIC pull-downs ground undriven CPU bits across
+the bus, including disabled RAM, write-only ASIC/APU registers and floating
+controller bits. PPU internal register latches and driven CPU data remain intact.
+
+IRQ latch writes do not alter the live counter. Clearing count enable reloads
+`(latch+2)*16`, or 17 when zero. Acknowledgement reloads `(latch+1)*16`, or 1
+when zero, and clears the pending flag. Expiry latches pending on the decrement
+to zero; output enable gates it independently, so masking/re-enabling can
+reassert without acknowledgement. Every CPU/M2 cycle, including DMA, counts.
+The unknown bit-2 clock mode is modeled as paused; post-expiry wrapping is not
+measured and the counter saturates because acknowledgement always reloads it.
+
+The ASIC's RAM always exists, including with unspecified header memory. NES 2.0
+cannot encode 5 KiB exactly: bounded PRG RAM/NVRAM declarations up to 8 KiB total
+are accepted as metadata, while storage, CPU mapping and battery files stay
+exactly 5 KiB. Explicit NVRAM requires the battery flag. CHR ROM is required;
+CHR RAM/NVRAM, larger memories and unknown submappers are rejected. Reset
+preserves RAM, locks all three regions, clears IRQ state, and uses deterministic
+PRG 0/1/2, zero CHR banks and header H/V defaults. Hardware power-up values are
+not certified. New mapper payloads retain machine snapshot version 20; the
+immutable bus policy adds no serialized fields or changes to existing payloads.
+
+Tests cover each PRG register bit, exact decoding, every RAM permission byte,
+region boundaries, CHR inversion through PPU registers, CIRAM routing, timed
+and untimed CPU pull-downs, timer reload/pause/output/acknowledgement, DMA and
+interrupt sampling, real CPU IRQ service, active/pending snapshot replay,
+malformed/truncated state rejection, machine rollback and actual 5 KiB battery
+files. Both IDs join the shared 63-board boot/replay matrix. No commercial-title
+or physical-cartridge validation is claimed.
+
+X1-017 validation: `just build` passed; the regular suite command above reported
+42 successful executables and zero failures, including 8,899 assertions in
+136 mapper cases. The seven targeted ASan/UBSan executables (`mappers bus ppu
+region save-state mapper-timing battery-save`) passed with the documented macOS
+leak-detection exception. Both synthetic mapper images ran two frames through
+`mapperbus-cli --frames 2`. Formatting, whitespace and clang-tidy checks passed
+for the new implementation and changed bus/registry lines. The isolated agent
+documentation validator reported zero errors and 52 existing warnings.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -444,7 +507,7 @@ fallback. The registry rejects unsupported IDs.
 | 079 | NINA-03 / NINA-06 | New implementation: DiscreteMapper | [r22985](https://www.nesdev.org/w/index.php?oldid=22985) |
 | 080 | Taito X1-005 | New implementation: TaitoX1005 | [r24449](https://www.nesdev.org/w/index.php?oldid=24449) |
 | 081 | Board-specific specification | New implementation: DiscreteMapper | [r4583](https://www.nesdev.org/w/index.php?oldid=4583) |
-| 082 | Taito X1-017 | Not registered | [r24125](https://www.nesdev.org/w/index.php?oldid=24125) |
+| 082 | Taito X1-017 | New implementation: TaitoX1017 | [r24125](https://www.nesdev.org/w/index.php?oldid=24125) |
 | 083 | Cony / Yoko | Not registered | [r24580](https://www.nesdev.org/w/index.php?oldid=24580) |
 | 084 | Board-specific specification | Not registered | [r24088](https://www.nesdev.org/w/index.php?oldid=24088) |
 | 085 | VRC7 | Existing registration: Vrc7 | [r22102](https://www.nesdev.org/w/index.php?oldid=22102) |
@@ -879,7 +942,7 @@ fallback. The registry rejects unsupported IDs.
 | 549 | Board-specific specification | Not registered | [r21240](https://www.nesdev.org/w/index.php?oldid=21240) |
 | 550 | Board-specific specification | Not registered | [r8188](https://www.nesdev.org/w/index.php?oldid=8188) |
 | 551 | Board-specific specification | Not registered | [r8189](https://www.nesdev.org/w/index.php?oldid=8189) |
-| 552 | Taito X1-017 wiring variant | Not registered | [r24125](https://www.nesdev.org/w/index.php?oldid=24125) |
+| 552 | Taito X1-017 wiring variant | New implementation: TaitoX1017 | [r24125](https://www.nesdev.org/w/index.php?oldid=24125) |
 | 553 | Board-specific specification | Not registered | [r8192](https://www.nesdev.org/w/index.php?oldid=8192) |
 | 554 | Board-specific specification | Not registered | [r8195](https://www.nesdev.org/w/index.php?oldid=8195) |
 | 555 | Board-specific specification | Not registered | [r8198](https://www.nesdev.org/w/index.php?oldid=8198) |
