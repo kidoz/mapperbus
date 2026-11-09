@@ -14,11 +14,11 @@ using namespace mapperbus::core;
 
 namespace {
 
-constexpr std::array<uint16_t, 73> kNewBoards = {
+constexpr std::array<uint16_t, 76> kNewBoards = {
     10,  13,  34,  66,  70,  71,  76,  78, 79, 87,  88,  89,  93,  94,  95,  97,  113, 140, 152,
     154, 180, 184, 206, 38,  46,  58,  61, 62, 81,  107, 145, 148, 149, 193, 200, 201, 203, 212,
     213, 225, 226, 229, 231, 232, 240, 21, 22, 23,  25,  73,  75,  28,  31,  32,  65,  67,  68,
-    33,  48,  80,  207, 82,  552, 18,  72, 92, 101, 77,  210, 118, 119, 64,  158};
+    33,  48,  80,  207, 82,  552, 18,  72, 92, 101, 77,  210, 118, 119, 64,  158, 16,  153, 159};
 
 std::size_t board_prg_size(uint16_t id) {
     if (id == 101U)
@@ -27,6 +27,8 @@ std::size_t board_prg_size(uint16_t id) {
 }
 
 std::size_t board_chr_size(uint16_t id) {
+    if (id == 153U)
+        return 0U;
     if (id == 119U)
         return 0x10000U;
     if (id == 77U)
@@ -53,6 +55,11 @@ INesHeader board_header(uint16_t id, uint8_t submapper = 0) {
     header.submapper = submapper;
     header.is_nes2 = true;
     header.mirror_mode = MirrorMode::Vertical;
+    if (id == 153U || id == 159U) {
+        header.has_battery = true;
+        header.prg_nvram_size = id == 153U ? 8192U : 128U;
+        header.chr_ram_size = id == 153U ? 8192U : 0U;
+    }
     return header;
 }
 
@@ -86,6 +93,11 @@ Cartridge cartridge(uint16_t id) {
     image[6] = static_cast<Byte>((id & 15) << 4);
     image[7] = static_cast<Byte>((id & 0xF0) | 8);
     image[8] = static_cast<Byte>(id >> 8U);
+    if (id == 153U || id == 159U) {
+        image[6] |= 2U;
+        image[10] = id == 153U ? 0x70U : 0x10U;
+        image[11] = id == 153U ? 7U : 0U;
+    }
     if (id == 13 || id == 28 || id == 31 || id == 71 || id == 73 || id == 93 || id == 94 ||
         id == 180 || id == 226 || id == 231 || id == 232) {
         image[5] = 0;
@@ -343,12 +355,13 @@ TEST_CASE("Every new board restores mutable state and rejects truncation", "[map
             mapper->write_prg(addr, 3);
         mapper->write_chr(0x1123, 0x56);
         mapper->read_chr(0x0FEF);
+        // CHR reads also drive the mapper's PPU address pins (mapper 153).
+        const auto chr = mapper->read_chr(0x1123);
+        const auto prg = mapper->read_prg(0x8000);
+        const auto mirror = mapper->mirror_mode();
         StateWriter writer;
         mapper->save_state(writer);
         const auto saved = writer.data();
-        const auto prg = mapper->read_prg(0x8000);
-        const auto chr = mapper->read_chr(0x1123);
-        const auto mirror = mapper->mirror_mode();
         mapper->reset();
         mapper->write_chr(0x1123, 0xAA);
         StateReader reader(saved);

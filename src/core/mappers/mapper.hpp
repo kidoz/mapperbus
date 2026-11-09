@@ -90,6 +90,11 @@ class Mapper {
         return false;
     }
     virtual void observe_ppu_a12(bool /*high*/) {}
+    /// Opt-in address pins, independent of cached pixel-data reads.
+    virtual bool observes_ppu_address() const {
+        return false;
+    }
+    virtual void observe_ppu_address(Address /*addr*/) {}
     /// End of M2, after the current CPU write and all PPU dots in that cycle.
     virtual void clock_cpu_falling_edge() {}
 

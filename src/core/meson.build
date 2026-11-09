@@ -32,6 +32,8 @@ core_sources = files(
     'mappers/cnrom.cpp',
     'mappers/mmc3.cpp',
     'mappers/rambo1.cpp',
+    'mappers/serial_eeprom.cpp',
+    'mappers/bandai_fcg.cpp',
     'mappers/axrom.cpp',
     'mappers/color_dreams.cpp',
     'mappers/vrc6.cpp',

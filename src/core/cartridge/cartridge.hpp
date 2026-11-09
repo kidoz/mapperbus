@@ -107,6 +107,12 @@ class Cartridge {
     void observe_ppu_a12(bool high) {
         mapper_->observe_ppu_a12(high);
     }
+    [[nodiscard]] bool observes_ppu_address() const {
+        return mapper_->observes_ppu_address();
+    }
+    void observe_ppu_address(Address addr) {
+        mapper_->observe_ppu_address(addr);
+    }
     void clock_cpu_falling_edge() {
         mapper_->clock_cpu_falling_edge();
     }

@@ -231,7 +231,8 @@ void Ppu::step(uint32_t cpu_cycles) {
 }
 
 void Ppu::step_dots(uint32_t ppu_dots) {
-    const bool observe_a12 = cartridge_ != nullptr && cartridge_->observes_ppu_a12();
+    const bool observe_pins = cartridge_ != nullptr && (cartridge_->observes_ppu_a12() ||
+                                                        cartridge_->observes_ppu_address());
     for (uint32_t i = 0; i < ppu_dots; ++i) {
         if (skip_dot_ && cycle_ == 339) {
             // Replace the final pre-render dot with the first visible-line idle dot.
@@ -264,8 +265,8 @@ void Ppu::step_dots(uint32_t ppu_dots) {
             }
         }
 
-        if (observe_a12)
-            drive_mapper_a12();
+        if (observe_pins)
+            drive_mapper_pins();
 
         if (rendering) {
             if (visible_line || pre_render) {
@@ -325,37 +326,63 @@ void Ppu::step_dots(uint32_t ppu_dots) {
     }
 }
 
-void Ppu::drive_mapper_a12() {
-    if (cartridge_ == nullptr || !cartridge_->observes_ppu_a12())
+void Ppu::drive_mapper_pins() {
+    if (cartridge_ == nullptr)
         return;
-    const bool fetch_line = scanline_ < 240U || scanline_ == timing_->pre_render_scanline;
-    // Outside fetch lines the external address pins follow v, even with
-    // rendering enabled. Holding the last pattern-table address here hides
-    // the long A12-low interval that qualifies the next frame's first rise.
-    if (!rendering_enabled() || !fetch_line) {
-        cartridge_->observe_ppu_a12((reg_v_ & 0x1000U) != 0U);
+    const bool full_address = cartridge_->observes_ppu_address();
+    const bool a12 = cartridge_->observes_ppu_a12();
+    if (!full_address && !a12)
         return;
-    }
-
-    bool high = false;
-    // The final dummy nametable fetches (and the idle dot) drive A12 low.
-    // Their address cadence does not add the real-PPU coarse-X prefetch
-    // increments that are intentionally absent from this pixel renderer.
-    if (cycle_ != 0U && cycle_ < 336U && (cycle_ & 7U) >= 4U) {
-        if (cycle_ <= 256U || cycle_ >= 321U) {
-            high = (ppuctrl_ & 0x10U) != 0U;
-        } else if ((ppuctrl_ & 0x20U) == 0U) {
-            high = (ppuctrl_ & 8U) != 0U;
-        } else {
-            const auto slot = (cycle_ - 257U) / 8U;
-            // Unoccupied secondary-OAM slots fetch tile $FF in 8x16 mode.
-            high = std::cmp_greater_equal(slot, visible_sprite_count_) ||
-                   (visible_sprites_[slot].tile & 1U) != 0U;
+    const bool fetch_line =
+        scanline_ < 240U || std::cmp_equal(scanline_, timing_->pre_render_scanline);
+    Address addr = reg_v_ & 0x3FFFU;
+    if (rendering_enabled() && fetch_line) {
+        // Dummy nametable fetches, including the final/idle interval, drive
+        // A12 low. Do not add the real PPU's coarse-X prefetch increments.
+        addr = loopy::tile_address(reg_v_);
+        if (cycle_ != 0U && cycle_ < 336U) {
+            const auto phase = cycle_ & 7U;
+            if (phase >= 2U && phase < 4U) {
+                addr = loopy::attribute_address(reg_v_);
+            } else if (phase >= 4U) {
+                unsigned tile = 0U;
+                unsigned row = 0U;
+                unsigned base = 0U;
+                if (cycle_ <= 256U || cycle_ >= 321U) {
+                    base = (ppuctrl_ & 0x10U) != 0U ? 0x1000U : 0U;
+                    if (full_address) {
+                        tile = read_vram(loopy::tile_address(reg_v_));
+                        row = loopy::fine_y(reg_v_);
+                    }
+                } else {
+                    const auto slot = (cycle_ - 257U) / 8U;
+                    const bool occupied = std::cmp_less(slot, visible_sprite_count_);
+                    tile = occupied ? visible_sprites_[slot].tile : 0xFFU;
+                    const bool tall = (ppuctrl_ & 0x20U) != 0U;
+                    base = tall ? (tile & 1U) * 0x1000U : ((ppuctrl_ & 8U) != 0U ? 0x1000U : 0U);
+                    const unsigned height = tall ? 16U : 8U;
+                    const unsigned y = std::cmp_equal(scanline_, timing_->pre_render_scanline)
+                                           ? 0U
+                                           : scanline_ + 1U;
+                    const unsigned top = occupied ? visible_sprites_[slot].y_pos + 1U : 256U;
+                    row = (y - top) & (height - 1U);
+                    if (occupied && (visible_sprites_[slot].attr & 0x80U) != 0U)
+                        row = height - 1U - row;
+                    if (tall) {
+                        tile = (tile & 0xFEU) | (row >> 3U);
+                        row &= 7U;
+                    }
+                }
+                addr = static_cast<Address>(base + tile * 16U + row + (phase >= 6U ? 8U : 0U));
+            }
         }
     }
-    // Address-pin cadence is separate from the renderer's cached tile reads.
-    // It changes no pixel fetch, Loopy increment, or existing scanline callback.
-    cartridge_->observe_ppu_a12(high);
+    // Pin cadence is independent of cached pixel reads. Only opt-in boards
+    // observe it; no mutable PPU fields or existing IRQ callbacks change.
+    if (a12)
+        cartridge_->observe_ppu_a12((addr & 0x1000U) != 0U);
+    if (full_address)
+        cartridge_->observe_ppu_address(addr);
 }
 
 // === Register I/O (pure loopy model) ===
@@ -395,7 +422,7 @@ Byte Ppu::read_register(uint8_t reg) {
         }
         reg_v_ = (reg_v_ + ((ppuctrl_ & 0x04) != 0 ? 32 : 1)) & 0x7FFF;
         io_latch_ = result;
-        drive_mapper_a12();
+        drive_mapper_pins();
         return result;
     }
     default:
@@ -460,7 +487,7 @@ void Ppu::write_register(uint8_t reg, Byte value) {
     default:
         break;
     }
-    drive_mapper_a12();
+    drive_mapper_pins();
 }
 
 bool Ppu::consume_nmi() {

@@ -78,6 +78,7 @@ test_mappers = executable('test-mappers',
     'unit/test_namco175340.cpp',
     'unit/test_mmc3_variants.cpp',
     'unit/test_rambo1.cpp',
+    'unit/test_bandai_fcg.cpp',
     dependencies : [mapperbus_core_dep, catch2_dep],
 )
 test('mappers', test_mappers)
