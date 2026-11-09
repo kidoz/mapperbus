@@ -16,6 +16,7 @@ contains the following mapper IDs:
 | 3 | CNROM | — |
 | 4 | MMC3 | — |
 | 118, 119 | MMC3 variants: TxSROM CIRAM routing, TQROM mixed CHR ROM/RAM | — |
+| 64, 158 | Tengen RAMBO-1: CPU/M2 and filtered A12 IRQs, extended CHR banking, CIRAM variant | — |
 | 5 | MMC5 | Pulse and PCM |
 | 7 | AxROM | — |
 | 9 | MMC2 | — |
@@ -42,7 +43,7 @@ contains the following mapper IDs:
 | 13, 34, 66, 70, 71, 78, 79, 87, 89, 93, 94, 97, 113, 140, 152, 180, 184 | Discrete cartridge boards | — |
 | 38, 46, 58, 61, 62, 81, 107, 145, 148, 149, 193, 200, 201, 203, 212, 213, 225, 226, 229, 231, 232, 240 | Additional latch boards and multicarts | — |
 
-The registry contains 85 cartridge IDs. See [mapper implementation coverage](mapper-implementation.md)
+The registry contains 87 cartridge IDs. See [mapper implementation coverage](mapper-implementation.md)
 for individual specifications, tested behavior, board limitations, and the full
 inventory of documented IDs still awaiting implementation. The expanded set has
 synthetic banking, IRQ, CPU/PPU integration and save-state coverage; this does
@@ -56,6 +57,9 @@ Namco 175 boards requiring 2 KiB RAM need explicit NES 2.0 size metadata;
 legacy battery images use an 8 KiB fallback. See the mapper ledger for limits.
 MMC3 variants 118/119 inherit the current rendered-scanline IRQ approximation;
 filtered A12-edge timing and every commercial title remain unverified.
+RAMBO-1 uses separate A12/M2 observations and passes all six published hardware
+test ROMs. An informational both-pattern-tables-at-`$1000` probe still differs
+from the measured console; see the ledger for the precise limit.
 
 Source: [Mapper registry](../../src/core/mappers/mapper_registry.cpp) and
 [header parser](../../src/core/cartridge/ines_header.cpp).

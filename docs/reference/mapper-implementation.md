@@ -4,9 +4,9 @@ This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
 complete.** Updated 2026-11-10 against the working-tree registry.
 
-There are **85 registered cartridge IDs**: the original 14, 53 added in the first
+There are **87 registered cartridge IDs**: the original 14, 53 added in the first
 batch, and Irem 32/65/77, Sunsoft 67/68, Taito 33/48/80/207/82/552, Jaleco 18/72/92/101,
-Namco 210, and MMC3 variants 118/119 in the follow-ups below.
+Namco 210, MMC3 variants 118/119, and RAMBO-1 64/158 in the follow-ups below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
 unusual ROM geometry.
@@ -17,6 +17,7 @@ unusual ROM geometry.
 |---|---|---|
 | MMC4 | 10 | 16 KiB PRG, both eight-byte CHR trigger ranges, old-bank trigger fetch, mirroring, RAM, persistence. |
 | MMC3 variants (follow-up) | 118, 119 | TxSROM CHR-driven CIRAM, TQROM mixed ROM/RAM with 128 KiB ROM extension, common PRG banking and IRQ counter, bounded state and persistence. |
+| Tengen RAMBO-1 (follow-up) | 64, 158 | Three five-bit PRG banks, K/C CHR modes with R8/R9, mapper-158 CIRAM, M2 CPU timer and filtered A12 counter, cold start, reset retention and snapshots. |
 | Irem G-101 / H3001 (follow-up) | 32, 65 | Two switchable 8 KiB PRG banks, layout swap, eight 1 KiB CHR banks, Major League submapper, mirroring, CPU-cycle down counter, RAM and snapshots. |
 | Irem LROG017 (follow-up) | 77 | 32 KiB PRG and 2 KiB CHR ROM banks, bus conflicts, 6 KiB pattern RAM plus 2 KiB external nametable RAM, real CIRAM routing and unmapped upper nametables. |
 | Sunsoft-3 / Sunsoft-4 (follow-up) | 67, 68 | 16 KiB PRG and 2 KiB CHR banks, four mirroring modes, Sunsoft-3 live IRQ counter and acknowledgement aliases, Sunsoft-4 ROM nametables and WRAM gate, DCS options with licensing and paired snapshot identity. |
@@ -68,6 +69,7 @@ See [mapper tests](../../tests/unit/test_mapper_boards.cpp),
 [LROG017 tests](../../tests/unit/test_irem_lrog017.cpp),
 [Namco 175/340 tests](../../tests/unit/test_namco175340.cpp),
 [MMC3 variant tests](../../tests/unit/test_mmc3_variants.cpp),
+[RAMBO-1 tests](../../tests/unit/test_rambo1.cpp),
 [Sunsoft tests](../../tests/unit/test_sunsoft_boards.cpp),
 [Taito tests](../../tests/unit/test_taito.cpp),
 [X1-005 tests](../../tests/unit/test_taito_x1005.cpp),
@@ -90,7 +92,7 @@ See [mapper tests](../../tests/unit/test_mapper_boards.cpp),
 - Action 53 implements its standard no-PRG-RAM configuration; the optional
   implementation-specific WRAM extension is not supplied.
 - Larger remaining families include Bandai/EEPROM, other Jaleco and Taito boards,
-  RAMBO-1, MMC3 derivatives and outer-bank variants,
+  further MMC3 derivatives and outer-bank variants,
   J.Y./Sachen/TXC ASICs, flash-saving UNROM 512/GTROM, and Rainbow.
 - Jaleco's optional external ADPCM speech chips and sample-media loading remain
   unimplemented, including on some mapper-18/72/92 boards.
@@ -735,6 +737,69 @@ retained after CPU RAM access was disabled. Formatting, whitespace and scoped
 clang-tidy checks passed. Agent documentation validation reported zero errors
 and the existing 52 warnings.
 
+## RAMBO-1 follow-up: measured IRQ behavior and opt-in pin observations
+
+Mappers 64/158 share `Rambo1`. Banking follows
+[RAMBO-1 revision 23936](https://www.nesdev.org/w/index.php?oldid=23936) and
+[mapper 158 revision 21299](https://www.nesdev.org/w/index.php?oldid=21299), with
+the corrections measured by researcher teaguecl in November 2026. The pinned
+[emulator guide](https://github.com/teaguecl/nes_tengen_rambo1_research/blob/544ca1b22efe18ce233f521b5a4a9c1def12c697/docs/emulator_guide.md)
+and [individual findings](https://github.com/teaguecl/nes_tengen_rambo1_research/blob/544ca1b22efe18ce233f521b5a4a9c1def12c697/docs/findings.md)
+take precedence over the older wiki's IRQ formulas and eight-bit PRG claim.
+Those measurements cover one RAMBO-1 chip in one NTSC console; revision and
+PAL electrical differences remain unverified. Research documentation is CC BY
+4.0; the implementation and in-repository synthetic tests are original.
+
+Three five-bit PRG registers map 8 KiB windows; P swaps R6/RF, and `$E000`
+selects physical bank `$1F`. K enables individual R0/R8/R1/R9 CHR windows;
+otherwise R0/R1 align to 2 KiB. C swaps the CHR halves. R8/R9 retain writes
+with K clear. Mapper 158 derives CIRAM A10 from raw CHR A17, including K and
+R8/R9, before ROM wrapping; it ignores `$A000` mirroring writes. Mapper 64
+uses ordinary switchable H/V wiring. Neither board provides RAM or audio.
+
+The CPU timer first expires `4(L+1)+2` M2 cycles after `$C001`, then every
+`4(L+1)` cycles. Switching from A12 mode with an incomplete filter advances
+the first expiry by four cycles. A12 needs 16 sampled low M2 falls, supports
+the full-filter swallowed edge and delayed enable check, and produces only
+one latch-zero expiry per explicit reload. Cold start uses PRG `$1F`, K set,
+CHR zero, vertical wiring, latch `$FF` and asserted IRQ. Console reset retains
+the mapper. The uncertain power-on timer phase uses a deterministic 1018-cycle
+first expiry; analog retention across short power interruptions is not modeled.
+
+`clock_cpu_falling_edge()` runs after CPU writes and the cycle's PPU dots,
+including DMA. Existing `clock_cpu()` users keep their timing. An opt-in
+`observe_ppu_a12()` supplies fetch-address cadence, 8x16 tile-bank selection,
+idle vblank retention and rendering-disabled PPUADDR/PPUDATA changes. It is
+independent of cached pixel fetches and changes no Loopy increments or existing
+dot-260 IRQ users. This remains a per-pixel PPU model, not a complete electrical
+fetch pipeline. A12/filter/timer state lives in the mapper payload; machine
+version 20 and existing PPU/bus/mapper payloads remain unchanged.
+
+Factories require submapper zero, 32–256 KiB bank-aligned PRG, nonempty
+bank-aligned CHR up to 256 KiB, and no declared RAM, battery or four-screen
+VRAM. Legacy implicit WRAM is ignored. Invalid state flags, banks, filter
+values and counter phases fail loading, with full-machine rollback.
+
+Independent validation used the research project's six MIT-licensed
+[hardware test ROMs](https://github.com/teaguecl/nes_tengen_rambo1_research/blob/544ca1b22efe18ce233f521b5a4a9c1def12c697/rom/README.txt),
+kept outside the repository. All six reported status `$00`: 62 tests passed,
+including G4 CPU-cycle enable/disable races, G5 manual A12 pulses, and G6
+rendered raster offsets and repeat counts. G6's informational both-tables-at-
+`$1000` probe reports `00 00 00`, whereas the measured console reports
+`01 00 00`; this remaining waveform difference is not hidden by the suite's
+PASS result. Commercial-title and physical-cartridge certification remain open.
+
+RAMBO-1 validation: `just build` passed; all 42 regression executables passed,
+including 27,437 assertions in 200 mapper cases. Seven targeted ASan/UBSan
+suites passed with the documented macOS leak-detection exception. Original
+synthetic tests cover all 256 CPU latch values, M2 enable races, filter boundaries,
+K/C layouts, reset retention, both IRQ modes through CPU execution, PPU pin and
+CIRAM routing, OAM DMA, malformed fields and snapshot rollback. Both IDs join
+the shared 73-board boot/replay matrix. Eight two-frame CLI profiles covered
+both IDs, both IRQ modes and legacy/NES 2.0 headers, without fabricated battery
+files. Scoped clang-tidy, formatting and whitespace checks passed. Isolated
+agent-documentation validation reported zero errors and 52 existing warnings.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -814,7 +879,7 @@ fallback. The registry rejects unsupported IDs.
 | 061 | Board-specific specification | New implementation: DiscreteMapper | [r22920](https://www.nesdev.org/w/index.php?oldid=22920) |
 | 062 | Board-specific specification | New implementation: DiscreteMapper | [r4357](https://www.nesdev.org/w/index.php?oldid=4357) |
 | 063 | Board-specific specification | Not registered | [r19134](https://www.nesdev.org/w/index.php?oldid=19134) |
-| 064 | Tengen RAMBO-1 | Not registered | [r23936](https://www.nesdev.org/w/index.php?oldid=23936) |
+| 064 | Tengen RAMBO-1 | New implementation: Rambo1 | [r23936](https://www.nesdev.org/w/index.php?oldid=23936) |
 | 065 | Irem H3001 | New implementation: Irem | [r24119](https://www.nesdev.org/w/index.php?oldid=24119) |
 | 066 | GxROM / MxROM | New implementation: DiscreteMapper | [r24003](https://www.nesdev.org/w/index.php?oldid=24003) |
 | 067 | Sunsoft 3 | New implementation: Sunsoft34 | [r23676](https://www.nesdev.org/w/index.php?oldid=23676) |
@@ -908,7 +973,7 @@ fallback. The registry rejects unsupported IDs.
 | 155 | MMC1A | Not registered | [r24550](https://www.nesdev.org/w/index.php?oldid=24550) |
 | 156 | Board-specific specification | Not registered | [r22838](https://www.nesdev.org/w/index.php?oldid=22838) |
 | 157 | Bandai Datach | Not registered | [r21310](https://www.nesdev.org/w/index.php?oldid=21310) |
-| 158 | RAMBO-1 nametable variant | Not registered | [r21299](https://www.nesdev.org/w/index.php?oldid=21299) |
+| 158 | RAMBO-1 nametable variant | New implementation: Rambo1 | [r21299](https://www.nesdev.org/w/index.php?oldid=21299) |
 | 159 | Bandai X24C01 EEPROM | Not registered | [r5171](https://www.nesdev.org/w/index.php?oldid=5171) |
 | 160 | Board-specific specification | Not registered | [r5173](https://www.nesdev.org/w/index.php?oldid=5173) |
 | 161 | Board-specific specification | Not registered | [r5175](https://www.nesdev.org/w/index.php?oldid=5175) |
