@@ -302,6 +302,8 @@ void MemoryBus::end_cpu_cycle() {
         write_controller_strobe(static_cast<Byte>(controller_strobe_request_));
     const auto& timing = timing_for_region(region_);
     clock_ppu(timing.cpu_clock_divider - timing.cpu_access_master_clock);
+    if (cartridge_ != nullptr)
+        cartridge_->clock_cpu_falling_edge();
 }
 
 void MemoryBus::clock_ppu(unsigned master_clocks) {

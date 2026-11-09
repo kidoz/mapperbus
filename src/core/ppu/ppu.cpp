@@ -231,6 +231,7 @@ void Ppu::step(uint32_t cpu_cycles) {
 }
 
 void Ppu::step_dots(uint32_t ppu_dots) {
+    const bool observe_a12 = cartridge_ != nullptr && cartridge_->observes_ppu_a12();
     for (uint32_t i = 0; i < ppu_dots; ++i) {
         if (skip_dot_ && cycle_ == 339) {
             // Replace the final pre-render dot with the first visible-line idle dot.
@@ -262,6 +263,9 @@ void Ppu::step_dots(uint32_t ppu_dots) {
                 evaluate_sprites(0);
             }
         }
+
+        if (observe_a12)
+            drive_mapper_a12();
 
         if (rendering) {
             if (visible_line || pre_render) {
@@ -321,6 +325,37 @@ void Ppu::step_dots(uint32_t ppu_dots) {
     }
 }
 
+void Ppu::drive_mapper_a12(bool cpu_access) {
+    if (cartridge_ == nullptr || !cartridge_->observes_ppu_a12())
+        return;
+    const bool fetch_line = scanline_ < 240U || scanline_ == timing_->pre_render_scanline;
+    if (!rendering_enabled() || (cpu_access && !fetch_line)) {
+        cartridge_->observe_ppu_a12((reg_v_ & 0x1000U) != 0U);
+        return;
+    }
+    if (!fetch_line)
+        return; // Hold the last fetch's address through vblank.
+    if (cycle_ == 0U || cycle_ >= 336U)
+        return; // Retain the final background prefetch's A12 level.
+
+    bool high = false;
+    if ((cycle_ & 7U) >= 4U) {
+        if (cycle_ <= 256U || cycle_ >= 321U) {
+            high = (ppuctrl_ & 0x10U) != 0U;
+        } else if ((ppuctrl_ & 0x20U) == 0U) {
+            high = (ppuctrl_ & 8U) != 0U;
+        } else {
+            const auto slot = (cycle_ - 257U) / 8U;
+            // Unoccupied secondary-OAM slots fetch tile $FF in 8x16 mode.
+            high = std::cmp_greater_equal(slot, visible_sprite_count_) ||
+                   (visible_sprites_[slot].tile & 1U) != 0U;
+        }
+    }
+    // Address-pin cadence is separate from the renderer's cached tile reads.
+    // It changes no pixel fetch, Loopy increment, or existing scanline callback.
+    cartridge_->observe_ppu_a12(high);
+}
+
 // === Register I/O (pure loopy model) ===
 
 Byte Ppu::read_register(uint8_t reg) {
@@ -358,6 +393,7 @@ Byte Ppu::read_register(uint8_t reg) {
         }
         reg_v_ = (reg_v_ + ((ppuctrl_ & 0x04) != 0 ? 32 : 1)) & 0x7FFF;
         io_latch_ = result;
+        drive_mapper_a12(true);
         return result;
     }
     default:
@@ -422,6 +458,7 @@ void Ppu::write_register(uint8_t reg, Byte value) {
     default:
         break;
     }
+    drive_mapper_a12((reg & 7U) == 7U || ((reg & 7U) == 6U && !write_latch_));
 }
 
 bool Ppu::consume_nmi() {

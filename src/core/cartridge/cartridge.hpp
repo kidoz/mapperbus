@@ -101,6 +101,15 @@ class Cartridge {
     void clock_cpu() {
         mapper_->clock_cpu();
     }
+    [[nodiscard]] bool observes_ppu_a12() const {
+        return mapper_->observes_ppu_a12();
+    }
+    void observe_ppu_a12(bool high) {
+        mapper_->observe_ppu_a12(high);
+    }
+    void clock_cpu_falling_edge() {
+        mapper_->clock_cpu_falling_edge();
+    }
     void on_ppu_frame_start() {
         mapper_->on_ppu_frame_start();
     }

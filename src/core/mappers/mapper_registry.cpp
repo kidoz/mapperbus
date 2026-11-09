@@ -18,6 +18,7 @@
 #include "core/mappers/namco163.hpp"
 #include "core/mappers/namco175340.hpp"
 #include "core/mappers/nrom.hpp"
+#include "core/mappers/rambo1.hpp"
 #include "core/mappers/sunsoft34.hpp"
 #include "core/mappers/sunsoft5b.hpp"
 #include "core/mappers/taito_tc.hpp"
@@ -78,6 +79,19 @@ namespace {
             if (header.is_nes2 && header.has_battery != (header.prg_nvram_size != 0U))
                 return std::unexpected("TxSROM battery flag and NVRAM declaration disagree");
         }
+    }
+    if (header.mapper_number == 64U || header.mapper_number == 158U) {
+        if (header.is_nes2 && header.submapper != 0U)
+            return std::unexpected("Unsupported RAMBO-1 submapper");
+        if (prg_size < 0x8000U || prg_size > 0x40000U || prg_size % 0x2000U != 0U ||
+            chr_size == 0U || chr_size > 0x40000U || chr_size % 0x400U != 0U)
+            return std::unexpected("Unsupported RAMBO-1 ROM geometry");
+        if ((header.is_nes2 && header.prg_ram_size != 0U) || header.prg_nvram_size != 0U ||
+            header.has_battery || header.chr_ram_size != 0U || header.chr_nvram_size != 0U)
+            return std::unexpected("RAMBO-1 does not provide RAM or NVRAM");
+        if (header.mirror_mode != MirrorMode::Horizontal &&
+            header.mirror_mode != MirrorMode::Vertical)
+            return std::unexpected("RAMBO-1 does not provide four-screen VRAM");
     }
     if (header.mapper_number == 3 && chr_size > 0 && chr_size < 8 * 1024) {
         return std::unexpected("CNROM CHR ROM is smaller than one bank");
@@ -340,6 +354,8 @@ void register_builtin_mappers() {
     registry.register_mapper(4, make_factory<Mmc3>());
     registry.register_mapper(118, make_factory<Mmc3>());
     registry.register_mapper(119, make_factory<Mmc3>());
+    registry.register_mapper(64, make_factory<Rambo1>());
+    registry.register_mapper(158, make_factory<Rambo1>());
     registry.register_mapper(7, make_factory<Axrom>());
     registry.register_mapper(5, make_factory<Mmc5>());
     registry.register_mapper(9, make_factory<Mmc2>());

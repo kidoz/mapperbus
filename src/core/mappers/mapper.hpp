@@ -85,6 +85,13 @@ class Mapper {
     virtual void clock_irq_counter() {}
     /// One M2/CPU cycle, including stalled and DMA cycles. Independent of audio.
     virtual void clock_cpu() {}
+    /// Optional PPU address-pin observation, separate from cached pixel reads.
+    virtual bool observes_ppu_a12() const {
+        return false;
+    }
+    virtual void observe_ppu_a12(bool /*high*/) {}
+    /// End of M2, after the current CPU write and all PPU dots in that cycle.
+    virtual void clock_cpu_falling_edge() {}
 
     // Called by the PPU at the start of each rendered frame (pre-render
     // scanline) while rendering is enabled. MMC5 uses it to reset its

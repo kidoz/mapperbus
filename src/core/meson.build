@@ -31,6 +31,7 @@ core_sources = files(
     'mappers/uxrom.cpp',
     'mappers/cnrom.cpp',
     'mappers/mmc3.cpp',
+    'mappers/rambo1.cpp',
     'mappers/axrom.cpp',
     'mappers/color_dreams.cpp',
     'mappers/vrc6.cpp',
