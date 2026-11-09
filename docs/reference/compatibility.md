@@ -58,8 +58,8 @@ legacy battery images use an 8 KiB fallback. See the mapper ledger for limits.
 MMC3 variants 118/119 inherit the current rendered-scanline IRQ approximation;
 filtered A12-edge timing and every commercial title remain unverified.
 RAMBO-1 uses separate A12/M2 observations and passes all six published hardware
-test ROMs. An informational both-pattern-tables-at-`$1000` probe still differs
-from the measured console; see the ledger for the precise limit.
+test ROMs. The both-pattern-tables-at-`$1000` probe matches the measured single
+IRQ and has an exact-count regression; see the ledger for coverage and limits.
 
 Source: [Mapper registry](../../src/core/mappers/mapper_registry.cpp) and
 [header parser](../../src/core/cartridge/ines_header.cpp).

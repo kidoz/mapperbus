@@ -769,7 +769,7 @@ first expiry; analog retention across short power interruptions is not modeled.
 `clock_cpu_falling_edge()` runs after CPU writes and the cycle's PPU dots,
 including DMA. Existing `clock_cpu()` users keep their timing. An opt-in
 `observe_ppu_a12()` supplies fetch-address cadence, 8x16 tile-bank selection,
-idle vblank retention and rendering-disabled PPUADDR/PPUDATA changes. It is
+idle VRAM-address pins and PPUADDR/PPUDATA changes. It is
 independent of cached pixel fetches and changes no Loopy increments or existing
 dot-260 IRQ users. This remains a per-pixel PPU model, not a complete electrical
 fetch pipeline. A12/filter/timer state lives in the mapper payload; machine
@@ -785,11 +785,10 @@ Independent validation used the research project's six MIT-licensed
 kept outside the repository. All six reported status `$00`: 62 tests passed,
 including G4 CPU-cycle enable/disable races, G5 manual A12 pulses, and G6
 rendered raster offsets and repeat counts. G6's informational both-tables-at-
-`$1000` probe reports `00 00 00`, whereas the measured console reports
-`01 00 00`; this remaining waveform difference is not hidden by the suite's
-PASS result. Commercial-title and physical-cartridge certification remain open.
+`$1000` probe now reports `01 00 00`, matching the measured console's single
+IRQ. Commercial-title and physical-cartridge certification remain open.
 
-RAMBO-1 validation: `just build` passed; all 42 regression executables passed,
+Initial RAMBO-1 validation: `just build` passed; all 42 regression executables passed,
 including 27,437 assertions in 200 mapper cases. Seven targeted ASan/UBSan
 suites passed with the documented macOS leak-detection exception. Original
 synthetic tests cover all 256 CPU latch values, M2 enable races, filter boundaries,
@@ -799,6 +798,37 @@ the shared 73-board boot/replay matrix. Eight two-frame CLI profiles covered
 both IDs, both IRQ modes and legacy/NES 2.0 headers, without fabricated battery
 files. Scoped clang-tidy, formatting and whitespace checks passed. Isolated
 agent-documentation validation reported zero errors and 52 existing warnings.
+
+### A12 idle-address correction (2026-11-10)
+
+The initial implementation held the final pattern-table A12 level through
+vblank, producing zero IRQs in G6's informational upper-table probe. The PPU
+instead presents `v` while its rendering fetch circuit idles; see
+[PPU rendering revision 23300](https://www.nesdev.org/w/index.php?oldid=23300#PPU_address_bus_contents).
+A CPU/PPU trace at G6's reload showed `v=$0800` with the incorrect A12 high.
+Using `v` supplies the low interval needed by the 16-M2 filter. The first
+post-reload rise is swallowed, then the next frame's qualified rise produces
+the single latch-zero expiry. Automatic reloads do not repeat that IRQ.
+
+The opt-in pin model now drives `v` in post-render/vblank as well as when
+rendering is disabled, and drives A12 low during the final dummy nametable
+fetches and idle dot. Pattern fetch cadence, pixels, scroll increments and
+other mappers' dot-260 callbacks retain their behavior. The obsolete CPU-access
+exception was removed. No serialized fields changed; machine version remains 20.
+
+The original eight-frame count regression failed with `0 != 1` before the fix
+and now requires exactly one IRQ for both mapper 64 and 158. Additional checks
+cover the dummy-fetch interval and both polarities of idle `v`. All six external
+hardware ROMs still report status `$00`, including all 62 checks and the exact
+G6 `INFO 01 00 00` observation.
+
+Correction validation: `just build` and all 42 regression executables passed,
+with 27,455 assertions in 202 mapper cases. All seven targeted ASan/UBSan
+executables passed across the combined run and isolated mapper retry. The first
+concurrent sanitizer run reached the mapper's 30-second timeout; the isolated
+retry passed in 17.87 seconds. Eight CLI profiles, scoped clang-tidy, formatting
+and whitespace checks passed. The agent-documentation validator reported zero
+errors and the existing 52 warnings.
 
 ## Every documented registry slot
 
