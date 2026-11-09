@@ -5,6 +5,7 @@
 #include "core/mappers/color_dreams.hpp"
 #include "core/mappers/discrete.hpp"
 #include "core/mappers/irem.hpp"
+#include "core/mappers/jaleco_discrete.hpp"
 #include "core/mappers/jaleco_ss88006.hpp"
 #include "core/mappers/konami_vrc.hpp"
 #include "core/mappers/mmc1.hpp"
@@ -157,6 +158,24 @@ namespace {
             (chr_size != 0U && header.chr_ram_size != 0U))
             return std::unexpected("Unsupported X1-005 CHR RAM geometry");
     }
+    if (header.mapper_number == 72 || header.mapper_number == 92 || header.mapper_number == 101) {
+        const bool chr_only = header.mapper_number == 101;
+        if (header.is_nes2 && header.submapper != 0)
+            return std::unexpected("Unsupported Jaleco discrete submapper");
+        const std::size_t max_prg =
+            chr_only ? 0x8000U : (header.mapper_number == 72 ? 0x20000U : 0x40000U);
+        const std::size_t min_prg = chr_only ? 0x4000U : 0x8000U;
+        const std::size_t max_chr = chr_only ? 0x200000U : 0x20000U;
+        if (prg_size < min_prg || prg_size > max_prg || prg_size % 0x4000U != 0U ||
+            chr_size == 0U || chr_size > max_chr || chr_size % 0x2000U != 0U)
+            return std::unexpected("Unsupported Jaleco discrete ROM geometry");
+        if ((header.is_nes2 && header.prg_ram_size != 0U) || header.has_battery ||
+            header.prg_nvram_size != 0U || header.chr_ram_size != 0U || header.chr_nvram_size != 0U)
+            return std::unexpected("Jaleco discrete boards do not provide RAM or NVRAM");
+        if (header.mirror_mode != MirrorMode::Horizontal &&
+            header.mirror_mode != MirrorMode::Vertical)
+            return std::unexpected("Jaleco discrete boards require fixed H/V mirroring");
+    }
     if (header.mapper_number == 18) {
         if (header.is_nes2 && header.submapper != 0)
             return std::unexpected("Unsupported SS88006 submapper");
@@ -266,6 +285,9 @@ void register_builtin_mappers() {
     registry.register_mapper(82, make_factory<TaitoX1017>());
     registry.register_mapper(552, make_factory<TaitoX1017>());
     registry.register_mapper(18, make_factory<JalecoSs88006>());
+    registry.register_mapper(72, make_factory<JalecoDiscrete>());
+    registry.register_mapper(92, make_factory<JalecoDiscrete>());
+    registry.register_mapper(101, make_factory<JalecoDiscrete>());
     for (const uint16_t id : {21, 22, 23, 25, 73, 75})
         registry.register_mapper(id, make_factory<KonamiVrc>());
     for (const uint16_t id :

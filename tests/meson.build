@@ -73,6 +73,7 @@ test_mappers = executable('test-mappers',
     'unit/test_taito_x1005.cpp',
     'unit/test_taito_x1017.cpp',
     'unit/test_jaleco_ss88006.cpp',
+    'unit/test_jaleco_discrete.cpp',
     dependencies : [mapperbus_core_dep, catch2_dep],
 )
 test('mappers', test_mappers)

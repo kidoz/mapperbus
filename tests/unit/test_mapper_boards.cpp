@@ -14,11 +14,21 @@ using namespace mapperbus::core;
 
 namespace {
 
-constexpr std::array<uint16_t, 64> kNewBoards = {
-    10,  13,  34,  66,  70,  71,  76,  78,  79,  87,  88,  89,  93,  94,  95,  97,
-    113, 140, 152, 154, 180, 184, 206, 38,  46,  58,  61,  62,  81,  107, 145, 148,
-    149, 193, 200, 201, 203, 212, 213, 225, 226, 229, 231, 232, 240, 21,  22,  23,
-    25,  73,  75,  28,  31,  32,  65,  67,  68,  33,  48,  80,  207, 82,  552, 18};
+constexpr std::array<uint16_t, 67> kNewBoards = {
+    10,  13,  34,  66,  70,  71,  76,  78,  79,  87,  88,  89,  93,  94,  95,  97,  113,
+    140, 152, 154, 180, 184, 206, 38,  46,  58,  61,  62,  81,  107, 145, 148, 149, 193,
+    200, 201, 203, 212, 213, 225, 226, 229, 231, 232, 240, 21,  22,  23,  25,  73,  75,
+    28,  31,  32,  65,  67,  68,  33,  48,  80,  207, 82,  552, 18,  72,  92,  101};
+
+std::size_t board_prg_size(uint16_t id) {
+    if (id == 101U)
+        return 0x8000U;
+    return id == 72U || id == 82U ? 0x20000U : 0x40000U;
+}
+
+std::size_t board_chr_size(uint16_t id) {
+    return id == 67U || id == 72U || id == 92U ? 0x20000U : 0x40000U;
+}
 
 std::vector<Byte> bank_rom(std::size_t size, std::size_t bank_size) {
     std::vector<Byte> rom(size);
@@ -44,10 +54,10 @@ INesHeader board_header(uint16_t id, uint8_t submapper = 0) {
 
 std::unique_ptr<Mapper> board(uint16_t id, uint8_t submapper = 0, bool ram = false) {
     register_builtin_mappers();
-    auto result = MapperRegistry::instance().create(
-        board_header(id, submapper),
-        bank_rom(id == 82 ? 0x20000 : 0x40000, 0x4000),
-        ram ? std::vector<Byte>{} : bank_rom(id == 67 ? 0x20000 : 0x40000, 0x1000));
+    auto result = MapperRegistry::instance().create(board_header(id, submapper),
+                                                    bank_rom(board_prg_size(id), 0x4000),
+                                                    ram ? std::vector<Byte>{}
+                                                        : bank_rom(board_chr_size(id), 0x1000));
     REQUIRE(result);
     return std::move(*result);
 }
@@ -59,8 +69,8 @@ void set_namco_bank(Mapper& mapper, Byte reg, Byte value) {
 
 Cartridge cartridge(uint16_t id) {
     register_builtin_mappers();
-    const std::size_t prg_size = id == 82 ? 0x20000U : 0x40000U;
-    const std::size_t chr_size = id == 67 ? 0x20000U : 0x40000U;
+    const auto prg_size = board_prg_size(id);
+    const auto chr_size = board_chr_size(id);
     std::vector<Byte> image(16 + prg_size + chr_size, 0xEA);
     std::fill_n(image.begin(), 16, 0);
     image[0] = 'N';
