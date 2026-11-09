@@ -4,9 +4,10 @@ This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
 complete.** Updated 2026-11-10 against the working-tree registry.
 
-There are **87 registered cartridge IDs**: the original 14, 53 added in the first
+There are **90 registered cartridge IDs**: the original 14, 53 added in the first
 batch, and Irem 32/65/77, Sunsoft 67/68, Taito 33/48/80/207/82/552, Jaleco 18/72/92/101,
-Namco 210, MMC3 variants 118/119, and RAMBO-1 64/158 in the follow-ups below.
+Namco 210, MMC3 variants 118/119, RAMBO-1 64/158, and Bandai 16/153/159 in the
+follow-ups below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
 unusual ROM geometry.
@@ -16,6 +17,7 @@ unusual ROM geometry.
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
 | MMC4 | 10 | 16 KiB PRG, both eight-byte CHR trigger ranges, old-bank trigger fetch, mirroring, RAM, persistence. |
+| Bandai FCG / LZ93D50 (follow-up) | 16, 153, 159 | Direct/latched M2 IRQ variants, eight 1 KiB CHR banks, four mirroring modes, original Xicor serial EEPROM protocols, gated WRAM and PPU-address-driven outer PRG banking, persistence and snapshots. |
 | MMC3 variants (follow-up) | 118, 119 | TxSROM CHR-driven CIRAM, TQROM mixed ROM/RAM with 128 KiB ROM extension, common PRG banking and IRQ counter, bounded state and persistence. |
 | Tengen RAMBO-1 (follow-up) | 64, 158 | Three five-bit PRG banks, K/C CHR modes with R8/R9, mapper-158 CIRAM, M2 CPU timer and filtered A12 counter, cold start, reset retention and snapshots. |
 | Irem G-101 / H3001 (follow-up) | 32, 65 | Two switchable 8 KiB PRG banks, layout swap, eight 1 KiB CHR banks, Major League submapper, mirroring, CPU-cycle down counter, RAM and snapshots. |
@@ -70,6 +72,7 @@ See [mapper tests](../../tests/unit/test_mapper_boards.cpp),
 [Namco 175/340 tests](../../tests/unit/test_namco175340.cpp),
 [MMC3 variant tests](../../tests/unit/test_mmc3_variants.cpp),
 [RAMBO-1 tests](../../tests/unit/test_rambo1.cpp),
+[Bandai tests](../../tests/unit/test_bandai_fcg.cpp),
 [Sunsoft tests](../../tests/unit/test_sunsoft_boards.cpp),
 [Taito tests](../../tests/unit/test_taito.cpp),
 [X1-005 tests](../../tests/unit/test_taito_x1005.cpp),
@@ -91,7 +94,7 @@ See [mapper tests](../../tests/unit/test_mapper_boards.cpp),
   certified; normal `$7000–$7FFF` decoding is implemented.
 - Action 53 implements its standard no-PRG-RAM configuration; the optional
   implementation-specific WRAM extension is not supplied.
-- Larger remaining families include Bandai/EEPROM, other Jaleco and Taito boards,
+- Larger remaining families include Datach and other Bandai boards, other Jaleco and Taito boards,
   further MMC3 derivatives and outer-bank variants,
   J.Y./Sachen/TXC ASICs, flash-saving UNROM 512/GTROM, and Rainbow.
 - Jaleco's optional external ADPCM speech chips and sample-media loading remain
@@ -830,6 +833,92 @@ retry passed in 17.87 seconds. Eight CLI profiles, scoped clang-tidy, formatting
 and whitespace checks passed. The agent-documentation validator reported zero
 errors and the existing 52 warnings.
 
+## Bandai follow-up: FCG variants, Xicor serial saves and JUMP2 banking
+
+Mappers 16, 153 and 159 share `BandaiFcg`. Register wiring follows
+[mapper 16 revision 3876](https://www.nesdev.org/w/index.php?oldid=3876),
+[mapper 153 revision 5112](https://www.nesdev.org/w/index.php?oldid=5112), and
+[mapper 159 revision 5171](https://www.nesdev.org/w/index.php?oldid=5171).
+Mapper 16 submapper 4 decodes `$6000–$7FFF` and writes the live IRQ counter;
+submapper 5 decodes `$8000–$FFFF` and writes a separate latch. Every high-window
+IRQ-control write copies that latch, even when disabling. An enable at zero
+asserts IRQ immediately. The enabled 16-bit counter decrements every M2,
+including DMA, wraps, and retains pending IRQ until a control write acknowledges
+it. Submapper zero and legacy mapper 16 accept both register windows with their
+respective semantics. Deprecated submappers 1/3 explicitly select 159/153;
+Datach submapper 2 is rejected rather than dropping its peripherals.
+
+CHR-ROM boards provide eight full-width 1 KiB registers, a four-bit 16 KiB PRG
+register and physical fixed bank 15, plus vertical, horizontal and either
+single-screen CIRAM arrangement. Mapper 153 instead provides unbanked 8 KiB CHR
+RAM and 8 KiB battery WRAM gated by `$800D.D5`. Its first four CHR registers
+supply PRG A18; current PPU A10/A11 selects which register drives both PRG
+windows. The opt-in `observe_ppu_address()` seam supplies nametable, attribute,
+pattern, sprite and idle address pins independently of cached pixel reads.
+PPUADDR/PPUDATA changes also update it. Existing A12 observers retain their
+cadence; no Loopy prefetch increments, shifters, serialized PPU fields or machine
+version changes were introduced. Machine version remains 20. The pin model
+retains the per-pixel renderer's documented timing approximations.
+
+`SerialEeprom` models the original Xicor
+[X24C01, document 9900-2002.1](https://datasheet.octopart.com/X24C01P-Intersil-datasheet-181540502.pdf)
+and [X24C02, document 3838-1.2](https://docs.rs-online.com/d895/0900766b80029b1c.pdf).
+Both use MSB-first bytes and four-byte page buffers. X24C01's initial byte is a
+seven-bit word address plus R/W; X24C02 uses the wired `$50` slave address and a
+separate word-address byte. START/STOP, slave ACK, master ACK/NACK, random/current
+and sequential reads, local page wrapping and whole-device read wrapping are
+covered. Register bit 7 releases the host SDA driver for reads, including ACK
+polling when bit 6 is low; this matches the primary
+[Kazzo dumper discussion](https://forums.nesdev.org/viewtopic.php?start=705&t=7912).
+Only CPU D4 is driven; other bits retain open bus. No game-specific bit reversal
+or mapper reassignment heuristic is used.
+
+STOP begins a deterministic 9000-M2 programming interval. The device NACKs
+while busy and commits the page at completion. This approximates the original
+parts' typical 5 ms delay within their 10 ms maximum across supported regions;
+it is not an analog EEPROM timing model. Repeated START abandons an uncommitted
+page, and incomplete data bytes do not program. A file flush during programming
+contains the previously committed bytes; snapshots retain pending page data,
+remaining programming cycles and partial serial transfers. Soft reset retains
+EEPROM progress, committed memory and WRAM, while clearing mapper banks, gates
+and IRQ state. Startup register defaults are deterministic emulator policy.
+Fresh WRAM is `$FF`, avoiding the documented all-zero Famicom Jump II startup
+trap; this is not a measured SRAM power-on pattern.
+
+Factories accept 32–256 KiB bank-aligned PRG and 1–256 KiB bank-aligned CHR ROM
+for 16/159, or up to 512 KiB PRG and no CHR ROM for 153. NES 2.0 declares no
+volatile PRG RAM, no CHR NVRAM, and exactly 128 bytes (159), optional 256 bytes
+(16), or 8192 bytes (153) of PRG NVRAM with a matching battery flag. Mapper 153
+accepts an omitted or explicit 8 KiB CHR-RAM declaration. Legacy implicit WRAM
+metadata is ignored: battery mapper 16 uses 256-byte EEPROM, 159 always has
+128-byte EEPROM, and 153 always has 8 KiB WRAM. File persistence still follows
+the legacy battery flag. Unsupported submappers, four-screen VRAM and conflicting
+memory declarations fail creation. Peripheral mapper 157 remains unsupported.
+
+Validation: `just build` and `meson test -C buildDir --print-errorlogs
+--suite=mapperbus` passed all 42 executables; the mapper executable reported
+28,196 assertions in 215 cases. Seven targeted ASan/UBSan suites passed with
+`--num-processes 1` and the documented macOS `detect_leaks=0` exception.
+Focused coverage includes both IRQ variants through CPU execution and OAM DMA,
+all CHR registers and mirroring modes, PPU-driven outer banking despite cached
+pixel reads, open-bus D4, serial page/address wrapping, ACK polling, partial
+receive/send snapshots, programming across reset, exact battery files, invalid
+metadata, malformed state and atomic full-machine rollback. All three IDs join
+the shared 76-board boot/replay matrix. Eleven two-frame CLI profiles exercised
+all three IDs, aliases, legacy/NES 2.0 headers and optional EEPROM; persistent
+files had exactly 128, 256 or 8192 bytes and the expected programmed byte, while
+RAM-free profiles produced no save file.
+
+As a regression check for the extended PPU observer, all six external RAMBO-1
+hardware ROMs again reported status zero and all 62 checks passed, including
+G6 `INFO 01 00 00`. Scoped clang-tidy, `just format-check` and whitespace checks
+passed. Isolated agent-documentation validation reported zero errors and the
+existing 52 warnings. The initial generic component-replay fixture assumed
+that its post-restore CHR read could not alter state; it now captures the
+sampled PPU address before saving, consistently on both replay paths. No
+existing check was removed. No Bandai commercial-title or physical-cartridge
+validation is claimed.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -861,7 +950,7 @@ fallback. The registry rejects unsupported IDs.
 | 013 | CPROM | New implementation: DiscreteMapper | [r1200](https://www.nesdev.org/w/index.php?oldid=1200) |
 | 014 | Board-specific specification | Not registered | [r19503](https://www.nesdev.org/w/index.php?oldid=19503) |
 | 015 | Board-specific specification | Not registered | [r19956](https://www.nesdev.org/w/index.php?oldid=19956) |
-| 016 | Bandai FCG / LZ93D50 | Not registered | [r3876](https://www.nesdev.org/w/index.php?oldid=3876) |
+| 016 | Bandai FCG / LZ93D50 | New implementation: BandaiFcg | [r3876](https://www.nesdev.org/w/index.php?oldid=3876) |
 | 017 | FFE Super Magic Card | Not registered | [r18933](https://www.nesdev.org/w/index.php?oldid=18933) |
 | 018 | Jaleco SS88006 | New implementation: JalecoSs88006 (external speech unsupported) | [r3918](https://www.nesdev.org/w/index.php?oldid=3918) |
 | 019 | Namco 129/163 | Existing registration: Namco163 | [r24377](https://www.nesdev.org/w/index.php?oldid=24377) |
@@ -998,13 +1087,13 @@ fallback. The registry rejects unsupported IDs.
 | 150 | Board-specific specification | Not registered | [r5081](https://www.nesdev.org/w/index.php?oldid=5081) |
 | 151 | Vs. VRC1 duplicate | Not registered | [r21586](https://www.nesdev.org/w/index.php?oldid=21586) |
 | 152 | Bandai discrete mirroring variant | New implementation: DiscreteMapper | [r21304](https://www.nesdev.org/w/index.php?oldid=21304) |
-| 153 | Bandai FCG + WRAM | Not registered | [r5112](https://www.nesdev.org/w/index.php?oldid=5112) |
+| 153 | Bandai FCG + WRAM | New implementation: BandaiFcg | [r5112](https://www.nesdev.org/w/index.php?oldid=5112) |
 | 154 | Namcot-3453 | New implementation: Namco108 | [r23278](https://www.nesdev.org/w/index.php?oldid=23278) |
 | 155 | MMC1A | Not registered | [r24550](https://www.nesdev.org/w/index.php?oldid=24550) |
 | 156 | Board-specific specification | Not registered | [r22838](https://www.nesdev.org/w/index.php?oldid=22838) |
 | 157 | Bandai Datach | Not registered | [r21310](https://www.nesdev.org/w/index.php?oldid=21310) |
 | 158 | RAMBO-1 nametable variant | New implementation: Rambo1 | [r21299](https://www.nesdev.org/w/index.php?oldid=21299) |
-| 159 | Bandai X24C01 EEPROM | Not registered | [r5171](https://www.nesdev.org/w/index.php?oldid=5171) |
+| 159 | Bandai X24C01 EEPROM | New implementation: BandaiFcg | [r5171](https://www.nesdev.org/w/index.php?oldid=5171) |
 | 160 | Board-specific specification | Not registered | [r5173](https://www.nesdev.org/w/index.php?oldid=5173) |
 | 161 | Board-specific specification | Not registered | [r5175](https://www.nesdev.org/w/index.php?oldid=5175) |
 | 162 | Board-specific specification | Not registered | [r19013](https://www.nesdev.org/w/index.php?oldid=19013) |
