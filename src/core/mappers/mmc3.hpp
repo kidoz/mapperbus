@@ -8,7 +8,7 @@
 
 namespace mapperbus::core {
 
-/// Mapper 4: MMC3 (TxROM)
+/// Mappers 4 (TxROM), 118 (TxSROM), and 119 (TQROM): MMC3
 /// PRG: up to 512 KB, 8 KB switchable banks
 /// CHR: up to 256 KB, 1 KB switchable banks
 /// Features: scanline IRQ counter, mirroring control, PRG RAM
@@ -22,6 +22,7 @@ class Mmc3 : public Mapper {
     Byte read_chr(Address addr) override;
     void write_chr(Address addr, Byte value) override;
     MirrorMode mirror_mode() const override;
+    std::optional<Address> nametable_address(Address addr) const override;
     void reset() override;
 
     bool irq_pending() const override {
@@ -40,12 +41,20 @@ class Mmc3 : public Mapper {
   private:
     void update_prg_banks();
     void update_chr_banks();
+    Byte chr_bank(Address addr) const;
+    void save_variant_state(StateWriter& writer) const;
+    void load_variant_state(StateReader& reader);
 
     std::vector<Byte> prg_rom_;
     std::vector<Byte> chr_rom_;
     std::array<Byte, 0x2000> prg_ram_{};
     std::array<Byte, 0x2000> chr_ram_{};
     bool use_chr_ram_ = false;
+    // Board wiring and physical memory sizes are immutable cartridge metadata.
+    uint16_t mapper_ = 4;
+    std::size_t prg_ram_size_ = 0x2000;
+    std::size_t nvram_size_ = 0x2000;
+    MirrorMode initial_mirror_ = MirrorMode::Vertical;
 
     // Bank select register ($8000)
     uint8_t bank_select_ = 0;    // bits 0-2: register to update

@@ -51,6 +51,34 @@ namespace {
     if (header.mapper_number == 4 && chr_size > 0 && chr_size < 1024) {
         return std::unexpected("MMC3 CHR ROM is smaller than one bank");
     }
+    if (header.mapper_number == 118U || header.mapper_number == 119U) {
+        const bool tqrom = header.mapper_number == 119U;
+        if (header.is_nes2 && header.submapper != 0U)
+            return std::unexpected("Unsupported MMC3 variant submapper");
+        if (prg_size < 0x8000U || prg_size > 0x80000U || prg_size % 0x2000U != 0U ||
+            chr_size == 0U || chr_size > (tqrom ? 0x20000U : 0x40000U) || chr_size % 0x400U != 0U)
+            return std::unexpected("Unsupported MMC3 variant ROM geometry");
+        if (header.mirror_mode != MirrorMode::Horizontal &&
+            header.mirror_mode != MirrorMode::Vertical)
+            return std::unexpected("MMC3 variant does not provide four-screen VRAM");
+        if (header.chr_nvram_size != 0U ||
+            (header.chr_ram_size != 0U && (!tqrom || header.chr_ram_size != 0x2000U)))
+            return std::unexpected("Unsupported MMC3 variant CHR RAM geometry");
+        if (tqrom) {
+            if ((header.is_nes2 && header.prg_ram_size != 0U) || header.prg_nvram_size != 0U ||
+                header.has_battery)
+                return std::unexpected("TQROM does not provide PRG RAM or NVRAM");
+        } else {
+            if (header.prg_ram_size > 0x2000U || header.prg_nvram_size > 0x2000U ||
+                header.prg_ram_size + header.prg_nvram_size > 0x2000U)
+                return std::unexpected("TxSROM PRG RAM exceeds 8 KiB");
+            const auto ram_size = header.prg_ram_size + header.prg_nvram_size;
+            if (ram_size != 0U && (ram_size & (ram_size - 1U)) != 0U)
+                return std::unexpected("TxSROM RAM size must be a power of two");
+            if (header.is_nes2 && header.has_battery != (header.prg_nvram_size != 0U))
+                return std::unexpected("TxSROM battery flag and NVRAM declaration disagree");
+        }
+    }
     if (header.mapper_number == 3 && chr_size > 0 && chr_size < 8 * 1024) {
         return std::unexpected("CNROM CHR ROM is smaller than one bank");
     }
@@ -310,6 +338,8 @@ void register_builtin_mappers() {
     registry.register_mapper(2, make_factory<Uxrom>());
     registry.register_mapper(3, make_factory<Cnrom>());
     registry.register_mapper(4, make_factory<Mmc3>());
+    registry.register_mapper(118, make_factory<Mmc3>());
+    registry.register_mapper(119, make_factory<Mmc3>());
     registry.register_mapper(7, make_factory<Axrom>());
     registry.register_mapper(5, make_factory<Mmc5>());
     registry.register_mapper(9, make_factory<Mmc2>());

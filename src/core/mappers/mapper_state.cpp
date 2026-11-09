@@ -178,6 +178,10 @@ void Mmc2::load_state(StateReader& r) {
 
 // --- MMC3 (4) ---
 void Mmc3::save_state(StateWriter& w) const {
+    if (mapper_ != 4U) {
+        save_variant_state(w);
+        return;
+    }
     w.write_array(prg_ram_);
     w.write_array(chr_ram_);
     w.write(bank_select_);
@@ -197,6 +201,10 @@ void Mmc3::save_state(StateWriter& w) const {
     w.write(prg_ram_write_protected_);
 }
 void Mmc3::load_state(StateReader& r) {
+    if (mapper_ != 4U) {
+        load_variant_state(r);
+        return;
+    }
     r.read_array(prg_ram_);
     r.read_array(chr_ram_);
     r.read(bank_select_);
@@ -564,10 +572,16 @@ void Mmc1::set_battery_ram(std::span<const Byte> data) {
 }
 
 std::span<const Byte> Mmc3::battery_ram() const {
-    return prg_ram_;
+    return std::span<const Byte>(prg_ram_).subspan(prg_ram_size_ - nvram_size_, nvram_size_);
 }
 void Mmc3::set_battery_ram(std::span<const Byte> data) {
-    restore_prg_ram(prg_ram_, data);
+    if (mapper_ == 4U) {
+        restore_prg_ram(prg_ram_, data);
+    } else {
+        std::copy_n(data.begin(),
+                    std::min(data.size(), nvram_size_),
+                    prg_ram_.begin() + static_cast<std::ptrdiff_t>(prg_ram_size_ - nvram_size_));
+    }
 }
 
 std::span<const Byte> Mmc5::battery_ram() const {
