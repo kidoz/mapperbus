@@ -2,11 +2,11 @@
 
 This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
-complete.** Updated 2026-11-09 against the working-tree registry.
+complete.** Updated 2026-11-10 against the working-tree registry.
 
-There are **82 registered cartridge IDs**: the original 14, 53 added in the first
-batch, and Irem 32/65/77, Sunsoft 67/68, Taito 33/48/80/207/82/552, and Jaleco 18/72/92/101
-in the follow-ups below.
+There are **83 registered cartridge IDs**: the original 14, 53 added in the first
+batch, and Irem 32/65/77, Sunsoft 67/68, Taito 33/48/80/207/82/552, Jaleco 18/72/92/101,
+and Namco 210 in the follow-ups below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
 unusual ROM geometry.
@@ -25,6 +25,7 @@ unusual ROM geometry.
 | Jaleco SS88006 (follow-up) | 18 | Nibble-written PRG/CHR banks, four CIRAM arrangements, separate RAM chip/write enables, 4/8/12/16-bit wrapping M2 IRQ, persistence and snapshots. Optional external speech playback remains unsupported. |
 | Jaleco discrete boards (follow-up) | 72, 92, 101 | Independent PRG/CHR rising-edge latches after bus conflicts, opposite fixed PRG windows, fixed H/V CIRAM, mapper-101 legacy dump ordering and eight-bit CHR selection, CPU/PPU snapshot replay. Optional external speech playback remains unsupported. |
 | Namco 108 family | 76, 88, 95, 154, 206 | Register decode, fixed and switchable PRG, 1/2 KiB CHR wiring, fixed-PRG submapper, CHR-driven CIRAM, one-screen mirroring. |
+| Namco 175/340 (follow-up) | 210 | Explicit submappers and documented fallback, three 8 KiB PRG banks and eight 1 KiB CHR banks, fixed or switchable CIRAM, gated/mirrored optional RAM, exact NVRAM persistence and snapshots. |
 | Konami VRC1–4 | 21, 22, 23, 25, 73, 75 | Submapper address-line permutations, chip-specific banking and mirroring, one-bit VRC2 latch, CPU and prescaled IRQs, enabled WRAM and NVRAM. |
 | Homebrew latches | 28, 31 | Action 53 mode/size matrix, banked CHR RAM, mirroring control; mapper 31's eight 4 KiB PRG windows; power-up versus soft reset. |
 | Discrete cartridge boards | 13, 34, 66, 70, 71, 78, 79, 87, 89, 93, 94, 97, 113, 140, 152, 180, 184 | Address decoding, bank-bit wiring, bus conflicts where documented, mirroring variants, CPROM RAM banks, NINA RAM/register overlay. |
@@ -64,6 +65,7 @@ All implementation code is original; no external emulator source was incorporate
 See [mapper tests](../../tests/unit/test_mapper_boards.cpp),
 [Irem tests](../../tests/unit/test_irem.cpp),
 [LROG017 tests](../../tests/unit/test_irem_lrog017.cpp),
+[Namco 175/340 tests](../../tests/unit/test_namco175340.cpp),
 [Sunsoft tests](../../tests/unit/test_sunsoft_boards.cpp),
 [Taito tests](../../tests/unit/test_taito.cpp),
 [X1-005 tests](../../tests/unit/test_taito_x1005.cpp),
@@ -610,6 +612,75 @@ Formatting, whitespace and clang-tidy checks passed for the new implementation
 and changed PPU/registry lines. The isolated agent documentation validator
 reported zero errors and 52 existing warnings.
 
+## Namco 175/340 follow-up: submappers and exact RAM geometry
+
+Mapper 210 follows [revision 23707](https://www.nesdev.org/w/index.php?oldid=23707)
+and [the submapper convention, revision 24451](https://www.nesdev.org/w/index.php?oldid=24451#210:_Namco_175_and_340).
+NES 2.0 submapper 1 selects Namco 175, submapper 2 selects Namco 340. Submapper
+zero selects 175 when explicit volatile or nonvolatile PRG memory is declared,
+and 340 otherwise. Legacy iNES selects 175 with a battery flag and 340 without
+one; its implicit WRAM default alone does not select 175. No title/hash rule
+or automatic reassignment of mislabeled mapper-19 images is used.
+
+Both ASICs have three switchable six-bit 8 KiB PRG selectors, with the final
+8 KiB fixed, and eight full-width 1 KiB CHR-ROM selectors. Register aliases are
+2 KiB wide. PRG supports up to 512 KiB, CHR up to 256 KiB. All CHR values,
+including `$E0–$FF`, select ROM; they never substitute CIRAM. There are no bus
+conflicts. Namco 175 keeps header H/V wiring fixed and ignores the top bits
+of `$E000`. Namco 340 uses those bits for lower single-screen, vertical, upper
+single-screen or horizontal mirroring, independently of the six PRG bank bits.
+
+Only Namco 175 has optional PRG RAM. `$C000–$C7FF` bit 0 gates both reads and
+writes at `$6000–$7FFF`; other bits are ignored. Disabled or absent RAM leaves
+the CPU bus undriven. Declared power-of-two sizes up to 8 KiB mirror throughout
+the CPU window. The 2 KiB and 8 KiB cases are distinct: the former aliases
+`$6000/$6800/$7000/$7800`, while the latter retains four separate 2 KiB pages.
+Volatile bytes precede NVRAM when both are declared; only actual NVRAM bytes
+are persisted, without mirrored copies, even with CPU access disabled.
+
+**Legacy RAM-size limit:** the standard iNES size unit cannot distinguish the
+2 KiB battery RAM in Family Circuit '91 from an 8 KiB board. Legacy battery
+images retain the parser's 8 KiB fallback. The 2 KiB behavior requires corrected
+NES 2.0 NVRAM metadata; no game-content heuristic is supplied. Explicit Namco
+175 can also be RAM-free. Namco 340 rejects declared PRG memory and battery
+storage. NVRAM requires its battery flag, and a NES 2.0 battery flag requires
+declared NVRAM. Unknown submappers, oversized/non-power-of-two combined RAM,
+CHR RAM/NVRAM, unsupported ROM sizes and non-H/V startup headers are rejected.
+
+Both variants lack N163 IRQ, sound, internal RAM and ROM nametables. Reads of
+the absent expansion ports use CPU open bus; writes and clocks have no effect.
+`$C800–$DFFF` and `$F800–$FFFF` are ignored. Namco 340 ignores `$C000–$C7FF` as
+well. This permits the documented N163 initialization and nametable-register
+writes to remain harmless on the 340, while retaining the real 175 RAM gate.
+
+Reset preserves RAM, disables its CPU gate, selects PRG banks 0/1/2, zeroes CHR
+selectors and restores header H/V startup mirroring. These are deterministic
+emulator defaults; physical startup values are not certified. Snapshots include
+banks, mirror control, RAM enable and fixed-size RAM storage. Validation rejects
+invalid banks/flags, changed fixed mirroring on 175 and a fabricated RAM-control
+register on 340. New payloads leave machine version 20, mapper 19, and all
+existing timing and serialization layouts unchanged.
+
+Tests cover both explicit variants and fallback profiles, bank masks and
+register-range boundaries, ROM protection, all CIRAM modes through the PPU,
+every RAM-gate byte, 2/8 KiB aliases, mixed volatile/NVRAM offsets, absent N163
+ports and clocks, reset retention, CPU/PPU execution and snapshot replay.
+Actual 2/8 KiB battery files restore with RAM locked; oversized files and corrupt
+states are rejected. Mapper 210 joins the shared 69-board boot/replay/rollback
+matrix. No commercial-title or physical-cartridge validation is claimed.
+
+Namco 175/340 validation: `just build` passed; `meson test -C buildDir
+--print-errorlogs --suite=mapperbus` reported 42 successful executables, zero
+failures, and 22,233 assertions in 173 mapper cases. The seven targeted
+ASan/UBSan executables (`mappers bus ppu region save-state mapper-timing
+battery-save`) passed with the documented macOS leak-detection exception.
+Seven `mapperbus-cli --frames 2` runs covered both explicit ASICs, both automatic
+profiles and legacy battery/non-battery headers; battery cases retained exactly
+2 KiB or 8 KiB with the expected RAM write after the CPU gate was disabled.
+Formatting, whitespace and clang-tidy checks passed for the new implementation
+and added registry lines. The isolated agent documentation validator reported
+zero errors and 52 existing warnings.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -835,7 +906,7 @@ fallback. The registry rejects unsupported IDs.
 | 207 | Taito X1-005 nametable variant | New implementation: TaitoX1005 | [r24116](https://www.nesdev.org/w/index.php?oldid=24116) |
 | 208 | Board-specific specification | Not registered | [r5614](https://www.nesdev.org/w/index.php?oldid=5614) |
 | 209 | J.Y. Company ASIC | Not registered | [r24184](https://www.nesdev.org/w/index.php?oldid=24184) |
-| 210 | Namco 175/340 | Not registered | [r23707](https://www.nesdev.org/w/index.php?oldid=23707) |
+| 210 | Namco 175/340 | New implementation: Namco175340 (submappers 0/1/2) | [r23707](https://www.nesdev.org/w/index.php?oldid=23707) |
 | 211 | J.Y. Company ASIC | Not registered | [r24184](https://www.nesdev.org/w/index.php?oldid=24184) |
 | 212 | Board-specific specification | New implementation: DiscreteMapper | [r24309](https://www.nesdev.org/w/index.php?oldid=24309) |
 | 213 | Board-specific specification | New implementation: DiscreteMapper | [r5674](https://www.nesdev.org/w/index.php?oldid=5674) |
