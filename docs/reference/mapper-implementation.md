@@ -4,8 +4,8 @@ This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
 complete.** Updated 2026-11-09 against the working-tree registry.
 
-There are **81 registered cartridge IDs**: the original 14, 53 added in the first
-batch, and Irem 32/65, Sunsoft 67/68, Taito 33/48/80/207/82/552, and Jaleco 18/72/92/101
+There are **82 registered cartridge IDs**: the original 14, 53 added in the first
+batch, and Irem 32/65/77, Sunsoft 67/68, Taito 33/48/80/207/82/552, and Jaleco 18/72/92/101
 in the follow-ups below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
@@ -17,6 +17,7 @@ unusual ROM geometry.
 |---|---|---|
 | MMC4 | 10 | 16 KiB PRG, both eight-byte CHR trigger ranges, old-bank trigger fetch, mirroring, RAM, persistence. |
 | Irem G-101 / H3001 (follow-up) | 32, 65 | Two switchable 8 KiB PRG banks, layout swap, eight 1 KiB CHR banks, Major League submapper, mirroring, CPU-cycle down counter, RAM and snapshots. |
+| Irem LROG017 (follow-up) | 77 | 32 KiB PRG and 2 KiB CHR ROM banks, bus conflicts, 6 KiB pattern RAM plus 2 KiB external nametable RAM, real CIRAM routing and unmapped upper nametables. |
 | Sunsoft-3 / Sunsoft-4 (follow-up) | 67, 68 | 16 KiB PRG and 2 KiB CHR banks, four mirroring modes, Sunsoft-3 live IRQ counter and acknowledgement aliases, Sunsoft-4 ROM nametables and WRAM gate, DCS options with licensing and paired snapshot identity. |
 | Taito TC0190 / TC0690 (follow-up) | 33, 48 | Two 8 KiB PRG windows, full-width 2/1 KiB CHR banks, distinct mirroring decoders, mapper-48 latched IRQ and submapper timing profiles, CPU/PPU and snapshot replay. |
 | Taito X1-005 (follow-up) | 80, 207 | Three 8 KiB PRG windows, aligned 2/1 KiB CHR banks, exact register aliases, protected 128-byte RAM and battery persistence, H/V and CHR-driven CIRAM routing. |
@@ -45,6 +46,10 @@ All implementation code is original; no external emulator source was incorporate
   the default preserves the latched bus value. Driven data remains intact.
 - Optional `nametable_address()` maps board-specific CIRAM wiring. Mapper 95 is
   tested through PPU registers, including reversed horizontal nametable pairs.
+- `maps_nametable()` checks raw `$2000–$3EFF` decoding before ordinary `$3000`
+  folding. Mapper 77 leaves the upper range undriven: reads model the low
+  address byte on the multiplexed PPU memory bus, and writes are ignored.
+  The default retains existing nametable and palette behavior.
 - Optional `read_nametable()` / `write_nametable()` intercept normalized
   `$2000–$2FFF` accesses before CIRAM mapping. Sunsoft-4 supplies ROM bytes and
   consumes protected writes. Defaults retain existing mapper behavior; PPU
@@ -58,6 +63,7 @@ All implementation code is original; no external emulator source was incorporate
 
 See [mapper tests](../../tests/unit/test_mapper_boards.cpp),
 [Irem tests](../../tests/unit/test_irem.cpp),
+[LROG017 tests](../../tests/unit/test_irem_lrog017.cpp),
 [Sunsoft tests](../../tests/unit/test_sunsoft_boards.cpp),
 [Taito tests](../../tests/unit/test_taito.cpp),
 [X1-005 tests](../../tests/unit/test_taito_x1005.cpp),
@@ -541,6 +547,69 @@ whitespace and clang-tidy checks passed for the new implementation and added
 registry lines. The isolated agent documentation validator reported zero
 errors and 52 existing warnings.
 
+## LROG017 follow-up: shared cartridge VRAM and actual CIRAM
+
+Mapper 77 follows [revision 24538](https://www.nesdev.org/w/index.php?oldid=24538)
+and the LROG017 identification in
+[the original cartridge dump notes](https://forums.nesdev.org/viewtopic.php?t=3755).
+Every `$8000–$FFFF` write selects 32 KiB PRG with the low nibble and 2 KiB CHR
+ROM with the high nibble. CPU data is ANDed with the byte from the pre-write
+PRG mapping before either bank changes. The four-bit selectors address up to
+512 KiB PRG ROM and 32 KiB CHR ROM; an entire 32 KiB PRG window switches.
+
+The physical 8 KiB cartridge SRAM maps pages 1/2/3 at PPU `$0800–$1FFF` and
+page 0 at `$2000–$27FF`. Pattern and nametable regions do not alias. `$2800–$2FFF`
+uses the console's actual 2 KiB CIRAM, routed to its physical pages 0 and 1.
+The reported arrangement is always four-screen, independent of header H/V
+flags. Cartridge SRAM remains in mapper state; console CIRAM remains in PPU
+state and follows the existing PPU reset policy. Mapper reset restores zero
+bank selectors while retaining all cartridge SRAM. These are deterministic
+emulator defaults; physical power-up/reset behavior is not certified.
+
+The board fully decodes PPU address regions and leaves `$3000–$3EFF` undriven.
+The new immutable `maps_nametable()` policy runs before normal `$3000` folding.
+Unmapped writes are ignored. Reads use the low byte of the raw PPU address,
+following [external video-memory open-bus behavior, revision 23814](https://www.nesdev.org/w/index.php?oldid=23814).
+The video-memory bus multiplexes address/data; it is distinct from both the
+PPU CPU-facing I/O latch and the PPUDATA read buffer. This models the documented
+usual electrical result, without analog decay or clone-specific pull-ups.
+PPUDATA buffering remains intact. Internal `$3Fxx` palettes still bypass this
+decode; palette reads refill PPUDATA from the underlying `$2Fxx` CIRAM path.
+
+The mandatory SRAM exists with legacy or unspecified NES 2.0 memory metadata.
+Volatile CHR-size metadata may be zero, 6 KiB, or rounded-up 8 KiB, all describing
+the same physical SRAM; the NES 2.0 exponent cannot encode its 6 KiB pattern
+portion exactly. No extra CPU RAM or battery memory is supplied. Explicit
+NES 2.0 PRG RAM, NVRAM/battery flags, larger/different RAM declarations,
+unsupported ROM geometries and nonzero submappers are rejected. Legacy implied
+WRAM is ignored. CHR ROM is required. There is no IRQ or expansion audio.
+
+Snapshots store two bank bytes and exactly 8 KiB cartridge RAM. Corrupt bank
+fields and truncation fail validation; full-machine load rolls back on failure.
+The PPU decode policy is immutable, and the low-address result adds no mutable
+bus latch. Machine version 20 and all existing component layouts remain
+unchanged, including the earlier snapshot import paths.
+
+Tests cover all bank bits, conflicts on both selectors, every cartridge SRAM
+byte, ROM protection, four independent nametables and attributes, exact CIRAM
+ownership, unmapped reads/writes, palette buffering and read-buffer/I/O-latch
+separation. Rendered frames verify ROM and RAM background tiles from all four
+nametables. An original CPU program writes both RAM types, switches banks,
+reads every mapped region and an unmapped address through PPU registers, then
+replays snapshots and rejects truncated/corrupt states atomically. Mapper 77
+joins the shared 68-board boot/replay/rollback matrix. No commercial-title or
+physical-cartridge validation is claimed.
+
+LROG017 validation: `just build` passed; `meson test -C buildDir --print-errorlogs
+--suite=mapperbus` reported 42 successful executables, zero failures, and 20,877
+assertions in 162 mapper cases. The seven targeted ASan/UBSan executables
+(`mappers bus ppu region save-state mapper-timing battery-save`) passed with the
+documented macOS leak-detection exception. Both NES 2.0 and legacy iNES versions
+of the original CPU/PPU program ran two frames through `mapperbus-cli`.
+Formatting, whitespace and clang-tidy checks passed for the new implementation
+and changed PPU/registry lines. The isolated agent documentation validator
+reported zero errors and 52 existing warnings.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -633,7 +702,7 @@ fallback. The registry rejects unsupported IDs.
 | 074 | Board-specific specification | Not registered | [r24258](https://www.nesdev.org/w/index.php?oldid=24258) |
 | 075 | VRC1 | New implementation: KonamiVrc | [r12313](https://www.nesdev.org/w/index.php?oldid=12313) |
 | 076 | Namco 109 variant | New implementation: Namco108 | [r21294](https://www.nesdev.org/w/index.php?oldid=21294) |
-| 077 | Irem Napoleon Senki board | Not registered | [r24538](https://www.nesdev.org/w/index.php?oldid=24538) |
+| 077 | Irem Napoleon Senki / LROG017 | New implementation: IremLrog017 | [r24538](https://www.nesdev.org/w/index.php?oldid=24538) |
 | 078 | Holy Diver / Cosmo Carrier | New implementation: DiscreteMapper | [r21584](https://www.nesdev.org/w/index.php?oldid=21584) |
 | 079 | NINA-03 / NINA-06 | New implementation: DiscreteMapper | [r22985](https://www.nesdev.org/w/index.php?oldid=22985) |
 | 080 | Taito X1-005 | New implementation: TaitoX1005 | [r24449](https://www.nesdev.org/w/index.php?oldid=24449) |
