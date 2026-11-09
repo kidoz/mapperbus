@@ -4,9 +4,9 @@ This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
 complete.** Updated 2026-11-10 against the working-tree registry.
 
-There are **83 registered cartridge IDs**: the original 14, 53 added in the first
+There are **85 registered cartridge IDs**: the original 14, 53 added in the first
 batch, and Irem 32/65/77, Sunsoft 67/68, Taito 33/48/80/207/82/552, Jaleco 18/72/92/101,
-and Namco 210 in the follow-ups below.
+Namco 210, and MMC3 variants 118/119 in the follow-ups below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
 unusual ROM geometry.
@@ -16,6 +16,7 @@ unusual ROM geometry.
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
 | MMC4 | 10 | 16 KiB PRG, both eight-byte CHR trigger ranges, old-bank trigger fetch, mirroring, RAM, persistence. |
+| MMC3 variants (follow-up) | 118, 119 | TxSROM CHR-driven CIRAM, TQROM mixed ROM/RAM with 128 KiB ROM extension, common PRG banking and IRQ counter, bounded state and persistence. |
 | Irem G-101 / H3001 (follow-up) | 32, 65 | Two switchable 8 KiB PRG banks, layout swap, eight 1 KiB CHR banks, Major League submapper, mirroring, CPU-cycle down counter, RAM and snapshots. |
 | Irem LROG017 (follow-up) | 77 | 32 KiB PRG and 2 KiB CHR ROM banks, bus conflicts, 6 KiB pattern RAM plus 2 KiB external nametable RAM, real CIRAM routing and unmapped upper nametables. |
 | Sunsoft-3 / Sunsoft-4 (follow-up) | 67, 68 | 16 KiB PRG and 2 KiB CHR banks, four mirroring modes, Sunsoft-3 live IRQ counter and acknowledgement aliases, Sunsoft-4 ROM nametables and WRAM gate, DCS options with licensing and paired snapshot identity. |
@@ -66,6 +67,7 @@ See [mapper tests](../../tests/unit/test_mapper_boards.cpp),
 [Irem tests](../../tests/unit/test_irem.cpp),
 [LROG017 tests](../../tests/unit/test_irem_lrog017.cpp),
 [Namco 175/340 tests](../../tests/unit/test_namco175340.cpp),
+[MMC3 variant tests](../../tests/unit/test_mmc3_variants.cpp),
 [Sunsoft tests](../../tests/unit/test_sunsoft_boards.cpp),
 [Taito tests](../../tests/unit/test_taito.cpp),
 [X1-005 tests](../../tests/unit/test_taito_x1005.cpp),
@@ -681,6 +683,58 @@ Formatting, whitespace and clang-tidy checks passed for the new implementation
 and added registry lines. The isolated agent documentation validator reported
 zero errors and 52 existing warnings.
 
+## MMC3 variant follow-up: raw CHR outputs and shared IRQ behavior
+
+Mapper 118 follows [TxSROM revision 24058](https://www.nesdev.org/w/index.php?oldid=24058).
+CHR A17 selects CIRAM A10 before any ROM-size wrapping. Normal mode uses
+R0/R1 for the two nametable pairs; inverted mode uses R2–R5 for four independent
+tables. `$A000` mirroring writes are disconnected. Pattern reads retain bit 7,
+including coupled nametable/CHR selection with 256 KiB third-party CHR ROM.
+Arbitrary table arrangements use `nametable_address()` rather than a single
+H/V enum; PPU `$3000` mirrors use the same CIRAM routing.
+
+Mapper 119 follows [TQROM revision 24251](https://www.nesdev.org/w/index.php?oldid=24251).
+Raw CHR bit 6 chooses ROM or the mandatory 8 KiB RAM. RAM banks alias on their
+lowest three bits; aligned 2 KiB banks and inversion affect both chips.
+ROM writes are ignored. The documented extension permits 512 KiB PRG and
+128 KiB CHR ROM: raw bit 7 supplies ROM bank bit 6, packing the two ROM halves
+into selectors `$00–$3F` and `$80–$BF`. Original 16/32/64 KiB ROMs ignore that
+extra address bit. Ordinary MMC3 H/V mirroring remains active.
+
+[TxROM revision 24047](https://www.nesdev.org/w/index.php?oldid=24047) distinguishes
+RAM-free TLSROM and TQROM from TKSROM's 8 KiB PRG RAM. Mapper 118 honors
+explicit NES 2.0 RAM/NVRAM sizes, mirrors smaller power-of-two combined storage,
+and persists only NVRAM. Legacy battery headers use 8 KiB; legacy non-battery
+headers select RAM-free TLSROM despite the parser's implicit WRAM default.
+Mapper 119 has no PRG RAM or battery storage; its CHR RAM remains volatile.
+Both require CHR ROM, aligned PRG/CHR banks, H/V startup metadata and submapper
+zero. Unsupported geometry, extra memory and inconsistent battery metadata fail
+creation. NES 2.0 may omit TQROM's mandatory CHR RAM size or declare exactly 8 KiB.
+
+The variants share MMC3 register aliases, six-bit PRG selectors, PRG mode swaps,
+RAM protection and the existing MMC3B reload/decrement/acknowledge logic.
+**Timing limit:** production IRQ clocks remain the renderer's dot-260 callback
+on rendered scanlines. Filtered electrical A12 edges, alternate MMC3 revisions
+and title-specific raster timing are not certified. No PPU timing model changes
+were made. Reset retains RAM with deterministic bank defaults.
+
+New payloads store byte flags, raw banks, RAM and IRQ progress, reconstruct
+derived offsets and reject invalid fields. Mapper 4's historical payload and
+machine snapshot version 20 are unchanged. Tests cover all TQROM selector bytes,
+both inversion modes, CIRAM and PPUDATA through the PPU, CPU execution, IRQ
+replay, exact battery files and full-machine rejection/rollback. Both IDs join
+the shared 71-board snapshot matrix. Commercial-title validation remains open.
+
+MMC3 variant validation: `just build` and all 42 regression executables passed.
+The mapper executable passed 24,250 assertions in 184 cases. Seven targeted
+ASan/UBSan suites passed, with leak detection disabled for the documented macOS
+runtime limitation; the final expanded mapper tests also passed under sanitizers.
+Nine two-frame CLI runs covered legacy and NES 2.0 headers, original and enlarged
+ROMs, RAM-free boards, and exact 2/8 KiB battery files with the expected write
+retained after CPU RAM access was disabled. Formatting, whitespace and scoped
+clang-tidy checks passed. Agent documentation validation reported zero errors
+and the existing 52 warnings.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -814,8 +868,8 @@ fallback. The registry rejects unsupported IDs.
 | 115 | Board-specific specification | Not registered | [r21614](https://www.nesdev.org/w/index.php?oldid=21614) |
 | 116 | Board-specific specification | Not registered | [r22958](https://www.nesdev.org/w/index.php?oldid=22958) |
 | 117 | Board-specific specification | Not registered | [r4888](https://www.nesdev.org/w/index.php?oldid=4888) |
-| 118 | TxSROM / MMC3 | Not registered | [r24058](https://www.nesdev.org/w/index.php?oldid=24058) |
-| 119 | TQROM / MMC3 | Not registered | [r24251](https://www.nesdev.org/w/index.php?oldid=24251) |
+| 118 | TxSROM / MMC3 | New implementation: Mmc3 variant | [r24058](https://www.nesdev.org/w/index.php?oldid=24058) |
+| 119 | TQROM / MMC3 | New implementation: Mmc3 variant | [r24251](https://www.nesdev.org/w/index.php?oldid=24251) |
 | 120 | Board-specific specification | Not registered | [r20571](https://www.nesdev.org/w/index.php?oldid=20571) |
 | 121 | Board-specific specification | Not registered | [r23905](https://www.nesdev.org/w/index.php?oldid=23905) |
 | 122 | Board-specific specification | Not registered | [r22366](https://www.nesdev.org/w/index.php?oldid=22366) |
