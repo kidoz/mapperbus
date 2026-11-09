@@ -37,6 +37,7 @@ core_sources = files(
     'mappers/vrc7.cpp',
     'mappers/mmc5.cpp',
     'mappers/namco163.cpp',
+    'mappers/namco175340.cpp',
     'mappers/sunsoft5b.cpp',
     'fds/fds.cpp',
     'fds/fds_mapper.cpp',

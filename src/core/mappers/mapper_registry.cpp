@@ -16,6 +16,7 @@
 #include "core/mappers/mmc5.hpp"
 #include "core/mappers/namco108.hpp"
 #include "core/mappers/namco163.hpp"
+#include "core/mappers/namco175340.hpp"
 #include "core/mappers/nrom.hpp"
 #include "core/mappers/sunsoft34.hpp"
 #include "core/mappers/sunsoft5b.hpp"
@@ -158,6 +159,38 @@ namespace {
         if (header.chr_ram_size > 0x2000U || header.chr_nvram_size != 0U ||
             (chr_size != 0U && header.chr_ram_size != 0U))
             return std::unexpected("Unsupported X1-005 CHR RAM geometry");
+    }
+    if (header.mapper_number == 210) {
+        if (header.is_nes2 && header.submapper > 2U)
+            return std::unexpected("Unsupported Namco 175/340 submapper");
+        const bool namco175 = header.is_nes2
+                                  ? (header.submapper == 1U ||
+                                     (header.submapper == 0U &&
+                                      (header.prg_ram_size != 0U || header.prg_nvram_size != 0U)))
+                                  : header.has_battery;
+        if (prg_size < 0x8000U || prg_size > 0x80000U || prg_size % 0x2000U != 0U ||
+            chr_size == 0U || chr_size > 0x40000U || chr_size % 0x400U != 0U)
+            return std::unexpected("Unsupported Namco 175/340 ROM geometry");
+        if (header.chr_ram_size != 0U || header.chr_nvram_size != 0U)
+            return std::unexpected("Namco 175/340 requires CHR ROM");
+        if (namco175) {
+            if (header.prg_ram_size > 0x2000U || header.prg_nvram_size > 0x2000U ||
+                header.prg_ram_size + header.prg_nvram_size > 0x2000U)
+                return std::unexpected("Namco 175 PRG RAM exceeds 8 KiB");
+            const auto size = header.prg_ram_size + header.prg_nvram_size;
+            if (size != 0U && (size & (size - 1U)) != 0U)
+                return std::unexpected("Namco 175 RAM size must be a power of two");
+            if (header.prg_nvram_size != 0U && !header.has_battery)
+                return std::unexpected("Namco 175 NVRAM requires the battery flag");
+            if (header.is_nes2 && header.has_battery && header.prg_nvram_size == 0U)
+                return std::unexpected("Namco 175 battery flag requires declared NVRAM");
+        } else if ((header.is_nes2 && header.prg_ram_size != 0U) || header.prg_nvram_size != 0U ||
+                   header.has_battery) {
+            return std::unexpected("Namco 340 does not provide RAM or NVRAM");
+        }
+        if (header.mirror_mode != MirrorMode::Horizontal &&
+            header.mirror_mode != MirrorMode::Vertical)
+            return std::unexpected("Namco 175/340 requires an H/V startup arrangement");
     }
     if (header.mapper_number == 77) {
         if (header.is_nes2 && header.submapper != 0)
@@ -304,6 +337,7 @@ void register_builtin_mappers() {
     registry.register_mapper(92, make_factory<JalecoDiscrete>());
     registry.register_mapper(101, make_factory<JalecoDiscrete>());
     registry.register_mapper(77, make_factory<IremLrog017>());
+    registry.register_mapper(210, make_factory<Namco175340>());
     for (const uint16_t id : {21, 22, 23, 25, 73, 75})
         registry.register_mapper(id, make_factory<KonamiVrc>());
     for (const uint16_t id :
