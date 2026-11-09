@@ -286,7 +286,7 @@ TEST_CASE("RAMBO-1 CPU program services IRQs and replays snapshots with atomic r
     }
 }
 
-TEST_CASE("RAMBO-1 receives PPUDATA, sprite-bank A12 and held vblank pins independently of pixels",
+TEST_CASE("RAMBO-1 receives PPUDATA, sprite-bank A12 and idle VRAM pins independently of pixels",
           "[mappers][rambo1][ppu]") {
     const auto pin = [](const Cartridge& cart) {
         StateWriter state;
@@ -318,13 +318,41 @@ TEST_CASE("RAMBO-1 receives PPUDATA, sprite-bank A12 and held vblank pins indepe
     REQUIRE(pin(cart) == 0U); // Next occupied slot uses the other table.
     ppu.write_register(0U, 0x10U);
     ppu.step_dots(241U * 341U - 268U + 10U);
-    REQUIRE(pin(cart) == 1U); // Final background prefetch persists in vblank.
+    REQUIRE((ppu.loopy_v() & 0x1000U) == 0U);
+    REQUIRE(pin(cart) == 0U); // In vblank, v drives the bus instead of the pattern table.
     ppu.write_register(0U, 0U);
-    REQUIRE(pin(cart) == 1U); // A control write alone does not drive the idle bus.
+    REQUIRE(pin(cart) == 0U); // A control write does not change v's A12.
+    address(0x1000U);
+    ppu.step_dots(10U);
+    REQUIRE(pin(cart) == 1U); // Both polarities follow v while the fetch circuit idles.
     address(0x2000U);
     REQUIRE(pin(cart) == 0U); // CPU address writes override the idle bus in vblank.
     ppu.step_dots(10U);
     REQUIRE(pin(cart) == 0U);
+}
+
+TEST_CASE("RAMBO-1 observes low A12 during the final dummy nametable fetches",
+          "[mappers][rambo1][ppu][timing]") {
+    for (const uint16_t id : {64U, 158U}) {
+        auto cart = rambo_cartridge(id);
+        Ppu ppu;
+        ppu.connect_cartridge(&cart);
+        ppu.write_register(0U, 0x18U);
+        ppu.write_register(1U, 0x1EU);
+        const auto pin = [&cart] {
+            StateWriter state;
+            cart.save_state(state);
+            return state.data()[20U];
+        };
+        ppu.step_dots(335U);
+        REQUIRE(pin() == 1U);
+        ppu.step_dots(1U);
+        REQUIRE(pin() == 0U);
+        ppu.step_dots(8U); // Through the dummy fetches, idle dot and next line's NT/AT.
+        REQUIRE(pin() == 0U);
+        ppu.step_dots(1U);
+        REQUIRE(pin() == 1U);
+    }
 }
 
 TEST_CASE("RAMBO-1 production IRQ follows table selection and manual PPUADDR pulses",
@@ -400,6 +428,39 @@ TEST_CASE("RAMBO-1 clocks M2 throughout OAM DMA", "[mappers][rambo1][bus][timing
     REQUIRE_FALSE(bus.poll_irq());
     REQUIRE(bus.run_oam_dma(0U, 0xE000U, false) >= 513U);
     REQUIRE(bus.poll_irq());
+}
+
+TEST_CASE("RAMBO-1 latch zero expires exactly once with both pattern tables at 1000",
+          "[mappers][rambo1][ppu][timing]") {
+    for (const uint16_t id : {64U, 158U}) {
+        auto cart = rambo_cartridge(id);
+        Ppu ppu;
+        ppu.connect_cartridge(&cart);
+        MemoryBus bus;
+        bus.connect_ppu(&ppu);
+        bus.connect_cartridge(&cart);
+        ppu.write_register(0U, 0x18U);
+        ppu.write_register(1U, 0x1EU);
+        // Reach vblank with v's A12 low, like the hardware G6 probe. Arm
+        // after the previous frame so the initial filter state is meaningful.
+        bus.clock_cpu_bus(0U, (241U * 341U + 2U) / 3U);
+        REQUIRE((ppu.loopy_v() & 0x1000U) == 0U);
+        cart.write_prg(0xE000U, 0U);
+        cart.write_prg(0xC000U, 0U);
+        cart.write_prg(0xC001U, 0U);
+        bus.clock_cpu_bus(0U);
+        cart.write_prg(0xE001U, 0U);
+        unsigned interrupts = 0U;
+        for (unsigned cycle = 0U; cycle < 8U * 29'781U; ++cycle) {
+            bus.clock_cpu_bus(0U);
+            if (cart.irq_pending()) {
+                ++interrupts;
+                cart.write_prg(0xE000U, 0U);
+                cart.write_prg(0xE001U, 0U);
+            }
+        }
+        REQUIRE(interrupts == 1U);
+    }
 }
 
 TEST_CASE("RAMBO-1 snapshots retain partial CPU intervals, A12 filter and pending delivery",

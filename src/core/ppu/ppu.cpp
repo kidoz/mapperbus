@@ -325,21 +325,23 @@ void Ppu::step_dots(uint32_t ppu_dots) {
     }
 }
 
-void Ppu::drive_mapper_a12(bool cpu_access) {
+void Ppu::drive_mapper_a12() {
     if (cartridge_ == nullptr || !cartridge_->observes_ppu_a12())
         return;
     const bool fetch_line = scanline_ < 240U || scanline_ == timing_->pre_render_scanline;
-    if (!rendering_enabled() || (cpu_access && !fetch_line)) {
+    // Outside fetch lines the external address pins follow v, even with
+    // rendering enabled. Holding the last pattern-table address here hides
+    // the long A12-low interval that qualifies the next frame's first rise.
+    if (!rendering_enabled() || !fetch_line) {
         cartridge_->observe_ppu_a12((reg_v_ & 0x1000U) != 0U);
         return;
     }
-    if (!fetch_line)
-        return; // Hold the last fetch's address through vblank.
-    if (cycle_ == 0U || cycle_ >= 336U)
-        return; // Retain the final background prefetch's A12 level.
 
     bool high = false;
-    if ((cycle_ & 7U) >= 4U) {
+    // The final dummy nametable fetches (and the idle dot) drive A12 low.
+    // Their address cadence does not add the real-PPU coarse-X prefetch
+    // increments that are intentionally absent from this pixel renderer.
+    if (cycle_ != 0U && cycle_ < 336U && (cycle_ & 7U) >= 4U) {
         if (cycle_ <= 256U || cycle_ >= 321U) {
             high = (ppuctrl_ & 0x10U) != 0U;
         } else if ((ppuctrl_ & 0x20U) == 0U) {
@@ -393,7 +395,7 @@ Byte Ppu::read_register(uint8_t reg) {
         }
         reg_v_ = (reg_v_ + ((ppuctrl_ & 0x04) != 0 ? 32 : 1)) & 0x7FFF;
         io_latch_ = result;
-        drive_mapper_a12(true);
+        drive_mapper_a12();
         return result;
     }
     default:
@@ -458,7 +460,7 @@ void Ppu::write_register(uint8_t reg, Byte value) {
     default:
         break;
     }
-    drive_mapper_a12((reg & 7U) == 7U || ((reg & 7U) == 6U && !write_latch_));
+    drive_mapper_a12();
 }
 
 bool Ppu::consume_nmi() {
