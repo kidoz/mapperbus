@@ -4,8 +4,8 @@ This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
 complete.** Updated 2026-11-09 against the working-tree registry.
 
-There are **78 registered cartridge IDs**: the original 14, 53 added in the first
-batch, and Irem 32/65, Sunsoft 67/68, Taito 33/48/80/207/82/552, and Jaleco 18
+There are **81 registered cartridge IDs**: the original 14, 53 added in the first
+batch, and Irem 32/65, Sunsoft 67/68, Taito 33/48/80/207/82/552, and Jaleco 18/72/92/101
 in the follow-ups below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
@@ -22,6 +22,7 @@ unusual ROM geometry.
 | Taito X1-005 (follow-up) | 80, 207 | Three 8 KiB PRG windows, aligned 2/1 KiB CHR banks, exact register aliases, protected 128-byte RAM and battery persistence, H/V and CHR-driven CIRAM routing. |
 | Taito X1-017 (follow-up) | 82, 552 | Legacy/physical PRG wiring, CHR half swap, three independently protected RAM regions, 5 KiB persistence, CPU bus pull-downs and M2 IRQ timer. |
 | Jaleco SS88006 (follow-up) | 18 | Nibble-written PRG/CHR banks, four CIRAM arrangements, separate RAM chip/write enables, 4/8/12/16-bit wrapping M2 IRQ, persistence and snapshots. Optional external speech playback remains unsupported. |
+| Jaleco discrete boards (follow-up) | 72, 92, 101 | Independent PRG/CHR rising-edge latches after bus conflicts, opposite fixed PRG windows, fixed H/V CIRAM, mapper-101 legacy dump ordering and eight-bit CHR selection, CPU/PPU snapshot replay. Optional external speech playback remains unsupported. |
 | Namco 108 family | 76, 88, 95, 154, 206 | Register decode, fixed and switchable PRG, 1/2 KiB CHR wiring, fixed-PRG submapper, CHR-driven CIRAM, one-screen mirroring. |
 | Konami VRC1–4 | 21, 22, 23, 25, 73, 75 | Submapper address-line permutations, chip-specific banking and mirroring, one-bit VRC2 latch, CPU and prescaled IRQs, enabled WRAM and NVRAM. |
 | Homebrew latches | 28, 31 | Action 53 mode/size matrix, banked CHR RAM, mirroring control; mapper 31's eight 4 KiB PRG windows; power-up versus soft reset. |
@@ -62,6 +63,7 @@ See [mapper tests](../../tests/unit/test_mapper_boards.cpp),
 [X1-005 tests](../../tests/unit/test_taito_x1005.cpp),
 [X1-017 tests](../../tests/unit/test_taito_x1017.cpp),
 [SS88006 tests](../../tests/unit/test_jaleco_ss88006.cpp),
+[Jaleco discrete tests](../../tests/unit/test_jaleco_discrete.cpp),
 [factory](../../src/core/mappers/mapper_registry.cpp), and
 [compatibility](compatibility.md).
 
@@ -81,7 +83,7 @@ See [mapper tests](../../tests/unit/test_mapper_boards.cpp),
   RAMBO-1, MMC3 derivatives and outer-bank variants,
   J.Y./Sachen/TXC ASICs, flash-saving UNROM 512/GTROM, and Rainbow.
 - Jaleco's optional external ADPCM speech chips and sample-media loading remain
-  unimplemented, including on some mapper-18 boards.
+  unimplemented, including on some mapper-18/72/92 boards.
 - Enhanced consoles and copier/educational adapters may require machine or
   peripheral support beyond a cartridge mapper. Duplicate and tool-reserved
   numbers require classification rather than fabricated hardware.
@@ -480,6 +482,65 @@ whitespace and clang-tidy checks passed for the implementation and added
 registry lines. The isolated agent documentation validator reported zero
 errors and 52 existing warnings.
 
+## Jaleco discrete follow-up: edge latches and legacy dump ordering
+
+The implementation follows [mapper 72 revision 24541](https://www.nesdev.org/w/index.php?oldid=24541),
+[mapper 92 revision 4687](https://www.nesdev.org/w/index.php?oldid=4687), and
+[mapper 101 revision 21360](https://www.nesdev.org/w/index.php?oldid=21360).
+JF-17 and JF-19 switch 16 KiB PRG and 8 KiB CHR windows. Mapper 72 switches
+`$8000–$BFFF` and fixes the last bank at `$C000`; mapper 92 fixes bank zero
+at `$8000` and switches `$C000–$FFFF`. All `$8000–$FFFF` writes share the
+same data-bus decoder. PRG control bit 7 and CHR control bit 6 clock their
+respective bank latches only on a zero-to-one transition. Held-high writes
+do not update banks; a falling write rearms the relevant latch independently.
+
+PRG ROM remains enabled on writes, so the model ANDs CPU data with the byte
+driven by the current PRG mapping. That single pre-write sample determines both
+bank data and the remembered control levels, including simultaneous PRG/CHR
+updates. A conflict can therefore suppress or rearm either clock. Mapper 72
+uses three PRG bank bits (128 KiB); mapper 92 uses four (256 KiB). Both use
+four CHR bank bits (128 KiB). Mirroring is fixed by the header's H/V wiring.
+
+Mapper 101 preserves the historical JF-10 dump interpretation: an ordinary
+binary CHR bank number, rather than mapper 87's reversed low pair. Its
+`$6000–$7FFF` write-only selector uses all eight bits, including the documented
+oversize extension up to 2 MiB CHR. PRG is fixed 32 KiB, or mirrored 16 KiB;
+there are no bus conflicts. No dump reordering or title/hash heuristic is used.
+
+All three require CHR ROM and have no PRG RAM, CHR RAM, battery memory or IRQ.
+Legacy implied WRAM is ignored; explicit NES 2.0 RAM, NVRAM/battery flags,
+unknown submappers and non-H/V nametable wiring are rejected. Bank-aligned ROM
+sizes are bounded by the decoded lines. Reset uses deterministic zero bank and
+command defaults; physical power-up/reset latch behavior is not certified.
+Snapshots store both banks and the previous P/C levels, preserving the next
+edge after restoration. Fixed board wiring is immutable, and no existing mapper
+payload or machine snapshot version 20 layout changes.
+
+Some JF-17/JF-19 boards also connect bits 4/5 and low address bits to an external
+µPD7756C speech device. Playback and sample-media loading remain unsupported,
+as on optional speech-equipped mapper-18 boards. Speech control bits do not
+change banking or fixed mirroring in this base-board model.
+
+Tests cover every decoded bank bit, independent rising/held/falling strobes,
+simultaneous updates using old PRG outputs, conflicts on data and control bits,
+mapper-101 full-width selectors and exact address range, fixed PRG/CIRAM,
+ROM write protection, open CPU bus, geometry rejection and malformed snapshots.
+Original 6502 programs write registers and read CHR through PPU registers into
+CPU RAM, then replay a whole-machine state saved with a strobe held high.
+All three IDs join the shared 67-board boot/replay/rollback matrix.
+No commercial-title or physical-cartridge validation is claimed.
+
+Jaleco discrete validation: `just build` passed; `meson test -C buildDir
+--print-errorlogs --suite=mapperbus` reported 42 successful executables, zero
+failures, and 10,483 assertions in 155 mapper cases. The seven targeted
+ASan/UBSan executables (`mappers bus ppu region save-state mapper-timing
+battery-save`) passed with the documented macOS leak-detection exception.
+NES 2.0 and legacy iNES versions of each synthetic CPU/PPU program completed
+two frames through `mapperbus-cli` (six successful runs). Formatting,
+whitespace and clang-tidy checks passed for the new implementation and added
+registry lines. The isolated agent documentation validator reported zero
+errors and 52 existing warnings.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -567,7 +628,7 @@ fallback. The registry rejects unsupported IDs.
 | 069 | FME-7 / Sunsoft 5A/5B | Existing registration: Sunsoft5b | [r24262](https://www.nesdev.org/w/index.php?oldid=24262) |
 | 070 | Bandai discrete board | New implementation: DiscreteMapper | [r24524](https://www.nesdev.org/w/index.php?oldid=24524) |
 | 071 | Camerica / Codemasters | New implementation: DiscreteMapper | [r21755](https://www.nesdev.org/w/index.php?oldid=21755) |
-| 072 | Jaleco JF-17 | Not registered | [r24541](https://www.nesdev.org/w/index.php?oldid=24541) |
+| 072 | Jaleco JF-17 | New implementation: JalecoDiscrete (external speech unsupported) | [r24541](https://www.nesdev.org/w/index.php?oldid=24541) |
 | 073 | VRC3 | New implementation: KonamiVrc | [r21300](https://www.nesdev.org/w/index.php?oldid=21300) |
 | 074 | Board-specific specification | Not registered | [r24258](https://www.nesdev.org/w/index.php?oldid=24258) |
 | 075 | VRC1 | New implementation: KonamiVrc | [r12313](https://www.nesdev.org/w/index.php?oldid=12313) |
@@ -587,7 +648,7 @@ fallback. The registry rejects unsupported IDs.
 | 089 | Sunsoft 2 | New implementation: DiscreteMapper | [r24544](https://www.nesdev.org/w/index.php?oldid=24544) |
 | 090 | J.Y. Company ASIC | Not registered | [r24184](https://www.nesdev.org/w/index.php?oldid=24184) |
 | 091 | Board-specific specification | Not registered | [r22474](https://www.nesdev.org/w/index.php?oldid=22474) |
-| 092 | Jaleco JF-19 | Not registered | [r4687](https://www.nesdev.org/w/index.php?oldid=4687) |
+| 092 | Jaleco JF-19 | New implementation: JalecoDiscrete (external speech unsupported) | [r4687](https://www.nesdev.org/w/index.php?oldid=4687) |
 | 093 | Sunsoft 2 | New implementation: DiscreteMapper | [r24542](https://www.nesdev.org/w/index.php?oldid=24542) |
 | 094 | UxROM bit-layout variant | New implementation: DiscreteMapper | [r24548](https://www.nesdev.org/w/index.php?oldid=24548) |
 | 095 | Namco 118 nametable variant | New implementation: Namco108 | [r23892](https://www.nesdev.org/w/index.php?oldid=23892) |
@@ -596,7 +657,7 @@ fallback. The registry rejects unsupported IDs.
 | 098 | Reserved | Not registered | [r22148](https://www.nesdev.org/w/index.php?oldid=22148) |
 | 099 | Vs. System board | Not registered | [r23485](https://www.nesdev.org/w/index.php?oldid=23485) |
 | 100 | Emulator tool use | Not registered | [r23979](https://www.nesdev.org/w/index.php?oldid=23979) |
-| 101 | Board-specific specification | Not registered | [r21360](https://www.nesdev.org/w/index.php?oldid=21360) |
+| 101 | JF-10 legacy dump ordering | New implementation: JalecoDiscrete | [r21360](https://www.nesdev.org/w/index.php?oldid=21360) |
 | 102 | Board-specific specification | Not registered | [r4801](https://www.nesdev.org/w/index.php?oldid=4801) |
 | 103 | Board-specific specification | Not registered | [r4802](https://www.nesdev.org/w/index.php?oldid=4802) |
 | 104 | Codemasters Golden Five | Not registered | [r9567](https://www.nesdev.org/w/index.php?oldid=9567) |

@@ -25,6 +25,8 @@ contains the following mapper IDs:
 | 85 | VRC7 | FM |
 | 10 | MMC4 | — |
 | 18 | Jaleco SS88006 with banked PRG/CHR, protected RAM and variable-width M2 IRQ | Optional external ADPCM speech unsupported |
+| 72, 92 | Jaleco JF-17/JF-19 with edge-clocked banking and bus conflicts | Optional external ADPCM speech unsupported |
+| 101 | JF-10 legacy dump ordering, fixed PRG and banked CHR | — |
 | 21, 22, 23, 25 | VRC2/VRC4 board variants | — |
 | 73, 75 | VRC3, VRC1 | — |
 | 76, 88, 95, 154, 206 | Namco 108 family | — |
@@ -37,7 +39,7 @@ contains the following mapper IDs:
 | 13, 34, 66, 70, 71, 78, 79, 87, 89, 93, 94, 97, 113, 140, 152, 180, 184 | Discrete cartridge boards | — |
 | 38, 46, 58, 61, 62, 81, 107, 145, 148, 149, 193, 200, 201, 203, 212, 213, 225, 226, 229, 231, 232, 240 | Additional latch boards and multicarts | — |
 
-The registry contains 78 cartridge IDs. See [mapper implementation coverage](mapper-implementation.md)
+The registry contains 81 cartridge IDs. See [mapper implementation coverage](mapper-implementation.md)
 for individual specifications, tested behavior, board limitations, and the full
 inventory of documented IDs still awaiting implementation. The expanded set has
 synthetic banking, IRQ, CPU/PPU integration and save-state coverage; this does
