@@ -80,6 +80,9 @@ class Cartridge {
     [[nodiscard]] std::optional<Address> nametable_address(Address addr) const {
         return mapper_->nametable_address(addr);
     }
+    [[nodiscard]] bool maps_nametable(Address addr) const {
+        return mapper_->maps_nametable(addr);
+    }
     [[nodiscard]] std::optional<Byte> read_nametable(Address addr) const {
         return mapper_->read_nametable(addr);
     }

@@ -5,6 +5,7 @@
 #include "core/mappers/color_dreams.hpp"
 #include "core/mappers/discrete.hpp"
 #include "core/mappers/irem.hpp"
+#include "core/mappers/irem_lrog017.hpp"
 #include "core/mappers/jaleco_discrete.hpp"
 #include "core/mappers/jaleco_ss88006.hpp"
 #include "core/mappers/konami_vrc.hpp"
@@ -158,6 +159,20 @@ namespace {
             (chr_size != 0U && header.chr_ram_size != 0U))
             return std::unexpected("Unsupported X1-005 CHR RAM geometry");
     }
+    if (header.mapper_number == 77) {
+        if (header.is_nes2 && header.submapper != 0)
+            return std::unexpected("Unsupported LROG017 submapper");
+        if (prg_size < 0x8000U || prg_size > 0x80000U || prg_size % 0x8000U != 0U ||
+            chr_size == 0U || chr_size > 0x8000U || chr_size % 0x800U != 0U)
+            return std::unexpected("Unsupported LROG017 ROM geometry");
+        // Its mandatory 8 KiB SRAM supplies 6 KiB of pattern RAM and 2 KiB
+        // of nametable RAM. NES 2.0 cannot encode a 6 KiB pattern portion.
+        if ((header.is_nes2 && header.prg_ram_size != 0U) || header.has_battery ||
+            header.prg_nvram_size != 0U || header.chr_nvram_size != 0U ||
+            (header.chr_ram_size != 0U && header.chr_ram_size != 0x1800U &&
+             header.chr_ram_size != 0x2000U))
+            return std::unexpected("Unsupported LROG017 RAM geometry");
+    }
     if (header.mapper_number == 72 || header.mapper_number == 92 || header.mapper_number == 101) {
         const bool chr_only = header.mapper_number == 101;
         if (header.is_nes2 && header.submapper != 0)
@@ -288,6 +303,7 @@ void register_builtin_mappers() {
     registry.register_mapper(72, make_factory<JalecoDiscrete>());
     registry.register_mapper(92, make_factory<JalecoDiscrete>());
     registry.register_mapper(101, make_factory<JalecoDiscrete>());
+    registry.register_mapper(77, make_factory<IremLrog017>());
     for (const uint16_t id : {21, 22, 23, 25, 73, 75})
         registry.register_mapper(id, make_factory<KonamiVrc>());
     for (const uint16_t id :

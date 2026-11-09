@@ -446,6 +446,10 @@ Byte Ppu::read_vram(Address addr) const {
     }
     if (addr < 0x3F00) {
         if (cartridge_ != nullptr) {
+            // Unmapped external VRAM normally reads the low address byte:
+            // those address and data signals share the same PPU pins.
+            if (!cartridge_->maps_nametable(addr))
+                return static_cast<Byte>(addr);
             if (const auto value =
                     cartridge_->read_nametable(static_cast<Address>(0x2000U | (addr & 0x0FFFU))))
                 return *value;
@@ -464,6 +468,8 @@ void Ppu::write_vram(Address addr, Byte value) {
         return;
     }
     if (addr < 0x3F00) {
+        if (cartridge_ != nullptr && !cartridge_->maps_nametable(addr))
+            return;
         if (cartridge_ != nullptr &&
             cartridge_->write_nametable(static_cast<Address>(0x2000U | (addr & 0x0FFFU)), value))
             return;

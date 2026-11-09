@@ -40,6 +40,12 @@ class Mapper {
     virtual std::optional<Address> nametable_address(Address /*addr*/) const {
         return std::nullopt;
     }
+    /// External nametable decode, before ordinary $3000 mirroring. Receives
+    /// raw PPU addresses $2000-$3EFF. False leaves reads undriven and ignores
+    /// writes; the PPU models the multiplexed address/data bus result.
+    virtual bool maps_nametable(Address /*addr*/) const {
+        return true;
+    }
     /// Override PPU nametable reads; nullopt leaves the access to CIRAM.
     /// Addresses are normalized to $2000-$2FFF, including $3000 mirrors.
     virtual std::optional<Byte> read_nametable(Address /*addr*/) const {

@@ -20,6 +20,7 @@ core_sources = files(
     'mappers/discrete.cpp',
     'mappers/namco108.cpp',
     'mappers/irem.cpp',
+    'mappers/irem_lrog017.cpp',
     'mappers/sunsoft34.cpp',
     'mappers/taito_tc.cpp',
     'mappers/taito_x1005.cpp',
