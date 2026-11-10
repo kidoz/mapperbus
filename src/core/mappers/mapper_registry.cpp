@@ -51,6 +51,27 @@ namespace {
         return Sachen::validate_geometry(header, prg_size, chr_size);
     if (Txc::supports_mapper(header.mapper_number))
         return Txc::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 512U) {
+        if (!header.is_nes2 || header.submapper != 0U)
+            return std::unexpected("Mapper 512 requires NES 2.0 submapper 0");
+        if (prg_size < 0x8000U || prg_size > 0x80000U || prg_size % 0x2000U != 0U ||
+            chr_size < 0x2000U || chr_size > 0x40000U || chr_size % 0x400U != 0U)
+            return std::unexpected("Unsupported mapper-512 ROM geometry");
+        // Its mandatory PPU memory is 4 KiB pattern RAM plus 4 KiB VRAM.
+        // NES 2.0 accounts for both in the CHR RAM field. Zero declarations
+        // use the board's physical defaults; contradictory sizes are rejected.
+        if (!header.has_battery || header.prg_ram_size != 0U ||
+            (header.prg_nvram_size != 0U && header.prg_nvram_size != 0x2000U) ||
+            (header.chr_ram_size != 0U && header.chr_ram_size != 0x2000U) ||
+            header.chr_nvram_size != 0U)
+            return std::unexpected(
+                "Mapper 512 requires 8 KiB battery WRAM and 8 KiB volatile PPU RAM");
+        if (header.mirror_mode != MirrorMode::Horizontal &&
+            header.mirror_mode != MirrorMode::Vertical &&
+            header.mirror_mode != MirrorMode::FourScreen)
+            return std::unexpected("Unsupported mapper-512 header mirroring");
+        return {};
+    }
     if (header.mapper_number == 157U)
         return Datach::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 16U || header.mapper_number == 153U || header.mapper_number == 159U)
@@ -378,6 +399,7 @@ void register_builtin_mappers() {
     registry.register_mapper(4, make_factory<Mmc3>());
     registry.register_mapper(118, make_factory<Mmc3>());
     registry.register_mapper(119, make_factory<Mmc3>());
+    registry.register_mapper(512, make_factory<Mmc3>());
     registry.register_mapper(64, make_factory<Rambo1>());
     registry.register_mapper(158, make_factory<Rambo1>());
     registry.register_mapper(16, make_factory<BandaiFcg>());

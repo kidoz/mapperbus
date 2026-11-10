@@ -8,7 +8,7 @@
 
 namespace mapperbus::core {
 
-/// Mappers 4 (TxROM), 118 (TxSROM), and 119 (TQROM): MMC3
+/// Mappers 4 (TxROM), 118 (TxSROM), 119 (TQROM), and 512 (Sachen clone).
 /// PRG: up to 512 KB, 8 KB switchable banks
 /// CHR: up to 256 KB, 1 KB switchable banks
 /// Features: scanline IRQ counter, mirroring control, PRG RAM
@@ -23,6 +23,11 @@ class Mmc3 : public Mapper {
     void write_chr(Address addr, Byte value) override;
     MirrorMode mirror_mode() const override;
     std::optional<Address> nametable_address(Address addr) const override;
+    std::optional<Byte> read_nametable(Address addr) const override;
+    bool write_nametable(Address addr, Byte value) override;
+    bool maps_expansion(Address addr) const override;
+    Byte expansion_read_mask(Address addr) const override;
+    void write_expansion(Address addr, Byte value) override;
     void reset() override;
 
     bool irq_pending() const override {
@@ -49,6 +54,8 @@ class Mmc3 : public Mapper {
     std::vector<Byte> chr_rom_;
     std::array<Byte, 0x2000> prg_ram_{};
     std::array<Byte, 0x2000> chr_ram_{};
+    // Mapper 512: disjoint 4 KiB pattern RAM / 4 KiB cartridge nametables.
+    Byte board_mode_ = 0U;
     bool use_chr_ram_ = false;
     // Board wiring and physical memory sizes are immutable cartridge metadata.
     uint16_t mapper_ = 4;

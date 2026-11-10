@@ -6,13 +6,26 @@ namespace mapperbus::core {
 
 // Variant wiring: NESdev mapper 118 r24058, mapper 119 r24251,
 // and TxROM board memory population r24047.
+// Mapper 512: NESdev r8073 and NRS's NES 2.0 VRAM accounting discussion
+// (forums.nesdev.org/viewtopic.php?t=16881). The published register masks
+// remain tentative; use the documented $E001 / $C100 decoders.
 Mmc3::Mmc3(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte> chr_rom)
     : prg_rom_(std::move(prg_rom)), chr_rom_(std::move(chr_rom)), use_chr_ram_(chr_rom_.empty()),
-      mapper_(header.mapper_number == 118U || header.mapper_number == 119U ? header.mapper_number
-                                                                           : 4U),
+      mapper_(header.mapper_number == 118U || header.mapper_number == 119U ||
+                      header.mapper_number == 512U
+                  ? header.mapper_number
+                  : 4U),
       initial_mirror_(header.mirror_mode), mirror_mode_(header.mirror_mode),
       irq_zero_latch_repeats_(!(mapper_ == 4U && header.is_nes2 && header.submapper == 4)) {
-    if (mapper_ != 4U) {
+    if (mapper_ == 512U) {
+        prg_ram_size_ = 0x2000U;
+        nvram_size_ = 0x2000U;
+        if (initial_mirror_ == MirrorMode::FourScreen) {
+            initial_mirror_ =
+                (header.nametable_bits & 1U) != 0U ? MirrorMode::Vertical : MirrorMode::Horizontal;
+            mirror_mode_ = initial_mirror_;
+        }
+    } else if (mapper_ != 4U) {
         prg_ram_size_ = mapper_ == 119U      ? 0U
                         : header.is_nes2     ? header.prg_ram_size + header.prg_nvram_size
                         : header.has_battery ? 0x2000U
@@ -25,6 +38,7 @@ Mmc3::Mmc3(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte
 }
 
 void Mmc3::reset() {
+    board_mode_ = 0U;
     bank_select_ = 0;
     prg_mode_ = false;
     chr_inversion_ = false;
@@ -114,6 +128,10 @@ Byte Mmc3::read_prg(Address addr) {
 }
 
 void Mmc3::write_prg(Address addr, Byte value) {
+    // Under the documented tentative mask, $6100 aliases update the mode
+    // latch as well as WRAM. These are independent write decoders.
+    if (mapper_ == 512U && addr < 0x8000U && maps_expansion(addr))
+        write_expansion(addr, value);
     if (addr >= 0x6000 && addr < 0x8000) {
         if (prg_ram_enabled_ && !prg_ram_write_protected_ && prg_ram_size_ != 0U) {
             prg_ram_[(addr - 0x6000) % prg_ram_size_] = value;
@@ -149,7 +167,7 @@ void Mmc3::write_prg(Address addr, Byte value) {
             if (mapper_ != 118U)
                 mirror_mode_ = (value & 0x01) ? MirrorMode::Horizontal : MirrorMode::Vertical;
         } else {
-            prg_ram_enabled_ = (value & 0x80) != 0;
+            prg_ram_enabled_ = mapper_ == 512U || (value & 0x80U) != 0U;
             prg_ram_write_protected_ = (value & 0x40) != 0;
         }
     } else if (addr < 0xE000) {
@@ -198,6 +216,9 @@ void Mmc3::clock_irq_counter() {
 }
 
 Byte Mmc3::read_chr(Address addr) {
+    if (mapper_ == 512U && (board_mode_ & 2U) != 0U)
+        return chr_ram_[(static_cast<unsigned>(chr_bank(addr)) * 0x400U + (addr & 0x3FFU)) &
+                        0xFFFU];
     if (mapper_ == 119U) {
         const auto bank = static_cast<unsigned>(chr_bank(addr));
         if ((bank & 0x40U) != 0U)
@@ -217,7 +238,11 @@ Byte Mmc3::read_chr(Address addr) {
 }
 
 void Mmc3::write_chr(Address addr, Byte value) {
-    if (mapper_ == 119U) {
+    if (mapper_ == 512U) {
+        if ((board_mode_ & 2U) != 0U)
+            chr_ram_[(static_cast<unsigned>(chr_bank(addr)) * 0x400U + (addr & 0x3FFU)) & 0xFFFU] =
+                value;
+    } else if (mapper_ == 119U) {
         const auto bank = static_cast<unsigned>(chr_bank(addr));
         if ((bank & 0x40U) != 0U)
             chr_ram_[(bank & 7U) * 0x400U + (addr & 0x3FFU)] = value;
@@ -227,6 +252,8 @@ void Mmc3::write_chr(Address addr, Byte value) {
 }
 
 MirrorMode Mmc3::mirror_mode() const {
+    if (mapper_ == 512U && board_mode_ == 1U)
+        return MirrorMode::FourScreen;
     if (mapper_ == 118U) {
         const auto a = chr_bank(0U) & 0x80U;
         const auto b = chr_bank(0x400U) & 0x80U;
@@ -257,6 +284,32 @@ std::optional<Address> Mmc3::nametable_address(Address addr) const {
     return static_cast<Address>(((chr_bank(addr & 0xFFFU) & 0x80U) << 3U) | (addr & 0x3FFU));
 }
 
+bool Mmc3::maps_expansion(Address addr) const {
+    return mapper_ == 512U && (addr & 0xC100U) == 0x4100U;
+}
+
+Byte Mmc3::expansion_read_mask(Address /*addr*/) const {
+    return mapper_ == 512U ? 0U : 0xFFU; // The board-mode latch is write-only.
+}
+
+void Mmc3::write_expansion(Address addr, Byte value) {
+    if (maps_expansion(addr))
+        board_mode_ = value & 3U;
+}
+
+std::optional<Byte> Mmc3::read_nametable(Address addr) const {
+    if (mapper_ != 512U || board_mode_ != 1U)
+        return std::nullopt;
+    return chr_ram_[0x1000U + (addr & 0xFFFU)];
+}
+
+bool Mmc3::write_nametable(Address addr, Byte value) {
+    if (mapper_ != 512U || board_mode_ != 1U)
+        return false;
+    chr_ram_[0x1000U + (addr & 0xFFFU)] = value;
+    return true;
+}
+
 // New board payloads serialize registers, never derived offsets or immutable
 // IRQ profiles. Keep mapper 4's historical payload in mapper_state.cpp intact.
 void Mmc3::save_variant_state(StateWriter& writer) const {
@@ -271,6 +324,8 @@ void Mmc3::save_variant_state(StateWriter& writer) const {
     writer.write<Byte>((irq_reload_flag_ ? 1U : 0U) | (irq_enabled_ ? 2U : 0U) |
                        (irq_pending_ ? 4U : 0U));
     writer.write<Byte>((prg_ram_enabled_ ? 0x80U : 0U) | (prg_ram_write_protected_ ? 0x40U : 0U));
+    if (mapper_ == 512U)
+        writer.write(board_mode_);
 }
 
 void Mmc3::load_variant_state(StateReader& reader) {
@@ -284,10 +339,13 @@ void Mmc3::load_variant_state(StateReader& reader) {
     reader.read(irq_reload_);
     const auto irq = reader.read<Byte>();
     const auto ram = reader.read<Byte>();
+    if (mapper_ == 512U)
+        reader.read(board_mode_);
     if (!reader.ok() || bank_select_ > 7U || (mode & 0x3FU) != 0U || bank_registers_[6] > 63U ||
         bank_registers_[7] > 63U || mirror > static_cast<Byte>(MirrorMode::Vertical) ||
         (mapper_ == 118U && mirror != static_cast<Byte>(initial_mirror_)) || irq > 7U ||
-        ((irq & 4U) != 0U && (irq & 2U) == 0U) || (ram & 0x3FU) != 0U) {
+        ((irq & 4U) != 0U && (irq & 2U) == 0U) || (ram & 0x3FU) != 0U ||
+        (mapper_ == 512U && (board_mode_ > 3U || (ram & 0x80U) == 0U))) {
         reset();
         reader.fail();
         return;
