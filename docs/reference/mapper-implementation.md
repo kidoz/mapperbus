@@ -4,10 +4,11 @@ This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
 complete.** Updated 2026-11-10 against the working-tree registry.
 
-There are **93 registered cartridge IDs**: the original 14, 53 added in the first
+There are **97 registered cartridge IDs**: the original 14, 53 added in the first
 batch, and Irem 32/65/77, Sunsoft 67/68, Taito 33/48/80/207/82/552, Jaleco 18/72/92/101,
 Namco 210, MMC3 variants 118/119, RAMBO-1 64/158, Bandai 16/153/159, and Datach
-157, UNROM 512 30 and GTROM/direct MMC1 111 in the follow-ups below.
+157, UNROM 512 30, GTROM/direct MMC1 111, and J.Y. Company 35/90/209/211
+in the follow-ups below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
 unusual ROM geometry.
@@ -16,6 +17,7 @@ unusual ROM geometry.
 
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
+| J.Y. Company ASIC (follow-up) | 35, 90, 209, 211 | PRG/CHR modes and outer banking, physical-read CHR latches, mixed CHR/CIRAM nametables, all four documented IRQ sources, math/protection ports, board jumpers, WRAM persistence and snapshots. |
 | Flash boards (follow-up) | 30, 111 | UNROM 512 submappers 0–4, GTROM read-triggered open-bus latch, banked CHR/nametable/bonus RAM, SST39SF040 commands and polling, separate flash persistence; mapper 111 CHR ROM selects direct MMC1. |
 | MMC4 | 10 | 16 KiB PRG, both eight-byte CHR trigger ranges, old-bank trigger fetch, mirroring, RAM, persistence. |
 | Datach (follow-up) | 157 | Fixed 8 KiB CHR RAM, LZ93D50 M2 IRQ, PPU-selected external EEPROM clock, shared SDA, barcode injection, separate reader/cartridge persistence and snapshots. |
@@ -100,7 +102,7 @@ See [mapper tests](../../tests/unit/test_mapper_boards.cpp),
   implementation-specific WRAM extension is not supplied.
 - Larger remaining families include other Bandai, Jaleco and Taito boards,
   further MMC3 derivatives and outer-bank variants,
-  J.Y./Sachen/TXC ASICs, further homebrew boards, and Rainbow.
+  further J.Y. variants, Sachen/TXC ASICs, further homebrew boards, and Rainbow.
 - Jaleco's optional external ADPCM speech chips and sample-media loading remain
   unimplemented, including on some mapper-18/72/92 boards.
 - Enhanced consoles and copier/educational adapters may require machine or
@@ -1110,6 +1112,65 @@ for the changed code; formatting and whitespace checks passed. Isolated agent
 standards validation reported zero errors and the existing 52 warnings.
 No commercial-title or physical-cartridge compatibility certification is claimed.
 
+## J.Y. Company follow-up: physical strobes and shared ASIC
+
+Mappers 35, 90, 209 and 211 use the original `JyCompany` implementation of
+[NESdev ASIC revision 24184](https://www.nesdev.org/w/index.php?oldid=24184).
+Mapper 90 inhibits both ROM nametables and extended CIRAM arrangements. Mapper
+211 follows 209: the historical always-ROM-nametable interpretation describes
+no known PCB. Legacy 35 supplies 8 KiB WRAM; NES 2.0 declarations override that
+fallback. Legacy battery-marked boards get 8 KiB persistent WRAM; other legacy
+90/209/211 images have no WRAM. Explicit NES 2.0 profiles support absent or 8 KiB
+volatile/persistent WRAM, with matching battery metadata.
+
+The four PRG modes include seven-bit reversal, fixed-last-bank selection,
+$6000 ROM overlay, and 512 KiB outer banks. CHR supports 8/4/2/1 KiB units,
+16-bit registers, 256/512 KiB inner masks and outer banks, optional banked RAM
+with the $D002 write gate, and independent MMC4-like latches. B registers supply
+direct 1 KiB CHR nametable indices. Normal CIRAM modes follow electrical A10/A11
+wiring; ROM/CHR-RAM nametables, mixed CIRAM and four independent CIRAM selectors
+use the existing PPU routing hooks. ROM writes are consumed without modifying
+CIRAM. Unsupported submappers, four-screen headers, mixed ROM/RAM, CHR NVRAM,
+and out-of-range geometry are rejected explicitly.
+
+The new default-noop `observe_cpu_write` hook sees console RAM/I/O, register
+writes, and OAM DMA puts before register decoding. This lets a disable-register
+write acknowledge an IRQ raised by its own strobe. PPU /RD callbacks are opt-in
+and occur once per two-dot fetch, after data retrieval: 170 reads per complete
+rendered scanline, plus actual PPUDATA external reads. Palette reads contribute
+one hidden nametable refill. Renderer/debugger CHR lookups never clock read IRQs
+or change these latches. Triggering fetches return the old bank's byte. Existing
+mapper pin observers, ADR-001 scroll increments, bus/PPU payloads and machine
+snapshot version 20 remain unchanged.
+
+IRQ modes count M2 rises, unfiltered A12 rises, PPU reads, or all CPU writes.
+Both directions, full/eight-step prescalers, XOR loads, sticky pending state,
+disable/reset and enable-without-reload are implemented. Exact solder-pad reads
+drive only bits 7:6; core clients may call `configure_board_jumpers(0..3)` on the
+cartridge before installation (default zero). Arithmetic ports implement an
+eight-M2-cycle multiplier, wrapping accumulator and test register, including
+the documented partial address decode. No title-specific detection is used.
+
+Known limits: $C007's optional IRQ mode has no published behavior or known game
+user; its control bytes are retained and serialized, while normal counting
+continues. Multiplier reads before completion return the preceding completed
+product; hardware intermediate values remain unverified. The per-pixel PPU
+still lacks a full fetch/shifter pipeline, so exact mid-fetch pixel effects
+are not certified. Boards lacking CPU A11 wiring are not inferred from titles
+or the mapper number. These limits are not claimed as hardware measurements.
+
+Original tests cover the register/mode matrices, physical PPU and DMA strobes,
+old-bank latch reads, component/machine snapshot replay and malformed-state
+rollback, and exact WRAM files. CLI programs for all four IDs, both NES 2.0
+and iNES, verify CPU banking, multiplication, accumulator, IRQ delivery, and
+persistent success markers across sixteen launches. All four IDs also join
+the shared 83-board boot/replay matrix. Validation passed all 45 regular test
+targets and all eight serial ASan/UBSan suites (macOS `detect_leaks=0`). The
+mapper executable passed 31,326 assertions across 248 cases. Scoped clang-tidy,
+formatting, and whitespace checks passed. Isolated agent documentation validation
+reported zero errors and the existing 52 warnings. No commercial-title
+certification is claimed.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -1160,7 +1221,7 @@ fallback. The registry rejects unsupported IDs.
 | 032 | Irem G-101 | New implementation: Irem | [r23869](https://www.nesdev.org/w/index.php?oldid=23869) |
 | 033 | Taito TC0190 / TC0350 subset | New implementation: TaitoTc | [r24359](https://www.nesdev.org/w/index.php?oldid=24359) |
 | 034 | BNROM / NINA-001 | New implementation: DiscreteMapper | [r24073](https://www.nesdev.org/w/index.php?oldid=24073) |
-| 035 | J.Y. Company ASIC | Not registered | [r24184](https://www.nesdev.org/w/index.php?oldid=24184) |
+| 035 | J.Y. Company ASIC | New implementation: JyCompany | [r24184](https://www.nesdev.org/w/index.php?oldid=24184) |
 | 036 | TXC 01-22000-400 | Not registered | [r4196](https://www.nesdev.org/w/index.php?oldid=4196) |
 | 037 | Board-specific specification | Not registered | [r4204](https://www.nesdev.org/w/index.php?oldid=4204) |
 | 038 | Board-specific specification | New implementation: DiscreteMapper | [r23289](https://www.nesdev.org/w/index.php?oldid=23289) |
@@ -1215,7 +1276,7 @@ fallback. The registry rejects unsupported IDs.
 | 087 | Jaleco / Konami J87 | New implementation: DiscreteMapper | [r23104](https://www.nesdev.org/w/index.php?oldid=23104) |
 | 088 | Namco 118 variant | New implementation: Namco108 | [r23903](https://www.nesdev.org/w/index.php?oldid=23903) |
 | 089 | Sunsoft 2 | New implementation: DiscreteMapper | [r24544](https://www.nesdev.org/w/index.php?oldid=24544) |
-| 090 | J.Y. Company ASIC | Not registered | [r24184](https://www.nesdev.org/w/index.php?oldid=24184) |
+| 090 | J.Y. Company ASIC | New implementation: JyCompany | [r24184](https://www.nesdev.org/w/index.php?oldid=24184) |
 | 091 | Board-specific specification | Not registered | [r22474](https://www.nesdev.org/w/index.php?oldid=22474) |
 | 092 | Jaleco JF-19 | New implementation: JalecoDiscrete (external speech unsupported) | [r4687](https://www.nesdev.org/w/index.php?oldid=4687) |
 | 093 | Sunsoft 2 | New implementation: DiscreteMapper | [r24542](https://www.nesdev.org/w/index.php?oldid=24542) |
@@ -1334,9 +1395,9 @@ fallback. The registry rejects unsupported IDs.
 | 206 | Namco 108/118 / DxROM | New implementation: Namco108 | [r23830](https://www.nesdev.org/w/index.php?oldid=23830) |
 | 207 | Taito X1-005 nametable variant | New implementation: TaitoX1005 | [r24116](https://www.nesdev.org/w/index.php?oldid=24116) |
 | 208 | Board-specific specification | Not registered | [r5614](https://www.nesdev.org/w/index.php?oldid=5614) |
-| 209 | J.Y. Company ASIC | Not registered | [r24184](https://www.nesdev.org/w/index.php?oldid=24184) |
+| 209 | J.Y. Company ASIC | New implementation: JyCompany | [r24184](https://www.nesdev.org/w/index.php?oldid=24184) |
 | 210 | Namco 175/340 | New implementation: Namco175340 (submappers 0/1/2) | [r23707](https://www.nesdev.org/w/index.php?oldid=23707) |
-| 211 | J.Y. Company ASIC | Not registered | [r24184](https://www.nesdev.org/w/index.php?oldid=24184) |
+| 211 | J.Y. Company ASIC | New implementation: JyCompany | [r24184](https://www.nesdev.org/w/index.php?oldid=24184) |
 | 212 | Board-specific specification | New implementation: DiscreteMapper | [r24309](https://www.nesdev.org/w/index.php?oldid=24309) |
 | 213 | Board-specific specification | New implementation: DiscreteMapper | [r5674](https://www.nesdev.org/w/index.php?oldid=5674) |
 | 214 | Board-specific specification | Not registered | [r5675](https://www.nesdev.org/w/index.php?oldid=5675) |

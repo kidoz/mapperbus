@@ -27,6 +27,7 @@ contains the following mapper IDs:
 | 69 | Sunsoft 5B | AY-style square channels |
 | 85 | VRC7 | FM |
 | 10 | MMC4 | — |
+| 35, 90, 209, 211 | J.Y. Company ASIC: banking, CHR latches/nametables, four IRQ sources, arithmetic, WRAM and snapshots | Unknown $C007 IRQ mode and early multiplier intermediates unverified |
 | 30 | UNROM 512, submappers 0–4, CHR RAM, flash saves, mirroring and LED wiring | — |
 | 111 | GTROM with flash/bonus PPU RAM, or direct MMC1 with six-bit CHR-ROM banking | GTMP3 external playback unsupported |
 | 157 | Datach reader: barcode input, shared and optional cartridge EEPROM, CHR RAM and M2 IRQ | — |
@@ -47,7 +48,7 @@ contains the following mapper IDs:
 | 13, 34, 66, 70, 71, 78, 79, 87, 89, 93, 94, 97, 113, 140, 152, 180, 184 | Discrete cartridge boards | — |
 | 38, 46, 58, 61, 62, 81, 107, 145, 148, 149, 193, 200, 201, 203, 212, 213, 225, 226, 229, 231, 232, 240 | Additional latch boards and multicarts | — |
 
-The registry contains 93 cartridge IDs. See [mapper implementation coverage](mapper-implementation.md)
+The registry contains 97 cartridge IDs. See [mapper implementation coverage](mapper-implementation.md)
 for individual specifications, tested behavior, board limitations, and the full
 inventory of documented IDs still awaiting implementation. The expanded set has
 synthetic banking, IRQ, CPU/PPU integration and save-state coverage; this does
