@@ -27,6 +27,7 @@ contains the following mapper IDs:
 | 69 | Sunsoft 5B | AY-style square channels |
 | 85 | VRC7 | FM |
 | 10 | MMC4 | — |
+| 114 | SuperGame/Hosenkan MMC3: submappers 0/1 scrambling, NROM override, CHR outer bank, non-repeating IRQs and snapshots | ROM-only profile; tentative low decoder and exact clone IRQ behavior unverified |
 | 115 | Kasheng SFC boards: MMC3/NROM override, outer PRG/CHR banks, solder pads, repeating zero-latch IRQs and snapshots | ROM-only supported profile; exact clone/A12 timing unverified; pads use the core API |
 | 250 | Nitra address-data MMC3: L401 and Queen Bee V PRG mux, H/V CIRAM, IRQs and snapshots | Queen Bee V requires an explicit core/CLI board profile; exact A12 timing remains unverified |
 | 263 | Rex Soft KOF97: scrambled MMC3 addresses/data, banking, H/V CIRAM, IRQs and header-selected WRAM/NVRAM | Clone timing and all title revisions remain unverified; converted mapper-4 images retain mapper-4 routing |
@@ -57,7 +58,7 @@ contains the following mapper IDs:
 | 13, 34, 66, 70, 71, 78, 79, 87, 89, 93, 94, 97, 113, 140, 152, 180, 184 | Discrete cartridge boards | — |
 | 38, 46, 58, 61, 62, 81, 107, 145, 148, 149, 193, 200, 201, 203, 212, 213, 225, 226, 229, 231, 232, 240 | Additional latch boards and multicarts | — |
 
-The registry contains 127 cartridge IDs. See [mapper implementation coverage](mapper-implementation.md)
+The registry contains 128 cartridge IDs. See [mapper implementation coverage](mapper-implementation.md)
 for individual specifications, tested behavior, board limitations, and the full
 inventory of documented IDs still awaiting implementation. The expanded set has
 synthetic banking, IRQ, CPU/PPU integration and save-state coverage; this does
@@ -66,6 +67,8 @@ not establish commercial-title compatibility for every new board.
 Unsupported IDs fail cartridge creation with an `Unsupported mapper` error.
 Obsolete mapper 248 remains unsupported; its documented cartridge behavior is
 covered under mapper 115, without automatic header rewriting.
+Historical duplicate mapper 182 is likewise unregistered; its documented
+cartridge behavior is covered under mapper 114.
 Sunsoft DCS option cartridges load alongside a submapper 68:1 base using
 `--dcs-option PATH`; see [DCS loading and snapshot identity](../how-to/play-dcs-games.md).
 The registry also rejects invalid or unsupported ROM geometries.
