@@ -51,6 +51,21 @@ namespace {
         return Sachen::validate_geometry(header, prg_size, chr_size);
     if (Txc::supports_mapper(header.mapper_number))
         return Txc::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 513U) {
+        if (!header.is_nes2 || header.submapper != 0U)
+            return std::unexpected("Mapper 513 requires NES 2.0 submapper 0");
+        if (prg_size < 0x80000U || prg_size > 0x200000U || prg_size % 0x80000U != 0U ||
+            chr_size != 0U)
+            return std::unexpected("Mapper 513 requires 512 KiB outer PRG units and no CHR ROM");
+        if (!header.has_battery || header.prg_ram_size != 0U || header.prg_nvram_size != 0U ||
+            header.chr_ram_size != 0U ||
+            (header.chr_nvram_size != 0U && header.chr_nvram_size != 0x8000U))
+            return std::unexpected("Mapper 513 requires 32 KiB battery CHR RAM and no WRAM");
+        if (header.mirror_mode != MirrorMode::Horizontal &&
+            header.mirror_mode != MirrorMode::Vertical)
+            return std::unexpected("Mapper 513 provides ordinary H/V CIRAM");
+        return {};
+    }
     if (header.mapper_number == 512U) {
         if (!header.is_nes2 || header.submapper != 0U)
             return std::unexpected("Mapper 512 requires NES 2.0 submapper 0");
@@ -400,6 +415,7 @@ void register_builtin_mappers() {
     registry.register_mapper(118, make_factory<Mmc3>());
     registry.register_mapper(119, make_factory<Mmc3>());
     registry.register_mapper(512, make_factory<Mmc3>());
+    registry.register_mapper(513, make_factory<Mmc3>());
     registry.register_mapper(64, make_factory<Rambo1>());
     registry.register_mapper(158, make_factory<Rambo1>());
     registry.register_mapper(16, make_factory<BandaiFcg>());

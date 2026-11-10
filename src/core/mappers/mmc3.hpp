@@ -8,8 +8,8 @@
 
 namespace mapperbus::core {
 
-/// Mappers 4 (TxROM), 118 (TxSROM), 119 (TQROM), and 512 (Sachen clone).
-/// PRG: up to 512 KB, 8 KB switchable banks
+/// Mappers 4 (TxROM), 118 (TxSROM), 119 (TQROM), and Sachen clones 512/513.
+/// PRG: 8 KB switchable banks, with mapper-513 outer banks up to 2 MiB
 /// CHR: up to 256 KB, 1 KB switchable banks
 /// Features: scanline IRQ counter, mirroring control, PRG RAM
 class Mmc3 : public Mapper {
@@ -28,6 +28,8 @@ class Mmc3 : public Mapper {
     bool maps_expansion(Address addr) const override;
     Byte expansion_read_mask(Address addr) const override;
     void write_expansion(Address addr, Byte value) override;
+    bool observes_ppu_address() const override;
+    void observe_ppu_address(Address addr) override;
     void reset() override;
 
     bool irq_pending() const override {
@@ -54,6 +56,9 @@ class Mmc3 : public Mapper {
     std::vector<Byte> chr_rom_;
     std::array<Byte, 0x2000> prg_ram_{};
     std::array<Byte, 0x2000> chr_ram_{};
+    // Mapper 513 has battery-backed pattern memory, not CPU-visible WRAM.
+    std::vector<Byte> chr_nvram_;
+    Byte ppu_chr_slot_ = 0U;
     // Mapper 512: disjoint 4 KiB pattern RAM / 4 KiB cartridge nametables.
     Byte board_mode_ = 0U;
     bool use_chr_ram_ = false;
