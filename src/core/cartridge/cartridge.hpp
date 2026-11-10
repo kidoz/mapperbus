@@ -70,6 +70,9 @@ class Cartridge {
     Result<void> configure_board_jumpers(Byte value) {
         return mapper_->configure_board_jumpers(value);
     }
+    Result<void> configure_board_profile(std::string_view profile) {
+        return mapper_->configure_board_profile(profile);
+    }
     [[nodiscard]] bool unmirrored_nametables() const {
         return mapper_->unmirrored_nametables();
     }

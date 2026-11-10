@@ -14,6 +14,7 @@ int main(int argc, char* argv[]) {
     std::string path;
     std::string member;
     std::string dcs_option;
+    std::string board_profile;
     std::string datach_save;
     std::string barcode;
     uint32_t barcode_cycles = 1000U;
@@ -29,16 +30,22 @@ int main(int argc, char* argv[]) {
         if ((argument == "--entry" || argument == "--fds-bios" || argument == "--dcs-option" ||
              argument == "--frames" || argument == "--region" || argument == "--barcode" ||
              argument == "--barcode-frame" || argument == "--barcode-cycles" ||
-             argument == "--datach-save" || argument == "--controller-timing" ||
-             argument == "--controller-wiring" || argument == "--controller-mode" ||
-             argument == "--expansion-controllers") &&
+             argument == "--datach-save" || argument == "--board-profile" ||
+             argument == "--controller-timing" || argument == "--controller-wiring" ||
+             argument == "--controller-mode" || argument == "--expansion-controllers") &&
             index + 1 < argc) {
             const std::string_view value(argv[++index]);
             if (argument == "--entry")
                 member = value;
             else if (argument == "--fds-bios")
                 bios = value;
-            else if (argument == "--datach-save" || argument == "--barcode") {
+            else if (argument == "--board-profile") {
+                if (value.empty() || value.starts_with("--")) {
+                    mapperbus::core::logger::error("--board-profile requires a profile name");
+                    return EXIT_FAILURE;
+                }
+                board_profile = value;
+            } else if (argument == "--datach-save" || argument == "--barcode") {
                 if (value.empty() || value.starts_with("--")) {
                     mapperbus::core::logger::error("{} requires a value", argument);
                     return EXIT_FAILURE;
@@ -127,7 +134,8 @@ int main(int argc, char* argv[]) {
     if (path.empty()) {
         mapperbus::core::logger::error(
             "Usage: mapperbus-cli <rom-file|archive> [--entry NAME] "
-            "[--fds-bios PATH] [--dcs-option PATH] [--frames N] [--region ntsc|pal|hybrid] "
+            "[--fds-bios PATH] [--dcs-option PATH] [--board-profile NAME] [--frames N] [--region "
+            "ntsc|pal|hybrid] "
             "[--controller-timing nes-av-famicom|rf-famicom] "
             "[--controller-wiring nes|rf-famicom] [--controller-mode "
             "standard|four-score|hori-4-player] "
@@ -138,7 +146,7 @@ int main(int argc, char* argv[]) {
     mapperbus::core::register_builtin_mappers();
     mapperbus::core::Emulator emulator;
     auto result = mapperbus::app::load_rom_source(
-        emulator, path, member, bios, {}, {}, dcs_option, datach_save);
+        emulator, path, member, bios, {}, {}, dcs_option, datach_save, board_profile);
     if (!result) {
         mapperbus::core::logger::error("{}", result.error());
         return EXIT_FAILURE;

@@ -8,7 +8,7 @@
 
 namespace mapperbus::core {
 
-/// MMC3 (4), TxSROM (118), TQROM (119), Sachen 262/512/513, and KOF97 (263).
+/// MMC3 (4), TxSROM (118), TQROM (119), Nitra (250), Sachen 262/512/513 and KOF97 (263).
 /// PRG: 8 KB switchable banks, with mapper-513 outer banks up to 2 MiB
 /// CHR: 1 KB switchable banks, up to 512 KiB with mapper-262 outer pins
 /// Features: scanline IRQ counter, mirroring control, PRG RAM
@@ -31,6 +31,7 @@ class Mmc3 : public Mapper {
     Byte read_expansion(Address addr) override;
     void write_expansion(Address addr, Byte value) override;
     Result<void> configure_board_jumpers(Byte value) override;
+    Result<void> configure_board_profile(std::string_view profile) override;
     bool observes_ppu_address() const override;
     void observe_ppu_address(Address addr) override;
     void reset() override;
@@ -65,6 +66,8 @@ class Mmc3 : public Mapper {
     // Mapper 262: independent, permanently mapped four-screen VRAM.
     std::vector<Byte> nametable_ram_;
     Byte title_jumper_ = 0U;
+    // Immutable mapper-250 PCB wiring selected before cartridge installation.
+    bool nitra_prg_mux_ = false;
     // Mapper 262: CHR outer pins/RAM select. Mapper 512: graphics mode.
     Byte board_mode_ = 0U;
     bool use_chr_ram_ = false;

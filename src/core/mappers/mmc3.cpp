@@ -17,16 +17,23 @@ namespace mapperbus::core {
 // expansion decoder and normal $E001 MMC3 decoder are tentative in the source.
 // Mapper 263 / UNL-KOF97: NESdev r7642, CPU A12 replaces the MMC3 A0
 // register select, with permuted data pins on mapper-register writes only.
+// Mapper 250: NESdev r21044 and Krzysiobal's PCB schematics 354/533.
+// CPU A10 selects the register, A7..A0 supply data. Queen Bee V's 74153
+// selects CPU A13 instead of MMC3 A13 at $C000-$FFFF during M2 high.
 Mmc3::Mmc3(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte> chr_rom)
     : prg_rom_(std::move(prg_rom)), chr_rom_(std::move(chr_rom)), use_chr_ram_(chr_rom_.empty()),
-      mapper_(header.mapper_number == 262U || header.mapper_number == 263U ||
-                      header.mapper_number == 118U || header.mapper_number == 119U ||
-                      header.mapper_number == 512U || header.mapper_number == 513U
+      mapper_(header.mapper_number == 250U || header.mapper_number == 262U ||
+                      header.mapper_number == 263U || header.mapper_number == 118U ||
+                      header.mapper_number == 119U || header.mapper_number == 512U ||
+                      header.mapper_number == 513U
                   ? header.mapper_number
                   : 4U),
       initial_mirror_(header.mirror_mode), mirror_mode_(header.mirror_mode),
       irq_zero_latch_repeats_(!(mapper_ == 4U && header.is_nes2 && header.submapper == 4)) {
-    if (mapper_ == 262U) {
+    if (mapper_ == 250U) {
+        prg_ram_size_ = 0U;
+        nvram_size_ = 0U;
+    } else if (mapper_ == 262U) {
         prg_ram_size_ = 0U;
         nvram_size_ = 0U;
         initial_mirror_ = MirrorMode::FourScreen;
@@ -144,6 +151,8 @@ Byte Mmc3::read_prg(Address addr) {
 
     uint8_t bank_index = (addr - 0x8000) / 0x2000;
     uint32_t offset = prg_offsets_[bank_index] + ((addr - 0x8000) % 0x2000);
+    if (mapper_ == 250U && nitra_prg_mux_ && addr >= 0xC000U)
+        offset = (offset & ~0x2000U) | (addr & 0x2000U);
     if (mapper_ == 513U && bank_index != 3U && bank_index != (prg_mode_ ? 0U : 2U)) {
         unsigned outer =
             static_cast<unsigned>(chr_bank(static_cast<Address>(ppu_chr_slot_ * 0x400U))) >> 6U;
@@ -171,7 +180,10 @@ void Mmc3::write_prg(Address addr, Byte value) {
     if (addr < 0x8000)
         return;
 
-    if (mapper_ == 263U) {
+    if (mapper_ == 250U) {
+        value = static_cast<Byte>(addr & 0xFFU);
+        addr = static_cast<Address>((addr & 0xE000U) | ((addr >> 10U) & 1U));
+    } else if (mapper_ == 263U) {
         addr = static_cast<Address>((addr & 0xE000U) | ((addr >> 12U) & 1U));
         const auto data = static_cast<unsigned>(value);
         value = static_cast<Byte>((data & 0xD8U) | ((data & 0x20U) >> 4U) | ((data & 4U) << 3U) |
@@ -370,6 +382,14 @@ Result<void> Mmc3::configure_board_jumpers(Byte value) {
     return {};
 }
 
+Result<void> Mmc3::configure_board_profile(std::string_view profile) {
+    if (mapper_ != 250U || (profile != "nitra-l401" && profile != "nitra-queen-bee-v"))
+        return std::unexpected(
+            "Mapper 250 supports nitra-l401 and nitra-queen-bee-v board profiles");
+    nitra_prg_mux_ = profile == "nitra-queen-bee-v";
+    return {};
+}
+
 bool Mmc3::observes_ppu_address() const {
     return mapper_ == 513U;
 }
@@ -419,6 +439,8 @@ void Mmc3::save_variant_state(StateWriter& writer) const {
     writer.write<Byte>((irq_reload_flag_ ? 1U : 0U) | (irq_enabled_ ? 2U : 0U) |
                        (irq_pending_ ? 4U : 0U));
     writer.write<Byte>((prg_ram_enabled_ ? 0x80U : 0U) | (prg_ram_write_protected_ ? 0x40U : 0U));
+    if (mapper_ == 250U)
+        writer.write<Byte>(nitra_prg_mux_ ? 1U : 0U);
     if (mapper_ == 512U)
         writer.write(board_mode_);
     if (mapper_ == 513U)
@@ -449,6 +471,7 @@ void Mmc3::load_variant_state(StateReader& reader) {
     reader.read(irq_reload_);
     const auto irq = reader.read<Byte>();
     const auto ram = reader.read<Byte>();
+    const auto nitra_profile = mapper_ == 250U ? reader.read<Byte>() : Byte{0U};
     if (mapper_ == 512U)
         reader.read(board_mode_);
     if (mapper_ == 513U)
@@ -470,6 +493,7 @@ void Mmc3::load_variant_state(StateReader& reader) {
         ((irq & 4U) != 0U && (irq & 2U) == 0U) || (ram & 0x3FU) != 0U ||
         (mapper_ == 512U && (board_mode_ > 3U || (ram & 0x80U) == 0U)) ||
         (mapper_ == 513U && ppu_chr_slot_ > 7U) ||
+        (mapper_ == 250U && nitra_profile != (nitra_prg_mux_ ? 1U : 0U)) ||
         (mapper_ == 262U && ((board_mode_ & 0xB0U) != 0U || title_jumper_ > 1U))) {
         if (mapper_ == 262U && title_jumper_ > 1U)
             title_jumper_ = 0U;

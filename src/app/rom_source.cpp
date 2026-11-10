@@ -273,7 +273,8 @@ core::Result<std::string> load_rom_source(core::Emulator& emulator,
                                           const std::filesystem::path& persistence_directory,
                                           const RomReadControl& control,
                                           const std::string& dcs_option_path,
-                                          const std::string& datach_save_path) {
+                                          const std::string& datach_save_path,
+                                          std::string_view board_profile) {
     if (control.stop.stop_requested())
         return cancelled_error();
     const auto storage =
@@ -308,6 +309,8 @@ core::Result<std::string> load_rom_source(core::Emulator& emulator,
         }
         core::Result<void> loaded;
         if (lower_extension(path) == ".fds") {
+            if (!board_profile.empty())
+                return std::unexpected("Board profiles require a cartridge, not an FDS disk");
             if (!option.empty())
                 return std::unexpected("DCS option ROM cannot be attached to an FDS disk");
             auto disk = core::read_binary_file_capped(
@@ -325,6 +328,11 @@ core::Result<std::string> load_rom_source(core::Emulator& emulator,
                 return cancelled_error();
             if (!cartridge)
                 return std::unexpected(cartridge.error());
+            if (!board_profile.empty()) {
+                if (auto configured = cartridge->configure_board_profile(board_profile);
+                    !configured)
+                    return std::unexpected(configured.error());
+            }
             auto shared = shared_path(*cartridge);
             if (!shared)
                 return std::unexpected(shared.error());
@@ -364,6 +372,8 @@ core::Result<std::string> load_rom_source(core::Emulator& emulator,
         return std::unexpected("ROM archive member not found: " + selected);
     }
     if (lower_extension(selected) == ".fds") {
+        if (!board_profile.empty())
+            return std::unexpected("Board profiles require a cartridge, not an FDS disk");
         if (!option.empty())
             return std::unexpected("DCS option ROM cannot be attached to an FDS disk");
         if (!datach_save_path.empty())
@@ -380,6 +390,10 @@ core::Result<std::string> load_rom_source(core::Emulator& emulator,
         return cancelled_error();
     if (!cartridge) {
         return std::unexpected(cartridge.error());
+    }
+    if (!board_profile.empty()) {
+        if (auto configured = cartridge->configure_board_profile(board_profile); !configured)
+            return std::unexpected(configured.error());
     }
     const auto battery_path =
         storage / "battery" / (core::sha256_hex(cartridge->base_content_hash()) + ".sav");

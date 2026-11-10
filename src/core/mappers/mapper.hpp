@@ -129,6 +129,11 @@ class Mapper {
     virtual Result<void> configure_board_jumpers(Byte /*value*/) {
         return std::unexpected("This cartridge does not expose board jumpers");
     }
+    /// Select documented PCB wiring before installing the cartridge when
+    /// the file format has no assigned submapper for the distinction.
+    virtual Result<void> configure_board_profile(std::string_view /*profile*/) {
+        return std::unexpected("This mapper does not expose board profiles");
+    }
     /// End of M2, after the current CPU write and all PPU dots in that cycle.
     virtual void clock_cpu_falling_edge() {}
 

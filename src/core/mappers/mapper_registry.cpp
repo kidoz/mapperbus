@@ -51,6 +51,23 @@ namespace {
         return Sachen::validate_geometry(header, prg_size, chr_size);
     if (Txc::supports_mapper(header.mapper_number))
         return Txc::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 250U) {
+        if (header.is_nes2 && header.submapper != 0U)
+            return std::unexpected(
+                "Mapper 250 supports submapper 0; use an explicit board profile");
+        if (prg_size < 0x8000U || prg_size > 0x20000U || prg_size % 0x2000U != 0U ||
+            chr_size < 0x2000U || chr_size > 0x20000U || chr_size % 0x400U != 0U)
+            return std::unexpected("Unsupported mapper-250 ROM geometry");
+        // Both documented PCBs contain no WRAM. Ignore only legacy iNES's
+        // implicit CPU-RAM size, never an explicit NES 2.0 declaration.
+        if (header.has_battery || header.chr_ram_size != 0U || header.chr_nvram_size != 0U ||
+            header.prg_nvram_size != 0U || (header.is_nes2 && header.prg_ram_size != 0U))
+            return std::unexpected("Mapper 250 PCBs require ROM-only cartridge memory");
+        if (header.mirror_mode != MirrorMode::Horizontal &&
+            header.mirror_mode != MirrorMode::Vertical)
+            return std::unexpected("Mapper 250 supports ordinary H/V CIRAM");
+        return {};
+    }
     if (header.mapper_number == 263U) {
         if (!header.is_nes2 || header.submapper != 0U)
             return std::unexpected("Mapper 263 requires NES 2.0 submapper 0");
@@ -454,6 +471,7 @@ void register_builtin_mappers() {
     registry.register_mapper(4, make_factory<Mmc3>());
     registry.register_mapper(118, make_factory<Mmc3>());
     registry.register_mapper(119, make_factory<Mmc3>());
+    registry.register_mapper(250, make_factory<Mmc3>());
     registry.register_mapper(262, make_factory<Mmc3>());
     registry.register_mapper(263, make_factory<Mmc3>());
     registry.register_mapper(512, make_factory<Mmc3>());

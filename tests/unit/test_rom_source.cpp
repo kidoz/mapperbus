@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <catch2/catch_test_macros.hpp>
 #include <chrono>
@@ -1702,6 +1703,102 @@ TEST_CASE(
         REQUIRE(source);
         REQUIRE((*source == bytes));
     }
+}
+} // namespace
+} // namespace mapperbus::app
+
+namespace mapperbus::app {
+namespace {
+TEST_CASE("Board profiles select Nitra wiring before raw or archived cartridge installation",
+          "[rom-source][nitra250]") {
+    ArchiveFixture fixture;
+    std::vector<Byte> image(16U + 0x20000U + 0x20000U);
+    image[0] = 'N';
+    image[1] = 'E';
+    image[2] = 'S';
+    image[3] = 0x1AU;
+    image[4] = 8U;
+    image[5] = 16U;
+    image[6] = 0xA1U;
+    image[7] = 0xF8U;
+    for (std::size_t i = 0U; i < 0x20000U; ++i)
+        image[16U + i] = static_cast<Byte>(i / 8192U);
+    // Native bank select $8046, bank data $8403; upper-window A13 differs.
+    constexpr std::array<Byte, 16> kCode = {0xA9U,
+                                            0xFFU,
+                                            0x8DU,
+                                            0x46U,
+                                            0x80U,
+                                            0x8DU,
+                                            3U,
+                                            0x84U,
+                                            0xADU,
+                                            0U,
+                                            0xC0U,
+                                            0x85U,
+                                            0x10U,
+                                            0x4CU,
+                                            0x0DU,
+                                            0xE0U};
+    std::ranges::copy(kCode, image.begin() + 16U + 0x1E000U);
+    for (std::size_t v = 16U + 0x1FFFAU; v < 16U + 0x20000U; v += 2U) {
+        image[v] = 0U;
+        image[v + 1U] = 0xE0U;
+    }
+    const auto raw = fixture.root / "nitra.nes";
+    REQUIRE(core::write_binary_file_atomic(raw.string(), image, "Nitra ROM"));
+    const auto nrom = fixture.root / "nrom.nes";
+    REQUIRE(core::write_binary_file_atomic(nrom.string(), make_rom(), "NROM"));
+    for (int format = 0; format < 3; ++format) {
+        const auto path =
+            format == 0 ? raw : fixture.root / (format == 1 ? "nitra.zip" : "nitra.7z");
+        const std::string member = format == 0 ? "" : "folder/nitra.nes";
+        if (format != 0)
+            write_archive(path, {{member, image}}, format == 2);
+        core::Emulator emulator;
+        REQUIRE(load_rom_source(
+            emulator, path.string(), member, {}, fixture.root, {}, {}, {}, "nitra-queen-bee-v"));
+        emulator.reset();
+        emulator.step_frame();
+        REQUIRE(emulator.read_cpu(0x10U) == 2U);
+        const auto queen = emulator.save_state();
+        auto invalid = load_rom_source(
+            emulator, path.string(), member, {}, fixture.root, {}, {}, {}, "unknown");
+        REQUIRE_FALSE(invalid);
+        REQUIRE((emulator.save_state() == queen));
+        REQUIRE_FALSE(load_rom_source(
+            emulator, nrom.string(), {}, {}, fixture.root, {}, {}, {}, "nitra-queen-bee-v"));
+        REQUIRE((emulator.save_state() == queen));
+        REQUIRE(load_rom_source(
+            emulator, path.string(), member, {}, fixture.root, {}, {}, {}, "nitra-l401"));
+        emulator.reset();
+        emulator.step_frame();
+        REQUIRE(emulator.read_cpu(0x10U) == 3U);
+        const auto standard = emulator.save_state();
+        REQUIRE_FALSE(emulator.load_state(queen));
+        REQUIRE((emulator.save_state() == standard));
+        const auto disk = fixture.root / (format == 0   ? "disk.fds"
+                                          : format == 1 ? "disk.zip"
+                                                        : "disk.7z");
+        if (format == 0)
+            REQUIRE(core::write_binary_file_atomic(disk.string(), std::vector<Byte>(16U), "disk"));
+        else
+            write_archive(disk, {{"disk.fds", std::vector<Byte>(16U)}}, format == 2);
+        const auto rejected = load_rom_source(emulator,
+                                              disk.string(),
+                                              format == 0 ? "" : "disk.fds",
+                                              {},
+                                              fixture.root,
+                                              {},
+                                              {},
+                                              {},
+                                              "nitra-queen-bee-v");
+        REQUIRE_FALSE(rejected);
+        REQUIRE(rejected.error().find("Board profiles require a cartridge") != std::string::npos);
+        REQUIRE((emulator.save_state() == standard));
+    }
+    REQUIRE(core::read_binary_file_capped(raw.string(), image.size(), "ROM") ==
+            core::Result<std::vector<Byte>>(image));
 }
 } // namespace
 } // namespace mapperbus::app
