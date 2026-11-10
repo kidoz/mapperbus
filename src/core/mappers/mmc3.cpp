@@ -34,15 +34,18 @@ namespace mapperbus::core {
 // Waixing 74/192: NESdev r24258/r23950 and mixed-CHR summary r23945.
 // Decode banks 8 onward before ROM wrapping; only those pages are writable.
 // Mapper 194: r23951/r23945. RAM starts at zero and mirrors when CHR ROM is absent.
+// Mapper 195 / FS303: NESdev r23952 and measured hardware in forum thread 19041.
+// Only PPU writes to banks >= $80 set the GAL mode; RAM uses raw CHR A10-A12.
 Mmc3::Mmc3(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte> chr_rom)
     : prg_rom_(std::move(prg_rom)), chr_rom_(std::move(chr_rom)), use_chr_ram_(chr_rom_.empty()),
       mapper_(header.mapper_number == 74U || header.mapper_number == 192U ||
-                      header.mapper_number == 194U || header.mapper_number == 114U ||
-                      header.mapper_number == 115U || header.mapper_number == 123U ||
-                      header.mapper_number == 249U || header.mapper_number == 250U ||
-                      header.mapper_number == 262U || header.mapper_number == 263U ||
-                      header.mapper_number == 118U || header.mapper_number == 119U ||
-                      header.mapper_number == 512U || header.mapper_number == 513U
+                      header.mapper_number == 194U || header.mapper_number == 195U ||
+                      header.mapper_number == 114U || header.mapper_number == 115U ||
+                      header.mapper_number == 123U || header.mapper_number == 249U ||
+                      header.mapper_number == 250U || header.mapper_number == 262U ||
+                      header.mapper_number == 263U || header.mapper_number == 118U ||
+                      header.mapper_number == 119U || header.mapper_number == 512U ||
+                      header.mapper_number == 513U
                   ? header.mapper_number
                   : 4U),
       scramble_profile_(mapper_ == 114U && header.is_nes2 ? header.submapper : 0U),
@@ -54,7 +57,16 @@ Mmc3::Mmc3(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte
         mixed_chr_ram_size_ = header.is_nes2    ? header.chr_ram_size
                               : mapper_ == 192U ? 0x1000U
                                                 : 0x800U;
-    if (t9552_ || mixed_chr_ram_size_ != 0U) {
+    if (mapper_ == 195U) {
+        fs303_aux_present_ = header.is_nes2 && header.prg_ram_size == 0x1000U;
+        if (fs303_aux_present_)
+            fs303_aux_ram_.resize(0x1000U);
+        prg_ram_size_ =
+            header.is_nes2 ? header.prg_nvram_size + (fs303_aux_present_ ? 0U : header.prg_ram_size)
+            : header.has_battery ? 0x2000U
+                                 : 0U;
+        nvram_size_ = header.is_nes2 ? header.prg_nvram_size : prg_ram_size_;
+    } else if (t9552_ || mixed_chr_ram_size_ != 0U) {
         prg_ram_size_ = header.is_nes2       ? header.prg_ram_size + header.prg_nvram_size
                         : header.has_battery ? 0x2000U
                                              : 0U;
@@ -93,6 +105,7 @@ Mmc3::Mmc3(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte
 }
 
 void Mmc3::reset() {
+    fs303_chr_mode_ = 0x80U;
     t9552_mode_ = 0U;
     kasheng_prg_ = 0U;
     kasheng_chr_ = 0U;
@@ -401,6 +414,9 @@ Byte Mmc3::read_chr(Address addr) {
     if (mixed_chr_ram_size_ != 0U)
         if (const auto offset = mixed_chr_ram_offset(addr))
             return chr_ram_[*offset];
+    if (mapper_ == 195U)
+        if (const auto offset = fs303_chr_ram_offset(addr))
+            return chr_ram_[*offset];
     if (use_chr_ram_) {
         return chr_ram_[addr % 0x2000];
     }
@@ -426,6 +442,12 @@ void Mmc3::write_chr(Address addr, Byte value) {
         const auto bank = static_cast<unsigned>(chr_bank(addr));
         if ((bank & 0x40U) != 0U)
             chr_ram_[(bank & 7U) * 0x400U + (addr & 0x3FFU)] = value;
+    } else if (mapper_ == 195U) {
+        const auto bank = chr_bank(addr);
+        if ((bank & 0x80U) != 0U)
+            fs303_chr_mode_ = bank & 0xDAU;
+        else if (const auto offset = fs303_chr_ram_offset(addr))
+            chr_ram_[*offset] = value;
     } else if (mixed_chr_ram_size_ != 0U) {
         if (const auto offset = mixed_chr_ram_offset(addr))
             chr_ram_[*offset] = value;
@@ -470,6 +492,26 @@ uint16_t Mmc3::mixed_chr_state_tag() const {
     return static_cast<uint16_t>(mixed_chr_ram_size_ | flags);
 }
 
+std::optional<std::size_t> Mmc3::fs303_chr_ram_offset(Address addr) const {
+    if ((fs303_chr_mode_ & 0x10U) != 0U)
+        return std::nullopt;
+    constexpr std::array<unsigned, 8> kFirst = {
+        0x28U, 0U, 0x4CU, 0x64U, 0x46U, 0x7CU, 0x0AU, 0x100U};
+    const unsigned index = ((fs303_chr_mode_ & 0x40U) >> 4U) | ((fs303_chr_mode_ & 8U) >> 2U) |
+                           ((fs303_chr_mode_ & 2U) >> 1U);
+    const unsigned bank = chr_bank(addr);
+    const unsigned count = (fs303_chr_mode_ & 0x40U) != 0U ? 2U : 4U;
+    if (bank < kFirst[index] || bank - kFirst[index] >= count)
+        return std::nullopt;
+    // The 32 KiB chip has only eight connected KiB pages; windows share pages.
+    return (bank & 7U) * 0x400U + (addr & 0x3FFU);
+}
+
+uint16_t Mmc3::fs303_state_tag() const {
+    return static_cast<uint16_t>(0xC300U | (fs303_aux_present_ ? 1U : 0U) |
+                                 (prg_ram_size_ != 0U ? 2U : 0U) | (nvram_size_ != 0U ? 4U : 0U));
+}
+
 Byte Mmc3::chr_bank(Address addr) const {
     const auto slot = ((static_cast<unsigned>(addr) >> 10U) & 7U) ^ (chr_inversion_ ? 4U : 0U);
     if (slot < 4U)
@@ -485,6 +527,8 @@ std::optional<Address> Mmc3::nametable_address(Address addr) const {
 }
 
 bool Mmc3::maps_expansion(Address addr) const {
+    if (mapper_ == 195U)
+        return fs303_aux_present_ && (addr & 0xF000U) == 0x5000U;
     if (t9552_)
         return (addr & 0xF000U) == 0x5000U;
     if (mapper_ == 123U)
@@ -499,13 +543,17 @@ Byte Mmc3::expansion_read_mask(Address /*addr*/) const {
 }
 
 Byte Mmc3::read_expansion(Address addr) {
+    if (mapper_ == 195U && maps_expansion(addr))
+        return fs303_aux_ram_[addr & 0xFFFU];
     return mapper_ == 262U && maps_expansion(addr) ? static_cast<Byte>(title_jumper_ << 7U) : 0U;
 }
 
 void Mmc3::write_expansion(Address addr, Byte value) {
     if (!maps_expansion(addr))
         return;
-    if (t9552_) {
+    if (mapper_ == 195U) {
+        fs303_aux_ram_[addr & 0xFFFU] = value;
+    } else if (t9552_) {
         t9552_mode_ = value & 7U;
         update_prg_banks();
         update_chr_banks();
@@ -602,6 +650,11 @@ void Mmc3::save_variant_state(StateWriter& writer) const {
     }
     if (mixed_chr_ram_size_ != 0U)
         writer.write(mixed_chr_state_tag());
+    if (mapper_ == 195U) {
+        writer.write(fs303_state_tag());
+        writer.write(fs303_chr_mode_);
+        writer.write_bytes(fs303_aux_ram_);
+    }
     if (t9552_) {
         writer.write(t9552_mode_);
         writer.write<Byte>(mapper_ == 249U ? 0U : 2U);
@@ -649,6 +702,16 @@ void Mmc3::load_variant_state(StateReader& reader) {
         reader.read(kasheng_prg_);
     }
     const auto mixed_chr_tag = mixed_chr_ram_size_ != 0U ? reader.read<uint16_t>() : 0U;
+    const auto fs303_tag = mapper_ == 195U ? reader.read<uint16_t>() : 0U;
+    if (mapper_ == 195U) {
+        reader.read(fs303_chr_mode_);
+        const auto size = fs303_aux_present_ ? 0x1000U : 0U;
+        reader.read_bytes(fs303_aux_ram_, size);
+        if (fs303_aux_ram_.size() != size) {
+            fs303_aux_ram_.resize(size);
+            reader.fail();
+        }
+    }
     if (t9552_)
         reader.read(t9552_mode_);
     const auto t9552_order = t9552_ ? reader.read<Byte>() : Byte{0U};
@@ -670,6 +733,8 @@ void Mmc3::load_variant_state(StateReader& reader) {
     const bool valid_mirror = mapper_ == 262U ? mirror == static_cast<Byte>(MirrorMode::FourScreen)
                                               : mirror <= static_cast<Byte>(MirrorMode::Vertical);
     if (!reader.ok() || mixed_chr_tag != mixed_chr_state_tag() || bank_select_ > 7U ||
+        (mapper_ == 195U &&
+         (fs303_tag != fs303_state_tag() || (fs303_chr_mode_ & 0xA5U) != 0x80U)) ||
         (mode & 0x3FU) != 0U || bank_registers_[6] > 63U || bank_registers_[7] > 63U ||
         !valid_mirror || (mapper_ == 118U && mirror != static_cast<Byte>(initial_mirror_)) ||
         irq > 7U || ((irq & 4U) != 0U && (irq & 2U) == 0U) || (ram & 0x3FU) != 0U ||

@@ -9,7 +9,7 @@
 namespace mapperbus::core {
 
 /// MMC3 (4), scrambled 114, Kasheng (115/123), TxSROM (118), TQROM (119), Nitra (250),
-/// Sachen 262/512/513, KOF97 (263), T9552 (249 / 4:5), mixed CHR (74/192/194).
+/// Sachen 262/512/513, KOF97 (263), T9552 (249 / 4:5), mixed CHR (74/192/194/195).
 /// PRG: 8 KB switchable banks, with mapper-513 outer banks up to 2 MiB
 /// CHR: 1 KB switchable banks, up to 512 KiB with mapper-114/115/262 outer pins
 /// Features: scanline IRQ counter, mirroring control, PRG RAM
@@ -56,6 +56,8 @@ class Mmc3 : public Mapper {
     Byte chr_bank(Address addr) const;
     std::optional<std::size_t> mixed_chr_ram_offset(Address addr) const;
     uint16_t mixed_chr_state_tag() const;
+    std::optional<std::size_t> fs303_chr_ram_offset(Address addr) const;
+    uint16_t fs303_state_tag() const;
     uint32_t t9552_address(uint32_t addr, bool chr) const;
     void save_variant_state(StateWriter& writer) const;
     void load_variant_state(StateReader& reader);
@@ -86,6 +88,10 @@ class Mmc3 : public Mapper {
     Byte t9552_mode_ = 0U;
     // Mappers 74/192/194: immutable CHR RAM population; 194 starts at bank zero.
     std::size_t mixed_chr_ram_size_ = 0U;
+    // Mapper 195: PPU-write-selected CHR window and optional $5000-$5FFF RAM.
+    Byte fs303_chr_mode_ = 0x80U;
+    bool fs303_aux_present_ = false; // Immutable NES 2.0 memory population.
+    std::vector<Byte> fs303_aux_ram_;
     std::size_t prg_ram_size_ = 0x2000;
     std::size_t nvram_size_ = 0x2000;
     MirrorMode initial_mirror_ = MirrorMode::Vertical;
