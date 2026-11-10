@@ -27,6 +27,7 @@ contains the following mapper IDs:
 | 69 | Sunsoft 5B | AY-style square channels |
 | 85 | VRC7 | FM |
 | 10 | MMC4 | — |
+| 196 | MRCM: submappers 0–3, register-address wiring, 32 KiB PRG override, MMC3 CHR/IRQs and validated snapshots | ROM-only supported population; profile-zero and nibble folding use documented compatibility conventions; exact clone timing unverified |
 | 195 | Waixing FS303: dynamic CHR RAM windows, optional $5000 RAM, MMC3 banking/IRQs, validated snapshots and saves | Exact clone timing, auxiliary RAM gating and alternate mirroring unverified |
 | 194 | MMC3 mixed CHR: RAM starts at bank zero, banked RAM-only mirroring, optional WRAM, IRQs and validated snapshots | Legacy 2 KiB or explicit NES 2.0 2/4 KiB; exact clone timing and other populations unverified |
 | 74, 192 | Waixing mixed CHR: exact ROM/RAM bank ranges, legacy 2/4 KiB or explicit NES 2.0 RAM, H/V, IRQs and snapshots | Alternate one-screen mirroring, clone timing and other RAM populations unverified |
@@ -63,7 +64,7 @@ contains the following mapper IDs:
 | 13, 34, 66, 70, 71, 78, 79, 87, 89, 93, 94, 97, 113, 140, 152, 180, 184 | Discrete cartridge boards | — |
 | 38, 46, 58, 61, 62, 81, 107, 145, 148, 149, 193, 200, 201, 203, 212, 213, 225, 226, 229, 231, 232, 240 | Additional latch boards and multicarts | — |
 
-The registry contains 134 cartridge IDs. See [mapper implementation coverage](mapper-implementation.md)
+The registry contains 135 cartridge IDs. See [mapper implementation coverage](mapper-implementation.md)
 for individual specifications, tested behavior, board limitations, and the full
 inventory of documented IDs still awaiting implementation. The expanded set has
 synthetic banking, IRQ, CPU/PPU integration and save-state coverage; this does
