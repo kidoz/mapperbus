@@ -272,11 +272,27 @@ core::Result<std::string> load_rom_source(core::Emulator& emulator,
                                           const std::string& fds_bios_path,
                                           const std::filesystem::path& persistence_directory,
                                           const RomReadControl& control,
-                                          const std::string& dcs_option_path) {
+                                          const std::string& dcs_option_path,
+                                          const std::string& datach_save_path) {
     if (control.stop.stop_requested())
         return cancelled_error();
     const auto storage =
         persistence_directory.empty() ? mapperbus_data_directory() : persistence_directory;
+    const auto shared_path = [&storage, &datach_save_path](
+                                 const core::Cartridge& cartridge) -> core::Result<std::string> {
+        if (cartridge.shared_nvram().empty()) {
+            if (!datach_save_path.empty())
+                return std::unexpected("--datach-save requires mapper 157");
+            return std::string{};
+        }
+        const auto target = datach_save_path.empty() ? storage / "devices" / "datach.sav"
+                                                     : std::filesystem::path(datach_save_path);
+        if (!target.parent_path().empty()) {
+            if (auto made = ensure_state_directory(target.parent_path()); !made)
+                return std::unexpected(made.error());
+        }
+        return target.string();
+    };
     std::vector<core::Byte> option;
     if (!dcs_option_path.empty()) {
         auto read = read_dcs_option_rom(dcs_option_path);
@@ -300,6 +316,8 @@ core::Result<std::string> load_rom_source(core::Emulator& emulator,
                 return cancelled_error();
             if (!disk)
                 return std::unexpected(disk.error());
+            if (!datach_save_path.empty())
+                return std::unexpected("--datach-save requires mapper 157");
             loaded = load_fds_source(emulator, *disk, fds_bios_path, storage, control);
         } else {
             auto cartridge = core::Cartridge::from_file(path, option);
@@ -307,9 +325,13 @@ core::Result<std::string> load_rom_source(core::Emulator& emulator,
                 return cancelled_error();
             if (!cartridge)
                 return std::unexpected(cartridge.error());
+            auto shared = shared_path(*cartridge);
+            if (!shared)
+                return std::unexpected(shared.error());
             loaded = emulator.load_cartridge(
                 std::move(*cartridge),
-                std::filesystem::path(path).replace_extension(".sav").string());
+                std::filesystem::path(path).replace_extension(".sav").string(),
+                *shared);
         }
         if (!loaded) {
             return std::unexpected(loaded.error());
@@ -344,6 +366,8 @@ core::Result<std::string> load_rom_source(core::Emulator& emulator,
     if (lower_extension(selected) == ".fds") {
         if (!option.empty())
             return std::unexpected("DCS option ROM cannot be attached to an FDS disk");
+        if (!datach_save_path.empty())
+            return std::unexpected("--datach-save requires mapper 157");
         auto loaded = load_fds_source(emulator, contents->data, fds_bios_path, storage, control);
         if (!loaded)
             return std::unexpected(loaded.error());
@@ -369,7 +393,10 @@ core::Result<std::string> load_rom_source(core::Emulator& emulator,
     // handled by the staging loader, never reported as a rollback of this machine.
     if (control.stop.stop_requested())
         return cancelled_error();
-    auto loaded = emulator.load_cartridge(std::move(*cartridge), battery_path.string());
+    auto shared = shared_path(*cartridge);
+    if (!shared)
+        return std::unexpected(shared.error());
+    auto loaded = emulator.load_cartridge(std::move(*cartridge), battery_path.string(), *shared);
     if (!loaded) {
         return std::unexpected(loaded.error());
     }

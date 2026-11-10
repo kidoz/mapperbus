@@ -45,6 +45,11 @@ if get_option('enable_cli')
         args : [files('integration/test_cli_region.py'), mapperbus_cli],
         depends : mapperbus_cli,
     )
+    test('cli-datach', cli_python,
+        args : [files('integration/test_cli_datach.py'), mapperbus_cli],
+        depends : mapperbus_cli,
+        timeout : 60,
+    )
     test('cli-dcs', cli_python,
         args : [files('integration/test_cli_dcs.py'), mapperbus_cli],
         depends : mapperbus_cli,
@@ -79,6 +84,7 @@ test_mappers = executable('test-mappers',
     'unit/test_mmc3_variants.cpp',
     'unit/test_rambo1.cpp',
     'unit/test_bandai_fcg.cpp',
+    'unit/test_datach.cpp',
     dependencies : [mapperbus_core_dep, catch2_dep],
 )
 test('mappers', test_mappers)

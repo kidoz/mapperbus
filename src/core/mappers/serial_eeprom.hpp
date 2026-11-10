@@ -18,6 +18,11 @@ class SerialEeprom {
     explicit SerialEeprom(EepromKind kind);
     void set_lines(bool scl, bool released_sda);
     [[nodiscard]] bool sda() const;
+    /// Open-drain output only, for devices sharing SDA with separate clocks.
+    [[nodiscard]] bool releases_sda() const {
+        return pull_low_ == 0U;
+    }
+    void set_bus_lines(bool scl, bool released_sda, bool previous_sda, bool next_sda);
     void clock_cpu();
     [[nodiscard]] std::span<const Byte> nvram() const;
     void restore_nvram(std::span<const Byte> data);

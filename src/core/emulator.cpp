@@ -116,14 +116,67 @@ Result<void> Emulator::load_cartridge(const std::string& path) {
     if (!result) {
         return std::unexpected(result.error());
     }
-    return load_cartridge(std::move(*result), battery_path_for(path));
+    const auto shared =
+        result->shared_nvram().empty()
+            ? std::string{}
+            : (std::filesystem::path(path).parent_path() / "datach-unit.sav").string();
+    return load_cartridge(std::move(*result), battery_path_for(path), shared);
 }
 
-Result<void> Emulator::load_cartridge(Cartridge cartridge, const std::string& battery_path) {
-    // Commit only after parsing the replacement and persisting outgoing media.
-    if (auto saved = flush_disk_changes(); !saved)
+Result<void> Emulator::load_cartridge(Cartridge cartridge,
+                                      const std::string& battery_path,
+                                      const std::string& shared_save_path) {
+    if (!shared_save_path.empty() && cartridge.shared_nvram().empty())
+        return std::unexpected("A shared Datach save requires mapper 157");
+    std::string shared_path = shared_save_path;
+    if (!shared_path.empty()) {
+        std::error_code ec;
+        const auto normalized = std::filesystem::weakly_canonical(shared_path, ec);
+        if (ec)
+            return std::unexpected("Cannot resolve Datach unit save: " + ec.message());
+        shared_path = normalized.string();
+    }
+    if (!shared_path.empty() && !battery_path.empty()) {
+        std::error_code ec;
+        const auto shared = std::filesystem::path(shared_path);
+        const auto battery = std::filesystem::weakly_canonical(battery_path, ec);
+        if (ec)
+            return std::unexpected("Cannot resolve cartridge save: " + ec.message());
+        if (shared == battery || std::filesystem::equivalent(shared, battery, ec))
+            return std::unexpected("Datach unit and cartridge saves require separate files");
+    }
+    // Validate/read incoming shared storage before mutating the active machine.
+    // A live device (or retained memory-only device) takes precedence over its
+    // older file, including restored save-state contents not flushed yet.
+    if (!cartridge.shared_nvram().empty()) {
+        std::span<const Byte> retained;
+        if (cartridge_ && !cartridge_->shared_nvram().empty() && shared_save_path_ == shared_path)
+            retained = cartridge_->shared_nvram();
+        else if (shared_cache_path_ == shared_path)
+            retained = shared_nvram_cache_;
+        if (!retained.empty()) {
+            cartridge.set_shared_nvram(retained);
+        } else if (!shared_path.empty()) {
+            std::error_code ec;
+            const bool exists = std::filesystem::exists(shared_path, ec);
+            if (ec)
+                return std::unexpected("Cannot access Datach unit save: " + ec.message());
+            if (exists) {
+                auto data = read_binary_file_capped(
+                    shared_path, cartridge.shared_nvram().size(), "Datach unit save");
+                if (!data)
+                    return std::unexpected(data.error());
+                if (data->size() != cartridge.shared_nvram().size())
+                    return std::unexpected("Datach unit save must contain exactly 256 bytes");
+                cartridge.set_shared_nvram(*data);
+            }
+        }
+    }
+    // Persist outgoing media before committing its replacement.
+    if (auto saved = flush_persistent_data(); !saved)
         return saved;
-    flush_battery_ram();
+    retain_shared_nvram();
+    shared_save_path_ = shared_path;
     fds_.unload();
     disk_hash_ = {};
     disk_changes_path_.clear();
@@ -273,27 +326,51 @@ Result<std::vector<Byte>> Emulator::disk_export_data() {
     return std::vector<Byte>(data.begin(), data.end());
 }
 
+void Emulator::retain_shared_nvram() {
+    if (cartridge_ && !cartridge_->shared_nvram().empty()) {
+        const auto memory = cartridge_->shared_nvram();
+        shared_nvram_cache_.assign(memory.begin(), memory.end());
+        shared_cache_path_ = shared_save_path_;
+    }
+}
+
+Result<void> Emulator::flush_shared_nvram() const {
+    if (!persistence_enabled_ || !cartridge_ || cartridge_->shared_nvram().empty() ||
+        shared_save_path_.empty())
+        return {};
+    return write_binary_file_atomic(
+        shared_save_path_, cartridge_->shared_nvram(), "Datach unit save");
+}
+
 void Emulator::flush_battery_ram() {
-    // Persist battery-backed RAM of the currently loaded cartridge, if any.
     if (persistence_enabled_ && cartridge_ && cartridge_->has_battery() &&
         !battery_save_path_.empty()) {
-        auto saved = save_battery_ram(battery_save_path_);
-        if (!saved) {
+        if (auto saved = save_battery_ram(battery_save_path_); !saved)
             logger::warn("Failed to write battery save: {}", saved.error());
-        }
     }
+    if (auto saved = flush_shared_nvram(); !saved)
+        logger::warn("Failed to write Datach unit save: {}", saved.error());
 }
 
 Result<void> Emulator::flush_persistent_data() {
     if (auto saved = flush_disk_changes(); !saved)
         return saved;
     if (persistence_enabled_ && cartridge_ && cartridge_->has_battery() &&
-        !battery_save_path_.empty())
-        return save_battery_ram(battery_save_path_);
-    return {};
+        !battery_save_path_.empty()) {
+        if (auto saved = save_battery_ram(battery_save_path_); !saved)
+            return saved;
+    }
+    return flush_shared_nvram();
+}
+
+Result<void> Emulator::scan_barcode(std::string_view digits, uint32_t module_cycles) {
+    if (!cartridge_)
+        return std::unexpected("No cartridge loaded");
+    return cartridge_->scan_barcode(digits, module_cycles);
 }
 
 void Emulator::unload_cartridge() {
+    retain_shared_nvram();
     // Persist battery-backed RAM before tearing the cartridge down.
     flush_battery_ram();
     if (auto saved = flush_disk_changes(); !saved)
@@ -302,6 +379,7 @@ void Emulator::unload_cartridge() {
     disk_hash_ = {};
     disk_changes_path_.clear();
     battery_save_path_.clear();
+    shared_save_path_.clear();
 
     cartridge_.reset();
     bus_.connect_cartridge(nullptr);

@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "core/cartridge/ines_header.hpp"
+#include "core/mappers/bandai_irq.hpp"
 #include "core/mappers/mapper.hpp"
 #include "core/mappers/serial_eeprom.hpp"
 
@@ -49,10 +50,7 @@ class BandaiFcg final : public Mapper {
     Byte ppu_slot_ = 0U;
     Byte ram_enabled_ = 0U;
     Byte serial_control_ = 0x60U;
-    Word irq_latch_ = 0U;
-    Word irq_counter_ = 0U;
-    Byte irq_enabled_ = 0U;
-    Byte irq_pending_ = 0U;
+    BandaiIrq irq_;
 };
 
 } // namespace mapperbus::core

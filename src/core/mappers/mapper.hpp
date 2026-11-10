@@ -2,6 +2,7 @@
 
 #include <optional>
 #include <span>
+#include <string_view>
 
 #include "core/types.hpp"
 
@@ -70,13 +71,21 @@ class Mapper {
         return std::unexpected("DCS option ROM requires NES 2.0 mapper 68 submapper 1");
     }
 
-    // Battery-backed PRG-RAM ($6000-$7FFF). Mappers without persistent RAM
-    // return an empty span; the cartridge only persists this when the iNES
-    // header marks the board as battery-backed.
+    // Cartridge-owned persistent bytes (PRG RAM or serial EEPROM). Mappers
+    // without these return an empty span. The cartridge battery flag controls
+    // their file persistence; shared reader memory uses a separate span below.
     [[nodiscard]] virtual std::span<const Byte> battery_ram() const {
         return {};
     }
     virtual void set_battery_ram(std::span<const Byte> /*data*/) {}
+    /// Persistent device memory shared by inserted game cartridges (Datach).
+    virtual std::span<const Byte> shared_nvram() const {
+        return {};
+    }
+    virtual void set_shared_nvram(std::span<const Byte> /*data*/) {}
+    virtual Result<void> scan_barcode(std::string_view /*digits*/, uint32_t /*module_cycles*/) {
+        return std::unexpected("Barcode scanning requires a Datach cartridge (mapper 157)");
+    }
 
     virtual bool irq_pending() const {
         return false;

@@ -32,12 +32,19 @@ class Emulator {
 
     [[nodiscard]] Result<void> load_cartridge(const std::string& path);
     /// Installs an already parsed cartridge with an explicit battery-save path.
-    /// An empty path disables automatic battery persistence.
-    [[nodiscard]] Result<void> load_cartridge(Cartridge cartridge, const std::string& battery_path);
+    /// Empty paths disable the corresponding automatic persistence. Shared
+    /// device NVRAM (Datach) uses its own file, independent of the battery flag.
+    [[nodiscard]] Result<void> load_cartridge(Cartridge cartridge,
+                                              const std::string& battery_path,
+                                              const std::string& shared_save_path = {});
+    /// EAN-8, UPC-A or EAN-13 digits, including the supplied check digit.
+    /// Module duration describes deterministic swipe speed in M2 cycles.
+    [[nodiscard]] Result<void> scan_barcode(std::string_view digits,
+                                            uint32_t module_cycles = 1000U);
     void unload_cartridge();
-    /// Persists the loaded cartridge's battery-backed PRG-RAM to its configured
-    /// .sav file. No-op when no battery-backed cartridge is loaded. Called
-    /// automatically on cartridge switches, unload, and emulator teardown.
+    /// Persists cartridge battery bytes and shared device NVRAM to their
+    /// separate configured files. Called on switches, unload and teardown.
+    /// Reports failures through the logger; flush_persistent_data returns them.
     void flush_battery_ram();
     [[nodiscard]] Result<void> flush_persistent_data();
     /// Staged machines read existing saves but must not write them on discard.
@@ -205,11 +212,16 @@ class Emulator {
 
   private:
     void wire_apu();
+    void retain_shared_nvram();
+    [[nodiscard]] Result<void> flush_shared_nvram() const;
     /// Applies a blob that has already passed the size check. On failure the
     /// machine may be partially updated; `load_state` rolls that back.
     [[nodiscard]] bool restore_state(std::span<const Byte> data, bool allow_legacy = false);
 
     std::string battery_save_path_;
+    std::string shared_save_path_;
+    std::string shared_cache_path_;
+    std::vector<Byte> shared_nvram_cache_;
     bool persistence_enabled_ = true;
     std::string disk_changes_path_;
     Sha256Digest disk_hash_{};

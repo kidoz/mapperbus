@@ -43,7 +43,9 @@ using FdsBiosRead = std::function<core::Result<std::vector<core::Byte>>(const st
 /// is required. Returns the selected member (empty for a raw ROM). Any failure
 /// leaves the emulator's current cartridge intact.
 /// An optional persistence root replaces the platform data directory for FDS
-/// BIOS fallback/disk changes and archived battery saves. State slots are separate.
+/// BIOS fallback/disk changes, archived battery saves and shared Datach reader
+/// storage. A Datach path override selects that device file explicitly.
+/// State slots are separate.
 [[nodiscard]] core::Result<std::string> load_rom_source(
     core::Emulator& emulator,
     const std::string& path,
@@ -51,6 +53,7 @@ using FdsBiosRead = std::function<core::Result<std::vector<core::Byte>>(const st
     const std::string& fds_bios_path = {},
     const std::filesystem::path& persistence_directory = {},
     const RomReadControl& control = {},
-    const std::string& dcs_option_path = {});
+    const std::string& dcs_option_path = {},
+    const std::string& datach_save_path = {});
 
 } // namespace mapperbus::app

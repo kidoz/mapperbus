@@ -4,6 +4,7 @@
 #include "core/mappers/bandai_fcg.hpp"
 #include "core/mappers/cnrom.hpp"
 #include "core/mappers/color_dreams.hpp"
+#include "core/mappers/datach.hpp"
 #include "core/mappers/discrete.hpp"
 #include "core/mappers/irem.hpp"
 #include "core/mappers/irem_lrog017.hpp"
@@ -38,6 +39,8 @@ namespace {
     if (header.mapper_number == 31 && prg_size < 4096) {
         return std::unexpected("Mapper 31 requires at least a 4 KiB PRG ROM");
     }
+    if (header.mapper_number == 157U)
+        return Datach::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 16U || header.mapper_number == 153U || header.mapper_number == 159U)
         return BandaiFcg::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number != 31 && prg_size < 16 * 1024) {
@@ -362,6 +365,7 @@ void register_builtin_mappers() {
     registry.register_mapper(16, make_factory<BandaiFcg>());
     registry.register_mapper(153, make_factory<BandaiFcg>());
     registry.register_mapper(159, make_factory<BandaiFcg>());
+    registry.register_mapper(157, make_factory<Datach>());
     registry.register_mapper(7, make_factory<Axrom>());
     registry.register_mapper(5, make_factory<Mmc5>());
     registry.register_mapper(9, make_factory<Mmc2>());

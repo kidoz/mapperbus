@@ -62,10 +62,7 @@ void BandaiFcg::reset() {
     mirror_ = 0U;
     ppu_slot_ = 0U;
     ram_enabled_ = 0U;
-    irq_latch_ = 0U;
-    irq_counter_ = 0U;
-    irq_enabled_ = 0U;
-    irq_pending_ = 0U;
+    irq_.reset();
     // Retain RAM and the independently powered EEPROM, including a write
     // already in progress. Startup defaults are emulator policy.
 }
@@ -111,17 +108,9 @@ void BandaiFcg::write_prg(Address addr, Byte value) {
     } else if (reg == 9U) {
         mirror_ = value & 3U;
     } else if (reg == 10U) {
-        irq_enabled_ = value & 1U;
-        irq_pending_ = 0U;
-        if (!low)
-            irq_counter_ = irq_latch_;
-        if (irq_enabled_ != 0U && irq_counter_ == 0U)
-            irq_pending_ = 1U;
+        irq_.control(value, !low);
     } else if (reg == 11U || reg == 12U) {
-        auto& target = low ? irq_counter_ : irq_latch_;
-        const unsigned shift = reg == 11U ? 0U : 8U;
-        target = static_cast<Word>((static_cast<unsigned>(target) & ~(0xFFU << shift)) |
-                                   (static_cast<unsigned>(value) << shift));
+        irq_.write(value, reg == 12U, !low);
     } else if (reg == 13U && !low) {
         if (wram_) {
             ram_enabled_ = (static_cast<unsigned>(value) >> 5U) & 1U;
@@ -166,14 +155,10 @@ MirrorMode BandaiFcg::mirror_mode() const {
 }
 void BandaiFcg::clock_cpu() {
     eeprom_.clock_cpu();
-    if (irq_enabled_ != 0U) {
-        irq_counter_ = static_cast<Word>(irq_counter_ - 1U);
-        if (irq_counter_ == 0U)
-            irq_pending_ = 1U;
-    }
+    irq_.clock();
 }
 bool BandaiFcg::irq_pending() const {
-    return irq_pending_ != 0U;
+    return irq_.pending();
 }
 
 std::span<const Byte> BandaiFcg::battery_ram() const {
@@ -192,10 +177,7 @@ void BandaiFcg::save_state(StateWriter& w) const {
     w.write(ppu_slot_);
     w.write(ram_enabled_);
     w.write(serial_control_);
-    w.write(irq_latch_);
-    w.write(irq_counter_);
-    w.write(irq_enabled_);
-    w.write(irq_pending_);
+    irq_.save_state(w);
     w.write_array(prg_ram_);
     w.write_array(chr_ram_);
     eeprom_.save_state(w);
@@ -207,16 +189,12 @@ void BandaiFcg::load_state(StateReader& r) {
     r.read(ppu_slot_);
     r.read(ram_enabled_);
     r.read(serial_control_);
-    r.read(irq_latch_);
-    r.read(irq_counter_);
-    r.read(irq_enabled_);
-    r.read(irq_pending_);
+    irq_.load_state(r);
     r.read_array(prg_ram_);
     r.read_array(chr_ram_);
     eeprom_.load_state(r);
     if (!r.ok() || prg_bank_ > 15U || mirror_ > 3U || ppu_slot_ > 3U || ram_enabled_ > 1U ||
-        (serial_control_ & 0x1FU) != 0U || irq_enabled_ > 1U || irq_pending_ > 1U ||
-        (!wram_ && (ram_enabled_ != 0U || ppu_slot_ != 0U)) ||
+        (serial_control_ & 0x1FU) != 0U || (!wram_ && (ram_enabled_ != 0U || ppu_slot_ != 0U)) ||
         (wram_ && std::ranges::any_of(chr_banks_, [](Byte b) { return b > 1U; }))) {
         reset();
         r.fail();

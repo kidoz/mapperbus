@@ -14,6 +14,11 @@ int main(int argc, char* argv[]) {
     std::string path;
     std::string member;
     std::string dcs_option;
+    std::string datach_save;
+    std::string barcode;
+    uint32_t barcode_cycles = 1000U;
+    int barcode_frame = 0;
+    bool barcode_timing = false;
     const auto configuration = mapperbus::app::load_mapperbus_configuration();
     auto bios = configuration.fds_bios_path;
     mapperbus::app::ControllerHardwareOverrides controller_overrides;
@@ -22,16 +27,38 @@ int main(int argc, char* argv[]) {
     for (int index = 1; index < argc; ++index) {
         const std::string_view argument(argv[index]);
         if ((argument == "--entry" || argument == "--fds-bios" || argument == "--dcs-option" ||
-             argument == "--frames" || argument == "--region" ||
-             argument == "--controller-timing" || argument == "--controller-wiring" ||
-             argument == "--controller-mode" || argument == "--expansion-controllers") &&
+             argument == "--frames" || argument == "--region" || argument == "--barcode" ||
+             argument == "--barcode-frame" || argument == "--barcode-cycles" ||
+             argument == "--datach-save" || argument == "--controller-timing" ||
+             argument == "--controller-wiring" || argument == "--controller-mode" ||
+             argument == "--expansion-controllers") &&
             index + 1 < argc) {
             const std::string_view value(argv[++index]);
             if (argument == "--entry")
                 member = value;
             else if (argument == "--fds-bios")
                 bios = value;
-            else if (argument == "--dcs-option") {
+            else if (argument == "--datach-save" || argument == "--barcode") {
+                if (value.empty() || value.starts_with("--")) {
+                    mapperbus::core::logger::error("{} requires a value", argument);
+                    return EXIT_FAILURE;
+                }
+                (argument == "--barcode" ? barcode : datach_save) = value;
+            } else if (argument == "--barcode-frame" || argument == "--barcode-cycles") {
+                int number = 0;
+                const auto parsed =
+                    std::from_chars(value.data(), value.data() + value.size(), number);
+                if (parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size() ||
+                    number < (argument == "--barcode-frame" ? 0 : 1) || number > 1'000'000) {
+                    mapperbus::core::logger::error("Invalid Datach timing value for {}", argument);
+                    return EXIT_FAILURE;
+                }
+                barcode_timing = true;
+                if (argument == "--barcode-frame")
+                    barcode_frame = number;
+                else
+                    barcode_cycles = static_cast<uint32_t>(number);
+            } else if (argument == "--dcs-option") {
                 if (value.empty() || value.starts_with("--")) {
                     mapperbus::core::logger::error("--dcs-option requires a ROM path");
                     return EXIT_FAILURE;
@@ -92,6 +119,11 @@ int main(int argc, char* argv[]) {
             return EXIT_FAILURE;
         }
     }
+    if ((barcode.empty() && barcode_timing) || (!barcode.empty() && barcode_frame >= frames)) {
+        mapperbus::core::logger::error(
+            "Barcode timing requires --barcode and a frame before --frames");
+        return EXIT_FAILURE;
+    }
     if (path.empty()) {
         mapperbus::core::logger::error(
             "Usage: mapperbus-cli <rom-file|archive> [--entry NAME] "
@@ -99,12 +131,14 @@ int main(int argc, char* argv[]) {
             "[--controller-timing nes-av-famicom|rf-famicom] "
             "[--controller-wiring nes|rf-famicom] [--controller-mode "
             "standard|four-score|hori-4-player] "
-            "[--expansion-controllers none|1|2|both]");
+            "[--expansion-controllers none|1|2|both] "
+            "[--barcode DIGITS] [--barcode-frame N] [--barcode-cycles N] [--datach-save PATH]");
         return EXIT_FAILURE;
     }
     mapperbus::core::register_builtin_mappers();
     mapperbus::core::Emulator emulator;
-    auto result = mapperbus::app::load_rom_source(emulator, path, member, bios, {}, {}, dcs_option);
+    auto result = mapperbus::app::load_rom_source(
+        emulator, path, member, bios, {}, {}, dcs_option, datach_save);
     if (!result) {
         mapperbus::core::logger::error("{}", result.error());
         return EXIT_FAILURE;
@@ -118,9 +152,16 @@ int main(int argc, char* argv[]) {
     if (region_override)
         emulator.set_region(*region_override);
     emulator.reset();
-    for (int frame = 0; frame < frames; ++frame)
+    for (int frame = 0; frame < frames; ++frame) {
+        if (!barcode.empty() && frame == barcode_frame) {
+            if (auto scanned = emulator.scan_barcode(barcode, barcode_cycles); !scanned) {
+                mapperbus::core::logger::error("{}", scanned.error());
+                return EXIT_FAILURE;
+            }
+        }
         emulator.step_frame();
-    if (auto saved = emulator.flush_disk_changes(); !saved) {
+    }
+    if (auto saved = emulator.flush_persistent_data(); !saved) {
         mapperbus::core::logger::error("{}", saved.error());
         return EXIT_FAILURE;
     }

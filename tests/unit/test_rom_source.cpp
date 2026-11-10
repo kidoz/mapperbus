@@ -1591,3 +1591,67 @@ TEST_CASE("Background BIOS validation rechecks injected bytes and retires a bloc
 }
 
 } // namespace mapperbus::app
+
+namespace mapperbus::app {
+namespace {
+
+TEST_CASE(
+    "Datach reader storage is shared by raw ZIP and 7z games independently of cartridge EEPROM",
+    "[app][archive][datach]") {
+    ArchiveFixture fixture;
+    const auto storage = fixture.root / "storage";
+    const auto unit = storage / "devices" / "datach.sav";
+    REQUIRE(ensure_state_directory(unit.parent_path()));
+    REQUIRE(core::write_binary_file_atomic(unit.string(), std::vector<Byte>(256U, 0xA5U), "unit"));
+    for (const bool external : {false, true}) {
+        std::vector<Byte> bytes(16U + 32768U, 0U);
+        bytes[0] = 'N';
+        bytes[1] = 'E';
+        bytes[2] = 'S';
+        bytes[3] = 0x1AU;
+        bytes[4] = 2U;
+        bytes[6] = external ? 0xD2U : 0xD0U;
+        bytes[7] = 0x98U;
+        bytes[10] = external ? 0x10U : 0U;
+        bytes[11] = 7U;
+        bytes[16U] = 0x4CU;
+        bytes[17U] = 0U;
+        bytes[18U] = 0x80U;
+        bytes[bytes.size() - 3U] = 0x80U;
+        const auto battery =
+            storage / "battery" / (core::sha256_hex(core::rom_sha256(bytes)) + ".sav");
+        if (external) {
+            REQUIRE(ensure_state_directory(battery.parent_path()));
+            REQUIRE(core::write_binary_file_atomic(
+                battery.string(), std::vector<Byte>(128U, 0x5AU), "game"));
+        }
+        for (const bool seven_zip : {false, true}) {
+            const auto path = fixture.root / (seven_zip ? "datach.7z" : "datach.zip");
+            write_archive(path, {{.name = "game.nes", .bytes = bytes}}, seven_zip);
+            core::Emulator emulator;
+            REQUIRE(load_rom_source(emulator, path.string(), "game.nes", {}, storage));
+            REQUIRE(emulator.scan_barcode("96385074", 10U));
+            REQUIRE(emulator.flush_persistent_data());
+            const auto unit_data = core::read_binary_file_capped(unit.string(), 256U, "unit");
+            REQUIRE(unit_data);
+            REQUIRE(*unit_data == std::vector<Byte>(256U, 0xA5U));
+            if (external) {
+                const auto game = core::read_binary_file_capped(battery.string(), 128U, "game");
+                REQUIRE(game);
+                REQUIRE(*game == std::vector<Byte>(128U, 0x5AU));
+            } else
+                REQUIRE_FALSE(std::filesystem::exists(battery));
+        }
+        const auto raw = fixture.root / "datach.nes";
+        REQUIRE(core::write_binary_file_atomic(raw.string(), bytes, "ROM"));
+        core::Emulator emulator;
+        REQUIRE(load_rom_source(emulator, raw.string(), {}, {}, storage));
+        REQUIRE(emulator.flush_persistent_data());
+        const auto unit_data = core::read_binary_file_capped(unit.string(), 256U, "unit");
+        REQUIRE(unit_data);
+        REQUIRE(*unit_data == std::vector<Byte>(256U, 0xA5U));
+    }
+}
+
+} // namespace
+} // namespace mapperbus::app

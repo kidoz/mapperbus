@@ -59,10 +59,12 @@ void SerialEeprom::drive_read_bit() {
 }
 
 void SerialEeprom::set_lines(bool scl, bool released_sda) {
+    set_bus_lines(scl, released_sda, sda(), released_sda && releases_sda());
+}
+
+void SerialEeprom::set_bus_lines(bool scl, bool released_sda, bool previous_sda, bool next_sda) {
     if (kind_ == EepromKind::None)
         return;
-    const bool previous_sda = sda();
-    const bool next_sda = released_sda && pull_low_ == 0U;
     const bool rising = scl_ == 0U && scl;
     const bool falling = scl_ != 0U && !scl;
     if (scl_ != 0U && scl && previous_sda != next_sda) {
@@ -82,7 +84,7 @@ void SerialEeprom::set_lines(bool scl, bool released_sda) {
     } else if (rising) {
         if (state_ == State::Receive) {
             shift_ =
-                static_cast<Byte>((static_cast<unsigned>(shift_) << 1U) | (released_sda ? 1U : 0U));
+                static_cast<Byte>((static_cast<unsigned>(shift_) << 1U) | (next_sda ? 1U : 0U));
             if (++bits_ == 8U) {
                 receive_byte();
                 state_ = State::Ack;
@@ -94,7 +96,7 @@ void SerialEeprom::set_lines(bool scl, bool released_sda) {
                 state_ = State::HostAck;
             }
         } else if (state_ == State::HostAck) {
-            state_ = released_sda ? State::Ignore : State::Send;
+            state_ = next_sda ? State::Ignore : State::Send;
             bits_ = 0U;
         }
     } else if (falling) {

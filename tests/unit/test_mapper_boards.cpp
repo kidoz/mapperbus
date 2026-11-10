@@ -14,11 +14,12 @@ using namespace mapperbus::core;
 
 namespace {
 
-constexpr std::array<uint16_t, 76> kNewBoards = {
-    10,  13,  34,  66,  70,  71,  76,  78, 79, 87,  88,  89,  93,  94,  95,  97,  113, 140, 152,
-    154, 180, 184, 206, 38,  46,  58,  61, 62, 81,  107, 145, 148, 149, 193, 200, 201, 203, 212,
-    213, 225, 226, 229, 231, 232, 240, 21, 22, 23,  25,  73,  75,  28,  31,  32,  65,  67,  68,
-    33,  48,  80,  207, 82,  552, 18,  72, 92, 101, 77,  210, 118, 119, 64,  158, 16,  153, 159};
+constexpr std::array<uint16_t, 77> kNewBoards = {
+    10,  13,  34,  66,  70,  71,  76,  78,  79,  87,  88,  89,  93,  94,  95,  97,
+    113, 140, 152, 154, 180, 184, 206, 38,  46,  58,  61,  62,  81,  107, 145, 148,
+    149, 193, 200, 201, 203, 212, 213, 225, 226, 229, 231, 232, 240, 21,  22,  23,
+    25,  73,  75,  28,  31,  32,  65,  67,  68,  33,  48,  80,  207, 82,  552, 18,
+    72,  92,  101, 77,  210, 118, 119, 64,  158, 16,  153, 159, 157};
 
 std::size_t board_prg_size(uint16_t id) {
     if (id == 101U)
@@ -27,7 +28,7 @@ std::size_t board_prg_size(uint16_t id) {
 }
 
 std::size_t board_chr_size(uint16_t id) {
-    if (id == 153U)
+    if (id == 153U || id == 157U)
         return 0U;
     if (id == 119U)
         return 0x10000U;
@@ -60,6 +61,8 @@ INesHeader board_header(uint16_t id, uint8_t submapper = 0) {
         header.prg_nvram_size = id == 153U ? 8192U : 128U;
         header.chr_ram_size = id == 153U ? 8192U : 0U;
     }
+    if (id == 157U)
+        header.chr_ram_size = 8192U;
     return header;
 }
 
@@ -103,6 +106,8 @@ Cartridge cartridge(uint16_t id) {
         image[5] = 0;
         image.resize(16 + prg_size);
     }
+    if (id == 157U)
+        image[11] = 7U;
     // An original JMP $8000 program and vectors in every page let every
     // board's reset bank boot without depending on a commercial image.
     for (std::size_t page = 16; page < 16 + prg_size; page += 0x1000) {

@@ -40,12 +40,22 @@ class Cartridge {
     [[nodiscard]] bool has_battery() const {
         return header_.has_battery;
     }
-    /// Battery-backed PRG-RAM contents (empty if the mapper has none).
+    /// Cartridge-owned persistent RAM/EEPROM bytes (empty if absent).
     [[nodiscard]] std::span<const Byte> battery_ram() const {
         return mapper_->battery_ram();
     }
     void set_battery_ram(std::span<const Byte> data) {
         mapper_->set_battery_ram(data);
+    }
+
+    [[nodiscard]] std::span<const Byte> shared_nvram() const {
+        return mapper_->shared_nvram();
+    }
+    void set_shared_nvram(std::span<const Byte> data) {
+        mapper_->set_shared_nvram(data);
+    }
+    Result<void> scan_barcode(std::string_view digits, uint32_t module_cycles) {
+        return mapper_->scan_barcode(digits, module_cycles);
     }
 
     [[nodiscard]] Byte read_prg(Address addr);
