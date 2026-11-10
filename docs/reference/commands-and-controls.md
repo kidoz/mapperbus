@@ -205,7 +205,7 @@ and volume accepts 0–100. The headless CLI does not open capture. See
 ## Headless CLI
 
 ```text
-./buildDir/src/frontends/cli/mapperbus-cli <rom-file|archive> [--entry NAME] [--fds-bios PATH] [--dcs-option PATH] [--frames N] [--region ntsc|pal|hybrid] [--controller-timing T] [--controller-wiring W] [--controller-mode standard|four-score|hori-4-player] [--expansion-controllers none|1|2|both]
+./buildDir/src/frontends/cli/mapperbus-cli <rom-file|archive> [--entry NAME] [--fds-bios PATH] [--dcs-option PATH] [--frames N] [--region ntsc|pal|hybrid] [--controller-timing T] [--controller-wiring W] [--controller-mode standard|four-score|hori-4-player] [--expansion-controllers none|1|2|both] [--barcode DIGITS] [--barcode-frame N] [--barcode-cycles N] [--datach-save PATH]
 ```
 
 Loads NES/FDS media, resets the emulator, executes 60 frames by default, and
@@ -219,6 +219,21 @@ the headless CLI does not use the GUI's saved region preference.
 The CLI reads the shared FDS BIOS path;
 `--fds-bios` overrides it. It presents no video, audio device, or interactive
 input. Invalid arguments and load/save failures return failure.
+
+For Datach (mapper 157), `--barcode` accepts 8 EAN-8, 12 UPC-A or 13 EAN-13
+digits including the check digit. `--barcode-frame` schedules a scan before the
+specified zero-based frame (default 0, less than `--frames`); `--barcode-cycles`
+sets M2 cycles per barcode module (1–1000000, default 1000). For example:
+
+```sh
+./buildDir/src/frontends/cli/mapperbus-cli game.nes --barcode 4006381333931 --barcode-frame 120 --frames 180
+```
+
+`--datach-save PATH` chooses the reader's shared 256-byte EEPROM file, independent
+of the cartridge's optional 128-byte `.sav`. By default, all app loaders use
+`devices/datach.sav` under the application data directory. These options require
+mapper 157; barcode timing options also require `--barcode`. Optical swipe timing
+is synthetic; see [Datach coverage and limits](mapper-implementation.md).
 
 Source: [CLI entry point](../../src/frontends/cli/main.cpp).
 

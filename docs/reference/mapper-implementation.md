@@ -4,10 +4,10 @@ This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
 complete.** Updated 2026-11-10 against the working-tree registry.
 
-There are **90 registered cartridge IDs**: the original 14, 53 added in the first
+There are **91 registered cartridge IDs**: the original 14, 53 added in the first
 batch, and Irem 32/65/77, Sunsoft 67/68, Taito 33/48/80/207/82/552, Jaleco 18/72/92/101,
-Namco 210, MMC3 variants 118/119, RAMBO-1 64/158, and Bandai 16/153/159 in the
-follow-ups below.
+Namco 210, MMC3 variants 118/119, RAMBO-1 64/158, Bandai 16/153/159, and Datach
+157 in the follow-ups below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
 unusual ROM geometry.
@@ -17,6 +17,7 @@ unusual ROM geometry.
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
 | MMC4 | 10 | 16 KiB PRG, both eight-byte CHR trigger ranges, old-bank trigger fetch, mirroring, RAM, persistence. |
+| Datach (follow-up) | 157 | Fixed 8 KiB CHR RAM, LZ93D50 M2 IRQ, PPU-selected external EEPROM clock, shared SDA, barcode injection, separate reader/cartridge persistence and snapshots. |
 | Bandai FCG / LZ93D50 (follow-up) | 16, 153, 159 | Direct/latched M2 IRQ variants, eight 1 KiB CHR banks, four mirroring modes, original Xicor serial EEPROM protocols, gated WRAM and PPU-address-driven outer PRG banking, persistence and snapshots. |
 | MMC3 variants (follow-up) | 118, 119 | TxSROM CHR-driven CIRAM, TQROM mixed ROM/RAM with 128 KiB ROM extension, common PRG banking and IRQ counter, bounded state and persistence. |
 | Tengen RAMBO-1 (follow-up) | 64, 158 | Three five-bit PRG banks, K/C CHR modes with R8/R9, mapper-158 CIRAM, M2 CPU timer and filtered A12 counter, cold start, reset retention and snapshots. |
@@ -73,6 +74,7 @@ See [mapper tests](../../tests/unit/test_mapper_boards.cpp),
 [MMC3 variant tests](../../tests/unit/test_mmc3_variants.cpp),
 [RAMBO-1 tests](../../tests/unit/test_rambo1.cpp),
 [Bandai tests](../../tests/unit/test_bandai_fcg.cpp),
+[Datach tests](../../tests/unit/test_datach.cpp),
 [Sunsoft tests](../../tests/unit/test_sunsoft_boards.cpp),
 [Taito tests](../../tests/unit/test_taito.cpp),
 [X1-005 tests](../../tests/unit/test_taito_x1005.cpp),
@@ -94,7 +96,7 @@ See [mapper tests](../../tests/unit/test_mapper_boards.cpp),
   certified; normal `$7000–$7FFF` decoding is implemented.
 - Action 53 implements its standard no-PRG-RAM configuration; the optional
   implementation-specific WRAM extension is not supplied.
-- Larger remaining families include Datach and other Bandai boards, other Jaleco and Taito boards,
+- Larger remaining families include other Bandai, Jaleco and Taito boards,
   further MMC3 derivatives and outer-bank variants,
   J.Y./Sachen/TXC ASICs, flash-saving UNROM 512/GTROM, and Rainbow.
 - Jaleco's optional external ADPCM speech chips and sample-media loading remain
@@ -893,7 +895,7 @@ accepts an omitted or explicit 8 KiB CHR-RAM declaration. Legacy implicit WRAM
 metadata is ignored: battery mapper 16 uses 256-byte EEPROM, 159 always has
 128-byte EEPROM, and 153 always has 8 KiB WRAM. File persistence still follows
 the legacy battery flag. Unsupported submappers, four-screen VRAM and conflicting
-memory declarations fail creation. Peripheral mapper 157 remains unsupported.
+memory declarations fail creation. Datach uses the separate mapper-157 implementation below.
 
 Validation: `just build` and `meson test -C buildDir --print-errorlogs
 --suite=mapperbus` passed all 42 executables; the mapper executable reported
@@ -918,6 +920,95 @@ that its post-restore CHR read could not alter state; it now captures the
 sampled PPU address before saving, consistently on both replay paths. No
 existing check was removed. No Bandai commercial-title or physical-cartridge
 validation is claimed.
+
+## Datach follow-up: reader memory, dual clocks and optical barcode input
+
+Mapper 157 uses a separate `Datach` board. Its hardware mapping follows
+[NESdev revision 21310](https://www.nesdev.org/w/index.php?oldid=21310) and the
+[BA-BAR circuit tracing](https://seesaawiki.jp/famicomcartridge/d/Bandai%20Datach).
+PRG is 16 KiB switchable plus the last bank fixed; 8 KiB CHR RAM is unbanked.
+Four mirroring modes and LZ93D50 IRQ semantics reuse the original Bandai behavior.
+The extracted `BandaiIrq` helper preserves the existing six-byte serialized
+counter layout in mappers 16/153/159. No existing mapper payload, PPU payload,
+or machine version changes; snapshots remain version 20.
+
+The reader always contains a 256-byte X24C02. A cartridge may additionally
+contain a 128-byte X24C01; only this optional chip is described by NES 2.0 PRG
+NVRAM and the battery flag. `$800D` controls the internal SCL and shared SDA.
+Register bit 3 at `$8000–$8003`, selected by PPU A10/A11, supplies external SCL.
+The opt-in full-address observer includes nametable/attribute/pattern and idle
+pins. Direction bit 7 enables CPU D4 (both open-drain EEPROM outputs ANDed)
+and D3 (scanner); the other bits retain open bus. The serial helper samples the
+resolved shared bus and propagates peer-output transitions with independent
+clock lines. Original Xicor page, protocol and approximate programming behavior
+remain as documented in the Bandai section.
+
+`scan_barcode(digits, module_cycles)` supplies a clean EAN-8, UPC-A or EAN-13
+waveform using [GS1 General Specifications 9.0, section 5.2.2](https://ref.gs1.org/standards/genspecs/9.0.0/).
+It emits guard patterns, leading-digit parity and eleven white modules at either
+end, with dark bars low on D3. The supplied check digit is encoded unchanged;
+checksum acceptance belongs to the game. A module lasts 1–1,000,000 M2 cycles,
+default 1000; clocking includes DMA. This is a deterministic synthetic swipe,
+not a measurement of a person's speed or optical sensor response. Physical
+polarity, noisy scans, reverse scans and commercial-game acceptance remain
+unverified. Reset retains an ongoing swipe and independent EEPROM activity.
+Malformed input and overlapping scan requests fail without changing the scan.
+
+Reader persistence is independent of the cartridge battery flag. App loaders
+share `<application data>/devices/datach.sav` across raw, ZIP and 7z games;
+optional cartridge bytes keep the normal sibling/hash `.sav` path. CLI
+`--datach-save PATH` selects a reader file explicitly. Direct core file loading
+uses sibling `datach-unit.sav`; the parsed-cartridge API accepts a separate third
+path, with empty paths retaining memory only. Device memory survives switches
+and unload/reload within an emulator. Canonicalized paths identify the same live
+device before loading an older on-disk image. Unit files must contain exactly
+256 bytes, and unit/cartridge path aliases are rejected. Outgoing save failures
+prevent replacement; staged machines suppress writes. Snapshots include both
+EEPROM protocols and committed bytes, pending pages, clock selection, IRQ,
+CHR RAM and the partial swipe; cache/path policy is outside the machine blob.
+
+Factories require submapper zero, 32–256 KiB PRG aligned to 16 KiB, no CHR ROM,
+no CHR NVRAM and omitted or 8 KiB CHR RAM. NES 2.0 allows no volatile PRG RAM
+and only 0/128 bytes of cartridge NVRAM with a matching battery flag. Legacy
+battery headers select the optional chip and ignore implicit WRAM. Deprecated
+mapper 16 submapper 2 still requires an explicit mapper-157 header.
+
+The headless CLI schedules one scan using `--barcode DIGITS`, zero-based
+`--barcode-frame N` (default 0) and `--barcode-cycles N` (default 1000).
+Use a later frame when a game needs time to reach its scanning screen. Core
+clients may submit subsequent scans after the previous one finishes. Graphical
+frontends automatically persist the reader, but have no barcode-entry control yet.
+
+Validation: `just build` and `meson test -C buildDir --print-errorlogs
+--suite=mapperbus` passed all 43 tests, including the new CLI Datach test.
+The mapper executable reported 28,897 assertions in 225 cases; mapper 157 joins
+the shared 77-board boot/replay matrix. Eight targeted ASan/UBSan suites passed
+serially (`mappers bus ppu region save-state mapper-timing battery-save rom-source`,
+`--num-processes 1`) with the documented macOS `detect_leaks=0` exception.
+
+Original test programs cover CPU IRQ execution and DMA, both EEPROMs' busy
+ACK polling and reset retention, shared SDA with an active peer, resuming partial
+reads, a literal EAN-13 waveform, snapshot replay mid-transfer/mid-swipe,
+malformed-state rollback, optional-chip metadata and PPU-selected external SCL.
+Persistence checks cover exact file sizes and bytes, game switches, unload/reload,
+restart, memory-only devices, staged-write suppression, incorrect incoming unit
+files, aliases and outgoing write failure. A CLI case first exposed different
+normalization of macOS `/var` and `/private/var` paths when both save files did
+not yet exist; both paths now use weak canonicalization, and that case passes.
+
+CLI validation covers 18 barcode launches (EAN-8/UPC-A/EAN-13 at three module
+speeds, legacy/NES 2.0, raw and archive sources), six idle launches and invalid
+arguments/media. Raw/ZIP/7z app tests share a seeded reader image and preserve
+optional cartridge EEPROM separately. These tests use explicit temporary storage
+paths; the initial archived CLI fixtures that reached the macOS application data
+folder were removed, and the revised tests reran successfully in isolation.
+
+New/changed code passed scoped clang-tidy and formatting/whitespace checks. Full
+Emulator analysis still reports the baseline destructor exception-escape and
+DiskSaveSnapshot initializer diagnostics, independently reproduced against HEAD;
+no new diagnostics remain. Isolated agent-documentation validation reported zero
+errors and the existing 52 warnings. No physical Datach reader or commercial-game
+compatibility certification is claimed.
 
 ## Every documented registry slot
 
@@ -1091,7 +1182,7 @@ fallback. The registry rejects unsupported IDs.
 | 154 | Namcot-3453 | New implementation: Namco108 | [r23278](https://www.nesdev.org/w/index.php?oldid=23278) |
 | 155 | MMC1A | Not registered | [r24550](https://www.nesdev.org/w/index.php?oldid=24550) |
 | 156 | Board-specific specification | Not registered | [r22838](https://www.nesdev.org/w/index.php?oldid=22838) |
-| 157 | Bandai Datach | Not registered | [r21310](https://www.nesdev.org/w/index.php?oldid=21310) |
+| 157 | Bandai Datach | New implementation: Datach | [r21310](https://www.nesdev.org/w/index.php?oldid=21310) |
 | 158 | RAMBO-1 nametable variant | New implementation: Rambo1 | [r21299](https://www.nesdev.org/w/index.php?oldid=21299) |
 | 159 | Bandai X24C01 EEPROM | New implementation: BandaiFcg | [r5171](https://www.nesdev.org/w/index.php?oldid=5171) |
 | 160 | Board-specific specification | Not registered | [r5173](https://www.nesdev.org/w/index.php?oldid=5173) |

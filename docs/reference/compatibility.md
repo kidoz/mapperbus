@@ -27,6 +27,7 @@ contains the following mapper IDs:
 | 69 | Sunsoft 5B | AY-style square channels |
 | 85 | VRC7 | FM |
 | 10 | MMC4 | — |
+| 157 | Datach reader: barcode input, shared and optional cartridge EEPROM, CHR RAM and M2 IRQ | — |
 | 16, 153, 159 | Bandai FCG/LZ93D50: variant IRQs, Xicor EEPROM or gated WRAM, PPU-driven outer PRG banking | — |
 | 18 | Jaleco SS88006 with banked PRG/CHR, protected RAM and variable-width M2 IRQ | Optional external ADPCM speech unsupported |
 | 72, 92 | Jaleco JF-17/JF-19 with edge-clocked banking and bus conflicts | Optional external ADPCM speech unsupported |
@@ -44,7 +45,7 @@ contains the following mapper IDs:
 | 13, 34, 66, 70, 71, 78, 79, 87, 89, 93, 94, 97, 113, 140, 152, 180, 184 | Discrete cartridge boards | — |
 | 38, 46, 58, 61, 62, 81, 107, 145, 148, 149, 193, 200, 201, 203, 212, 213, 225, 226, 229, 231, 232, 240 | Additional latch boards and multicarts | — |
 
-The registry contains 90 cartridge IDs. See [mapper implementation coverage](mapper-implementation.md)
+The registry contains 91 cartridge IDs. See [mapper implementation coverage](mapper-implementation.md)
 for individual specifications, tested behavior, board limitations, and the full
 inventory of documented IDs still awaiting implementation. The expanded set has
 synthetic banking, IRQ, CPU/PPU integration and save-state coverage; this does
@@ -63,8 +64,10 @@ test ROMs. The both-pattern-tables-at-`$1000` probe matches the measured single
 IRQ and has an exact-count regression; see the ledger for coverage and limits.
 Bandai serial saves contain 128 or 256 physical EEPROM bytes; mapper 153 saves
 8 KiB WRAM. EEPROM programming uses an approximate 9000-M2 interval. Mapper
-16 submappers 1/3 remain supported aliases for 159/153; Datach requires separate
-mapper-157 peripheral support and remains unsupported.
+16 submappers 1/3 remain supported aliases for 159/153. Datach uses mapper 157,
+a separate shared reader save, and optional 128-byte cartridge save. Barcode
+injection is available through the core API and headless CLI; graphical barcode
+controls and physical-reader validation remain open. See the mapper ledger.
 
 Source: [Mapper registry](../../src/core/mappers/mapper_registry.cpp) and
 [header parser](../../src/core/cartridge/ines_header.cpp).
