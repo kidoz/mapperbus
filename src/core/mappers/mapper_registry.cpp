@@ -51,27 +51,30 @@ namespace {
         return Sachen::validate_geometry(header, prg_size, chr_size);
     if (Txc::supports_mapper(header.mapper_number))
         return Txc::validate_geometry(header, prg_size, chr_size);
-    if (header.mapper_number == 74U || header.mapper_number == 192U) {
+    if (header.mapper_number == 74U || header.mapper_number == 192U ||
+        header.mapper_number == 194U) {
         if (header.is_nes2 && header.submapper != 0U)
-            return std::unexpected("Waixing 74/192 support submapper 0");
+            return std::unexpected("Mixed-CHR MMC3 boards support submapper 0");
+        const bool ram_only = header.mapper_number == 194U && chr_size == 0U;
         if (prg_size < 0x8000U || prg_size > 0x80000U || prg_size % 0x2000U != 0U ||
-            chr_size < 0x2000U || chr_size > 0x40000U || chr_size % 0x400U != 0U)
-            return std::unexpected("Unsupported Waixing 74/192 ROM geometry");
+            (!ram_only && (chr_size < 0x2000U || chr_size > 0x40000U || chr_size % 0x400U != 0U)))
+            return std::unexpected("Unsupported mixed-CHR MMC3 ROM geometry");
         if (header.chr_nvram_size != 0U ||
             (header.is_nes2 && header.chr_ram_size != 0x800U && header.chr_ram_size != 0x1000U))
-            return std::unexpected("Waixing 74/192 require 2 or 4 KiB of volatile CHR RAM");
+            return std::unexpected("Mixed-CHR MMC3 boards require 2 or 4 KiB of volatile CHR RAM");
         if (header.is_nes2) {
             if ((header.prg_ram_size != 0U && header.prg_ram_size != 0x2000U) ||
                 (header.prg_nvram_size != 0U && header.prg_nvram_size != 0x2000U) ||
                 (header.prg_ram_size != 0U && header.prg_nvram_size != 0U))
-                return std::unexpected("Waixing 74/192 support one optional 8 KiB WRAM chip");
+                return std::unexpected(
+                    "Mixed-CHR MMC3 boards support one optional 8 KiB WRAM chip");
             if (header.has_battery != (header.prg_nvram_size != 0U))
                 return std::unexpected(
-                    "Waixing 74/192 battery flag and NVRAM declaration disagree");
+                    "Mixed-CHR MMC3 battery flag and NVRAM declaration disagree");
         }
         if (header.mirror_mode != MirrorMode::Horizontal &&
             header.mirror_mode != MirrorMode::Vertical)
-            return std::unexpected("Waixing 74/192 support ordinary H/V CIRAM");
+            return std::unexpected("Mixed-CHR MMC3 boards support ordinary H/V CIRAM");
         return {};
     }
     if (header.mapper_number == 249U ||
@@ -568,6 +571,7 @@ void register_builtin_mappers() {
     registry.register_mapper(119, make_factory<Mmc3>());
     registry.register_mapper(74, make_factory<Mmc3>());
     registry.register_mapper(192, make_factory<Mmc3>());
+    registry.register_mapper(194, make_factory<Mmc3>());
     registry.register_mapper(249, make_factory<Mmc3>());
     registry.register_mapper(250, make_factory<Mmc3>());
     registry.register_mapper(262, make_factory<Mmc3>());

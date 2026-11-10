@@ -9,7 +9,7 @@
 namespace mapperbus::core {
 
 /// MMC3 (4), scrambled 114, Kasheng (115/123), TxSROM (118), TQROM (119), Nitra (250),
-/// Sachen 262/512/513, KOF97 (263), T9552 (249 / 4:5), Waixing mixed CHR (74/192).
+/// Sachen 262/512/513, KOF97 (263), T9552 (249 / 4:5), mixed CHR (74/192/194).
 /// PRG: 8 KB switchable banks, with mapper-513 outer banks up to 2 MiB
 /// CHR: 1 KB switchable banks, up to 512 KiB with mapper-114/115/262 outer pins
 /// Features: scanline IRQ counter, mirroring control, PRG RAM
@@ -55,6 +55,7 @@ class Mmc3 : public Mapper {
     void update_chr_banks();
     Byte chr_bank(Address addr) const;
     std::optional<std::size_t> mixed_chr_ram_offset(Address addr) const;
+    uint16_t mixed_chr_state_tag() const;
     uint32_t t9552_address(uint32_t addr, bool chr) const;
     void save_variant_state(StateWriter& writer) const;
     void load_variant_state(StateReader& reader);
@@ -83,7 +84,7 @@ class Mmc3 : public Mapper {
     Byte scramble_profile_ = 0U; // Immutable mapper-114 submapper wiring.
     bool t9552_ = false; // Immutable hardware profile; mapper number selects file bank order.
     Byte t9552_mode_ = 0U;
-    // Mappers 74/192: immutable, non-mirrored CHR RAM population starting at bank 8.
+    // Mappers 74/192/194: immutable CHR RAM population; 194 starts at bank zero.
     std::size_t mixed_chr_ram_size_ = 0U;
     std::size_t prg_ram_size_ = 0x2000;
     std::size_t nvram_size_ = 0x2000;
