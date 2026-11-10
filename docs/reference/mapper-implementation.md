@@ -4,12 +4,12 @@ This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
 complete.** Updated 2026-11-10 against the working-tree registry.
 
-There are **123 registered cartridge IDs**: the original 14, 53 added in the first
+There are **124 registered cartridge IDs**: the original 14, 53 added in the first
 batch, and Irem 32/65/77, Sunsoft 67/68, Taito 33/48/80/207/82/552, Jaleco 18/72/92/101,
 Namco 210, MMC3 variants 118/119, RAMBO-1 64/158, Bandai 16/153/159, and Datach
 157, UNROM 512 30, GTROM/direct MMC1 111, and J.Y. Company
 35/90/209/211/281/282/295/358/386/387/388/397, plus the sixteen Sachen/TXC
-IDs and Sachen MMC3 clones 512/513 detailed below.
+IDs and Sachen MMC3 clones 262/512/513 detailed below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
 unusual ROM geometry.
@@ -18,6 +18,7 @@ unusual ROM geometry.
 
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
+| Sachen Street Heroes (follow-up) | 262 | Physical-region CHR outer pins, banked ROM/RAM switching, four-screen VRAM, title jumper with partial bus drivers, shared MMC3 IRQs and snapshots. |
 | Sachen SA-9602B (follow-up) | 513 | PPU-selected outer PRG banks, fixed outer-zero windows, 32 KiB battery CHR RAM, shared MMC3 IRQs, snapshots and persistence. |
 | Sachen MMC3 clone (follow-up) | 512 | MMC3 PRG/CHR banking and IRQs, separate pattern/nametable RAM, four graphics modes, always-enabled WRAM, battery saves and snapshots. |
 | Sachen boards (follow-up) | 133, 135, 137, 138, 139, 141, 143, 146, 150, 243 | Explicit latch/8259/SA-015 wiring, asymmetric CIRAM, readable registers and D2 pad, Q-Boy CHR RAM, protection reads and snapshots. |
@@ -1458,6 +1459,79 @@ static-analysis cleanup. Scoped clang-tidy, formatting and whitespace checks
 passed. Isolated agent-documentation validation reported zero errors and the
 unchanged 52 warnings.
 
+## Sachen mapper-262 follow-up: Street Heroes / UNL-SHERO
+
+Mapper 262 implements Street Heroes / Shìhún in the shared `Mmc3` class from
+[NESdev revision 7640](https://www.nesdev.org/w/index.php?oldid=7640).
+It has CHR ROM, 8 KiB volatile pattern RAM and a separate 4 KiB four-screen VRAM
+pool. The $4100 latch's bit 6 selects pattern RAM; bits 0–3 supply the high ROM
+bank bit for four physical 2 KiB PPU regions. Bits 7, 5 and 4 are ignored.
+
+| PPU region | Outer CHR-ROM bit from $4100 |
+|---|---|
+| $0000–$07FF | Bit 3 |
+| $0800–$0FFF | Bit 2 |
+| $1000–$17FF | Bit 0 |
+| $1800–$1FFF | Bit 1 |
+
+These select 256 KiB units and remain tied to the physical PPU region when
+MMC3 CHR inversion changes the inner register selection. Ordinary paired-bank
+rounding applies. In RAM mode, the MMC3 output's low three bits select 1 KiB
+physical pages; outer ROM pins have no effect. This follows the source's normal
+MMC3 description, not a new measurement of the clone's RAM wiring. ROM writes
+are ignored and all eight RAM pages retain data across chip/mode changes.
+
+All four nametables use the independent cartridge VRAM pool, with normal $3000
+mirrors and internal PPU palette RAM. Pattern writes never alias nametables.
+The board forces four-screen wiring even if the header's four-screen flag is
+absent; A000 cannot change that wiring. This is fixed VRAM, so
+[NES 2.0 revision 24464](https://www.nesdev.org/w/index.php?title=NES_2.0&oldid=24464)
+excludes it from the CHR-RAM size: the explicit pattern-RAM declaration is 8 KiB.
+Console reset retains both RAM pools and the configured title jumper.
+
+The jumper API accepts 0 (Street Heroes, the default) or 1 (Shìhún) and exposes
+it on D7. D0–D6 float and merge with CPU open bus. The tentative $C100 decoder
+also reaches aliases in $6000–$7FFF; those use the existing masked cartridge-read
+path. Low expansion aliases use the existing $4020–$5FFF routing. Mode writes
+at these aliases remain independent of A001. Other $6000 reads are undriven.
+The source labels this decoder unknown/probable and the normal $E001 MMC3
+decoder probable; exact hardware aliases remain unverified.
+
+Factories accept NES 2.0 submapper 0, 32–512 KiB PRG in 8 KiB units, 8–512 KiB
+CHR ROM in 1 KiB units, and omitted or explicit 8 KiB volatile CHR RAM. Omission
+uses the board's physical RAM default. H/V/four-screen header flags are accepted;
+the board always supplies four screens. This supported profile has no CPU WRAM
+or battery-backed memory: PRG RAM/NVRAM, CHR NVRAM, battery flags and conflicting
+pattern-RAM sizes are rejected. The source does not establish a WRAM population.
+ROM ranges describe decoded pins; non-power-of-two images wrap by physical size,
+without claiming other manufactured boards. No battery file is created.
+
+The new payload adds length-bounded 4 KiB VRAM, the masked graphics latch and a
+validated jumper to the compact MMC3 variant registers, IRQ state and RAM.
+Old mapper payloads and machine version 20 remain unchanged. PRG banking, six-bit
+R6/R7 pins and the approximate dot-260 rendered-scanline IRQ callback are shared.
+No bus/PPU state fields or ADR-001 timing changed. Clone-specific timing and exact
+A12 filtering remain unverified.
+
+Original tests cover every combination of outer bits through both inversions,
+all pattern-RAM pages, paired banks, ROM protection, unused bits, four independent
+nametables, palette separation, read/write aliases, jumper open bus, PRG modes,
+IRQ progress, RAM retention, bounded malformed states and metadata. CPU programs
+check banking, both jumper settings, nametables and an IRQ before reporting
+success in internal RAM; full-machine replay and atomic rollback are verified.
+The shared boot/replay matrix now includes 110 boards. CLI smoke tests boot nine
+header/geometry profiles, reject eleven invalid headers, preserve source ROMs
+and verify that volatile-only boards create no saves. No external emulator code
+was incorporated, and no commercial-title or physical-board certification is
+claimed.
+
+Validation passed the build, all 49 MapperBus test targets and eight serial
+ASan/UBSan suites with the macOS `detect_leaks=0` exception. The mapper executable
+passed 37,374 assertions across 296 cases, including a final regular run after
+static-analysis cleanup. Scoped clang-tidy, formatting and whitespace checks
+passed. Isolated agent-documentation validation reported zero errors and the
+unchanged 52 warnings.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -1733,7 +1807,7 @@ fallback. The registry rejects unsupported IDs.
 | 259 | Board-specific specification | Not registered | [r7628](https://www.nesdev.org/w/index.php?oldid=7628) |
 | 260 | Board-specific specification | Not registered | [r22170](https://www.nesdev.org/w/index.php?oldid=22170) |
 | 261 | Board-specific specification | Not registered | [r18984](https://www.nesdev.org/w/index.php?oldid=18984) |
-| 262 | Board-specific specification | Not registered | [r7640](https://www.nesdev.org/w/index.php?oldid=7640) |
+| 262 | Sachen Street Heroes / UNL-SHERO | New implementation: Mmc3 | [r7640](https://www.nesdev.org/w/index.php?oldid=7640) |
 | 263 | Board-specific specification | Not registered | [r7642](https://www.nesdev.org/w/index.php?oldid=7642) |
 | 264 | Board-specific specification | Not registered | [r24580](https://www.nesdev.org/w/index.php?oldid=24580) |
 | 265 | Board-specific specification | Not registered | [r21955](https://www.nesdev.org/w/index.php?oldid=21955) |
