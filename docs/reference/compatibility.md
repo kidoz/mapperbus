@@ -27,6 +27,7 @@ contains the following mapper IDs:
 | 69 | Sunsoft 5B | AY-style square channels |
 | 85 | VRC7 | FM |
 | 10 | MMC4 | — |
+| 513 | Sachen SA-9602B: PPU-driven outer PRG, fixed outer-zero banks, 32 KiB battery CHR RAM and MMC3 IRQs | Bank-3 alias is a compatibility choice; electrical behavior and clone IRQ timing unverified |
 | 512 | Sachen MMC3 clone: independent CHR/nametable RAM, six nametables, graphics modes, IRQ and battery WRAM | Register masks and clone-specific timing/wiring remain unverified |
 | 133, 135, 137, 138, 139, 141, 143, 146, 150, 243 | Sachen latch/8259/readable-register ASICs, CIRAM wiring, protection and CHR RAM | 133 analog feedback and some 8259 hardware behavior unverified |
 | 36, 132, 136, 147, 172, 173 | TXC/JV001 counters, inversion, bank commits and PCB wiring | 173 disabled UVEPROM reads use $FF |
@@ -52,7 +53,7 @@ contains the following mapper IDs:
 | 13, 34, 66, 70, 71, 78, 79, 87, 89, 93, 94, 97, 113, 140, 152, 180, 184 | Discrete cartridge boards | — |
 | 38, 46, 58, 61, 62, 81, 107, 145, 148, 149, 193, 200, 201, 203, 212, 213, 225, 226, 229, 231, 232, 240 | Additional latch boards and multicarts | — |
 
-The registry contains 122 cartridge IDs. See [mapper implementation coverage](mapper-implementation.md)
+The registry contains 123 cartridge IDs. See [mapper implementation coverage](mapper-implementation.md)
 for individual specifications, tested behavior, board limitations, and the full
 inventory of documented IDs still awaiting implementation. The expanded set has
 synthetic banking, IRQ, CPU/PPU integration and save-state coverage; this does

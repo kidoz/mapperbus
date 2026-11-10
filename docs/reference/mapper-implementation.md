@@ -4,12 +4,12 @@ This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
 complete.** Updated 2026-11-10 against the working-tree registry.
 
-There are **122 registered cartridge IDs**: the original 14, 53 added in the first
+There are **123 registered cartridge IDs**: the original 14, 53 added in the first
 batch, and Irem 32/65/77, Sunsoft 67/68, Taito 33/48/80/207/82/552, Jaleco 18/72/92/101,
 Namco 210, MMC3 variants 118/119, RAMBO-1 64/158, Bandai 16/153/159, and Datach
 157, UNROM 512 30, GTROM/direct MMC1 111, and J.Y. Company
 35/90/209/211/281/282/295/358/386/387/388/397, plus the sixteen Sachen/TXC
-IDs and Sachen MMC3 clone 512 detailed below.
+IDs and Sachen MMC3 clones 512/513 detailed below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
 unusual ROM geometry.
@@ -18,6 +18,7 @@ unusual ROM geometry.
 
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
+| Sachen SA-9602B (follow-up) | 513 | PPU-selected outer PRG banks, fixed outer-zero windows, 32 KiB battery CHR RAM, shared MMC3 IRQs, snapshots and persistence. |
 | Sachen MMC3 clone (follow-up) | 512 | MMC3 PRG/CHR banking and IRQs, separate pattern/nametable RAM, four graphics modes, always-enabled WRAM, battery saves and snapshots. |
 | Sachen boards (follow-up) | 133, 135, 137, 138, 139, 141, 143, 146, 150, 243 | Explicit latch/8259/SA-015 wiring, asymmetric CIRAM, readable registers and D2 pad, Q-Boy CHR RAM, protection reads and snapshots. |
 | TXC/JV001 boards (follow-up) | 36, 132, 136, 147, 172, 173 | Staged input/register/output, chip-width counters and inversion, S bit, reversed data pins, immediate CHR pin, 147 latch/conflict variant, open bus and snapshots. |
@@ -1393,6 +1394,70 @@ and whitespace checks passed. Isolated agent documentation validation reported
 zero errors and the unchanged 52 warnings. No commercial-title or physical-board
 certification is claimed.
 
+## Sachen mapper-513 follow-up: PPU-selected PRG and battery CHR RAM
+
+Mapper 513 implements Sachen SA-9602B / UNL-SA-9602B, used by the unauthorized
+Princess Maker port, in the shared `Mmc3` class. Its source is
+[NESdev revision 8077](https://www.nesdev.org/w/index.php?oldid=8077).
+The board has 32 KiB battery-backed CHR RAM and no CHR ROM. CHR registers 0–5
+use bits 0–4 for physical 1 KiB RAM pages, ignore bit 5, and put bits 6–7 on
+the two outer PRG bank pins. Ordinary MMC3 paired CHR banks and inversion apply.
+Switchable PRG windows use those pins in 512 KiB units; both fixed windows
+always address the second-last/last 8 KiB pages of outer bank zero. PRG register
+bits 6–7 remain masked, and PRG mode swaps R6 with the fixed second-last page.
+
+The implementation follows the article's inference that changing PPU addresses
+can change the outer PRG bank. The existing PPU address-pin observer selects
+the active logical CHR slot during rendering and CPU PPU-register accesses.
+Tracking the slot also makes CHR-register and inversion writes affect PRG
+immediately. Cached per-pixel CHR lookups never drive those pins. There are no
+new PPU timing fields or changes to ADR-001 scroll timing. Nametable addresses
+retain their low CHR-select bits, with A13 excluded from the slot selection.
+
+The known 1536 KiB dump has three outer banks. Selecting outer bank 3 aliases
+bank 2, following the compatibility convention recorded by the source. This is
+a deterministic emulation choice: the source instead describes simultaneous
+chip selection on hardware, whose electrical result is unmeasured. Full 2 MiB
+images address four distinct outer banks. Smaller accepted populations mirror
+through their ROM size; those populations and the full 2 MiB range are pin-range
+support, not confirmation of other manufactured boards.
+
+Validation accepts NES 2.0 submapper 0, 512 KiB–2 MiB PRG in 512 KiB units, no
+CHR ROM, mandatory battery flag, H/V CIRAM, and absent or explicit 32 KiB CHR
+NVRAM. An omitted CHR-NVRAM size uses the physical 32 KiB default. This supported
+profile has no CPU WRAM: volatile CHR RAM, PRG RAM/NVRAM, other CHR-NVRAM sizes,
+four-screen headers and nonzero submappers are rejected. The source does not
+establish alternate CPU-RAM populations. A001 never exposes the pattern RAM
+at $6000; that CPU region stays undriven.
+
+Battery files contain all 32 KiB in physical CHR-page order, independent of the
+active registers. Existing partial-file loading policy is retained; oversized
+files fail without mutating the running machine. Console reset retains NVRAM.
+The new mapper payload contains a length-bounded 32 KiB pool, the compact MMC3
+register/IRQ state and a validated PPU slot. Existing mapper payloads and machine
+version 20 remain unchanged. Ordinary MMC3 H/V mirroring and the existing
+dot-260 rendered-scanline IRQ callback are shared; clone-specific IRQ timing and
+an exact A12 filter remain unverified.
+
+Original tests cover every logical CHR slot, both inversions and PRG modes,
+fixed-bank wiring, distinct four-bank and three-bank-alias layouts, all physical
+CHR pages, paired banks, unused bits, open bus, actual PPU rendering/address
+activity, partial IRQs, reset retention, bounded malformed states and metadata.
+CPU programs self-check banks and PPU data, handle an IRQ, and verify full-machine
+replay and atomic malformed-state rollback. The shared boot/replay matrix now
+includes 109 boards. Independent CLI programs verify eight self-check/reload
+launches across both ROM layouts and omitted/explicit RAM metadata, then reject
+ten malformed headers while keeping source ROMs unchanged. No external emulator
+code was incorporated; no commercial-title or physical-board certification is
+claimed.
+
+Validation passed the build, all 48 MapperBus test targets and eight serial
+ASan/UBSan suites with the macOS `detect_leaks=0` exception. The mapper executable
+passed 36,649 assertions across 288 cases, including a final regular run after
+static-analysis cleanup. Scoped clang-tidy, formatting and whitespace checks
+passed. Isolated agent-documentation validation reported zero errors and the
+unchanged 52 warnings.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -1886,7 +1951,7 @@ fallback. The registry rejects unsupported IDs.
 | 495 | Board-specific specification | Not registered | [r22800](https://www.nesdev.org/w/index.php?oldid=22800) |
 | 497 | Board-specific specification | Not registered | [r22873](https://www.nesdev.org/w/index.php?oldid=22873) |
 | 512 | Sachen Zhongguo Daheng | New implementation: Mmc3 | [r8073](https://www.nesdev.org/w/index.php?oldid=8073) |
-| 513 | Board-specific specification | Not registered | [r8077](https://www.nesdev.org/w/index.php?oldid=8077) |
+| 513 | Sachen SA-9602B / Princess Maker | New implementation: Mmc3 | [r8077](https://www.nesdev.org/w/index.php?oldid=8077) |
 | 514 | Board-specific specification | Not registered | [r22322](https://www.nesdev.org/w/index.php?oldid=22322) |
 | 515 | Board-specific specification | Not registered | [r22771](https://www.nesdev.org/w/index.php?oldid=22771) |
 | 516 | Board-specific specification | Not registered | [r8088](https://www.nesdev.org/w/index.php?oldid=8088) |
