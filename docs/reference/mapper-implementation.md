@@ -4,13 +4,13 @@ This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
 complete.** Updated 2026-11-10 against the working-tree registry.
 
-There are **130 registered cartridge IDs**: the original 14, 53 added in the first
+There are **132 registered cartridge IDs**: the original 14, 53 added in the first
 batch, and Irem 32/65/77, Sunsoft 67/68, Taito 33/48/80/207/82/552, Jaleco 18/72/92/101,
 Namco 210, MMC3 variants 118/119, RAMBO-1 64/158, Bandai 16/153/159, and Datach
 157, UNROM 512 30, GTROM/direct MMC1 111, and J.Y. Company
 35/90/209/211/281/282/295/358/386/387/388/397, plus the sixteen Sachen/TXC
 IDs, Sachen MMC3 clones 262/512/513, Rex Soft's 263, Nitra 250, mappers
-114/115/123, and T9552 249 / 4:5 detailed below.
+114/115/123, T9552 249 / 4:5, and Waixing 74/192 detailed below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
 unusual ROM geometry.
@@ -19,6 +19,7 @@ unusual ROM geometry.
 
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
+| Waixing mixed CHR (follow-up) | 74, 192 | Exact ROM/RAM bank ranges, legacy/NES 2.0 populations, paired/inverted CHR, ROM write protection, IRQs, CPU execution, snapshots and saves. |
 | Waixing T9552 (follow-up) | 249; 4:5 profile | All eight address-scrambling patterns, legacy/canonical file order, optional WRAM, IRQs, CPU execution, snapshots and saves. |
 | Kasheng H2288 (follow-up) | 123 | Bank-index scrambling, $5800 PRG override, write-only open bus, ordinary CHR/CIRAM, default MMC3 IRQs, CPU execution and snapshots. |
 | Scrambled MMC3 boards (follow-up) | 114 | Both submapper address/index permutations, NROM override, CHR outer bank, non-repeating zero IRQ profile, native CPU execution and snapshots. |
@@ -1999,6 +2000,89 @@ at unsupported mapper-249 creation and mapper-4:5 power-on bank selection.
 Scoped clang-tidy, formatting and whitespace checks passed. Isolated agent
 validation reported zero errors, 52 warnings and three infos, matching baseline.
 
+## Waixing mixed-CHR follow-up: mappers 74 and 192
+
+Mapper 74 covers Waixing's 43-393/43-406/860908C boards; mapper 192 covers FS308.
+The implementation follows [mapper 74 revision 24258](https://www.nesdev.org/w/index.php?oldid=24258),
+[mapper 192 revision 23950](https://www.nesdev.org/w/index.php?oldid=23950), and
+[the mixed-CHR rules, revision 23945](https://www.nesdev.org/w/index.php?title=MMC3_with_CHR_ROM_and_CHR_RAM&oldid=23945).
+Revision 24258 adds a category without changing the mapper-74 register description.
+
+Both profiles replace a contiguous range of 1 KiB CHR ROM bank numbers with
+volatile CHR RAM, starting at bank eight. Legacy iNES 74 supplies 2 KiB at banks
+8–9; legacy 192 supplies 4 KiB at banks 8–11. NES 2.0 explicitly chooses the
+population, with the same behavior on either mapper ID. The supported populations
+are 2 and 4 KiB; missing/other NES 2.0 RAM sizes fail rather than selecting a
+legacy default. CHR RAM is not bank-mirrored above its populated range.
+
+MMC3's paired-bank alignment and CHR inversion apply before chip selection.
+Decode the raw eight-bit CHR bank before ROM-size wrapping: a high bank that
+wraps to ROM offset eight still selects ROM. Only the exact RAM range accepts
+writes. ROM data remains immutable, including the zero writes that broke older
+all-CHR-writable implementations of China Soccer League. The selected RAM page
+is the bank number minus eight, independently of which PPU slot accesses it.
+A001 CPU-RAM enable and write-protect gates do not protect CHR RAM.
+
+PRG banking, standard `$E001` high-register aliases, H/V CIRAM and IRQs reuse
+MMC3. The mapper-74 article mentions one-screen mirroring as another emulator's
+policy, without establishing the hardware wiring; this profile retains ordinary
+D0-controlled H/V behavior, including writes of two/three. That alternate
+mirroring behavior, clone-specific IRQ/reset details and exact A12 filtering
+remain unverified. Default Sharp-style zero-latch repeats and the current
+dot-260 rendered-scanline approximation are retained. No PPU timing changes or
+new bus observations were added.
+
+Factories accept legacy iNES or NES 2.0 submapper zero, 32–512 KiB PRG in 8 KiB
+units, 8–256 KiB CHR ROM in 1 KiB units, and H/V CIRAM. Smaller/non-power-of-two
+ROMs wrap by physical size after RAM chip selection. Supported CPU-memory
+profiles have no WRAM or one 8 KiB volatile/battery chip. NES 2.0 explicitly
+declares RAM/NVRAM with a matching battery flag. Legacy battery headers select
+8 KiB NVRAM; nonbattery implied WRAM is absent. CHR NVRAM, other CHR RAM sizes,
+mixed/larger CPU RAM, four-screen wiring and unassigned submappers are rejected.
+These are supported emulator profiles, not a complete physical-population survey.
+
+New snapshots serialize the existing RAM arrays and compact MMC3 registers,
+then append a validated immutable 16-bit CHR RAM population marker. Different
+2/4 KiB populations, invalid common fields and truncated payloads fail loading;
+full-machine failures restore the prior machine atomically. Same-size 74/192
+mapper payloads are identical. Existing mapper layouts, machine version 20 and
+the 4 MiB state cap remain unchanged. Reset clears registers/IRQs under shared
+policy while retaining RAM. Only declared PRG NVRAM enters `.sav`; pattern RAM
+is volatile and is restored by snapshots rather than battery files.
+
+Twelve direct tests cover all CHR bytes in all six bank registers and both
+inversion modes, paired/single-slot aliases, range boundaries, high-bank ROM
+aliases, ROM clear protection, explicit sizes on both IDs, standard PRG modes,
+mirroring, open bus, RAM gates, IRQs, reset and malformed/cross-population states.
+Six original CPU fixtures cover both IDs with legacy defaults and both NES 2.0
+sizes, including both battery profiles. Each verifies PRG, PPUDATA, ROM/RAM
+selection, CIRAM, a positive IRQ and repeated zero-latch IRQs before exact replay
+and rollback. The shared boot/replay matrix now contains 118 added IDs.
+
+CLI checks cover 50 header/memory profiles and 30 invalid headers. Twelve
+battery programs write a sentinel only after CPU assertions pass; save/reload
+checks preserve physical 8 KiB WRAM without storing CHR RAM. The other profiles
+exercise loading/booting without an externally observed CPU success marker.
+Source ROMs remain unchanged. No commercial ROM or external emulator source
+was incorporated.
+
+Validation passed all 56 MapperBus targets and eight serial ASan/UBSan suites
+with the macOS `detect_leaks=0` exception. The complete mapper executable passed
+298,864 assertions across 358 cases. The sanitizer mapper run took 61.73 seconds;
+Meson now budgets 120 seconds for this target under ASan/UBSan and retains
+60 seconds in ordinary builds. A mapper-only rerun without a manual timeout
+multiplier also passed (56.11 seconds); introspection verified the ordinary
+60-second and sanitizer 120-second budgets.
+
+The two initial regressions failed at unsupported factory creation before the
+implementation. An added standalone clear fixture initially omitted registration;
+its setup was corrected. The first complete regular/sanitizer runs then exposed
+a missing NES 2.0 CHR-RAM declaration in the separate shared boot-ROM builder.
+That fixture now encodes each board's RAM size, and both complete runs passed
+after correction. Scoped clang-tidy, formatting and whitespace checks passed.
+Isolated agent validation reported zero errors, 52 warnings and three infos,
+matching baseline.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -2090,7 +2174,7 @@ or another registered cartridge ID.
 | 071 | Camerica / Codemasters | New implementation: DiscreteMapper | [r21755](https://www.nesdev.org/w/index.php?oldid=21755) |
 | 072 | Jaleco JF-17 | New implementation: JalecoDiscrete (external speech unsupported) | [r24541](https://www.nesdev.org/w/index.php?oldid=24541) |
 | 073 | VRC3 | New implementation: KonamiVrc | [r21300](https://www.nesdev.org/w/index.php?oldid=21300) |
-| 074 | Board-specific specification | Not registered | [r24258](https://www.nesdev.org/w/index.php?oldid=24258) |
+| 074 | Waixing 43-393/43-406/860908C mixed CHR | New implementation: Mmc3 | [r24258](https://www.nesdev.org/w/index.php?oldid=24258) |
 | 075 | VRC1 | New implementation: KonamiVrc | [r12313](https://www.nesdev.org/w/index.php?oldid=12313) |
 | 076 | Namco 109 variant | New implementation: Namco108 | [r21294](https://www.nesdev.org/w/index.php?oldid=21294) |
 | 077 | Irem Napoleon Senki / LROG017 | New implementation: IremLrog017 | [r24538](https://www.nesdev.org/w/index.php?oldid=24538) |
@@ -2208,7 +2292,7 @@ or another registered cartridge ID.
 | 189 | Board-specific specification | Not registered | [r22901](https://www.nesdev.org/w/index.php?oldid=22901) |
 | 190 | Board-specific specification | Not registered | [r22728](https://www.nesdev.org/w/index.php?oldid=22728) |
 | 191 | Board-specific specification | Not registered | [r23949](https://www.nesdev.org/w/index.php?oldid=23949) |
-| 192 | Board-specific specification | Not registered | [r23950](https://www.nesdev.org/w/index.php?oldid=23950) |
+| 192 | Waixing FS308 mixed CHR | New implementation: Mmc3 | [r23950](https://www.nesdev.org/w/index.php?oldid=23950) |
 | 193 | Board-specific specification | New implementation: DiscreteMapper | [r21022](https://www.nesdev.org/w/index.php?oldid=21022) |
 | 194 | Board-specific specification | Not registered | [r23951](https://www.nesdev.org/w/index.php?oldid=23951) |
 | 195 | Board-specific specification | Not registered | [r23952](https://www.nesdev.org/w/index.php?oldid=23952) |
