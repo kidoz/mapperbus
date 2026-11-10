@@ -4,12 +4,12 @@ This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
 complete.** Updated 2026-11-10 against the working-tree registry.
 
-There are **121 registered cartridge IDs**: the original 14, 53 added in the first
+There are **122 registered cartridge IDs**: the original 14, 53 added in the first
 batch, and Irem 32/65/77, Sunsoft 67/68, Taito 33/48/80/207/82/552, Jaleco 18/72/92/101,
 Namco 210, MMC3 variants 118/119, RAMBO-1 64/158, Bandai 16/153/159, and Datach
 157, UNROM 512 30, GTROM/direct MMC1 111, and J.Y. Company
 35/90/209/211/281/282/295/358/386/387/388/397, plus the sixteen Sachen/TXC
-IDs detailed below.
+IDs and Sachen MMC3 clone 512 detailed below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
 unusual ROM geometry.
@@ -18,6 +18,7 @@ unusual ROM geometry.
 
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
+| Sachen MMC3 clone (follow-up) | 512 | MMC3 PRG/CHR banking and IRQs, separate pattern/nametable RAM, four graphics modes, always-enabled WRAM, battery saves and snapshots. |
 | Sachen boards (follow-up) | 133, 135, 137, 138, 139, 141, 143, 146, 150, 243 | Explicit latch/8259/SA-015 wiring, asymmetric CIRAM, readable registers and D2 pad, Q-Boy CHR RAM, protection reads and snapshots. |
 | TXC/JV001 boards (follow-up) | 36, 132, 136, 147, 172, 173 | Staged input/register/output, chip-width counters and inversion, S bit, reversed data pins, immediate CHR pin, 147 latch/conflict variant, open bus and snapshots. |
 | J.Y. multicart PCBs (follow-up) | 281, 282, 295, 358, 386, 387, 388, 397 | Board-specific outer PRG/CHR pin assignments, inner masks, outer-register aliases, mapper-388 nametable inhibit, shared IRQs and snapshot/persistence integration. |
@@ -1317,6 +1318,81 @@ correction and passed afterward. Scoped clang-tidy, formatting and whitespace
 checks passed. Isolated agent documentation validation reported zero errors and
 the unchanged 52 warnings. No commercial-title certification is claimed.
 
+## Sachen mapper-512 follow-up: six nametables and independent RAM
+
+Mapper 512 extends the shared `Mmc3` implementation using
+[NESdev revision 8073](https://www.nesdev.org/w/index.php?oldid=8073) and the
+[primary NES 2.0 VRAM-accounting discussion](https://forums.nesdev.org/viewtopic.php?t=16881).
+The supported board has 8 KiB battery WRAM, 4 KiB pattern RAM and a separate
+4 KiB cartridge nametable pool. The latter two are disjoint portions of the
+mapper's host RAM storage; changing graphics modes never aliases their contents.
+They provide four cartridge nametables in addition to the console's two CIRAM
+pages. NES 2.0 counts cartridge nametable memory in the CHR-RAM size, so the
+supported explicit declaration is 8 KiB total PPU RAM, not 4 KiB.
+
+| Mode | Pattern reads/writes | Nametables |
+|---|---|---|
+| 0 | Banked CHR ROM, writes ignored | CIRAM with normal MMC3 H/V |
+| 1 | Banked CHR ROM, writes ignored | Four independent cartridge VRAM pages |
+| 2 | Banked 4 KiB CHR RAM | CIRAM with normal MMC3 H/V |
+| 3 | Same as mode 2 | Same as mode 2 |
+
+ROM and RAM pattern paths share MMC3 register selection and inversion. RAM
+addresses fold to its 4 KiB physical size. Cartridge nametables use direct
+1 KiB pages and ordinary $3000 mirroring; palette RAM stays internal to the PPU.
+A000 changes the CIRAM arrangement even while cartridge VRAM is selected, so
+that arrangement is ready when returning to a CIRAM mode.
+
+The board-mode latch uses the description's tentative $C100 mask. It has no
+readback drivers, and aliases in WRAM update the latch independently of the
+RAM write path. The normal MMC3 $E001 register decoder, six-bit PRG bank pins,
+fixed banks, swapping and IRQ counter are reused. A001 cannot disable WRAM;
+its ordinary bit-6 write protection is retained. This follows the published
+'normal MMC3' behavior except for the stated enable-bit exception, rather than
+claiming a new hardware measurement.
+
+Validation accepts NES 2.0 submapper 0, standard MMC3 ROM ranges (32..512 KiB PRG,
+8..256 KiB CHR ROM), the battery flag, absent or explicit 8 KiB PRG-NVRAM, and
+absent or explicit 8 KiB volatile PPU RAM. Omitted sizes use those mandatory
+physical defaults. Contradictory sizes, WRAM declared volatile, CHR NVRAM,
+CHR-free images and unsupported submappers are rejected. A four-screen header
+is accepted but never forces cartridge VRAM on: CIRAM starts from flag-6 bit 0,
+and only the mode latch selects the cartridge pool.
+
+The new mapper payload appends one validated mode byte to the existing compact
+MMC3 variant layout; its RAM snapshot already holds all three cartridge RAM
+pools. Mapper 4/118/119 payloads and machine version 20 remain unchanged. Console
+reset follows existing MMC3 register/IRQ reset policy and retains RAM. Only
+8 KiB WRAM is persistent; PPU RAM is volatile and included in save states.
+Battery files use existing MMC3 WRAM loading behavior and oversized files fail
+without changing the running machine.
+
+Known limits: the source labels both address masks as tentative, describes
+mode 3 as apparently equivalent to 2, and does not establish larger CHR-RAM
+populations. This implementation supports the documented minimum RAM layout and
+the stated decoders; exact alias gating, clone-specific reset/IRQ differences,
+and write-protect wiring need hardware confirmation. It retains the existing
+MMC3 dot-260/once-per-rendered-scanline IRQ callback, not a new cycle-accurate A12
+filter. ADR-001 PPU timing and all other mapper layouts are preserved.
+
+Original tests cover every mode, PRG swaps and masked pins, ROM protection,
+banked RAM and inversion, six independent nametable pages, palette separation,
+write-only aliases, WRAM gates, partial IRQs, RAM retention, component snapshots,
+invalid fields, header accounting and battery reloads. A CPU program self-checks
+PRG and PPU data, enables split pattern tables for MMC3 A12 activity, handles an
+IRQ and replays full-machine states with atomic malformed-state rollback.
+The shared boot/replay matrix now includes 108 boards. Independent CLI programs
+verify successful execution and NVRAM reloads over eight launches, including
+omitted sizes and four-screen headers, then reject eight malformed headers.
+
+Validation passed `meson compile -C buildDir`, all 47 regular test targets and
+eight serial ASan/UBSan suites with the macOS `detect_leaks=0` exception. The
+mapper executable passed 36,209 assertions across 279 cases, including a final
+regular mapper run after static-analysis cleanup. Scoped clang-tidy, formatting
+and whitespace checks passed. Isolated agent documentation validation reported
+zero errors and the unchanged 52 warnings. No commercial-title or physical-board
+certification is claimed.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -1809,7 +1885,7 @@ fallback. The registry rejects unsupported IDs.
 | 493 | Board-specific specification | Not registered | [r24546](https://www.nesdev.org/w/index.php?oldid=24546) |
 | 495 | Board-specific specification | Not registered | [r22800](https://www.nesdev.org/w/index.php?oldid=22800) |
 | 497 | Board-specific specification | Not registered | [r22873](https://www.nesdev.org/w/index.php?oldid=22873) |
-| 512 | Sachen Zhongguo Daheng | Not registered | [r8073](https://www.nesdev.org/w/index.php?oldid=8073) |
+| 512 | Sachen Zhongguo Daheng | New implementation: Mmc3 | [r8073](https://www.nesdev.org/w/index.php?oldid=8073) |
 | 513 | Board-specific specification | Not registered | [r8077](https://www.nesdev.org/w/index.php?oldid=8077) |
 | 514 | Board-specific specification | Not registered | [r22322](https://www.nesdev.org/w/index.php?oldid=22322) |
 | 515 | Board-specific specification | Not registered | [r22771](https://www.nesdev.org/w/index.php?oldid=22771) |
