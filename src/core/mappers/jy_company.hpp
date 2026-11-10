@@ -7,10 +7,11 @@
 #include "core/mappers/mapper.hpp"
 
 namespace mapperbus::core {
-/// J.Y. Company ASIC: standard 209, legacy-WRAM 35, inhibited 90, duplicate 211.
+/// J.Y. Company ASIC and its documented outer-bank multicart PCBs.
 class JyCompany final : public Mapper {
   public:
     JyCompany(const INesHeader& header, std::vector<Byte> prg, std::vector<Byte> chr);
+    static bool supports_mapper(uint16_t id);
     static Result<void> validate_geometry(const INesHeader& header,
                                           std::size_t prg,
                                           std::size_t chr);
@@ -42,6 +43,13 @@ class JyCompany final : public Mapper {
     void load_state(StateReader& reader) override;
 
   private:
+    struct OuterBank {
+        unsigned base;
+        unsigned mask;
+    };
+    OuterBank prg_outer_bank() const;
+    OuterBank chr_outer_bank() const;
+    bool outer_aliases_a11() const;
     std::size_t prg_address(Address addr) const;
     std::size_t chr_address(Address addr) const;
     bool chr_nametable(Address addr) const;
@@ -53,6 +61,7 @@ class JyCompany final : public Mapper {
     const bool chr_ram_;
     const bool persistent_;
     const bool inhibit_nametables_;
+    const uint16_t mapper_id_;
     std::array<Byte, 4> prg_banks_{};
     std::array<uint16_t, 8> chr_banks_{};
     std::array<uint16_t, 4> nt_banks_{};

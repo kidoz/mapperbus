@@ -7,6 +7,8 @@
 
 namespace mapperbus::core {
 // Original implementation from NESdev J.Y. Company ASIC, revision 24184.
+// Multicart PCB revisions: 281 r18938, 282 r23351, 295 r23352, 358 r18941,
+// 386 r23354, 387 r23355, 388 r18944, 397 r23356.
 // Unknown $C007 mode and multiplier intermediate values lack hardware evidence;
 // retain the last completed product during the documented eight-cycle latency.
 JyCompany::JyCompany(const INesHeader& h, std::vector<Byte> prg, std::vector<Byte> chr)
@@ -14,19 +16,46 @@ JyCompany::JyCompany(const INesHeader& h, std::vector<Byte> prg, std::vector<Byt
       prg_ram_(h.is_nes2 ? h.prg_ram_size + h.prg_nvram_size
                          : (h.mapper_number == 35U || h.has_battery ? 8192U : 0U)),
       chr_ram_(chr_.empty()), persistent_(h.has_battery),
-      inhibit_nametables_(h.mapper_number == 90U) {
+      inhibit_nametables_(h.mapper_number == 90U || h.mapper_number == 388U),
+      mapper_id_(h.mapper_number) {
     if (chr_ram_)
         chr_.resize(h.is_nes2 ? h.chr_ram_size : 8192U);
 }
+bool JyCompany::supports_mapper(uint16_t id) {
+    switch (id) {
+    case 35U:
+    case 90U:
+    case 209U:
+    case 211U:
+    case 281U:
+    case 282U:
+    case 295U:
+    case 358U:
+    case 386U:
+    case 387U:
+    case 388U:
+    case 397U:
+        return true;
+    default:
+        return false;
+    }
+}
 Result<void> JyCompany::validate_geometry(const INesHeader& h, std::size_t prg, std::size_t chr) {
+    if (h.mapper_number > 255U && !h.is_nes2)
+        return std::unexpected("J.Y. Company multicart IDs require a NES 2.0 header");
     if (h.is_nes2 && h.submapper != 0U)
         return std::unexpected("Unsupported J.Y. Company submapper");
-    if (prg < 8192U || prg > 2097152U || prg % 8192U != 0U || chr > 2097152U || chr % 1024U != 0U)
+    const bool multicart = h.mapper_number > 255U;
+    const std::size_t max_prg = h.mapper_number == 387U
+                                    ? 524288U
+                                    : (!multicart || h.mapper_number == 282U ? 2097152U : 1048576U);
+    const std::size_t max_chr = multicart ? 1048576U : 2097152U;
+    if (prg < 8192U || prg > max_prg || prg % 8192U != 0U || chr > max_chr || chr % 1024U != 0U)
         return std::unexpected("Unsupported J.Y. Company ROM geometry");
     if (h.mirror_mode == MirrorMode::FourScreen || h.chr_nvram_size != 0U ||
         (chr != 0U && h.chr_ram_size != 0U) ||
         (h.is_nes2 && chr == 0U &&
-         (h.chr_ram_size < 1024U || h.chr_ram_size > 2097152U ||
+         (h.chr_ram_size < 1024U || h.chr_ram_size > max_chr ||
           !std::has_single_bit(h.chr_ram_size))))
         return std::unexpected("Unsupported J.Y. Company CHR memory geometry");
     if (h.is_nes2 && ((h.prg_ram_size != 0U && h.prg_ram_size != 8192U) ||
@@ -36,6 +65,68 @@ Result<void> JyCompany::validate_geometry(const INesHeader& h, std::size_t prg, 
         return std::unexpected(
             "J.Y. Company supports absent or 8 KiB WRAM, with matching battery metadata");
     return {};
+}
+bool JyCompany::outer_aliases_a11() const {
+    return mapper_id_ > 255U && mapper_id_ != 358U;
+}
+JyCompany::OuterBank JyCompany::prg_outer_bank() const {
+    const unsigned value = config_[3];
+    switch (mapper_id_) {
+    case 281U:
+        return {.base = (value & 3U) << 18U, .mask = 0x3FFFFU};
+    case 282U: {
+        const unsigned shift = (value & 0x20U) != 0U ? 19U : 18U;
+        return {.base = ((value >> 1U) & 3U) << shift, .mask = (1U << shift) - 1U};
+    }
+    case 295U:
+        return {.base = (value & 7U) << 17U, .mask = 0x1FFFFU};
+    case 358U:
+    case 397U:
+        return {.base = (value & 6U) << 17U, .mask = 0x3FFFFU};
+    case 386U:
+        return {.base = ((value & 2U) << 17U) | ((value & 8U) << 16U), .mask = 0x3FFFFU};
+    case 387U:
+        return {.base = ((value & 2U) << 16U) | ((value & 8U) << 15U), .mask = 0x1FFFFU};
+    case 388U:
+        return {.base = (value & 12U) << 16U, .mask = 0x3FFFFU};
+    default:
+        return {.base = ((value >> 1U) & 3U) << 19U, .mask = 0x7FFFFU};
+    }
+}
+JyCompany::OuterBank JyCompany::chr_outer_bank() const {
+    const unsigned value = config_[3];
+    switch (mapper_id_) {
+    case 281U:
+        return {.base = (value & 3U) << 18U, .mask = 0x3FFFFU};
+    case 295U:
+    case 397U:
+        return {.base = (value & 7U) << 17U, .mask = 0x1FFFFU};
+    default:
+        break;
+    }
+    const bool large = (value & 0x20U) != 0U;
+    unsigned base = 0U;
+    switch (mapper_id_) {
+    case 282U:
+        base = (value & 0x10U) != 0U ? (value & 8U) << 16U : 0U;
+        break;
+    case 358U:
+        base = (value & 2U) << 18U;
+        break;
+    case 386U:
+    case 387U:
+        base = (value & 4U) << 17U;
+        break;
+    case 388U:
+        base = (value & 2U) << 18U;
+        break;
+    default:
+        base = ((value >> 3U) & 3U) << 19U;
+        break;
+    }
+    if (!large)
+        base |= (value & 1U) << 18U;
+    return {.base = base, .mask = large ? 0x7FFFFU : 0x3FFFFU};
 }
 std::size_t JyCompany::prg_address(Address addr) const {
     const unsigned mode = config_[0] & 3U;
@@ -59,9 +150,8 @@ std::size_t JyCompany::prg_address(Address addr) const {
         bank = reversed;
     }
     const unsigned bank_unit = addr < 0x8000U ? 8192U : unit;
-    const unsigned inner = (bank * bank_unit + offset) & 0x7FFFFU;
-    const unsigned outer = ((static_cast<unsigned>(config_[3]) >> 1U) & 3U) << 19U;
-    return (outer | inner) % prg_rom_.size();
+    const auto outer = prg_outer_bank();
+    return (outer.base | ((bank * bank_unit + offset) & outer.mask)) % prg_rom_.size();
 }
 bool JyCompany::maps_prg(Address addr) const {
     return addr >= 0x8000U ||
@@ -117,6 +207,13 @@ void JyCompany::write_prg(Address addr, Byte value) {
         }
         return;
     }
+    // Only the PCB's explicitly documented outer-register decode is widened.
+    // Other registers retain the common ASIC masks; do not infer an unwired
+    // A11 input (and a missing multiplier) from the outer-register mask alone.
+    if (outer_aliases_a11() && (addr & 0xF003U) == 0xD003U) {
+        config_[3] = value;
+        return;
+    }
     if ((addr & 0x800U) != 0U)
         return;
     const unsigned reg = addr & 7U;
@@ -152,12 +249,9 @@ std::size_t JyCompany::chr_address(Address addr) const {
     unsigned reg = slot << (3U - mode);
     if (mode == 1U && (config_[3] & 0x80U) != 0U)
         reg += 2U * latches_[slot];
-    const unsigned mask = (config_[3] & 0x20U) != 0U ? 0x7FFFFU : 0x3FFFFU;
-    unsigned outer = ((static_cast<unsigned>(config_[3]) >> 3U) & 3U) << 19U;
-    if ((config_[3] & 0x20U) == 0U)
-        outer |= (config_[3] & 1U) << 18U;
-    return (outer |
-            ((static_cast<unsigned>(chr_banks_[reg]) * unit + (addr & (unit - 1U))) & mask)) %
+    const auto outer = chr_outer_bank();
+    return (outer.base |
+            ((static_cast<unsigned>(chr_banks_[reg]) * unit + (addr & (unit - 1U))) & outer.mask)) %
            chr_.size();
 }
 Byte JyCompany::read_chr(Address addr) {

@@ -43,8 +43,7 @@ namespace {
     }
     if (header.mapper_number == 30U || header.mapper_number == 111U)
         return FlashBoards::validate_geometry(header, prg_size, chr_size);
-    if (header.mapper_number == 35U || header.mapper_number == 90U ||
-        header.mapper_number == 209U || header.mapper_number == 211U)
+    if (JyCompany::supports_mapper(header.mapper_number))
         return JyCompany::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 157U)
         return Datach::validate_geometry(header, prg_size, chr_size);
@@ -360,7 +359,7 @@ template <typename T> MapperFactory make_factory() {
 
 void register_builtin_mappers() {
     auto& registry = MapperRegistry::instance();
-    for (const uint16_t id : {35U, 90U, 209U, 211U})
+    for (const uint16_t id : {35U, 90U, 209U, 211U, 281U, 282U, 295U, 358U, 386U, 387U, 388U, 397U})
         registry.register_mapper(id, make_factory<JyCompany>());
     registry.register_mapper(0, make_factory<Nrom>());
     registry.register_mapper(1, make_factory<Mmc1>());
