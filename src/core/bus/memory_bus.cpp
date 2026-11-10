@@ -438,7 +438,9 @@ Byte MemoryBus::read_apu_io(Address addr) {
     if (addr >= 0x4020 && addr <= 0x409F && fds_ && fds_->is_loaded()) {
         return fds_->read(addr);
     }
-    return open_bus();
+    // The first expansion ports share this 1 KiB dispatch page with the APU.
+    // Preserve console/FDS priority, then let the cartridge decode $4020-$43FF.
+    return addr >= 0x4020 ? read_expansion(addr) : open_bus();
 }
 
 Byte MemoryBus::read_expansion(Address addr) {
@@ -502,7 +504,10 @@ void MemoryBus::write_apu_io(Address addr, Byte value) {
     // $4020-$409F: FDS disk drive ($4020-$4026) and audio ($4040-$4089)
     if (addr >= 0x4020 && addr <= 0x409F && fds_ && fds_->is_loaded()) {
         fds_->write(addr, value);
+        return;
     }
+    if (addr >= 0x4020)
+        write_expansion(addr, value);
 }
 
 void MemoryBus::write_expansion(Address addr, Byte value) {

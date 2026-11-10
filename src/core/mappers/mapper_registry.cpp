@@ -23,11 +23,13 @@
 #include "core/mappers/namco175340.hpp"
 #include "core/mappers/nrom.hpp"
 #include "core/mappers/rambo1.hpp"
+#include "core/mappers/sachen.hpp"
 #include "core/mappers/sunsoft34.hpp"
 #include "core/mappers/sunsoft5b.hpp"
 #include "core/mappers/taito_tc.hpp"
 #include "core/mappers/taito_x1005.hpp"
 #include "core/mappers/taito_x1017.hpp"
+#include "core/mappers/txc.hpp"
 #include "core/mappers/uxrom.hpp"
 #include "core/mappers/vrc6.hpp"
 #include "core/mappers/vrc7.hpp"
@@ -45,6 +47,10 @@ namespace {
         return FlashBoards::validate_geometry(header, prg_size, chr_size);
     if (JyCompany::supports_mapper(header.mapper_number))
         return JyCompany::validate_geometry(header, prg_size, chr_size);
+    if (Sachen::supports_mapper(header.mapper_number))
+        return Sachen::validate_geometry(header, prg_size, chr_size);
+    if (Txc::supports_mapper(header.mapper_number))
+        return Txc::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 157U)
         return Datach::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 16U || header.mapper_number == 153U || header.mapper_number == 159U)
@@ -359,6 +365,10 @@ template <typename T> MapperFactory make_factory() {
 
 void register_builtin_mappers() {
     auto& registry = MapperRegistry::instance();
+    for (const uint16_t id : {133U, 135U, 137U, 138U, 139U, 141U, 143U, 146U, 150U, 243U})
+        registry.register_mapper(id, make_factory<Sachen>());
+    for (const uint16_t id : {36U, 132U, 136U, 147U, 172U, 173U})
+        registry.register_mapper(id, make_factory<Txc>());
     for (const uint16_t id : {35U, 90U, 209U, 211U, 281U, 282U, 295U, 358U, 386U, 387U, 388U, 397U})
         registry.register_mapper(id, make_factory<JyCompany>());
     registry.register_mapper(0, make_factory<Nrom>());
