@@ -29,20 +29,29 @@ namespace mapperbus::core {
 // Mapper 123 / H2288: NESdev r4940. Ordinary MMC3 addresses, mapper-114
 // type-0 index scrambling, and a write-only $F800-decoded PRG override.
 // No clone-specific IRQ revision is documented; retain the default profile.
+// T9552: NESdev r20254 and measured dump permutations in forum thread 24314.
+// Apply address wiring to MMC3 outputs, including fixed banks, before ROM wrapping.
 Mmc3::Mmc3(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte> chr_rom)
     : prg_rom_(std::move(prg_rom)), chr_rom_(std::move(chr_rom)), use_chr_ram_(chr_rom_.empty()),
       mapper_(header.mapper_number == 114U || header.mapper_number == 115U ||
-                      header.mapper_number == 123U || header.mapper_number == 250U ||
-                      header.mapper_number == 262U || header.mapper_number == 263U ||
-                      header.mapper_number == 118U || header.mapper_number == 119U ||
-                      header.mapper_number == 512U || header.mapper_number == 513U
+                      header.mapper_number == 123U || header.mapper_number == 249U ||
+                      header.mapper_number == 250U || header.mapper_number == 262U ||
+                      header.mapper_number == 263U || header.mapper_number == 118U ||
+                      header.mapper_number == 119U || header.mapper_number == 512U ||
+                      header.mapper_number == 513U
                   ? header.mapper_number
                   : 4U),
       scramble_profile_(mapper_ == 114U && header.is_nes2 ? header.submapper : 0U),
+      t9552_(mapper_ == 249U || (mapper_ == 4U && header.is_nes2 && header.submapper == 5U)),
       initial_mirror_(header.mirror_mode), mirror_mode_(header.mirror_mode),
       irq_zero_latch_repeats_(
           !(mapper_ == 114U || (mapper_ == 4U && header.is_nes2 && header.submapper == 4))) {
-    if (mapper_ == 114U || mapper_ == 115U || mapper_ == 123U || mapper_ == 250U) {
+    if (t9552_) {
+        prg_ram_size_ = header.is_nes2       ? header.prg_ram_size + header.prg_nvram_size
+                        : header.has_battery ? 0x2000U
+                                             : 0U;
+        nvram_size_ = header.is_nes2 ? header.prg_nvram_size : prg_ram_size_;
+    } else if (mapper_ == 114U || mapper_ == 115U || mapper_ == 123U || mapper_ == 250U) {
         prg_ram_size_ = 0U;
         nvram_size_ = 0U;
     } else if (mapper_ == 262U) {
@@ -76,6 +85,7 @@ Mmc3::Mmc3(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte
 }
 
 void Mmc3::reset() {
+    t9552_mode_ = 0U;
     kasheng_prg_ = 0U;
     kasheng_chr_ = 0U;
     ppu_chr_slot_ = 0U;
@@ -91,16 +101,16 @@ void Mmc3::reset() {
     irq_pending_ = false;
     prg_ram_enabled_ = true;
     prg_ram_write_protected_ = false;
-    if (mapper_ != 4U)
+    if (mapper_ != 4U || t9552_)
         mirror_mode_ = initial_mirror_;
     update_prg_banks();
     update_chr_banks();
 }
 
 void Mmc3::update_prg_banks() {
-    const std::size_t inner_banks = mapper_ == 513U   ? 64U
-                                    : mapper_ == 115U ? 32U
-                                                      : num_prg_banks_8k_;
+    const std::size_t inner_banks = mapper_ == 513U || t9552_ ? 64U
+                                    : mapper_ == 115U         ? 32U
+                                                              : num_prg_banks_8k_;
     const std::size_t r6 = bank_registers_[6] % inner_banks;
     const std::size_t r7 = bank_registers_[7] % inner_banks;
     const std::size_t second_last = inner_banks - 2U;
@@ -119,6 +129,34 @@ void Mmc3::update_prg_banks() {
         prg_offsets_[2] = static_cast<uint32_t>(r6) * 0x2000;
         prg_offsets_[3] = static_cast<uint32_t>(last) * 0x2000;
     }
+    if (t9552_)
+        for (auto& offset : prg_offsets_)
+            offset = t9552_address(offset, false) % prg_rom_.size();
+}
+
+uint32_t Mmc3::t9552_address(uint32_t addr, bool chr) const {
+    // Each column in the published table lists the MMC3 signal at each
+    // physical ROM pin. Column 0 is mapper 249's file order, column 2 is 4:5.
+    constexpr std::array<std::array<unsigned, 4>, 4> kPrgPins = {
+        {{16U, 17U, 15U, 14U}, {17U, 16U, 14U, 15U}, {14U, 15U, 16U, 17U}, {15U, 14U, 17U, 16U}}};
+    constexpr std::array<std::array<unsigned, 6>, 8> kChrPins = {{{15U, 12U, 16U, 17U, 14U, 13U},
+                                                                  {14U, 15U, 13U, 12U, 17U, 16U},
+                                                                  {12U, 13U, 14U, 15U, 16U, 17U},
+                                                                  {16U, 14U, 12U, 13U, 17U, 15U},
+                                                                  {15U, 13U, 17U, 16U, 12U, 14U},
+                                                                  {14U, 12U, 15U, 16U, 17U, 13U},
+                                                                  {13U, 16U, 14U, 15U, 12U, 17U},
+                                                                  {12U, 15U, 16U, 17U, 13U, 14U}}};
+    const unsigned order = mapper_ == 249U ? 0U : 2U;
+    uint32_t result = addr & ~(chr ? 0x3F000U : 0x3C000U);
+    if (chr) {
+        for (unsigned pin = 0U; pin < 6U; ++pin)
+            result |= ((addr >> kChrPins[t9552_mode_][pin]) & 1U) << kChrPins[order][pin];
+    } else {
+        for (unsigned pin = 0U; pin < 4U; ++pin)
+            result |= ((addr >> kPrgPins[t9552_mode_ & 3U][pin]) & 1U) << kPrgPins[order][pin];
+    }
+    return result;
 }
 
 void Mmc3::update_chr_banks() {
@@ -126,6 +164,8 @@ void Mmc3::update_chr_banks() {
         return;
 
     auto bank = [this](uint8_t reg) -> uint32_t {
+        if (t9552_)
+            return t9552_address(static_cast<uint32_t>(reg) * 0x400U, true) % chr_rom_.size();
         return static_cast<uint32_t>(reg % num_chr_banks_1k_) * 0x0400;
     };
 
@@ -252,7 +292,7 @@ void Mmc3::write_prg(Address addr, Byte value) {
         } else {
             // $8001: Bank data
             bank_registers_[bank_select_] =
-                mapper_ != 4U && bank_select_ >= 6U ? value & 0x3FU : value;
+                (mapper_ != 4U || t9552_) && bank_select_ >= 6U ? value & 0x3FU : value;
             if (bank_select_ < 6) {
                 update_chr_banks();
             } else {
@@ -414,6 +454,8 @@ std::optional<Address> Mmc3::nametable_address(Address addr) const {
 }
 
 bool Mmc3::maps_expansion(Address addr) const {
+    if (t9552_)
+        return (addr & 0xF000U) == 0x5000U;
     if (mapper_ == 123U)
         return (addr & 0xF800U) == 0x5800U;
     return (mapper_ == 262U || mapper_ == 512U) && (addr & 0xC100U) == 0x4100U;
@@ -422,7 +464,7 @@ bool Mmc3::maps_expansion(Address addr) const {
 Byte Mmc3::expansion_read_mask(Address /*addr*/) const {
     if (mapper_ == 262U)
         return 0x80U;
-    return mapper_ == 512U || mapper_ == 123U ? 0U : 0xFFU; // The board-mode latch is write-only.
+    return mapper_ == 512U || mapper_ == 123U || t9552_ ? 0U : 0xFFU; // Write-only latches.
 }
 
 Byte Mmc3::read_expansion(Address addr) {
@@ -432,7 +474,11 @@ Byte Mmc3::read_expansion(Address addr) {
 void Mmc3::write_expansion(Address addr, Byte value) {
     if (!maps_expansion(addr))
         return;
-    if (mapper_ == 123U) {
+    if (t9552_) {
+        t9552_mode_ = value & 7U;
+        update_prg_banks();
+        update_chr_banks();
+    } else if (mapper_ == 123U) {
         // Normalize .M31 .2S0 to the shared M.S.3210 PRG latch.
         const unsigned data = value;
         kasheng_prg_ = static_cast<Byte>(((data & 0x40U) << 1U) | ((data & 2U) << 4U) |
@@ -523,6 +569,10 @@ void Mmc3::save_variant_state(StateWriter& writer) const {
     } else if (mapper_ == 123U) {
         writer.write(kasheng_prg_);
     }
+    if (t9552_) {
+        writer.write(t9552_mode_);
+        writer.write<Byte>(mapper_ == 249U ? 0U : 2U);
+    }
     if (mapper_ == 250U)
         writer.write<Byte>(nitra_prg_mux_ ? 1U : 0U);
     if (mapper_ == 512U)
@@ -565,6 +615,9 @@ void Mmc3::load_variant_state(StateReader& reader) {
     } else if (mapper_ == 123U) {
         reader.read(kasheng_prg_);
     }
+    if (t9552_)
+        reader.read(t9552_mode_);
+    const auto t9552_order = t9552_ ? reader.read<Byte>() : Byte{0U};
     const auto scramble = mapper_ == 114U ? reader.read<Byte>() : Byte{0U};
     const auto nitra_profile = mapper_ == 250U ? reader.read<Byte>() : Byte{0U};
     if (mapper_ == 512U)
@@ -593,6 +646,7 @@ void Mmc3::load_variant_state(StateReader& reader) {
         (mapper_ == 115U &&
          ((kasheng_prg_ & 0x10U) != 0U || kasheng_chr_ > 1U || kasheng_solder_pad_ > 7U)) ||
         (mapper_ == 123U && (kasheng_prg_ & 0x50U) != 0U) ||
+        (t9552_ && (t9552_mode_ > 7U || t9552_order != (mapper_ == 249U ? 0U : 2U))) ||
         (mapper_ == 250U && nitra_profile != (nitra_prg_mux_ ? 1U : 0U)) ||
         (mapper_ == 262U && ((board_mode_ & 0xB0U) != 0U || title_jumper_ > 1U))) {
         if (mapper_ == 262U && title_jumper_ > 1U)

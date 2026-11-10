@@ -51,6 +51,29 @@ namespace {
         return Sachen::validate_geometry(header, prg_size, chr_size);
     if (Txc::supports_mapper(header.mapper_number))
         return Txc::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 249U ||
+        (header.mapper_number == 4U && header.is_nes2 && header.submapper == 5U)) {
+        if (header.mapper_number == 249U && header.is_nes2 && header.submapper != 0U)
+            return std::unexpected(
+                "Mapper 249 supports submapper 0; canonical dumps use mapper 4:5");
+        if (prg_size < 0x8000U || prg_size > 0x80000U || prg_size % 0x2000U != 0U ||
+            chr_size < 0x2000U || chr_size > 0x40000U || chr_size % 0x400U != 0U)
+            return std::unexpected("Unsupported T9552 ROM geometry");
+        if (header.chr_ram_size != 0U || header.chr_nvram_size != 0U)
+            return std::unexpected("T9552 supports CHR ROM without CHR RAM");
+        if (header.is_nes2) {
+            if ((header.prg_ram_size != 0U && header.prg_ram_size != 0x2000U) ||
+                (header.prg_nvram_size != 0U && header.prg_nvram_size != 0x2000U) ||
+                (header.prg_ram_size != 0U && header.prg_nvram_size != 0U))
+                return std::unexpected("T9552 supports one optional 8 KiB WRAM chip");
+            if (header.has_battery != (header.prg_nvram_size != 0U))
+                return std::unexpected("T9552 battery flag and NVRAM declaration disagree");
+        }
+        if (header.mirror_mode != MirrorMode::Horizontal &&
+            header.mirror_mode != MirrorMode::Vertical)
+            return std::unexpected("T9552 supports ordinary H/V CIRAM");
+        return {};
+    }
     if (header.mapper_number == 123U) {
         if (header.is_nes2 && header.submapper != 0U)
             return std::unexpected("Mapper 123 supports submapper 0");
@@ -520,6 +543,7 @@ void register_builtin_mappers() {
     registry.register_mapper(123, make_factory<Mmc3>());
     registry.register_mapper(118, make_factory<Mmc3>());
     registry.register_mapper(119, make_factory<Mmc3>());
+    registry.register_mapper(249, make_factory<Mmc3>());
     registry.register_mapper(250, make_factory<Mmc3>());
     registry.register_mapper(262, make_factory<Mmc3>());
     registry.register_mapper(263, make_factory<Mmc3>());

@@ -179,7 +179,7 @@ void Mmc2::load_state(StateReader& r) {
 
 // --- MMC3 (4) ---
 void Mmc3::save_state(StateWriter& w) const {
-    if (mapper_ != 4U) {
+    if (mapper_ != 4U || t9552_) {
         save_variant_state(w);
         return;
     }
@@ -202,7 +202,7 @@ void Mmc3::save_state(StateWriter& w) const {
     w.write(prg_ram_write_protected_);
 }
 void Mmc3::load_state(StateReader& r) {
-    if (mapper_ != 4U) {
+    if (mapper_ != 4U || t9552_) {
         load_variant_state(r);
         return;
     }
@@ -580,7 +580,7 @@ std::span<const Byte> Mmc3::battery_ram() const {
 void Mmc3::set_battery_ram(std::span<const Byte> data) {
     if (mapper_ == 513U) {
         std::copy_n(data.begin(), std::min(data.size(), chr_nvram_.size()), chr_nvram_.begin());
-    } else if (mapper_ == 4U) {
+    } else if (mapper_ == 4U && !t9552_) {
         restore_prg_ram(prg_ram_, data);
     } else {
         std::copy_n(data.begin(),
