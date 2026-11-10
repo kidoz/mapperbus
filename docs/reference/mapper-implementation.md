@@ -4,11 +4,12 @@ This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
 complete.** Updated 2026-11-10 against the working-tree registry.
 
-There are **105 registered cartridge IDs**: the original 14, 53 added in the first
+There are **121 registered cartridge IDs**: the original 14, 53 added in the first
 batch, and Irem 32/65/77, Sunsoft 67/68, Taito 33/48/80/207/82/552, Jaleco 18/72/92/101,
 Namco 210, MMC3 variants 118/119, RAMBO-1 64/158, Bandai 16/153/159, and Datach
 157, UNROM 512 30, GTROM/direct MMC1 111, and J.Y. Company
-35/90/209/211/281/282/295/358/386/387/388/397 in the follow-ups below.
+35/90/209/211/281/282/295/358/386/387/388/397, plus the sixteen Sachen/TXC
+IDs detailed below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
 unusual ROM geometry.
@@ -17,6 +18,8 @@ unusual ROM geometry.
 
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
+| Sachen boards (follow-up) | 133, 135, 137, 138, 139, 141, 143, 146, 150, 243 | Explicit latch/8259/SA-015 wiring, asymmetric CIRAM, readable registers and D2 pad, Q-Boy CHR RAM, protection reads and snapshots. |
+| TXC/JV001 boards (follow-up) | 36, 132, 136, 147, 172, 173 | Staged input/register/output, chip-width counters and inversion, S bit, reversed data pins, immediate CHR pin, 147 latch/conflict variant, open bus and snapshots. |
 | J.Y. multicart PCBs (follow-up) | 281, 282, 295, 358, 386, 387, 388, 397 | Board-specific outer PRG/CHR pin assignments, inner masks, outer-register aliases, mapper-388 nametable inhibit, shared IRQs and snapshot/persistence integration. |
 | J.Y. Company ASIC (follow-up) | 35, 90, 209, 211 | PRG/CHR modes and outer banking, physical-read CHR latches, mixed CHR/CIRAM nametables, all four documented IRQ sources, math/protection ports, board jumpers, WRAM persistence and snapshots. |
 | Flash boards (follow-up) | 30, 111 | UNROM 512 submappers 0–4, GTROM read-triggered open-bus latch, banked CHR/nametable/bonus RAM, SST39SF040 commands and polling, separate flash persistence; mapper 111 CHR ROM selects direct MMC1. |
@@ -103,7 +106,7 @@ See [mapper tests](../../tests/unit/test_mapper_boards.cpp),
   implementation-specific WRAM extension is not supplied.
 - Larger remaining families include other Bandai, Jaleco and Taito boards,
   further MMC3 derivatives and outer-bank variants,
-  Sachen/TXC ASICs, further homebrew boards, and Rainbow.
+  remaining Sachen and other ASIC boards, further homebrew boards, and Rainbow.
 - Jaleco's optional external ADPCM speech chips and sample-media loading remain
   unimplemented, including on some mapper-18/72/92 boards.
 - Enhanced consoles and copier/educational adapters may require machine or
@@ -1236,6 +1239,84 @@ formatting and whitespace checks passed. Isolated agent documentation validation
 reported zero errors and the unchanged 52 warnings. No commercial-title or
 physical-cartridge certification is claimed.
 
+## Sachen/TXC follow-up: counters, wiring and low expansion ports
+
+Sixteen new IDs use two original implementations, `Sachen` and `Txc`. Primary
+sources are [36 r4196](https://www.nesdev.org/w/index.php?oldid=4196),
+[132 r4967](https://www.nesdev.org/w/index.php?oldid=4967),
+[133 r4977](https://www.nesdev.org/w/index.php?oldid=4977),
+[8259 r23709](https://www.nesdev.org/w/index.php?oldid=23709),
+[136 r21611](https://www.nesdev.org/w/index.php?oldid=21611),
+[137 r20417](https://www.nesdev.org/w/index.php?oldid=20417),
+[143 r5034](https://www.nesdev.org/w/index.php?oldid=5034),
+[146/NINA r22985](https://www.nesdev.org/w/index.php?oldid=22985),
+[147 r5057](https://www.nesdev.org/w/index.php?oldid=5057),
+[150 r5081](https://www.nesdev.org/w/index.php?oldid=5081),
+[172 r5257](https://www.nesdev.org/w/index.php?oldid=5257),
+[173 r5274](https://www.nesdev.org/w/index.php?oldid=5274), and
+[243 r5861](https://www.nesdev.org/w/index.php?oldid=5861).
+No external emulator implementation or commercial ROM was incorporated.
+
+| IDs | Behavior |
+|---|---|
+| 133, 146 | Distinct PRG/CHR latch bit assignments; exact $E100 decoder; fixed header H/V |
+| 135, 138, 139, 141 | 8259 A/B/C CHR rewiring, high bank register, simple-mode address leakage, three PRG register bits and asymmetric CIRAM |
+| 137 | 8259D individual 1 KiB top bits, final fixed 4 KiB CHR, reversed H/V selector and simple-mode behavior |
+| 141 without CHR ROM | Q-Boy's unbanked 8 KiB volatile CHR RAM; registers still control PRG/CIRAM |
+| 143 | Six inverted CPU address bits with upper data bits floating |
+| 150, 243 | All eight three-bit registers readable, distinct CHR wiring, four CIRAM modes; 150's D2 solder pad |
+| 36, 132, 173 | TXC staged P/R/Output, two/three-bit wrapping counters, inverse load and S-XOR-V status; 36's independent CHR latch and 173's immediate inverted CHR pin |
+| 136, 147, 172 | JV001 six-bit input/output, low-nibble-only increment and separate read/load inversion; shifted or reversed CPU data wiring |
+| 147 up to 64 KiB PRG | Documented simple latch PCB; $4103 mask and conflicts on its $C102-$FFFE aliases |
+| 172 | Output writes latch H/V from inversion state; fixed PRG |
+
+Original CPU fixtures exposed a pre-existing bus routing defect: the 1 KiB
+$4000-$43FF dispatch page treated $4100-$43FF accesses as unused console I/O.
+`read_apu_io`/`write_apu_io` now forward $4020-$43FF to cartridge expansion
+handlers after console and loaded FDS registers take priority. Ports below
+$4020 retain their behavior. This permits actual CPU programs to use the same
+low-address registers already accessible through direct cartridge calls. No
+new bus state or timing callback was introduced.
+
+State layouts for older mappers and the machine version (20) are unchanged.
+The new payloads store only registers, flags and optional fixed-size Q-Boy RAM.
+Loads validate field widths before use; malformed full-machine states roll back
+atomically. No PRG RAM or NVRAM is supplied. Unsupported submappers, contradictory
+RAM declarations, oversize images and incompatible headers are rejected.
+Sachen 8259 PRG accepts the decoded three-bit/256 KiB range; the main article's
+128 KiB overview is narrower than its register description. 137 ignores the
+known erroneous four-screen header and routes the console's ordinary CIRAM.
+Mapper 150 accepts only its 64 KiB CHR wiring; misordered Honey Peach dumps need
+the correct mapper 243 rather than a title-specific mapper-150 hack.
+
+Known limits: 133 supplies the documented 72-pin compatible latch behavior;
+the original 60-pin analog feedback network and unstable oscillation are not
+modeled. The published 8259 description is incomplete, and 137 simple mode is
+explicitly a deduction, not measured hardware. Mapper 143 does not introduce a
+title-specific uninitialized console-RAM pattern. Mapper 173's 8 KiB UVEPROM
+/PGM disable returns $FF; analog PPU floating-bus behavior is unverified. The
+173 pin diagram exposes CHR A15 from Output bit 1; the usual 32 KiB formula folds
+that pin, while the implementation also accepts its full 64 KiB decoded range.
+These registrations do not certify every cartridge revision or title.
+
+Tests cover distinct physical PRG/CHR page tables, all CIRAM modes through the
+PPU, exact aliases/open-bus masks, staged and incrementing protection states,
+147 conflicts and both PCB sizes, pad readback, volatile CHR RAM, bounded
+metadata, snapshots and malformed-state rejection. Sixteen original CPU
+programs self-check PRG, protection and PPUDATA results, then replay full-machine
+states and verify atomic rollback. All new IDs also join the shared 107-board
+boot/replay matrix. CLI tests load 36 NES 2.0/iNES profiles (including Q-Boy and
+the small 147 latch PCB), reject sixteen unsupported submappers, preserve source
+files, and verify that these non-battery boards create no save files.
+
+Validation passed `meson compile -C buildDir`, all 46 regular test targets and
+nine serial ASan/UBSan suites (the previous eight plus `fds-system`, with macOS
+`detect_leaks=0`). The mapper executable passed 36,042 assertions across 270
+cases. The new real-CPU/open-bus tests failed at $4100 before the bus routing
+correction and passed afterward. Scoped clang-tidy, formatting and whitespace
+checks passed. Isolated agent documentation validation reported zero errors and
+the unchanged 52 warnings. No commercial-title certification is claimed.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -1287,7 +1368,7 @@ fallback. The registry rejects unsupported IDs.
 | 033 | Taito TC0190 / TC0350 subset | New implementation: TaitoTc | [r24359](https://www.nesdev.org/w/index.php?oldid=24359) |
 | 034 | BNROM / NINA-001 | New implementation: DiscreteMapper | [r24073](https://www.nesdev.org/w/index.php?oldid=24073) |
 | 035 | J.Y. Company ASIC | New implementation: JyCompany | [r24184](https://www.nesdev.org/w/index.php?oldid=24184) |
-| 036 | TXC 01-22000-400 | Not registered | [r4196](https://www.nesdev.org/w/index.php?oldid=4196) |
+| 036 | TXC/JV001 protection board | New implementation: Txc | [r4196](https://www.nesdev.org/w/index.php?oldid=4196) |
 | 037 | Board-specific specification | Not registered | [r4204](https://www.nesdev.org/w/index.php?oldid=4204) |
 | 038 | Board-specific specification | New implementation: DiscreteMapper | [r23289](https://www.nesdev.org/w/index.php?oldid=23289) |
 | 039 | Board-specific specification | Not registered | [r4217](https://www.nesdev.org/w/index.php?oldid=4217) |
@@ -1383,25 +1464,25 @@ fallback. The registry rejects unsupported IDs.
 | 129 | Board-specific specification | Not registered | [r24633](https://www.nesdev.org/w/index.php?oldid=24633) |
 | 130 | Board-specific specification | Not registered | [r24051](https://www.nesdev.org/w/index.php?oldid=24051) |
 | 131 | Board-specific specification | Not registered | [r24052](https://www.nesdev.org/w/index.php?oldid=24052) |
-| 132 | Board-specific specification | Not registered | [r4967](https://www.nesdev.org/w/index.php?oldid=4967) |
-| 133 | Board-specific specification | Not registered | [r4977](https://www.nesdev.org/w/index.php?oldid=4977) |
+| 132 | TXC/JV001 protection board | New implementation: Txc | [r4967](https://www.nesdev.org/w/index.php?oldid=4967) |
+| 133 | Sachen board | New implementation: Sachen | [r4977](https://www.nesdev.org/w/index.php?oldid=4977) |
 | 134 | Board-specific specification | Not registered | [r20085](https://www.nesdev.org/w/index.php?oldid=20085) |
-| 135 | Sachen 8259 | Not registered | [r23709](https://www.nesdev.org/w/index.php?oldid=23709) |
-| 136 | Board-specific specification | Not registered | [r21611](https://www.nesdev.org/w/index.php?oldid=21611) |
-| 137 | Board-specific specification | Not registered | [r20417](https://www.nesdev.org/w/index.php?oldid=20417) |
-| 138 | Sachen 8259 | Not registered | [r23709](https://www.nesdev.org/w/index.php?oldid=23709) |
-| 139 | Sachen 8259 | Not registered | [r23709](https://www.nesdev.org/w/index.php?oldid=23709) |
+| 135 | Sachen 8259 | New implementation: Sachen | [r23709](https://www.nesdev.org/w/index.php?oldid=23709) |
+| 136 | TXC/JV001 protection board | New implementation: Txc | [r21611](https://www.nesdev.org/w/index.php?oldid=21611) |
+| 137 | Sachen 8259 | New implementation: Sachen | [r20417](https://www.nesdev.org/w/index.php?oldid=20417) |
+| 138 | Sachen 8259 | New implementation: Sachen | [r23709](https://www.nesdev.org/w/index.php?oldid=23709) |
+| 139 | Sachen 8259 | New implementation: Sachen | [r23709](https://www.nesdev.org/w/index.php?oldid=23709) |
 | 140 | Jaleco JF-11/14 | New implementation: DiscreteMapper | [r22403](https://www.nesdev.org/w/index.php?oldid=22403) |
-| 141 | Sachen 8259 | Not registered | [r23709](https://www.nesdev.org/w/index.php?oldid=23709) |
+| 141 | Sachen 8259 | New implementation: Sachen | [r23709](https://www.nesdev.org/w/index.php?oldid=23709) |
 | 142 | Board-specific specification | Not registered | [r5032](https://www.nesdev.org/w/index.php?oldid=5032) |
-| 143 | Board-specific specification | Not registered | [r5034](https://www.nesdev.org/w/index.php?oldid=5034) |
+| 143 | Sachen board | New implementation: Sachen | [r5034](https://www.nesdev.org/w/index.php?oldid=5034) |
 | 144 | Board-specific specification | Not registered | [r19702](https://www.nesdev.org/w/index.php?oldid=19702) |
 | 145 | Board-specific specification | New implementation: DiscreteMapper | [r5039](https://www.nesdev.org/w/index.php?oldid=5039) |
-| 146 | NINA-003-006 | Not registered | [r22985](https://www.nesdev.org/w/index.php?oldid=22985) |
-| 147 | Board-specific specification | Not registered | [r5057](https://www.nesdev.org/w/index.php?oldid=5057) |
+| 146 | Sachen board | New implementation: Sachen | [r22985](https://www.nesdev.org/w/index.php?oldid=22985) |
+| 147 | TXC/JV001 protection board | New implementation: Txc | [r5057](https://www.nesdev.org/w/index.php?oldid=5057) |
 | 148 | Board-specific specification | New implementation: DiscreteMapper | [r24534](https://www.nesdev.org/w/index.php?oldid=24534) |
 | 149 | Board-specific specification | New implementation: DiscreteMapper | [r24529](https://www.nesdev.org/w/index.php?oldid=24529) |
-| 150 | Board-specific specification | Not registered | [r5081](https://www.nesdev.org/w/index.php?oldid=5081) |
+| 150 | Sachen board | New implementation: Sachen | [r5081](https://www.nesdev.org/w/index.php?oldid=5081) |
 | 151 | Vs. VRC1 duplicate | Not registered | [r21586](https://www.nesdev.org/w/index.php?oldid=21586) |
 | 152 | Bandai discrete mirroring variant | New implementation: DiscreteMapper | [r21304](https://www.nesdev.org/w/index.php?oldid=21304) |
 | 153 | Bandai FCG + WRAM | New implementation: BandaiFcg | [r5112](https://www.nesdev.org/w/index.php?oldid=5112) |
@@ -1423,8 +1504,8 @@ fallback. The registry rejects unsupported IDs.
 | 169 | Board-specific specification | Not registered | [r5247](https://www.nesdev.org/w/index.php?oldid=5247) |
 | 170 | Board-specific specification | Not registered | [r21130](https://www.nesdev.org/w/index.php?oldid=21130) |
 | 171 | Board-specific specification | Not registered | [r22367](https://www.nesdev.org/w/index.php?oldid=22367) |
-| 172 | Board-specific specification | Not registered | [r5257](https://www.nesdev.org/w/index.php?oldid=5257) |
-| 173 | Board-specific specification | Not registered | [r5274](https://www.nesdev.org/w/index.php?oldid=5274) |
+| 172 | TXC/JV001 protection board | New implementation: Txc | [r5257](https://www.nesdev.org/w/index.php?oldid=5257) |
+| 173 | TXC/JV001 protection board | New implementation: Txc | [r5274](https://www.nesdev.org/w/index.php?oldid=5274) |
 | 174 | Board-specific specification | Not registered | [r5296](https://www.nesdev.org/w/index.php?oldid=5296) |
 | 175 | Board-specific specification | Not registered | [r5297](https://www.nesdev.org/w/index.php?oldid=5297) |
 | 176 | FK23C | Not registered | [r24008](https://www.nesdev.org/w/index.php?oldid=24008) |
@@ -1493,7 +1574,7 @@ fallback. The registry rejects unsupported IDs.
 | 240 | Board-specific specification | New implementation: DiscreteMapper | [r21944](https://www.nesdev.org/w/index.php?oldid=21944) |
 | 241 | Board-specific specification | Not registered | [r23728](https://www.nesdev.org/w/index.php?oldid=23728) |
 | 242 | Board-specific specification | Not registered | [r19709](https://www.nesdev.org/w/index.php?oldid=19709) |
-| 243 | Board-specific specification | Not registered | [r5861](https://www.nesdev.org/w/index.php?oldid=5861) |
+| 243 | Sachen board | New implementation: Sachen | [r5861](https://www.nesdev.org/w/index.php?oldid=5861) |
 | 244 | Board-specific specification | Not registered | [r5862](https://www.nesdev.org/w/index.php?oldid=5862) |
 | 245 | Board-specific specification | Not registered | [r5871](https://www.nesdev.org/w/index.php?oldid=5871) |
 | 246 | Board-specific specification | Not registered | [r22048](https://www.nesdev.org/w/index.php?oldid=22048) |
