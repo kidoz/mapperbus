@@ -4,11 +4,11 @@ This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
 complete.** Updated 2026-11-10 against the working-tree registry.
 
-There are **97 registered cartridge IDs**: the original 14, 53 added in the first
+There are **105 registered cartridge IDs**: the original 14, 53 added in the first
 batch, and Irem 32/65/77, Sunsoft 67/68, Taito 33/48/80/207/82/552, Jaleco 18/72/92/101,
 Namco 210, MMC3 variants 118/119, RAMBO-1 64/158, Bandai 16/153/159, and Datach
-157, UNROM 512 30, GTROM/direct MMC1 111, and J.Y. Company 35/90/209/211
-in the follow-ups below.
+157, UNROM 512 30, GTROM/direct MMC1 111, and J.Y. Company
+35/90/209/211/281/282/295/358/386/387/388/397 in the follow-ups below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
 unusual ROM geometry.
@@ -17,6 +17,7 @@ unusual ROM geometry.
 
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
+| J.Y. multicart PCBs (follow-up) | 281, 282, 295, 358, 386, 387, 388, 397 | Board-specific outer PRG/CHR pin assignments, inner masks, outer-register aliases, mapper-388 nametable inhibit, shared IRQs and snapshot/persistence integration. |
 | J.Y. Company ASIC (follow-up) | 35, 90, 209, 211 | PRG/CHR modes and outer banking, physical-read CHR latches, mixed CHR/CIRAM nametables, all four documented IRQ sources, math/protection ports, board jumpers, WRAM persistence and snapshots. |
 | Flash boards (follow-up) | 30, 111 | UNROM 512 submappers 0–4, GTROM read-triggered open-bus latch, banked CHR/nametable/bonus RAM, SST39SF040 commands and polling, separate flash persistence; mapper 111 CHR ROM selects direct MMC1. |
 | MMC4 | 10 | 16 KiB PRG, both eight-byte CHR trigger ranges, old-bank trigger fetch, mirroring, RAM, persistence. |
@@ -102,7 +103,7 @@ See [mapper tests](../../tests/unit/test_mapper_boards.cpp),
   implementation-specific WRAM extension is not supplied.
 - Larger remaining families include other Bandai, Jaleco and Taito boards,
   further MMC3 derivatives and outer-bank variants,
-  further J.Y. variants, Sachen/TXC ASICs, further homebrew boards, and Rainbow.
+  Sachen/TXC ASICs, further homebrew boards, and Rainbow.
 - Jaleco's optional external ADPCM speech chips and sample-media loading remain
   unimplemented, including on some mapper-18/72/92 boards.
 - Enhanced consoles and copier/educational adapters may require machine or
@@ -1171,6 +1172,70 @@ formatting, and whitespace checks passed. Isolated agent documentation validatio
 reported zero errors and the existing 52 warnings. No commercial-title
 certification is claimed.
 
+## J.Y. multicart follow-up: outer address pins
+
+Eight additional NES 2.0 IDs use the existing ASIC implementation with immutable
+PCB profiles. Sources are [281 r18938](https://www.nesdev.org/w/index.php?oldid=18938),
+[282 r23351](https://www.nesdev.org/w/index.php?oldid=23351),
+[295 r23352](https://www.nesdev.org/w/index.php?oldid=23352),
+[358 r18941](https://www.nesdev.org/w/index.php?oldid=18941),
+[386 r23354](https://www.nesdev.org/w/index.php?oldid=23354),
+[387 r23355](https://www.nesdev.org/w/index.php?oldid=23355),
+[388 r18944](https://www.nesdev.org/w/index.php?oldid=18944), and
+[397 r23356](https://www.nesdev.org/w/index.php?oldid=23356).
+Code is original; no external emulator implementation was incorporated.
+
+| IDs | PRG outer selection | CHR outer selection / board distinction |
+|---|---|---|
+| 281 | D003 bits 1:0, 256 KiB units | Same two bits and unit size |
+| 282 | Bits 2:1, 256/512 KiB units selected by bit 5 | Bit 0 selects A18 in small mode; bit 3 selects A19 only when bit 4 enables it |
+| 295 | Bits 2:0, 128 KiB units | Same three bits and unit size |
+| 358 | Bits 2:1 drive A19:A18; 256 KiB inner window | Bit 1 also drives CHR A19; bit 0 drives A18 in small mode |
+| 386 | Bits 3/1 drive A19/A18 | Bit 2 drives CHR A19; bit 0 drives A18 in small mode |
+| 387 | Bits 3/1 drive A18/A17; 128 KiB inner window | Same CHR wiring as 386 |
+| 388 | Bits 3/2 drive A19/A18 | Bits 1/0 drive CHR A19/A18; inhibits ROM nametables and extended CIRAM |
+| 397 | Bits 2:1 drive A19:A18; retains inner PRG A17 | All three low bits select 128 KiB CHR units |
+
+All profiles compose with the four PRG modes (including seven-bit reversal),
+fixed-last-bank selection, $6000 ROM overlay, four CHR units, high CHR register
+bytes and MMC4-like latches. The 282/358/386/387/388 large-CHR mode masks to
+512 KiB and ignores the 256 KiB half selector. Profiles 281/295/397 keep their
+fixed inner windows. B-register nametables retain their direct CHR indices;
+388 uses the same advanced-nametable inhibit as 90.
+
+The outer register uses mask $F003 on seven profiles; 358 keeps $F803. Other
+registers retain the common ASIC masks. A wider outer-register mask alone is
+not treated as evidence that the chip's CPU A11 input is disconnected globally:
+that would also remove its multiplier. Fully unwired-A11 boards remain a
+separate unverified wiring case. Likewise, 386/387's unexplained bit 4 and
+358's reported unreliable 1 KiB CHR dumping are not assigned invented behavior.
+The existing $C007 and early-multiplier limitations still apply.
+
+Geometry is bounded by the decoded pins: 387 accepts at most 512 KiB PRG,
+282 at most 2 MiB across its documented large window, and the other six at most
+1 MiB. These eight profiles accept up to 1 MiB CHR. The 387 article's '512 MiB'
+prose is a size typo: its diagram exposes only PRG A18. Known 282 multicarts use
+1 MiB; accepting its full decoded range does not certify an observed 2 MiB PCB.
+NES 2.0 metadata explicitly selects absent/8 KiB WRAM or banked CHR RAM, and
+contradictory/mixed memory declarations are rejected as for the shared ASIC.
+
+No serialized fields or bus/PPU timing changed; machine snapshot version remains
+20. Deterministic tests use independent expected page tables, contrasting
+295/397 and small/large 282 windows, physical CIRAM/PPU reads, all four IRQ
+sources, bounded metadata, and component snapshots. Eight original CPU programs
+switch outer banks while executing, enter an IRQ handler, and verify full-machine
+replay and atomic malformed-state rollback. All eight IDs join the shared
+91-board boot/replay matrix. CLI validation covers all twelve J.Y. IDs across
+32 launches, including NES 2.0 mapper high bits, PRG/CHR outer switches, math,
+IRQ delivery and exact WRAM persistence; source ROMs remain unchanged.
+
+Validation passed `meson compile -C buildDir`, all 45 regular test targets, and
+all eight serial ASan/UBSan suites with the macOS `detect_leaks=0` exception. The mapper
+executable passed 33,567 assertions across 254 cases. Scoped clang-tidy,
+formatting and whitespace checks passed. Isolated agent documentation validation
+reported zero errors and the unchanged 52 warnings. No commercial-title or
+physical-cartridge certification is claimed.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -1465,8 +1530,8 @@ fallback. The registry rejects unsupported IDs.
 | 278 | Board-specific specification | Not registered | [r7712](https://www.nesdev.org/w/index.php?oldid=7712) |
 | 279 | Board-specific specification | Not registered | [r23180](https://www.nesdev.org/w/index.php?oldid=23180) |
 | 280 | Board-specific specification | Not registered | [r7714](https://www.nesdev.org/w/index.php?oldid=7714) |
-| 281 | Board-specific specification | Not registered | [r18938](https://www.nesdev.org/w/index.php?oldid=18938) |
-| 282 | Board-specific specification | Not registered | [r23351](https://www.nesdev.org/w/index.php?oldid=23351) |
+| 281 | J.Y. Company multicart | New implementation: JyCompany | [r18938](https://www.nesdev.org/w/index.php?oldid=18938) |
+| 282 | J.Y. Company multicart | New implementation: JyCompany | [r23351](https://www.nesdev.org/w/index.php?oldid=23351) |
 | 283 | Board-specific specification | Not registered | [r7724](https://www.nesdev.org/w/index.php?oldid=7724) |
 | 284 | Drip | Not registered | [r7727](https://www.nesdev.org/w/index.php?oldid=7727) |
 | 285 | Board-specific specification | Not registered | [r22915](https://www.nesdev.org/w/index.php?oldid=22915) |
@@ -1479,7 +1544,7 @@ fallback. The registry rejects unsupported IDs.
 | 292 | Board-specific specification | Not registered | [r22336](https://www.nesdev.org/w/index.php?oldid=22336) |
 | 293 | Board-specific specification | Not registered | [r7751](https://www.nesdev.org/w/index.php?oldid=7751) |
 | 294 | Board-specific specification | Not registered | [r19317](https://www.nesdev.org/w/index.php?oldid=19317) |
-| 295 | Board-specific specification | Not registered | [r23352](https://www.nesdev.org/w/index.php?oldid=23352) |
+| 295 | J.Y. Company multicart | New implementation: JyCompany | [r23352](https://www.nesdev.org/w/index.php?oldid=23352) |
 | 296 | VT3x | Not registered | [r23820](https://www.nesdev.org/w/index.php?oldid=23820) |
 | 297 | Board-specific specification | Not registered | [r7767](https://www.nesdev.org/w/index.php?oldid=7767) |
 | 298 | Board-specific specification | Not registered | [r7772](https://www.nesdev.org/w/index.php?oldid=7772) |
@@ -1542,7 +1607,7 @@ fallback. The registry rejects unsupported IDs.
 | 355 | Board-specific specification | Not registered | [r7933](https://www.nesdev.org/w/index.php?oldid=7933) |
 | 356 | Board-specific specification | Not registered | [r7934](https://www.nesdev.org/w/index.php?oldid=7934) |
 | 357 | Board-specific specification | Not registered | [r7940](https://www.nesdev.org/w/index.php?oldid=7940) |
-| 358 | Board-specific specification | Not registered | [r18941](https://www.nesdev.org/w/index.php?oldid=18941) |
+| 358 | J.Y. Company multicart | New implementation: JyCompany | [r18941](https://www.nesdev.org/w/index.php?oldid=18941) |
 | 359 | Board-specific specification | Not registered | [r7945](https://www.nesdev.org/w/index.php?oldid=7945) |
 | 360 | Board-specific specification | Not registered | [r7948](https://www.nesdev.org/w/index.php?oldid=7948) |
 | 361 | Board-specific specification | Not registered | [r7951](https://www.nesdev.org/w/index.php?oldid=7951) |
@@ -1570,9 +1635,9 @@ fallback. The registry rejects unsupported IDs.
 | 383 | Board-specific specification | Not registered | [r7997](https://www.nesdev.org/w/index.php?oldid=7997) |
 | 384 | Board-specific specification | Not registered | [r7998](https://www.nesdev.org/w/index.php?oldid=7998) |
 | 385 | Board-specific specification | Not registered | [r7999](https://www.nesdev.org/w/index.php?oldid=7999) |
-| 386 | Board-specific specification | Not registered | [r23354](https://www.nesdev.org/w/index.php?oldid=23354) |
-| 387 | Board-specific specification | Not registered | [r23355](https://www.nesdev.org/w/index.php?oldid=23355) |
-| 388 | Board-specific specification | Not registered | [r18944](https://www.nesdev.org/w/index.php?oldid=18944) |
+| 386 | J.Y. Company multicart | New implementation: JyCompany | [r23354](https://www.nesdev.org/w/index.php?oldid=23354) |
+| 387 | J.Y. Company multicart | New implementation: JyCompany | [r23355](https://www.nesdev.org/w/index.php?oldid=23355) |
+| 388 | J.Y. Company multicart | New implementation: JyCompany | [r18944](https://www.nesdev.org/w/index.php?oldid=18944) |
 | 389 | Board-specific specification | Not registered | [r8004](https://www.nesdev.org/w/index.php?oldid=8004) |
 | 390 | Board-specific specification | Not registered | [r18875](https://www.nesdev.org/w/index.php?oldid=18875) |
 | 391 | Board-specific specification | Not registered | [r8012](https://www.nesdev.org/w/index.php?oldid=8012) |
@@ -1581,7 +1646,7 @@ fallback. The registry rejects unsupported IDs.
 | 394 | Board-specific specification | Not registered | [r22930](https://www.nesdev.org/w/index.php?oldid=22930) |
 | 395 | Board-specific specification | Not registered | [r8017](https://www.nesdev.org/w/index.php?oldid=8017) |
 | 396 | Board-specific specification | Not registered | [r22978](https://www.nesdev.org/w/index.php?oldid=22978) |
-| 397 | Board-specific specification | Not registered | [r23356](https://www.nesdev.org/w/index.php?oldid=23356) |
+| 397 | J.Y. Company multicart | New implementation: JyCompany | [r23356](https://www.nesdev.org/w/index.php?oldid=23356) |
 | 398 | Board-specific specification | Not registered | [r8021](https://www.nesdev.org/w/index.php?oldid=8021) |
 | 399 | Board-specific specification | Not registered | [r24616](https://www.nesdev.org/w/index.php?oldid=24616) |
 | 400 | 8-BIT XMAS 2017 | Not registered | [r22764](https://www.nesdev.org/w/index.php?oldid=22764) |
