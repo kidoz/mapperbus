@@ -54,6 +54,7 @@ Result<INesHeader> parse_ines_header(std::span<const Byte> rom_data) {
     header.has_battery = (flags6 & 0x02) != 0;
     header.has_trainer = (flags6 & 0x04) != 0;
 
+    header.nametable_bits = flags6 & 9U;
     // Mirror mode
     if (flags6 & 0x08) {
         header.mirror_mode = MirrorMode::FourScreen;

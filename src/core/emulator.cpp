@@ -175,6 +175,21 @@ Result<void> Emulator::load_cartridge(Cartridge cartridge,
     // Persist outgoing media before committing its replacement.
     if (auto saved = flush_persistent_data(); !saved)
         return saved;
+    if (cartridge.has_flash_storage() && !battery_path.empty()) {
+        std::error_code ec;
+        const bool exists = std::filesystem::exists(battery_path, ec);
+        if (ec)
+            return std::unexpected("Cannot access flash save: " + ec.message());
+        if (exists) {
+            auto data =
+                read_binary_file_capped(battery_path, cartridge.battery_ram().size(), "flash save");
+            if (!data)
+                return std::unexpected(data.error());
+            if (data->size() != cartridge.battery_ram().size())
+                return std::unexpected("Flash save must contain a complete 512 KiB chip image");
+            cartridge.set_battery_ram(*data);
+        }
+    }
     retain_shared_nvram();
     shared_save_path_ = shared_path;
     fds_.unload();
@@ -204,7 +219,8 @@ Result<void> Emulator::load_cartridge(Cartridge cartridge,
     battery_save_path_ = battery_path;
 
     // Auto-load the configured .sav for battery-backed carts (best effort).
-    if (cartridge_->has_battery() && !battery_save_path_.empty()) {
+    if (cartridge_->has_battery() && !cartridge_->has_flash_storage() &&
+        !battery_save_path_.empty()) {
         const std::string& sav = battery_save_path_;
         if (std::filesystem::exists(sav)) {
             auto loaded = load_battery_ram(sav);
@@ -589,6 +605,8 @@ Result<void> Emulator::load_battery_ram(const std::string& path) {
     if (!data) {
         return std::unexpected(data.error());
     }
+    if (cartridge_->has_flash_storage() && data->size() != cartridge_->battery_ram().size())
+        return std::unexpected("Flash save must contain a complete 512 KiB chip image");
     cartridge_->set_battery_ram(*data);
     return {};
 }

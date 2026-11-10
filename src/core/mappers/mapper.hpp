@@ -21,6 +21,8 @@ class Mapper {
     virtual void write_prg_cpu(Address addr, Byte value, bool /*consecutive*/) {
         write_prg(addr, value);
     }
+    /// Completed external CPU read, including dummy and DMA accesses.
+    virtual void observe_cpu_read(Address /*addr*/, Byte /*data*/) {}
     virtual bool maps_prg(Address addr) const {
         return addr >= 0x8000;
     }
@@ -44,11 +46,16 @@ class Mapper {
     /// External nametable decode, before ordinary $3000 mirroring. Receives
     /// raw PPU addresses $2000-$3EFF. False leaves reads undriven and ignores
     /// writes; the PPU models the multiplexed address/data bus result.
+    /// Opt-in raw $2000-$3EFF hooks for boards with independent upper VRAM.
+    virtual bool unmirrored_nametables() const {
+        return false;
+    }
     virtual bool maps_nametable(Address /*addr*/) const {
         return true;
     }
     /// Override PPU nametable reads; nullopt leaves the access to CIRAM.
-    /// Addresses are normalized to $2000-$2FFF, including $3000 mirrors.
+    /// Addresses normally fold to $2000-$2FFF; unmirrored_nametables opts
+    /// into raw $2000-$3EFF addresses for both read/write hooks.
     virtual std::optional<Byte> read_nametable(Address /*addr*/) const {
         return std::nullopt;
     }
@@ -71,13 +78,20 @@ class Mapper {
         return std::unexpected("DCS option ROM requires NES 2.0 mapper 68 submapper 1");
     }
 
-    // Cartridge-owned persistent bytes (PRG RAM or serial EEPROM). Mappers
+    // Cartridge-owned persistent bytes (PRG RAM, serial EEPROM or flash). Mappers
     // without these return an empty span. The cartridge battery flag controls
     // their file persistence; shared reader memory uses a separate span below.
     [[nodiscard]] virtual std::span<const Byte> battery_ram() const {
         return {};
     }
     virtual void set_battery_ram(std::span<const Byte> /*data*/) {}
+    /// Flash is persistent without a battery flag; its save is a complete chip image.
+    virtual bool has_flash_storage() const {
+        return false;
+    }
+    virtual std::optional<Byte> led_outputs() const {
+        return std::nullopt;
+    }
     /// Persistent device memory shared by inserted game cartridges (Datach).
     virtual std::span<const Byte> shared_nvram() const {
         return {};

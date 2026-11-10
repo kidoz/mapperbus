@@ -106,7 +106,7 @@ class Emulator {
     [[nodiscard]] Result<void> load_state_from_file(const std::string& path,
                                                     bool allow_legacy = false);
 
-    /// True when a battery-backed cartridge is loaded (its PRG-RAM persists).
+    /// True when cartridge-owned RAM, EEPROM or flash should persist.
     [[nodiscard]] bool has_battery() const {
         return cartridge_ && cartridge_->has_battery();
     }

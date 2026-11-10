@@ -33,6 +33,8 @@ class Mmc1 : public Mapper {
     void write_register(Address addr, Byte value);
     void update_banks();
 
+    const bool direct_;
+    const bool has_prg_ram_;
     std::vector<Byte> prg_rom_;
     std::vector<Byte> chr_rom_;
     std::array<Byte, 0x2000> prg_ram_{};

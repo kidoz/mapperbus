@@ -35,6 +35,8 @@ core_sources = files(
     'mappers/serial_eeprom.cpp',
     'mappers/bandai_fcg.cpp',
     'mappers/datach.cpp',
+    'mappers/sst39sf040.cpp',
+    'mappers/flash_boards.cpp',
     'mappers/axrom.cpp',
     'mappers/color_dreams.cpp',
     'mappers/vrc6.cpp',

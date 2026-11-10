@@ -6,6 +6,7 @@
 #include "core/mappers/color_dreams.hpp"
 #include "core/mappers/datach.hpp"
 #include "core/mappers/discrete.hpp"
+#include "core/mappers/flash_boards.hpp"
 #include "core/mappers/irem.hpp"
 #include "core/mappers/irem_lrog017.hpp"
 #include "core/mappers/jaleco_discrete.hpp"
@@ -39,6 +40,8 @@ namespace {
     if (header.mapper_number == 31 && prg_size < 4096) {
         return std::unexpected("Mapper 31 requires at least a 4 KiB PRG ROM");
     }
+    if (header.mapper_number == 30U || header.mapper_number == 111U)
+        return FlashBoards::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 157U)
         return Datach::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 16U || header.mapper_number == 153U || header.mapper_number == 159U)
@@ -366,6 +369,16 @@ void register_builtin_mappers() {
     registry.register_mapper(153, make_factory<BandaiFcg>());
     registry.register_mapper(159, make_factory<BandaiFcg>());
     registry.register_mapper(157, make_factory<Datach>());
+    registry.register_mapper(30, make_factory<FlashBoards>());
+    registry.register_mapper(111,
+                             [](const INesHeader& h,
+                                std::vector<Byte> prg,
+                                std::vector<Byte> chr) -> std::unique_ptr<Mapper> {
+                                 if (!chr.empty())
+                                     return std::make_unique<Mmc1>(
+                                         h, std::move(prg), std::move(chr));
+                                 return std::make_unique<FlashBoards>(h, std::move(prg), chr);
+                             });
     registry.register_mapper(7, make_factory<Axrom>());
     registry.register_mapper(5, make_factory<Mmc5>());
     registry.register_mapper(9, make_factory<Mmc2>());

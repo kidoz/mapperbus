@@ -2,10 +2,11 @@
 
 namespace mapperbus::core {
 
-Mmc1::Mmc1([[maybe_unused]] const INesHeader& header,
-           std::vector<Byte> prg_rom,
-           std::vector<Byte> chr_rom)
-    : prg_rom_(std::move(prg_rom)), chr_rom_(std::move(chr_rom)), use_chr_ram_(chr_rom_.empty()) {
+Mmc1::Mmc1(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte> chr_rom)
+    : direct_(header.mapper_number == 111U),
+      has_prg_ram_(!direct_ || !header.is_nes2 ||
+                   header.prg_ram_size + header.prg_nvram_size != 0U),
+      prg_rom_(std::move(prg_rom)), chr_rom_(std::move(chr_rom)), use_chr_ram_(chr_rom_.empty()) {
     num_prg_banks_ = static_cast<uint8_t>(prg_rom_.size() / 0x4000);
     reset();
 }
@@ -23,7 +24,7 @@ void Mmc1::reset() {
 Byte Mmc1::read_prg(Address addr) {
     if (addr >= 0x6000 && addr < 0x8000) {
         // PRG RAM (if enabled: bit 4 of prg_bank_ clear)
-        if ((prg_bank_ & 0x10) == 0) {
+        if (has_prg_ram_ && (prg_bank_ & 0x10U) == 0) {
             return prg_ram_[addr - 0x6000];
         }
         return 0;
@@ -41,13 +42,13 @@ Byte Mmc1::read_prg(Address addr) {
 void Mmc1::write_prg_cpu(Address addr, Byte value, bool consecutive) {
     // MMC1 filters consecutive serial-data writes, but its reset bit always
     // works and PRG RAM is not part of the serial port.
-    if (addr < 0x8000 || !consecutive || (value & 0x80U) != 0)
+    if (direct_ || addr < 0x8000 || !consecutive || (value & 0x80U) != 0)
         write_prg(addr, value);
 }
 
 void Mmc1::write_prg(Address addr, Byte value) {
     if (addr >= 0x6000 && addr < 0x8000) {
-        if ((prg_bank_ & 0x10) == 0) {
+        if (has_prg_ram_ && (prg_bank_ & 0x10U) == 0) {
             prg_ram_[addr - 0x6000] = value;
         }
         return;
@@ -55,6 +56,10 @@ void Mmc1::write_prg(Address addr, Byte value) {
     if (addr < 0x8000)
         return;
 
+    if (direct_) {
+        write_register(addr, value);
+        return;
+    }
     // Bit 7 set = reset shift register
     if (value & 0x80) {
         shift_register_ = 0x10;
@@ -80,7 +85,7 @@ bool Mmc1::maps_prg(Address addr) const {
     if (addr >= 0x8000) {
         return true;
     }
-    return addr >= 0x6000 && addr < 0x8000 && (prg_bank_ & 0x10) == 0;
+    return has_prg_ram_ && addr >= 0x6000 && addr < 0x8000 && (prg_bank_ & 0x10U) == 0;
 }
 
 void Mmc1::write_register(Address addr, Byte value) {
@@ -89,10 +94,10 @@ void Mmc1::write_register(Address addr, Byte value) {
         control_ = value & 0x1F;
     } else if (addr < 0xC000) {
         // CHR bank 0 ($A000-$BFFF)
-        chr_bank0_ = value & 0x1F;
+        chr_bank0_ = value & (direct_ ? 0x3FU : 0x1FU);
     } else if (addr < 0xE000) {
         // CHR bank 1 ($C000-$DFFF)
-        chr_bank1_ = value & 0x1F;
+        chr_bank1_ = value & (direct_ ? 0x3FU : 0x1FU);
     } else {
         // PRG bank ($E000-$FFFF)
         prg_bank_ = value & 0x1F;
@@ -147,7 +152,7 @@ void Mmc1::update_banks() {
         chr_offset1_ = static_cast<uint32_t>(chr_bank1_) * 0x1000;
     } else {
         // 8 KB mode: chr_bank0 selects (ignore low bit)
-        chr_offset0_ = static_cast<uint32_t>(chr_bank0_ & 0x1E) * 0x1000;
+        chr_offset0_ = static_cast<uint32_t>(chr_bank0_ & (direct_ ? 0x3EU : 0x1EU)) * 0x1000;
         chr_offset1_ = chr_offset0_ + 0x1000;
     }
 }

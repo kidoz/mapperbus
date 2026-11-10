@@ -20,6 +20,7 @@ struct INesHeader {
     bool has_battery;
     bool has_trainer;
     bool is_nes2;
+    Byte nametable_bits = 0U; // Raw flags 6 bits 3/0; mapper 30 distinguishes single/four screen.
     std::size_t prg_rom_size = 0;
     std::size_t chr_rom_size = 0;
     std::size_t prg_ram_size = 0;

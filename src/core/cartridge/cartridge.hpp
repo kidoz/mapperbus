@@ -36,9 +36,9 @@ class Cartridge {
     void save_state(StateWriter& writer) const;
     void load_state(StateReader& reader, std::uint32_t version = 20U);
 
-    /// True when the iNES/NES 2.0 header marks the board as battery-backed.
+    /// True for header-marked cartridge NVRAM or self-flashable storage.
     [[nodiscard]] bool has_battery() const {
-        return header_.has_battery;
+        return header_.has_battery || mapper_->has_flash_storage();
     }
     /// Cartridge-owned persistent RAM/EEPROM bytes (empty if absent).
     [[nodiscard]] std::span<const Byte> battery_ram() const {
@@ -58,6 +58,18 @@ class Cartridge {
         return mapper_->scan_barcode(digits, module_cycles);
     }
 
+    [[nodiscard]] bool has_flash_storage() const {
+        return mapper_->has_flash_storage();
+    }
+    void observe_cpu_read(Address addr, Byte data) {
+        mapper_->observe_cpu_read(addr, data);
+    }
+    [[nodiscard]] bool unmirrored_nametables() const {
+        return mapper_->unmirrored_nametables();
+    }
+    [[nodiscard]] std::optional<Byte> led_outputs() const {
+        return mapper_->led_outputs();
+    }
     [[nodiscard]] Byte read_prg(Address addr);
     void write_prg(Address addr, Byte value);
     void write_prg_cpu(Address addr, Byte value, bool consecutive);

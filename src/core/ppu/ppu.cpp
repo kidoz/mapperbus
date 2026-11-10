@@ -516,8 +516,10 @@ Byte Ppu::read_vram(Address addr) const {
             // those address and data signals share the same PPU pins.
             if (!cartridge_->maps_nametable(addr))
                 return static_cast<Byte>(addr);
-            if (const auto value =
-                    cartridge_->read_nametable(static_cast<Address>(0x2000U | (addr & 0x0FFFU))))
+            if (const auto value = cartridge_->read_nametable(
+                    cartridge_->unmirrored_nametables()
+                        ? addr
+                        : static_cast<Address>(0x2000U | (addr & 0x0FFFU))))
                 return *value;
         }
         return vram_[mirror_nametable_address(addr)];
@@ -537,7 +539,10 @@ void Ppu::write_vram(Address addr, Byte value) {
         if (cartridge_ != nullptr && !cartridge_->maps_nametable(addr))
             return;
         if (cartridge_ != nullptr &&
-            cartridge_->write_nametable(static_cast<Address>(0x2000U | (addr & 0x0FFFU)), value))
+            cartridge_->write_nametable(cartridge_->unmirrored_nametables()
+                                            ? addr
+                                            : static_cast<Address>(0x2000U | (addr & 0x0FFFU)),
+                                        value))
             return;
         vram_[mirror_nametable_address(addr)] = value;
         return;

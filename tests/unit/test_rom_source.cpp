@@ -17,6 +17,7 @@
 
 #include "../support/dcs_rom.hpp"
 #include "../support/fds_image.hpp"
+#include "../support/flash_rom.hpp"
 #include "../support/rom_archive.hpp"
 #include "app/async_fds_bios_validation.hpp"
 #include "app/async_rom_loader.hpp"
@@ -1653,5 +1654,54 @@ TEST_CASE(
     }
 }
 
+} // namespace
+} // namespace mapperbus::app
+
+namespace mapperbus::app {
+namespace {
+TEST_CASE(
+    "Raw ZIP and 7z self-flash games persist chip bytes separately from immutable ROM identity",
+    "[app][archive][flash]") {
+    ArchiveFixture fixture;
+    const auto storage = fixture.root / "storage";
+    for (const uint16_t id : {30U, 111U}) {
+        const auto bytes = mapperbus::tests::flash_rom(id);
+        const auto identity = core::rom_sha256(bytes);
+        const auto save = storage / "battery" / (core::sha256_hex(identity) + ".sav");
+        for (const bool seven_zip : {false, true}) {
+            const auto path = fixture.root / (seven_zip ? "flash.7z" : "flash.zip");
+            write_archive(path, {{.name = "game.nes", .bytes = bytes}}, seven_zip);
+            core::Emulator emulator;
+            REQUIRE(load_rom_source(emulator, path.string(), "game.nes", {}, storage));
+            REQUIRE(emulator.has_battery());
+            emulator.reset();
+            emulator.step_frame();
+            REQUIRE(emulator.read_cpu(0x10U) == 0x5AU);
+            REQUIRE(emulator.content_hash() == identity);
+            REQUIRE(emulator.flush_persistent_data());
+            const auto data = core::read_binary_file_capped(save.string(), 524288U, "flash");
+            REQUIRE(data);
+            REQUIRE(data->size() == 524288U);
+            REQUIRE((*data)[0x8100U] == 0x5AU);
+            core::Emulator restored;
+            REQUIRE(load_rom_source(restored, path.string(), "game.nes", {}, storage));
+            const auto copy = (fixture.root / "copy.sav").string();
+            REQUIRE(restored.save_battery_ram(copy));
+            const auto reloaded = core::read_binary_file_capped(copy, 524288U, "flash");
+            REQUIRE(reloaded);
+            REQUIRE((*reloaded == *data));
+        }
+        const auto raw = fixture.root / (std::to_string(id) + ".nes");
+        REQUIRE(core::write_binary_file_atomic(raw.string(), bytes, "ROM"));
+        core::Emulator emulator;
+        REQUIRE(load_rom_source(emulator, raw.string(), {}, {}, storage));
+        emulator.reset();
+        emulator.step_frame();
+        REQUIRE(emulator.flush_persistent_data());
+        const auto source = core::read_binary_file_capped(raw.string(), bytes.size(), "ROM");
+        REQUIRE(source);
+        REQUIRE((*source == bytes));
+    }
+}
 } // namespace
 } // namespace mapperbus::app

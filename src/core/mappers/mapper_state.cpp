@@ -134,8 +134,9 @@ void Mmc1::load_state(StateReader& r) {
     r.read(chr_offset1_);
     r.read(mirror_mode_);
     validate_mirror_mode(mirror_mode_, r);
-    if (shift_register_ > 0x1F || write_count_ > 4 || control_ > 0x1F || chr_bank0_ > 0x1F ||
-        chr_bank1_ > 0x1F || prg_bank_ > 0x1F) {
+    if (shift_register_ > 0x1F || write_count_ > 4 || control_ > 0x1F ||
+        chr_bank0_ > (direct_ ? 0x3FU : 0x1FU) || chr_bank1_ > (direct_ ? 0x3FU : 0x1FU) ||
+        prg_bank_ > 0x1F) {
         shift_register_ = 0x10;
         write_count_ = 0;
         control_ = 0x0C;
@@ -565,7 +566,7 @@ void Nrom::set_battery_ram(std::span<const Byte> data) {
 }
 
 std::span<const Byte> Mmc1::battery_ram() const {
-    return prg_ram_;
+    return has_prg_ram_ ? std::span<const Byte>(prg_ram_) : std::span<const Byte>{};
 }
 void Mmc1::set_battery_ram(std::span<const Byte> data) {
     restore_prg_ram(prg_ram_, data);

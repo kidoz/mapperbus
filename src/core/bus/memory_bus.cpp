@@ -224,18 +224,24 @@ Byte MemoryBus::read_cycle(Address addr, Address cpu_address, bool dma) {
     if (addr < 0x4000 || addr >= 0x4018)
         external = (this->*(read_map_[static_cast<uint32_t>(addr) >> 10U]))(addr);
     if (internal == 0x4015 && apu_enabled) {
+        if (cartridge_ != nullptr)
+            cartridge_->observe_cpu_read(addr, external);
         open_bus_ = external;
         return static_cast<Byte>((external & 0x20U) |
                                  (apu_ != nullptr ? apu_->read_register(0x4015) : Byte{0}));
     }
     if (joypad)
         external = read_controller(internal - 0x4016, external, true);
+    if (cartridge_ != nullptr)
+        cartridge_->observe_cpu_read(addr, external);
     open_bus_ = external;
     return external;
 }
 
 Byte MemoryBus::read(Address addr) {
     Byte value = (this->*(read_map_[addr >> 10]))(addr);
+    if (cartridge_ != nullptr)
+        cartridge_->observe_cpu_read(addr, value);
     if (addr != 0x4015)
         open_bus_ = value;
     return value;
