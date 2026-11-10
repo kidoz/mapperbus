@@ -26,20 +26,23 @@ namespace mapperbus::core {
 // Mapper 114: NESdev r4858. Two address/index permutations; the low $E001
 // decoder is tentative. Use the existing MMC3A-type non-repeating IRQ profile
 // described in MMC3 r24445, including its one software-forced zero reload IRQ.
+// Mapper 123 / H2288: NESdev r4940. Ordinary MMC3 addresses, mapper-114
+// type-0 index scrambling, and a write-only $F800-decoded PRG override.
+// No clone-specific IRQ revision is documented; retain the default profile.
 Mmc3::Mmc3(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte> chr_rom)
     : prg_rom_(std::move(prg_rom)), chr_rom_(std::move(chr_rom)), use_chr_ram_(chr_rom_.empty()),
       mapper_(header.mapper_number == 114U || header.mapper_number == 115U ||
-                      header.mapper_number == 250U || header.mapper_number == 262U ||
-                      header.mapper_number == 263U || header.mapper_number == 118U ||
-                      header.mapper_number == 119U || header.mapper_number == 512U ||
-                      header.mapper_number == 513U
+                      header.mapper_number == 123U || header.mapper_number == 250U ||
+                      header.mapper_number == 262U || header.mapper_number == 263U ||
+                      header.mapper_number == 118U || header.mapper_number == 119U ||
+                      header.mapper_number == 512U || header.mapper_number == 513U
                   ? header.mapper_number
                   : 4U),
       scramble_profile_(mapper_ == 114U && header.is_nes2 ? header.submapper : 0U),
       initial_mirror_(header.mirror_mode), mirror_mode_(header.mirror_mode),
       irq_zero_latch_repeats_(
           !(mapper_ == 114U || (mapper_ == 4U && header.is_nes2 && header.submapper == 4))) {
-    if (mapper_ == 114U || mapper_ == 115U || mapper_ == 250U) {
+    if (mapper_ == 114U || mapper_ == 115U || mapper_ == 123U || mapper_ == 250U) {
         prg_ram_size_ = 0U;
         nvram_size_ = 0U;
     } else if (mapper_ == 262U) {
@@ -166,7 +169,7 @@ Byte Mmc3::read_prg(Address addr) {
 
     uint8_t bank_index = (addr - 0x8000) / 0x2000;
     uint32_t offset = prg_offsets_[bank_index] + ((addr - 0x8000) % 0x2000);
-    if (mapper_ == 114U || mapper_ == 115U) {
+    if (mapper_ == 114U || mapper_ == 115U || mapper_ == 123U) {
         const unsigned outer =
             mapper_ == 115U ? (static_cast<unsigned>(kasheng_prg_) & 0x40U) << 12U : 0U;
         if ((kasheng_prg_ & 0x80U) != 0U) {
@@ -218,12 +221,8 @@ void Mmc3::write_prg(Address addr, Byte value) {
         constexpr std::array<std::array<Address, 8>, 2> kPorts = {
             {{0xA001U, 0xA000U, 0x8000U, 0xC000U, 0x8001U, 0xC001U, 0xE000U, 0xE001U},
              {0xA001U, 0x8001U, 0x8000U, 0xC001U, 0xA000U, 0xC000U, 0xE000U, 0xE001U}}};
-        constexpr std::array<std::array<Byte, 8>, 2> kIndices = {
-            {{0U, 3U, 1U, 5U, 6U, 7U, 2U, 4U}, {0U, 2U, 5U, 3U, 6U, 1U, 7U, 4U}}};
         const unsigned slot = ((static_cast<unsigned>(addr) >> 12U) & 6U) | (addr & 1U);
         addr = kPorts[scramble_profile_][slot];
-        if (addr == 0x8000U)
-            value = static_cast<Byte>((value & 0xC0U) | kIndices[scramble_profile_][value & 7U]);
     } else if (mapper_ == 250U) {
         value = static_cast<Byte>(addr & 0xFFU);
         addr = static_cast<Address>((addr & 0xE000U) | ((addr >> 10U) & 1U));
@@ -232,6 +231,12 @@ void Mmc3::write_prg(Address addr, Byte value) {
         const auto data = static_cast<unsigned>(value);
         value = static_cast<Byte>((data & 0xD8U) | ((data & 0x20U) >> 4U) | ((data & 4U) << 3U) |
                                   ((data & 2U) >> 1U) | ((data & 1U) << 2U));
+    }
+
+    if ((mapper_ == 114U || mapper_ == 123U) && (addr & 0xE001U) == 0x8000U) {
+        constexpr std::array<std::array<Byte, 8>, 2> kIndices = {
+            {{0U, 3U, 1U, 5U, 6U, 7U, 2U, 4U}, {0U, 2U, 5U, 3U, 6U, 1U, 7U, 4U}}};
+        value = static_cast<Byte>((value & 0xC0U) | kIndices[scramble_profile_][value & 7U]);
     }
 
     bool even = (addr & 0x01) == 0;
@@ -409,13 +414,15 @@ std::optional<Address> Mmc3::nametable_address(Address addr) const {
 }
 
 bool Mmc3::maps_expansion(Address addr) const {
+    if (mapper_ == 123U)
+        return (addr & 0xF800U) == 0x5800U;
     return (mapper_ == 262U || mapper_ == 512U) && (addr & 0xC100U) == 0x4100U;
 }
 
 Byte Mmc3::expansion_read_mask(Address /*addr*/) const {
     if (mapper_ == 262U)
         return 0x80U;
-    return mapper_ == 512U ? 0U : 0xFFU; // The board-mode latch is write-only.
+    return mapper_ == 512U || mapper_ == 123U ? 0U : 0xFFU; // The board-mode latch is write-only.
 }
 
 Byte Mmc3::read_expansion(Address addr) {
@@ -423,7 +430,15 @@ Byte Mmc3::read_expansion(Address addr) {
 }
 
 void Mmc3::write_expansion(Address addr, Byte value) {
-    if (maps_expansion(addr))
+    if (!maps_expansion(addr))
+        return;
+    if (mapper_ == 123U) {
+        // Normalize .M31 .2S0 to the shared M.S.3210 PRG latch.
+        const unsigned data = value;
+        kasheng_prg_ = static_cast<Byte>(((data & 0x40U) << 1U) | ((data & 2U) << 4U) |
+                                         ((data & 0x20U) >> 2U) | (data & 4U) |
+                                         ((data & 0x10U) >> 3U) | (data & 1U));
+    } else
         board_mode_ = value & (mapper_ == 262U ? 0x4FU : 3U);
 }
 
@@ -505,6 +520,8 @@ void Mmc3::save_variant_state(StateWriter& writer) const {
         writer.write(kasheng_prg_);
         writer.write(kasheng_chr_);
         writer.write(kasheng_solder_pad_);
+    } else if (mapper_ == 123U) {
+        writer.write(kasheng_prg_);
     }
     if (mapper_ == 250U)
         writer.write<Byte>(nitra_prg_mux_ ? 1U : 0U);
@@ -545,6 +562,8 @@ void Mmc3::load_variant_state(StateReader& reader) {
         reader.read(kasheng_prg_);
         reader.read(kasheng_chr_);
         reader.read(kasheng_solder_pad_);
+    } else if (mapper_ == 123U) {
+        reader.read(kasheng_prg_);
     }
     const auto scramble = mapper_ == 114U ? reader.read<Byte>() : Byte{0U};
     const auto nitra_profile = mapper_ == 250U ? reader.read<Byte>() : Byte{0U};
@@ -573,6 +592,7 @@ void Mmc3::load_variant_state(StateReader& reader) {
          ((kasheng_prg_ & 0x50U) != 0U || kasheng_chr_ > 1U || scramble != scramble_profile_)) ||
         (mapper_ == 115U &&
          ((kasheng_prg_ & 0x10U) != 0U || kasheng_chr_ > 1U || kasheng_solder_pad_ > 7U)) ||
+        (mapper_ == 123U && (kasheng_prg_ & 0x50U) != 0U) ||
         (mapper_ == 250U && nitra_profile != (nitra_prg_mux_ ? 1U : 0U)) ||
         (mapper_ == 262U && ((board_mode_ & 0xB0U) != 0U || title_jumper_ > 1U))) {
         if (mapper_ == 262U && title_jumper_ > 1U)

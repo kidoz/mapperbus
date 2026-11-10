@@ -8,7 +8,7 @@
 
 namespace mapperbus::core {
 
-/// MMC3 (4), scrambled 114, Kasheng (115), TxSROM (118), TQROM (119), Nitra (250),
+/// MMC3 (4), scrambled 114, Kasheng (115/123), TxSROM (118), TQROM (119), Nitra (250),
 /// Sachen 262/512/513 and KOF97 (263).
 /// PRG: 8 KB switchable banks, with mapper-513 outer banks up to 2 MiB
 /// CHR: 1 KB switchable banks, up to 512 KiB with mapper-114/115/262 outer pins
@@ -71,7 +71,7 @@ class Mmc3 : public Mapper {
     bool nitra_prg_mux_ = false;
     // Mapper 262: CHR outer pins/RAM select. Mapper 512: graphics mode.
     Byte board_mode_ = 0U;
-    // Mappers 114/115: PRG override and CHR outer pin; 115 also reads solder pads.
+    // Mappers 114/115/123: PRG override; 114/115 CHR outer pin; 115 solder pads.
     Byte kasheng_prg_ = 0U;
     Byte kasheng_chr_ = 0U;
     Byte kasheng_solder_pad_ = 0U;
