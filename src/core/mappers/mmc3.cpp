@@ -20,17 +20,20 @@ namespace mapperbus::core {
 // Mapper 250: NESdev r21044 and Krzysiobal's PCB schematics 354/533.
 // CPU A10 selects the register, A7..A0 supply data. Queen Bee V's 74153
 // selects CPU A13 instead of MMC3 A13 at $C000-$FFFF during M2 high.
+// Mapper 115: NESdev r21614. The low control ports bypass WRAM gating;
+// PRG A18 is selected in both MMC3 and NROM modes. Retain Sharp-style
+// zero-latch IRQ repeats, unlike mapper 114's different counter profile.
 Mmc3::Mmc3(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte> chr_rom)
     : prg_rom_(std::move(prg_rom)), chr_rom_(std::move(chr_rom)), use_chr_ram_(chr_rom_.empty()),
-      mapper_(header.mapper_number == 250U || header.mapper_number == 262U ||
-                      header.mapper_number == 263U || header.mapper_number == 118U ||
-                      header.mapper_number == 119U || header.mapper_number == 512U ||
-                      header.mapper_number == 513U
+      mapper_(header.mapper_number == 115U || header.mapper_number == 250U ||
+                      header.mapper_number == 262U || header.mapper_number == 263U ||
+                      header.mapper_number == 118U || header.mapper_number == 119U ||
+                      header.mapper_number == 512U || header.mapper_number == 513U
                   ? header.mapper_number
                   : 4U),
       initial_mirror_(header.mirror_mode), mirror_mode_(header.mirror_mode),
       irq_zero_latch_repeats_(!(mapper_ == 4U && header.is_nes2 && header.submapper == 4)) {
-    if (mapper_ == 250U) {
+    if (mapper_ == 115U || mapper_ == 250U) {
         prg_ram_size_ = 0U;
         nvram_size_ = 0U;
     } else if (mapper_ == 262U) {
@@ -64,6 +67,8 @@ Mmc3::Mmc3(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte
 }
 
 void Mmc3::reset() {
+    kasheng_prg_ = 0U;
+    kasheng_chr_ = 0U;
     ppu_chr_slot_ = 0U;
     board_mode_ = 0U;
     bank_select_ = 0;
@@ -84,7 +89,9 @@ void Mmc3::reset() {
 }
 
 void Mmc3::update_prg_banks() {
-    const std::size_t inner_banks = mapper_ == 513U ? 64U : num_prg_banks_8k_;
+    const std::size_t inner_banks = mapper_ == 513U   ? 64U
+                                    : mapper_ == 115U ? 32U
+                                                      : num_prg_banks_8k_;
     const std::size_t r6 = bank_registers_[6] % inner_banks;
     const std::size_t r7 = bank_registers_[7] % inner_banks;
     const std::size_t second_last = inner_banks - 2U;
@@ -138,6 +145,8 @@ void Mmc3::update_chr_banks() {
 }
 
 Byte Mmc3::read_prg(Address addr) {
+    if (mapper_ == 115U && (addr & 0xE003U) == 0x6002U)
+        return kasheng_solder_pad_;
     if (mapper_ == 262U && addr >= 0x6000U && maps_expansion(addr))
         return read_expansion(addr);
     if (addr >= 0x6000 && addr < 0x8000) {
@@ -151,6 +160,17 @@ Byte Mmc3::read_prg(Address addr) {
 
     uint8_t bank_index = (addr - 0x8000) / 0x2000;
     uint32_t offset = prg_offsets_[bank_index] + ((addr - 0x8000) % 0x2000);
+    if (mapper_ == 115U) {
+        const unsigned outer = (static_cast<unsigned>(kasheng_prg_) & 0x40U) << 12U;
+        if ((kasheng_prg_ & 0x80U) != 0U) {
+            const bool nrom256 = (kasheng_prg_ & 0x20U) != 0U;
+            offset = outer |
+                     ((static_cast<unsigned>(kasheng_prg_) & (nrom256 ? 14U : 15U)) << 14U) |
+                     (addr & (nrom256 ? 0x7FFFU : 0x3FFFU));
+        } else {
+            offset = (offset & 0x3FFFFU) | outer;
+        }
+    }
     if (mapper_ == 250U && nitra_prg_mux_ && addr >= 0xC000U)
         offset = (offset & ~0x2000U) | (addr & 0x2000U);
     if (mapper_ == 513U && bank_index != 3U && bank_index != (prg_mode_ ? 0U : 2U)) {
@@ -167,6 +187,12 @@ Byte Mmc3::read_prg(Address addr) {
 }
 
 void Mmc3::write_prg(Address addr, Byte value) {
+    if (mapper_ == 115U && (addr & 0xE000U) == 0x6000U) {
+        if ((addr & 3U) == 0U)
+            kasheng_prg_ = value & 0xEFU;
+        else if ((addr & 3U) == 1U)
+            kasheng_chr_ = value & 1U;
+    }
     // The tentative decoder also reaches $6100 mode aliases. Mapper 512's
     // WRAM uses an independent decoder, so those writes can update both.
     if ((mapper_ == 262U || mapper_ == 512U) && addr < 0x8000U && maps_expansion(addr))
@@ -241,6 +267,8 @@ void Mmc3::write_prg(Address addr, Byte value) {
 }
 
 bool Mmc3::maps_prg(Address addr) const {
+    if (mapper_ == 115U && (addr & 0xE003U) == 0x6002U)
+        return true;
     if (addr >= 0x8000) {
         return true;
     }
@@ -250,6 +278,8 @@ bool Mmc3::maps_prg(Address addr) const {
 }
 
 Byte Mmc3::prg_read_mask(Address addr) const {
+    if (mapper_ == 115U && (addr & 0xE003U) == 0x6002U)
+        return 7U;
     return mapper_ == 262U && addr >= 0x6000U && maps_expansion(addr) ? 0x80U : 0xFFU;
 }
 
@@ -271,6 +301,10 @@ void Mmc3::clock_irq_counter() {
 }
 
 Byte Mmc3::read_chr(Address addr) {
+    if (mapper_ == 115U)
+        return chr_rom_[(static_cast<unsigned>(kasheng_chr_) * 0x40000U +
+                         static_cast<unsigned>(chr_bank(addr)) * 0x400U + (addr & 0x3FFU)) %
+                        chr_rom_.size()];
     if (mapper_ == 262U) {
         const auto bank = static_cast<unsigned>(chr_bank(addr));
         if ((board_mode_ & 0x40U) != 0U)
@@ -376,6 +410,12 @@ void Mmc3::write_expansion(Address addr, Byte value) {
 }
 
 Result<void> Mmc3::configure_board_jumpers(Byte value) {
+    if (mapper_ == 115U) {
+        if (value > 7U)
+            return std::unexpected("Mapper 115 solder pads accept values 0 through 7");
+        kasheng_solder_pad_ = value;
+        return {};
+    }
     if (mapper_ != 262U || value > 1U)
         return std::unexpected("Only mapper 262 exposes a 0/1 title jumper");
     title_jumper_ = value;
@@ -439,6 +479,11 @@ void Mmc3::save_variant_state(StateWriter& writer) const {
     writer.write<Byte>((irq_reload_flag_ ? 1U : 0U) | (irq_enabled_ ? 2U : 0U) |
                        (irq_pending_ ? 4U : 0U));
     writer.write<Byte>((prg_ram_enabled_ ? 0x80U : 0U) | (prg_ram_write_protected_ ? 0x40U : 0U));
+    if (mapper_ == 115U) {
+        writer.write(kasheng_prg_);
+        writer.write(kasheng_chr_);
+        writer.write(kasheng_solder_pad_);
+    }
     if (mapper_ == 250U)
         writer.write<Byte>(nitra_prg_mux_ ? 1U : 0U);
     if (mapper_ == 512U)
@@ -471,6 +516,11 @@ void Mmc3::load_variant_state(StateReader& reader) {
     reader.read(irq_reload_);
     const auto irq = reader.read<Byte>();
     const auto ram = reader.read<Byte>();
+    if (mapper_ == 115U) {
+        reader.read(kasheng_prg_);
+        reader.read(kasheng_chr_);
+        reader.read(kasheng_solder_pad_);
+    }
     const auto nitra_profile = mapper_ == 250U ? reader.read<Byte>() : Byte{0U};
     if (mapper_ == 512U)
         reader.read(board_mode_);
@@ -493,10 +543,14 @@ void Mmc3::load_variant_state(StateReader& reader) {
         ((irq & 4U) != 0U && (irq & 2U) == 0U) || (ram & 0x3FU) != 0U ||
         (mapper_ == 512U && (board_mode_ > 3U || (ram & 0x80U) == 0U)) ||
         (mapper_ == 513U && ppu_chr_slot_ > 7U) ||
+        (mapper_ == 115U &&
+         ((kasheng_prg_ & 0x10U) != 0U || kasheng_chr_ > 1U || kasheng_solder_pad_ > 7U)) ||
         (mapper_ == 250U && nitra_profile != (nitra_prg_mux_ ? 1U : 0U)) ||
         (mapper_ == 262U && ((board_mode_ & 0xB0U) != 0U || title_jumper_ > 1U))) {
         if (mapper_ == 262U && title_jumper_ > 1U)
             title_jumper_ = 0U;
+        if (mapper_ == 115U && kasheng_solder_pad_ > 7U)
+            kasheng_solder_pad_ = 0U;
         reset();
         reader.fail();
         return;
