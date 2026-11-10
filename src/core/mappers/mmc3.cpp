@@ -31,9 +31,12 @@ namespace mapperbus::core {
 // No clone-specific IRQ revision is documented; retain the default profile.
 // T9552: NESdev r20254 and measured dump permutations in forum thread 24314.
 // Apply address wiring to MMC3 outputs, including fixed banks, before ROM wrapping.
+// Waixing 74/192: NESdev r24258/r23950 and mixed-CHR summary r23945.
+// Decode banks 8 onward before ROM wrapping; only those pages are writable.
 Mmc3::Mmc3(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte> chr_rom)
     : prg_rom_(std::move(prg_rom)), chr_rom_(std::move(chr_rom)), use_chr_ram_(chr_rom_.empty()),
-      mapper_(header.mapper_number == 114U || header.mapper_number == 115U ||
+      mapper_(header.mapper_number == 74U || header.mapper_number == 192U ||
+                      header.mapper_number == 114U || header.mapper_number == 115U ||
                       header.mapper_number == 123U || header.mapper_number == 249U ||
                       header.mapper_number == 250U || header.mapper_number == 262U ||
                       header.mapper_number == 263U || header.mapper_number == 118U ||
@@ -46,7 +49,11 @@ Mmc3::Mmc3(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte
       initial_mirror_(header.mirror_mode), mirror_mode_(header.mirror_mode),
       irq_zero_latch_repeats_(
           !(mapper_ == 114U || (mapper_ == 4U && header.is_nes2 && header.submapper == 4))) {
-    if (t9552_) {
+    if (mapper_ == 74U || mapper_ == 192U)
+        mixed_chr_ram_size_ = header.is_nes2   ? header.chr_ram_size
+                              : mapper_ == 74U ? 0x800U
+                                               : 0x1000U;
+    if (t9552_ || mixed_chr_ram_size_ != 0U) {
         prg_ram_size_ = header.is_nes2       ? header.prg_ram_size + header.prg_nvram_size
                         : header.has_battery ? 0x2000U
                                              : 0U;
@@ -390,6 +397,9 @@ Byte Mmc3::read_chr(Address addr) {
         const auto rom_bank = (bank & 0x3FU) | ((bank & 0x80U) >> 1U);
         return chr_rom_[(rom_bank * 0x400U + (addr & 0x3FFU)) % chr_rom_.size()];
     }
+    if (mixed_chr_ram_size_ != 0U)
+        if (const auto offset = mixed_chr_ram_offset(addr))
+            return chr_ram_[*offset];
     if (use_chr_ram_) {
         return chr_ram_[addr % 0x2000];
     }
@@ -415,6 +425,9 @@ void Mmc3::write_chr(Address addr, Byte value) {
         const auto bank = static_cast<unsigned>(chr_bank(addr));
         if ((bank & 0x40U) != 0U)
             chr_ram_[(bank & 7U) * 0x400U + (addr & 0x3FFU)] = value;
+    } else if (mixed_chr_ram_size_ != 0U) {
+        if (const auto offset = mixed_chr_ram_offset(addr))
+            chr_ram_[*offset] = value;
     } else if (use_chr_ram_) {
         chr_ram_[addr % 0x2000] = value;
     }
@@ -437,6 +450,13 @@ MirrorMode Mmc3::mirror_mode() const {
         return MirrorMode::Vertical;
     }
     return mirror_mode_;
+}
+
+std::optional<std::size_t> Mmc3::mixed_chr_ram_offset(Address addr) const {
+    const unsigned bank = chr_bank(addr);
+    if (bank < 8U || bank - 8U >= mixed_chr_ram_size_ / 0x400U)
+        return std::nullopt;
+    return (bank - 8U) * 0x400U + (addr & 0x3FFU);
 }
 
 Byte Mmc3::chr_bank(Address addr) const {
@@ -569,6 +589,8 @@ void Mmc3::save_variant_state(StateWriter& writer) const {
     } else if (mapper_ == 123U) {
         writer.write(kasheng_prg_);
     }
+    if (mixed_chr_ram_size_ != 0U)
+        writer.write<uint16_t>(static_cast<uint16_t>(mixed_chr_ram_size_));
     if (t9552_) {
         writer.write(t9552_mode_);
         writer.write<Byte>(mapper_ == 249U ? 0U : 2U);
@@ -615,6 +637,7 @@ void Mmc3::load_variant_state(StateReader& reader) {
     } else if (mapper_ == 123U) {
         reader.read(kasheng_prg_);
     }
+    const auto mixed_chr_size = mixed_chr_ram_size_ != 0U ? reader.read<uint16_t>() : 0U;
     if (t9552_)
         reader.read(t9552_mode_);
     const auto t9552_order = t9552_ ? reader.read<Byte>() : Byte{0U};
@@ -635,10 +658,10 @@ void Mmc3::load_variant_state(StateReader& reader) {
     }
     const bool valid_mirror = mapper_ == 262U ? mirror == static_cast<Byte>(MirrorMode::FourScreen)
                                               : mirror <= static_cast<Byte>(MirrorMode::Vertical);
-    if (!reader.ok() || bank_select_ > 7U || (mode & 0x3FU) != 0U || bank_registers_[6] > 63U ||
-        bank_registers_[7] > 63U || !valid_mirror ||
-        (mapper_ == 118U && mirror != static_cast<Byte>(initial_mirror_)) || irq > 7U ||
-        ((irq & 4U) != 0U && (irq & 2U) == 0U) || (ram & 0x3FU) != 0U ||
+    if (!reader.ok() || mixed_chr_size != mixed_chr_ram_size_ || bank_select_ > 7U ||
+        (mode & 0x3FU) != 0U || bank_registers_[6] > 63U || bank_registers_[7] > 63U ||
+        !valid_mirror || (mapper_ == 118U && mirror != static_cast<Byte>(initial_mirror_)) ||
+        irq > 7U || ((irq & 4U) != 0U && (irq & 2U) == 0U) || (ram & 0x3FU) != 0U ||
         (mapper_ == 512U && (board_mode_ > 3U || (ram & 0x80U) == 0U)) ||
         (mapper_ == 513U && ppu_chr_slot_ > 7U) ||
         (mapper_ == 114U &&

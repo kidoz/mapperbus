@@ -105,6 +105,11 @@ if get_option('enable_cli')
         depends : mapperbus_cli,
         timeout : 60,
     )
+    test('cli-waixing-mixed-chr', cli_python,
+        args : [files('integration/test_cli_waixing_mixed_chr.py'), mapperbus_cli],
+        depends : mapperbus_cli,
+        timeout : 60,
+    )
     test('cli-datach', cli_python,
         args : [files('integration/test_cli_datach.py'), mapperbus_cli],
         depends : mapperbus_cli,
@@ -157,10 +162,16 @@ test_mappers = executable('test-mappers',
     'unit/test_scrambled114.cpp',
     'unit/test_h2288.cpp',
     'unit/test_t9552.cpp',
+    'unit/test_waixing_mixed_chr.cpp',
     dependencies : [mapperbus_core_dep, catch2_dep],
 )
 # Full-chip snapshot validation is more expensive under ASan/UBSan.
-test('mappers', test_mappers, timeout : 60)
+mapper_test_sanitize = get_option('b_sanitize')
+mapper_test_timeout = 60
+if mapper_test_sanitize.contains('address') or mapper_test_sanitize.contains('undefined')
+    mapper_test_timeout = 120
+endif
+test('mappers', test_mappers, timeout : mapper_test_timeout)
 
 test_battle_city_render = executable('test-battle-city-render',
     'integration/test_battle_city_render.cpp',
