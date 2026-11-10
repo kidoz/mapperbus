@@ -37,6 +37,7 @@ core_sources = files(
     'mappers/datach.cpp',
     'mappers/sst39sf040.cpp',
     'mappers/flash_boards.cpp',
+    'mappers/jy_company.cpp',
     'mappers/axrom.cpp',
     'mappers/color_dreams.cpp',
     'mappers/vrc6.cpp',

@@ -11,6 +11,7 @@
 #include "core/mappers/irem_lrog017.hpp"
 #include "core/mappers/jaleco_discrete.hpp"
 #include "core/mappers/jaleco_ss88006.hpp"
+#include "core/mappers/jy_company.hpp"
 #include "core/mappers/konami_vrc.hpp"
 #include "core/mappers/mmc1.hpp"
 #include "core/mappers/mmc2.hpp"
@@ -42,6 +43,9 @@ namespace {
     }
     if (header.mapper_number == 30U || header.mapper_number == 111U)
         return FlashBoards::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 35U || header.mapper_number == 90U ||
+        header.mapper_number == 209U || header.mapper_number == 211U)
+        return JyCompany::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 157U)
         return Datach::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 16U || header.mapper_number == 153U || header.mapper_number == 159U)
@@ -356,6 +360,8 @@ template <typename T> MapperFactory make_factory() {
 
 void register_builtin_mappers() {
     auto& registry = MapperRegistry::instance();
+    for (const uint16_t id : {35U, 90U, 209U, 211U})
+        registry.register_mapper(id, make_factory<JyCompany>());
     registry.register_mapper(0, make_factory<Nrom>());
     registry.register_mapper(1, make_factory<Mmc1>());
     registry.register_mapper(2, make_factory<Uxrom>());

@@ -23,6 +23,8 @@ class Mapper {
     }
     /// Completed external CPU read, including dummy and DMA accesses.
     virtual void observe_cpu_read(Address /*addr*/, Byte /*data*/) {}
+    /// CPU write strobe, including console RAM/I/O and OAM DMA puts.
+    virtual void observe_cpu_write(Address /*addr*/, Byte /*data*/) {}
     virtual bool maps_prg(Address addr) const {
         return addr >= 0x8000;
     }
@@ -118,6 +120,15 @@ class Mapper {
         return false;
     }
     virtual void observe_ppu_address(Address /*addr*/) {}
+    /// Physical external /RD strobes, separate from cached renderer lookups.
+    virtual bool observes_ppu_reads() const {
+        return false;
+    }
+    /// Called after fetching the byte, so latch-triggering reads use the old bank.
+    virtual void observe_ppu_read(Address /*addr*/) {}
+    virtual Result<void> configure_board_jumpers(Byte /*value*/) {
+        return std::unexpected("This cartridge does not expose board jumpers");
+    }
     /// End of M2, after the current CPU write and all PPU dots in that cycle.
     virtual void clock_cpu_falling_edge() {}
 

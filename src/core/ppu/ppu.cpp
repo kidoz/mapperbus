@@ -232,7 +232,8 @@ void Ppu::step(uint32_t cpu_cycles) {
 
 void Ppu::step_dots(uint32_t ppu_dots) {
     const bool observe_pins = cartridge_ != nullptr && (cartridge_->observes_ppu_a12() ||
-                                                        cartridge_->observes_ppu_address());
+                                                        cartridge_->observes_ppu_address() ||
+                                                        cartridge_->observes_ppu_reads());
     for (uint32_t i = 0; i < ppu_dots; ++i) {
         if (skip_dot_ && cycle_ == 339) {
             // Replace the final pre-render dot with the first visible-line idle dot.
@@ -266,7 +267,8 @@ void Ppu::step_dots(uint32_t ppu_dots) {
         }
 
         if (observe_pins)
-            drive_mapper_pins();
+            drive_mapper_pins(rendering && (visible_line || pre_render) && cycle_ <= 340U &&
+                              (cycle_ & 1U) != 0U);
 
         if (rendering) {
             if (visible_line || pre_render) {
@@ -326,10 +328,11 @@ void Ppu::step_dots(uint32_t ppu_dots) {
     }
 }
 
-void Ppu::drive_mapper_pins() {
+void Ppu::drive_mapper_pins(bool read_strobe) {
     if (cartridge_ == nullptr)
         return;
-    const bool full_address = cartridge_->observes_ppu_address();
+    const bool reads = cartridge_->observes_ppu_reads();
+    const bool full_address = cartridge_->observes_ppu_address() || reads;
     const bool a12 = cartridge_->observes_ppu_a12();
     if (!full_address && !a12)
         return;
@@ -381,8 +384,10 @@ void Ppu::drive_mapper_pins() {
     // observe it; no mutable PPU fields or existing IRQ callbacks change.
     if (a12)
         cartridge_->observe_ppu_a12((addr & 0x1000U) != 0U);
-    if (full_address)
+    if (cartridge_->observes_ppu_address())
         cartridge_->observe_ppu_address(addr);
+    if (reads && read_strobe)
+        cartridge_->observe_ppu_read(addr);
 }
 
 // === Register I/O (pure loopy model) ===
@@ -419,6 +424,12 @@ Byte Ppu::read_register(uint8_t reg) {
         } else {
             result = read_buffer_;
             read_buffer_ = value;
+        }
+        if (cartridge_ != nullptr && cartridge_->observes_ppu_reads()) {
+            // Palette RAM is internal; its hidden buffer refill is the single
+            // external read. Debugger/renderer read_vram calls have no strobe.
+            const Address addr = reg_v_ & 0x3FFFU;
+            cartridge_->observe_ppu_read(addr >= 0x3F00U ? addr - 0x1000U : addr);
         }
         reg_v_ = (reg_v_ + ((ppuctrl_ & 0x04) != 0 ? 32 : 1)) & 0x7FFF;
         io_latch_ = result;

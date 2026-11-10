@@ -64,6 +64,12 @@ class Cartridge {
     void observe_cpu_read(Address addr, Byte data) {
         mapper_->observe_cpu_read(addr, data);
     }
+    void observe_cpu_write(Address addr, Byte data) {
+        mapper_->observe_cpu_write(addr, data);
+    }
+    Result<void> configure_board_jumpers(Byte value) {
+        return mapper_->configure_board_jumpers(value);
+    }
     [[nodiscard]] bool unmirrored_nametables() const {
         return mapper_->unmirrored_nametables();
     }
@@ -134,6 +140,12 @@ class Cartridge {
     }
     void observe_ppu_address(Address addr) {
         mapper_->observe_ppu_address(addr);
+    }
+    [[nodiscard]] bool observes_ppu_reads() const {
+        return mapper_->observes_ppu_reads();
+    }
+    void observe_ppu_read(Address addr) {
+        mapper_->observe_ppu_read(addr);
     }
     void clock_cpu_falling_edge() {
         mapper_->clock_cpu_falling_edge();

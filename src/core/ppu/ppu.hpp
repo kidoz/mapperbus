@@ -178,7 +178,7 @@ class Ppu {
     void copy_horizontal_from_t();
     void copy_vertical_from_t();
     void tick_delayed_registers();
-    void drive_mapper_pins();
+    void drive_mapper_pins(bool read_strobe = false);
 
     void render_pixel();
     void evaluate_sprites(int y);

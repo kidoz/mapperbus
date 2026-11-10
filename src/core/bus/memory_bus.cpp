@@ -249,6 +249,8 @@ Byte MemoryBus::read(Address addr) {
 
 void MemoryBus::write(Address addr, Byte value) {
     open_bus_ = value;
+    if (cartridge_ != nullptr)
+        cartridge_->observe_cpu_write(addr, value);
     (this->*(write_map_[addr >> 10]))(addr, value);
 }
 
@@ -256,6 +258,8 @@ void MemoryBus::write_cpu(Address addr, Byte value, bool consecutive) {
     io_access_ = true;
     set_controller_oe(0);
     open_bus_ = value;
+    if (cartridge_ != nullptr)
+        cartridge_->observe_cpu_write(addr, value);
     if (addr == 0x4016 && ntsc_io()) {
         controller_strobe_request_ = (value & 1U) != 0;
         return;
