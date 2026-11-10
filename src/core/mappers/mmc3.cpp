@@ -12,15 +12,25 @@ namespace mapperbus::core {
 // Mapper 513: NESdev r8077. CHR output pins select outer PRG banks; the
 // fixed PRG windows remain in outer bank zero. The three-chip dump's bank-3
 // alias follows the documented compatibility convention, not analog contention.
+// Mapper 262: NESdev r7640. The four high CHR bits are selected by the
+// physical 2 KiB PPU region, independently of MMC3 CHR inversion. Its $C100
+// expansion decoder and normal $E001 MMC3 decoder are tentative in the source.
 Mmc3::Mmc3(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte> chr_rom)
     : prg_rom_(std::move(prg_rom)), chr_rom_(std::move(chr_rom)), use_chr_ram_(chr_rom_.empty()),
-      mapper_(header.mapper_number == 118U || header.mapper_number == 119U ||
-                      header.mapper_number == 512U || header.mapper_number == 513U
+      mapper_(header.mapper_number == 262U || header.mapper_number == 118U ||
+                      header.mapper_number == 119U || header.mapper_number == 512U ||
+                      header.mapper_number == 513U
                   ? header.mapper_number
                   : 4U),
       initial_mirror_(header.mirror_mode), mirror_mode_(header.mirror_mode),
       irq_zero_latch_repeats_(!(mapper_ == 4U && header.is_nes2 && header.submapper == 4)) {
-    if (mapper_ == 513U) {
+    if (mapper_ == 262U) {
+        prg_ram_size_ = 0U;
+        nvram_size_ = 0U;
+        initial_mirror_ = MirrorMode::FourScreen;
+        mirror_mode_ = initial_mirror_;
+        nametable_ram_.resize(0x1000U);
+    } else if (mapper_ == 513U) {
         prg_ram_size_ = 0U;
         nvram_size_ = 0U;
         chr_nvram_.resize(0x8000U);
@@ -119,6 +129,8 @@ void Mmc3::update_chr_banks() {
 }
 
 Byte Mmc3::read_prg(Address addr) {
+    if (mapper_ == 262U && addr >= 0x6000U && maps_expansion(addr))
+        return read_expansion(addr);
     if (addr >= 0x6000 && addr < 0x8000) {
         if (!prg_ram_enabled_ || prg_ram_size_ == 0U) {
             return 0;
@@ -144,9 +156,9 @@ Byte Mmc3::read_prg(Address addr) {
 }
 
 void Mmc3::write_prg(Address addr, Byte value) {
-    // Under the documented tentative mask, $6100 aliases update the mode
-    // latch as well as WRAM. These are independent write decoders.
-    if (mapper_ == 512U && addr < 0x8000U && maps_expansion(addr))
+    // The tentative decoder also reaches $6100 mode aliases. Mapper 512's
+    // WRAM uses an independent decoder, so those writes can update both.
+    if ((mapper_ == 262U || mapper_ == 512U) && addr < 0x8000U && maps_expansion(addr))
         write_expansion(addr, value);
     if (addr >= 0x6000 && addr < 0x8000) {
         if (prg_ram_enabled_ && !prg_ram_write_protected_ && prg_ram_size_ != 0U) {
@@ -180,7 +192,7 @@ void Mmc3::write_prg(Address addr, Byte value) {
     } else if (addr < 0xC000) {
         if (even) {
             // $A000: Mirroring
-            if (mapper_ != 118U)
+            if (mapper_ != 118U && mapper_ != 262U)
                 mirror_mode_ = (value & 0x01) ? MirrorMode::Horizontal : MirrorMode::Vertical;
         } else {
             prg_ram_enabled_ = mapper_ == 512U || (value & 0x80U) != 0U;
@@ -211,7 +223,13 @@ bool Mmc3::maps_prg(Address addr) const {
     if (addr >= 0x8000) {
         return true;
     }
+    if (mapper_ == 262U && addr >= 0x6000U && maps_expansion(addr))
+        return true;
     return addr >= 0x6000 && addr < 0x8000 && prg_ram_enabled_ && prg_ram_size_ != 0U;
+}
+
+Byte Mmc3::prg_read_mask(Address addr) const {
+    return mapper_ == 262U && addr >= 0x6000U && maps_expansion(addr) ? 0x80U : 0xFFU;
 }
 
 void Mmc3::clock_irq_counter() {
@@ -232,6 +250,14 @@ void Mmc3::clock_irq_counter() {
 }
 
 Byte Mmc3::read_chr(Address addr) {
+    if (mapper_ == 262U) {
+        const auto bank = static_cast<unsigned>(chr_bank(addr));
+        if ((board_mode_ & 0x40U) != 0U)
+            return chr_ram_[(bank & 7U) * 0x400U + (addr & 0x3FFU)];
+        constexpr std::array<unsigned, 4> kOuterBits = {3U, 2U, 0U, 1U};
+        const unsigned outer = (board_mode_ >> kOuterBits[(addr >> 11U) & 3U]) & 1U;
+        return chr_rom_[((bank | (outer << 8U)) * 0x400U + (addr & 0x3FFU)) % chr_rom_.size()];
+    }
     if (mapper_ == 513U)
         return chr_nvram_[(static_cast<unsigned>(chr_bank(addr)) & 31U) * 0x400U + (addr & 0x3FFU)];
     if (mapper_ == 512U && (board_mode_ & 2U) != 0U)
@@ -256,7 +282,11 @@ Byte Mmc3::read_chr(Address addr) {
 }
 
 void Mmc3::write_chr(Address addr, Byte value) {
-    if (mapper_ == 513U) {
+    if (mapper_ == 262U) {
+        if ((board_mode_ & 0x40U) != 0U)
+            chr_ram_[(static_cast<unsigned>(chr_bank(addr)) & 7U) * 0x400U + (addr & 0x3FFU)] =
+                value;
+    } else if (mapper_ == 513U) {
         chr_nvram_[(static_cast<unsigned>(chr_bank(addr)) & 31U) * 0x400U + (addr & 0x3FFU)] =
             value;
     } else if (mapper_ == 512U) {
@@ -306,16 +336,29 @@ std::optional<Address> Mmc3::nametable_address(Address addr) const {
 }
 
 bool Mmc3::maps_expansion(Address addr) const {
-    return mapper_ == 512U && (addr & 0xC100U) == 0x4100U;
+    return (mapper_ == 262U || mapper_ == 512U) && (addr & 0xC100U) == 0x4100U;
 }
 
 Byte Mmc3::expansion_read_mask(Address /*addr*/) const {
+    if (mapper_ == 262U)
+        return 0x80U;
     return mapper_ == 512U ? 0U : 0xFFU; // The board-mode latch is write-only.
+}
+
+Byte Mmc3::read_expansion(Address addr) {
+    return mapper_ == 262U && maps_expansion(addr) ? static_cast<Byte>(title_jumper_ << 7U) : 0U;
 }
 
 void Mmc3::write_expansion(Address addr, Byte value) {
     if (maps_expansion(addr))
-        board_mode_ = value & 3U;
+        board_mode_ = value & (mapper_ == 262U ? 0x4FU : 3U);
+}
+
+Result<void> Mmc3::configure_board_jumpers(Byte value) {
+    if (mapper_ != 262U || value > 1U)
+        return std::unexpected("Only mapper 262 exposes a 0/1 title jumper");
+    title_jumper_ = value;
+    return {};
 }
 
 bool Mmc3::observes_ppu_address() const {
@@ -331,12 +374,18 @@ void Mmc3::observe_ppu_address(Address addr) {
 }
 
 std::optional<Byte> Mmc3::read_nametable(Address addr) const {
+    if (mapper_ == 262U)
+        return nametable_ram_[addr & 0xFFFU];
     if (mapper_ != 512U || board_mode_ != 1U)
         return std::nullopt;
     return chr_ram_[0x1000U + (addr & 0xFFFU)];
 }
 
 bool Mmc3::write_nametable(Address addr, Byte value) {
+    if (mapper_ == 262U) {
+        nametable_ram_[addr & 0xFFFU] = value;
+        return true;
+    }
     if (mapper_ != 512U || board_mode_ != 1U)
         return false;
     chr_ram_[0x1000U + (addr & 0xFFFU)] = value;
@@ -365,6 +414,11 @@ void Mmc3::save_variant_state(StateWriter& writer) const {
         writer.write(board_mode_);
     if (mapper_ == 513U)
         writer.write(ppu_chr_slot_);
+    if (mapper_ == 262U) {
+        writer.write_bytes(nametable_ram_);
+        writer.write(board_mode_);
+        writer.write(title_jumper_);
+    }
 }
 
 void Mmc3::load_variant_state(StateReader& reader) {
@@ -390,12 +444,26 @@ void Mmc3::load_variant_state(StateReader& reader) {
         reader.read(board_mode_);
     if (mapper_ == 513U)
         reader.read(ppu_chr_slot_);
+    if (mapper_ == 262U) {
+        reader.read_bytes(nametable_ram_, 0x1000U);
+        if (nametable_ram_.size() != 0x1000U) {
+            nametable_ram_.resize(0x1000U);
+            reader.fail();
+        }
+        reader.read(board_mode_);
+        reader.read(title_jumper_);
+    }
+    const bool valid_mirror = mapper_ == 262U ? mirror == static_cast<Byte>(MirrorMode::FourScreen)
+                                              : mirror <= static_cast<Byte>(MirrorMode::Vertical);
     if (!reader.ok() || bank_select_ > 7U || (mode & 0x3FU) != 0U || bank_registers_[6] > 63U ||
-        bank_registers_[7] > 63U || mirror > static_cast<Byte>(MirrorMode::Vertical) ||
+        bank_registers_[7] > 63U || !valid_mirror ||
         (mapper_ == 118U && mirror != static_cast<Byte>(initial_mirror_)) || irq > 7U ||
         ((irq & 4U) != 0U && (irq & 2U) == 0U) || (ram & 0x3FU) != 0U ||
         (mapper_ == 512U && (board_mode_ > 3U || (ram & 0x80U) == 0U)) ||
-        (mapper_ == 513U && ppu_chr_slot_ > 7U)) {
+        (mapper_ == 513U && ppu_chr_slot_ > 7U) ||
+        (mapper_ == 262U && ((board_mode_ & 0xB0U) != 0U || title_jumper_ > 1U))) {
+        if (mapper_ == 262U && title_jumper_ > 1U)
+            title_jumper_ = 0U;
         reset();
         reader.fail();
         return;

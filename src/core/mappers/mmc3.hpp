@@ -8,9 +8,9 @@
 
 namespace mapperbus::core {
 
-/// Mappers 4 (TxROM), 118 (TxSROM), 119 (TQROM), and Sachen clones 512/513.
+/// Mappers 4 (TxROM), 118 (TxSROM), 119 (TQROM), and Sachen clones 262/512/513.
 /// PRG: 8 KB switchable banks, with mapper-513 outer banks up to 2 MiB
-/// CHR: up to 256 KB, 1 KB switchable banks
+/// CHR: 1 KB switchable banks, up to 512 KiB with mapper-262 outer pins
 /// Features: scanline IRQ counter, mirroring control, PRG RAM
 class Mmc3 : public Mapper {
   public:
@@ -19,6 +19,7 @@ class Mmc3 : public Mapper {
     Byte read_prg(Address addr) override;
     void write_prg(Address addr, Byte value) override;
     bool maps_prg(Address addr) const override;
+    Byte prg_read_mask(Address addr) const override;
     Byte read_chr(Address addr) override;
     void write_chr(Address addr, Byte value) override;
     MirrorMode mirror_mode() const override;
@@ -27,7 +28,9 @@ class Mmc3 : public Mapper {
     bool write_nametable(Address addr, Byte value) override;
     bool maps_expansion(Address addr) const override;
     Byte expansion_read_mask(Address addr) const override;
+    Byte read_expansion(Address addr) override;
     void write_expansion(Address addr, Byte value) override;
+    Result<void> configure_board_jumpers(Byte value) override;
     bool observes_ppu_address() const override;
     void observe_ppu_address(Address addr) override;
     void reset() override;
@@ -59,7 +62,10 @@ class Mmc3 : public Mapper {
     // Mapper 513 has battery-backed pattern memory, not CPU-visible WRAM.
     std::vector<Byte> chr_nvram_;
     Byte ppu_chr_slot_ = 0U;
-    // Mapper 512: disjoint 4 KiB pattern RAM / 4 KiB cartridge nametables.
+    // Mapper 262: independent, permanently mapped four-screen VRAM.
+    std::vector<Byte> nametable_ram_;
+    Byte title_jumper_ = 0U;
+    // Mapper 262: CHR outer pins/RAM select. Mapper 512: graphics mode.
     Byte board_mode_ = 0U;
     bool use_chr_ram_ = false;
     // Board wiring and physical memory sizes are immutable cartridge metadata.
