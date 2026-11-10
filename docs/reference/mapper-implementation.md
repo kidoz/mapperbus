@@ -4,12 +4,12 @@ This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
 complete.** Updated 2026-11-10 against the working-tree registry.
 
-There are **125 registered cartridge IDs**: the original 14, 53 added in the first
+There are **126 registered cartridge IDs**: the original 14, 53 added in the first
 batch, and Irem 32/65/77, Sunsoft 67/68, Taito 33/48/80/207/82/552, Jaleco 18/72/92/101,
 Namco 210, MMC3 variants 118/119, RAMBO-1 64/158, Bandai 16/153/159, and Datach
 157, UNROM 512 30, GTROM/direct MMC1 111, and J.Y. Company
 35/90/209/211/281/282/295/358/386/387/388/397, plus the sixteen Sachen/TXC
-IDs, Sachen MMC3 clones 262/512/513, and Rex Soft's 263 detailed below.
+IDs, Sachen MMC3 clones 262/512/513, Rex Soft's 263, and Nitra 250 detailed below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
 unusual ROM geometry.
@@ -18,6 +18,7 @@ unusual ROM geometry.
 
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
+| Nitra MMC3 boards (follow-up) | 250 | Address-data registers, standard L401 and Queen Bee V PRG-A13 mux profiles, banking/IRQs, raw/archive selection and snapshot wiring validation. |
 | Rex Soft UNL-KOF97 (follow-up) | 263 | Scrambled register addresses/data pins, standard MMC3 banking and IRQs, header-selected WRAM/NVRAM, CPU execution, persistence and snapshots. |
 | Sachen Street Heroes (follow-up) | 262 | Physical-region CHR outer pins, banked ROM/RAM switching, four-screen VRAM, title jumper with partial bus drivers, shared MMC3 IRQs and snapshots. |
 | Sachen SA-9602B (follow-up) | 513 | PPU-selected outer PRG banks, fixed outer-zero windows, 32 KiB battery CHR RAM, shared MMC3 IRQs, snapshots and persistence. |
@@ -1604,6 +1605,85 @@ native-mapper tests failed at factory creation; they passed after the change.
 Scoped clang-tidy, formatting and whitespace checks passed. Isolated agent
 documentation validation reported zero errors and the unchanged 52 warnings.
 
+## Nitra mapper-250 follow-up: address data and Queen Bee V wiring
+
+Mapper 250 implements Nitra's address-driven MMC3 in the shared `Mmc3` class.
+The sources are [NESdev revision 21044](https://www.nesdev.org/w/index.php?oldid=21044),
+Krzysiobal's [L401 Time Diver Avenger PCB](http://krzysiobal.com/carts/?action=view&id=533)
+and [Queen Bee V N1-PCB-015 PCB](http://krzysiobal.com/carts/?action=view&id=354&lang=en).
+Their reverse-engineered schematics establish the register connections and the
+Queen Bee V multiplexer. No external emulator source was incorporated.
+
+CPU A10 selects ordinary MMC3 A0. CPU A7..A0 supply data; the CPU data byte is
+discarded. Bits A12, A11, A9 and A8 do not select registers or data:
+
+| Native base | Ordinary MMC3 register |
+|---|---|
+| $8000 | $8000 bank select |
+| $8400 | $8001 bank data |
+| $A000 | $A000 mirroring |
+| $A400 | $A001 WRAM control (no RAM fitted) |
+| $C000 | $C000 IRQ latch |
+| $C400 | $C001 IRQ reload |
+| $E000 | $E000 IRQ disable/acknowledge |
+| $E400 | $E001 IRQ enable |
+
+Any CPU-data write to $8006 selects R6, and any write to $8403 sets it to 3.
+Normalization feeds shared MMC3 banking/IRQ logic. PRG modes, paired CHR banks,
+inversion, H/V CIRAM and ROM protection are retained. Neither documented PCB has
+WRAM or battery memory, so A001 cannot expose RAM. Expansion reads are undriven.
+
+Queen Bee V adds a 74153 selected by CPU A14 and M2, enabled by active-low CPU
+ROMSEL. During M2 high, ROM A13 comes from MMC3 in the lower 16 KiB window and
+CPU A13 in the upper window. Thus $C000 forces ROM A13=0 and $E000 forces it to
+1, even when R6 is swapped into $C000; an odd R6 then selects its neighboring
+even physical bank there. This is combinational wiring, not a register latch.
+Below $8000 ROM is unselected. M2-low mux inputs need no new event in the existing
+CPU read model; analog bus transients are not modeled.
+
+The header has no assigned submapper distinction between these PCBs. Default
+wiring is `nitra-l401`. Core clients select Queen Bee V before installation with
+`Cartridge::configure_board_profile("nitra-queen-bee-v")`. The shared source
+loader accepts the optional profile for raw, ZIP and 7z; CLI exposes
+`--board-profile nitra-queen-bee-v`. Explicit `nitra-l401` is also accepted.
+Invalid names, other mappers and FDS fail before replacing the running machine.
+Selection does not guess from names, hashes or sizes, and does not invent a NES
+2.0 submapper. GUI selection and persisted per-game profile preferences remain
+unimplemented.
+
+Factories accept iNES and NES 2.0 submapper 0, 32–128 KiB PRG in 8 KiB units,
+8–128 KiB CHR ROM in 1 KiB units, and H/V CIRAM. Connected ROM address pins in
+both schematics stop at A16. Larger images, CHR RAM/NVRAM, four-screen headers,
+battery flags and explicit NES 2.0 CPU RAM/NVRAM are rejected. Legacy iNES's
+implicit CPU-RAM size is ignored because neither board has that chip. Smaller
+accepted images wrap by physical size; alternate populations and padded dumps
+are not certified. The cartridge creates no save file.
+
+Snapshots add one validated, immutable wiring byte to the compact MMC3 variant
+state. A state made with the other profile is rejected with full-machine rollback;
+loading never silently changes the selected PCB. Old mapper payloads and machine
+version 20 remain unchanged. No PPU/bus timing field was added. IRQs retain the
+shared dot-260 rendered-scanline approximation; exact A12 filtering remains
+unverified. No commercial-title or physical-board certification is claimed.
+
+Tests cover every address-data value at every port with different CPU data,
+every CPU-data value, all 16 unused-address-bit combinations, CHR/inversion,
+both mux modes, metadata and malformed states. Four native CPU programs exercise
+both PCB/header variants and check PRG, PPUDATA, CIRAM and mapper IRQs before
+replay/atomic rollback. The shared boot/replay matrix now includes 112 boards.
+Source-loader tests observe the differing physical PRG results for raw/ZIP/7z,
+invalid-profile preservation and cross-profile snapshot rejection. CLI smoke
+tests cover twelve raw/ZIP/header/profile combinations, nine invalid headers
+and six invalid profile uses, preserving source files and creating no saves.
+
+Validation passed the build, all 51 MapperBus test targets and eight serial
+ASan/UBSan suites with the macOS `detect_leaks=0` exception. The mapper executable
+passed 48,074 assertions across 311 cases; ROM-source tests passed 3,964 assertions
+across 37 cases. Both initial mapper tests failed at factory creation before
+registration and passed after implementation. Scoped clang-tidy, formatting and
+whitespace checks passed. Isolated agent-documentation validation reported zero
+errors and the unchanged 52 warnings.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -1867,7 +1947,7 @@ fallback. The registry rejects unsupported IDs.
 | 246 | Board-specific specification | Not registered | [r22048](https://www.nesdev.org/w/index.php?oldid=22048) |
 | 248 | Board-specific specification | Not registered | [r23288](https://www.nesdev.org/w/index.php?oldid=23288) |
 | 249 | T9552 | Not registered | [r20254](https://www.nesdev.org/w/index.php?oldid=20254) |
-| 250 | Board-specific specification | Not registered | [r21044](https://www.nesdev.org/w/index.php?oldid=21044) |
+| 250 | Nitra L401 / Queen Bee V | New implementation: Mmc3 | [r21044](https://www.nesdev.org/w/index.php?oldid=21044) |
 | 251 | Board-specific specification | Not registered | [r5898](https://www.nesdev.org/w/index.php?oldid=5898) |
 | 252 | Board-specific specification | Not registered | [r5906](https://www.nesdev.org/w/index.php?oldid=5906) |
 | 253 | Board-specific specification | Not registered | [r5910](https://www.nesdev.org/w/index.php?oldid=5910) |

@@ -205,7 +205,7 @@ and volume accepts 0–100. The headless CLI does not open capture. See
 ## Headless CLI
 
 ```text
-./buildDir/src/frontends/cli/mapperbus-cli <rom-file|archive> [--entry NAME] [--fds-bios PATH] [--dcs-option PATH] [--frames N] [--region ntsc|pal|hybrid] [--controller-timing T] [--controller-wiring W] [--controller-mode standard|four-score|hori-4-player] [--expansion-controllers none|1|2|both] [--barcode DIGITS] [--barcode-frame N] [--barcode-cycles N] [--datach-save PATH]
+./buildDir/src/frontends/cli/mapperbus-cli <rom-file|archive> [--entry NAME] [--fds-bios PATH] [--dcs-option PATH] [--board-profile NAME] [--frames N] [--region ntsc|pal|hybrid] [--controller-timing T] [--controller-wiring W] [--controller-mode standard|four-score|hori-4-player] [--expansion-controllers none|1|2|both] [--barcode DIGITS] [--barcode-frame N] [--barcode-cycles N] [--datach-save PATH]
 ```
 
 Loads NES/FDS media, resets the emulator, executes 60 frames by default, and
@@ -219,6 +219,18 @@ the headless CLI does not use the GUI's saved region preference.
 The CLI reads the shared FDS BIOS path;
 `--fds-bios` overrides it. It presents no video, audio device, or interactive
 input. Invalid arguments and load/save failures return failure.
+
+For mapper 250, `--board-profile nitra-queen-bee-v` selects Queen Bee V's extra
+PRG wiring. The default is `nitra-l401`, which can also be selected explicitly.
+This works with raw ROMs and archive members; other mappers, FDS disks and unknown
+profile names are rejected. The choice applies to this run, and snapshots require
+the same PCB profile. For example:
+
+```sh
+./buildDir/src/frontends/cli/mapperbus-cli QueenBeeV.nes --board-profile nitra-queen-bee-v --frames 120
+```
+
+See [Nitra coverage and limits](mapper-implementation.md#nitra-mapper-250-follow-up-address-data-and-queen-bee-v-wiring).
 
 For Datach (mapper 157), `--barcode` accepts 8 EAN-8, 12 UPC-A or 13 EAN-13
 digits including the check digit. `--barcode-frame` schedules a scan before the
