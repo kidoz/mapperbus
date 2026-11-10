@@ -4,10 +4,10 @@ This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
 complete.** Updated 2026-11-10 against the working-tree registry.
 
-There are **91 registered cartridge IDs**: the original 14, 53 added in the first
+There are **93 registered cartridge IDs**: the original 14, 53 added in the first
 batch, and Irem 32/65/77, Sunsoft 67/68, Taito 33/48/80/207/82/552, Jaleco 18/72/92/101,
 Namco 210, MMC3 variants 118/119, RAMBO-1 64/158, Bandai 16/153/159, and Datach
-157 in the follow-ups below.
+157, UNROM 512 30 and GTROM/direct MMC1 111 in the follow-ups below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
 unusual ROM geometry.
@@ -16,6 +16,7 @@ unusual ROM geometry.
 
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
+| Flash boards (follow-up) | 30, 111 | UNROM 512 submappers 0–4, GTROM read-triggered open-bus latch, banked CHR/nametable/bonus RAM, SST39SF040 commands and polling, separate flash persistence; mapper 111 CHR ROM selects direct MMC1. |
 | MMC4 | 10 | 16 KiB PRG, both eight-byte CHR trigger ranges, old-bank trigger fetch, mirroring, RAM, persistence. |
 | Datach (follow-up) | 157 | Fixed 8 KiB CHR RAM, LZ93D50 M2 IRQ, PPU-selected external EEPROM clock, shared SDA, barcode injection, separate reader/cartridge persistence and snapshots. |
 | Bandai FCG / LZ93D50 (follow-up) | 16, 153, 159 | Direct/latched M2 IRQ variants, eight 1 KiB CHR banks, four mirroring modes, original Xicor serial EEPROM protocols, gated WRAM and PPU-address-driven outer PRG banking, persistence and snapshots. |
@@ -75,6 +76,7 @@ See [mapper tests](../../tests/unit/test_mapper_boards.cpp),
 [RAMBO-1 tests](../../tests/unit/test_rambo1.cpp),
 [Bandai tests](../../tests/unit/test_bandai_fcg.cpp),
 [Datach tests](../../tests/unit/test_datach.cpp),
+[flash-board tests](../../tests/unit/test_flash_boards.cpp),
 [Sunsoft tests](../../tests/unit/test_sunsoft_boards.cpp),
 [Taito tests](../../tests/unit/test_taito.cpp),
 [X1-005 tests](../../tests/unit/test_taito_x1005.cpp),
@@ -98,7 +100,7 @@ See [mapper tests](../../tests/unit/test_mapper_boards.cpp),
   implementation-specific WRAM extension is not supplied.
 - Larger remaining families include other Bandai, Jaleco and Taito boards,
   further MMC3 derivatives and outer-bank variants,
-  J.Y./Sachen/TXC ASICs, flash-saving UNROM 512/GTROM, and Rainbow.
+  J.Y./Sachen/TXC ASICs, further homebrew boards, and Rainbow.
 - Jaleco's optional external ADPCM speech chips and sample-media loading remain
   unimplemented, including on some mapper-18/72/92 boards.
 - Enhanced consoles and copier/educational adapters may require machine or
@@ -1010,6 +1012,104 @@ no new diagnostics remain. Isolated agent-documentation validation reported zero
 errors and the existing 52 warnings. No physical Datach reader or commercial-game
 compatibility certification is claimed.
 
+## Flash-board follow-up: UNROM 512 and both mapper-111 circuits
+
+Mapper 30 implements [UNROM 512 revision 23183](https://www.nesdev.org/w/index.php?oldid=23183),
+including submappers 0–4, legacy battery-bit conflict selection, PRG/CHR latch
+wiring, fixed H/V or switchable single-screen CIRAM, submapper-3 H/V control and
+submapper-4 LED groups. Raw header nametable bits are retained to distinguish
+single-screen (`(flags6 & 9) == 8`) from cartridge four-screen RAM (`== 9`).
+Four-screen RAM aliases the final 8 KiB CHR-RAM bank and provides independent
+scratch bytes at `$3000–$3EFF`. The existing normalized nametable hooks retain
+their behavior; only opt-in boards receive raw upper nametable addresses.
+Palette routing and the per-pixel renderer's scroll increments stay unchanged.
+
+CHR-free mapper 111 implements [GTROM revision 24456](https://www.nesdev.org/w/index.php?oldid=24456).
+Its 32 KiB PRG bank, two pattern RAM banks and two nametable/bonus RAM banks
+follow the latch. Both `$5000–$5FFF` and `$7000–$7FFF` aliases respond to writes
+and reads; reads latch the actual external open-bus value, including dummy/DMA
+accesses. The new completed-read callback is a no-op for existing boards. Reads
+remain undriven. Logical active LED outputs are available through the core.
+Accesses use the bus's existing CPU access point, rather than modeling a separate
+sub-cycle latch delay. The board's 32 KiB PPU RAM includes all independent upper
+nametable bytes; palette addresses continue to use console palette RAM.
+
+CHR-ROM mapper 111 selects the [earlier direct MMC1 circuit, revision 24005](https://www.nesdev.org/w/index.php?oldid=24005).
+One write commits a register, including consecutive CPU writes; bit 7 is data,
+not a serial reset command. Six-bit CHR registers address up to 256 KiB in 4/8 KiB
+modes. Standard PRG modes, mirroring and optional 8 KiB PRG RAM are preserved.
+Mapper 1's serial writes, consecutive-write filtering and payload layout remain
+unchanged. Variant selection uses the documented CHR-ROM presence, with no ROM
+hash or title heuristic. All existing mapper/PPU/bus payloads and machine version
+20 are retained; only newly registered board payloads are added.
+
+`Sst39sf040` implements the [Microchip DS20005022F](https://ww1.microchip.com/downloads/aemDocuments/documents/MPD/ProductDocuments/DataSheets/SST39SF010A-SST39SF020A-SST39SF040-Data-Sheet-DS20005022.pdf)
+command sequences, A14–A0 command decoding, ID entry/exit, one-to-zero byte
+programming, 4 KiB sector erase, chip erase and DQ7/DQ6 busy polling (DQ6 high
+first). Writes, including F0 reset, are ignored while busy. Changes commit after
+32/36,000/144,000 M2 cycles for byte/sector/chip operations, respectively. These
+fixed durations fall within the datasheet maximums at supported NES clocks;
+analog completion races, wear and power-loss retention are not modeled. Soft
+reset retains the discrete latches, RAM and independently running flash. Startup
+latch zero is a deterministic policy, not a measurement of power-up randomness.
+Short power-of-two flash images initially mirror to populate the 512 KiB chip;
+subsequent writes modify physical flash locations independently.
+
+Flash persistence uses a complete 512 KiB chip image in the normal sibling or
+archive-content-hash `.sav`. The battery flag enables UNROM 512 flash, while
+GTROM always provides persistent flash even with that flag clear. No PRG-NVRAM
+header declaration is required for flash. Source files and immutable content
+hashes are preserved. Incoming short/oversized flash saves fail before cartridge
+replacement, leaving the active machine intact; explicit battery-save imports
+are rejection-safe too. Exports contain committed bytes only. Snapshots retain
+command prefixes, ID mode, pending operation/address/data/time, polling phase,
+RAM, latch and LED state. Read-only UNROM boards do not serialize their immutable
+PRG ROM or create a save. Staged machines retain the existing write-suppression
+policy. The direct MMC1 variant uses its ordinary RAM save rather than flash.
+
+Factories accept power-of-two 32–512 KiB flash-board PRG images and no CHR ROM.
+UNROM 512 accepts omitted or 8/16/32 KiB CHR RAM, GTROM omitted or 32 KiB total
+PPU RAM; explicit PRG RAM/NVRAM and CHR NVRAM are rejected. Submapper 2 conflicts
+with flash writes, and submapper 3 has no documented flash-save path, so their
+battery flags are rejected. Mapper-111 CHR-ROM profiles instead allow up to
+256 KiB PRG and CHR, no CHR RAM, and absent or 8 KiB PRG RAM/NVRAM with matching
+battery metadata. Legacy implicit WRAM is ignored for flash boards; legacy
+mapper-111 CHR-ROM profiles keep the existing MMC1 8 KiB RAM fallback.
+
+Physical cartridge certification, analog timing and graphical LED indicators
+remain open. GTMP3's external YX5200 MP3/WAV player and microSD media are not
+implemented. The unpublished Famiclone solder-jumper mode is not inferred from
+ordinary GTROM headers. Converted WXN files are not treated as real mapper 30;
+the documented mapper-176 conversion remains separate work.
+
+Validation: `just build` and `meson test -C buildDir --print-errorlogs
+--suite=mapperbus` passed all 44 tests. The mapper executable reported 30,180
+assertions in 236 cases; both IDs join the shared 79-board boot/replay matrix.
+All eight targeted ASan/UBSan suites passed serially with the macOS
+`detect_leaks=0` exception. After the submapper-3 correction, mapper/bus/PPU
+sanitizer suites also passed again. Full-chip snapshot tests bring the mapper
+sanitizer run close to the former 30-second limit, so its test timeout is now
+60 seconds. No assertion or validation was removed.
+
+Original tests cover JEDEC unlock/address decoding, ID/reset, bit clearing,
+DQ6/DQ7 polling, sector/chip erasure, busy snapshots and malformed fields;
+all UNROM wiring profiles, raw PPU scratch RAM and palette separation; GTROM
+read aliases, DMA halt-bus effects and LED/pattern banks; direct MMC1's full CHR
+width and real CPU/PPU execution. RAM-resident CPU programs self-flash both
+boards and replay pending operations. Complete-machine corrupt states roll
+back atomically. The submapper-3 header-ignore regression failed before the
+correction and now passes all four nametable flag combinations.
+
+CLI validation passed eight write/reload launches, eight invalid flash-save
+cases and two read-only UNROM profiles, using original raw ROMs and temporary
+sibling saves. Raw/ZIP/7z app tests separately verify complete chip persistence,
+immutable content hashes and source files. Staged machines do not write;
+truncated/oversized saves fail without replacing the active machine. All these
+fixtures use temporary storage roots. Scoped clang-tidy reported zero diagnostics
+for the changed code; formatting and whitespace checks passed. Isolated agent
+standards validation reported zero errors and the existing 52 warnings.
+No commercial-title or physical-cartridge compatibility certification is claimed.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -1055,7 +1155,7 @@ fallback. The registry rejects unsupported IDs.
 | 027 | Unlicensed VRC4 variant | Not registered | [r23209](https://www.nesdev.org/w/index.php?oldid=23209) |
 | 028 | Action 53 | New implementation: DiscreteMapper | [r21316](https://www.nesdev.org/w/index.php?oldid=21316) |
 | 029 | RET-CUFROM | Not registered | [r4093](https://www.nesdev.org/w/index.php?oldid=4093) |
-| 030 | UNROM 512 | Not registered | [r23183](https://www.nesdev.org/w/index.php?oldid=23183) |
+| 030 | UNROM 512 | New implementation: FlashBoards | [r23183](https://www.nesdev.org/w/index.php?oldid=23183) |
 | 031 | NSF-subset cartridge | New implementation: DiscreteMapper | [r19421](https://www.nesdev.org/w/index.php?oldid=19421) |
 | 032 | Irem G-101 | New implementation: Irem | [r23869](https://www.nesdev.org/w/index.php?oldid=23869) |
 | 033 | Taito TC0190 / TC0350 subset | New implementation: TaitoTc | [r24359](https://www.nesdev.org/w/index.php?oldid=24359) |
@@ -1136,7 +1236,7 @@ fallback. The registry rejects unsupported IDs.
 | 108 | FDS-to-cartridge boards | Not registered | [r21237](https://www.nesdev.org/w/index.php?oldid=21237) |
 | 109 | Board-specific specification | Not registered | [r4825](https://www.nesdev.org/w/index.php?oldid=4825) |
 | 110 | Board-specific specification | Not registered | [r4826](https://www.nesdev.org/w/index.php?oldid=4826) |
-| 111 | GTROM / earlier MMC1 variant | Not registered | [r24005](https://www.nesdev.org/w/index.php?oldid=24005) |
+| 111 | GTROM / earlier MMC1 variant | New implementation: FlashBoards / Mmc1 | [r24005](https://www.nesdev.org/w/index.php?oldid=24005) |
 | 112 | Board-specific specification | Not registered | [r23867](https://www.nesdev.org/w/index.php?oldid=23867) |
 | 113 | Board-specific specification | New implementation: DiscreteMapper | [r20481](https://www.nesdev.org/w/index.php?oldid=20481) |
 | 114 | Board-specific specification | Not registered | [r4858](https://www.nesdev.org/w/index.php?oldid=4858) |

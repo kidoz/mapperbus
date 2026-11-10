@@ -27,6 +27,8 @@ contains the following mapper IDs:
 | 69 | Sunsoft 5B | AY-style square channels |
 | 85 | VRC7 | FM |
 | 10 | MMC4 | — |
+| 30 | UNROM 512, submappers 0–4, CHR RAM, flash saves, mirroring and LED wiring | — |
+| 111 | GTROM with flash/bonus PPU RAM, or direct MMC1 with six-bit CHR-ROM banking | GTMP3 external playback unsupported |
 | 157 | Datach reader: barcode input, shared and optional cartridge EEPROM, CHR RAM and M2 IRQ | — |
 | 16, 153, 159 | Bandai FCG/LZ93D50: variant IRQs, Xicor EEPROM or gated WRAM, PPU-driven outer PRG banking | — |
 | 18 | Jaleco SS88006 with banked PRG/CHR, protected RAM and variable-width M2 IRQ | Optional external ADPCM speech unsupported |
@@ -45,7 +47,7 @@ contains the following mapper IDs:
 | 13, 34, 66, 70, 71, 78, 79, 87, 89, 93, 94, 97, 113, 140, 152, 180, 184 | Discrete cartridge boards | — |
 | 38, 46, 58, 61, 62, 81, 107, 145, 148, 149, 193, 200, 201, 203, 212, 213, 225, 226, 229, 231, 232, 240 | Additional latch boards and multicarts | — |
 
-The registry contains 91 cartridge IDs. See [mapper implementation coverage](mapper-implementation.md)
+The registry contains 93 cartridge IDs. See [mapper implementation coverage](mapper-implementation.md)
 for individual specifications, tested behavior, board limitations, and the full
 inventory of documented IDs still awaiting implementation. The expanded set has
 synthetic banking, IRQ, CPU/PPU integration and save-state coverage; this does
@@ -68,6 +70,11 @@ Bandai serial saves contain 128 or 256 physical EEPROM bytes; mapper 153 saves
 a separate shared reader save, and optional 128-byte cartridge save. Barcode
 injection is available through the core API and headless CLI; graphical barcode
 controls and physical-reader validation remain open. See the mapper ledger.
+
+Self-flashable boards persist a complete 512 KiB chip image in a separate `.sav`;
+GTROM also saves when the battery flag is clear. Source ROM files and their
+content identities stay unchanged. Programming/erase timing is approximate, and
+cartridge LEDs are exposed in the core without a graphical indicator.
 
 Source: [Mapper registry](../../src/core/mappers/mapper_registry.cpp) and
 [header parser](../../src/core/cartridge/ines_header.cpp).
