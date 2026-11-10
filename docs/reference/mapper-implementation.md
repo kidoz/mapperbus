@@ -4,12 +4,13 @@ This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
 complete.** Updated 2026-11-10 against the working-tree registry.
 
-There are **126 registered cartridge IDs**: the original 14, 53 added in the first
+There are **127 registered cartridge IDs**: the original 14, 53 added in the first
 batch, and Irem 32/65/77, Sunsoft 67/68, Taito 33/48/80/207/82/552, Jaleco 18/72/92/101,
 Namco 210, MMC3 variants 118/119, RAMBO-1 64/158, Bandai 16/153/159, and Datach
 157, UNROM 512 30, GTROM/direct MMC1 111, and J.Y. Company
 35/90/209/211/281/282/295/358/386/387/388/397, plus the sixteen Sachen/TXC
-IDs, Sachen MMC3 clones 262/512/513, Rex Soft's 263, and Nitra 250 detailed below.
+IDs, Sachen MMC3 clones 262/512/513, Rex Soft's 263, Nitra 250, and Kasheng 115
+detailed below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
 unusual ROM geometry.
@@ -18,6 +19,7 @@ unusual ROM geometry.
 
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
+| Kasheng SFC boards (follow-up) | 115 | MMC3/NROM PRG modes, independent outer PRG/CHR pins, solder-pad open-bus reads, zero-latch IRQ repeats, CPU execution and snapshots. |
 | Nitra MMC3 boards (follow-up) | 250 | Address-data registers, standard L401 and Queen Bee V PRG-A13 mux profiles, banking/IRQs, raw/archive selection and snapshot wiring validation. |
 | Rex Soft UNL-KOF97 (follow-up) | 263 | Scrambled register addresses/data pins, standard MMC3 banking and IRQs, header-selected WRAM/NVRAM, CPU execution, persistence and snapshots. |
 | Sachen Street Heroes (follow-up) | 262 | Physical-region CHR outer pins, banked ROM/RAM switching, four-screen VRAM, title jumper with partial bus drivers, shared MMC3 IRQs and snapshots. |
@@ -1684,6 +1686,88 @@ registration and passed after implementation. Scoped clang-tidy, formatting and
 whitespace checks passed. Isolated agent-documentation validation reported zero
 errors and the unchanged 52 warnings.
 
+## Kasheng mapper-115 follow-up: NROM override and independent controls
+
+Mapper 115 implements the Kǎshèng SFC-02B/-03/-004 register profile in `Mmc3`
+from [NESdev revision 21614](https://www.nesdev.org/w/index.php?oldid=21614).
+The low registers use an $E003 decoder: $6000 writes PRG mode/bank, $6001 writes
+the outer CHR bank, and $6002 reads three solder pads. Every aligned four-byte
+group through $7FFF aliases these ports. The controls are independent of the
+MMC3 WRAM gates; A001 disable/write-protect bits never block them.
+
+$6000 has bits `MPN.PPPp`. M (bit 7) selects NROM override, P (bit 6) supplies
+PRG A18 in every mode, N (bit 5) selects the NROM window size, and bit 4 is unused:
+
+| Mode | PRG mapping within the selected 256 KiB outer block |
+|---|---|
+| M=0 | MMC3 R6/R7 windows and fixed pages 30/31; ordinary PRG swapping applies |
+| M=1, N=0 | Low four register bits select one 16 KiB bank, mirrored twice |
+| M=1, N=1 | Low bits 3..1 select an aligned 32 KiB window; CPU A14 replaces p |
+
+P supplies A18 to switchable and fixed windows alike. In MMC3 mode R6/R7 retain
+five physical inner-bank bits; their A18 output cannot override P. MMC3 register
+writes continue during NROM override, so returning to MMC3 exposes the latest
+bank values. $6001 bit 0 supplies CHR A18 in 256 KiB units. Normal paired-bank
+rounding and inversion apply to the inner CHR registers; other $6001 bits are
+ignored. ROM writes never alter CHR data.
+
+`configure_board_jumpers(0..7)` selects the solder-pad value, default zero.
+Only D0–D2 drive $6002 reads; upper bits merge with CPU open bus. Mode/CHR ports
+are write-only, $6003 is unused, and other low reads remain undriven in this
+profile. Pad writes have no effect. The jumper API is available to core clients;
+no graphical or CLI pad-setting control is added.
+
+The supported profile accepts iNES and NES 2.0 submapper 0, 32–512 KiB PRG in
+8 KiB units, 8–512 KiB CHR ROM in 1 KiB units, and H/V CIRAM. ROM ranges follow
+the documented pins, with physical-size wrapping for smaller populations.
+CHR RAM/NVRAM, battery flags, four-screen headers and explicit NES 2.0 CPU
+RAM/NVRAM are rejected. Legacy iNES's default CPU-RAM field does not create a
+chip. The article establishes control-register behavior rather than a complete
+WRAM population survey: alternate RAM-bearing boards are outside this supported
+profile. No battery file is created.
+
+IRQ behavior uses the shared Sharp-style profile: latch zero causes repeated
+IRQs on successive rendered-scanline callbacks, including during NROM override.
+This is required by the documented Chinese Yuu Yuu Hakusho Final release. It
+does not reuse mapper 114's different zero-latch behavior. Exact A12 filtering
+and clone timing remain unverified; the existing MMC3 dot-260 approximation
+and ADR-001 PPU timing are unchanged. CPU fixtures inhibit APU frame IRQs and
+require at least two mapper IRQs before reporting success.
+
+The new snapshot payload appends masked PRG mode, CHR outer bank and solder-pad
+bytes to the compact MMC3 variant state. Loads validate bit 4, CHR range and pad
+range, along with ordinary bank/mirror/IRQ fields. Existing mapper payloads and
+machine version 20 remain unchanged. Reset clears the two control latches and
+retains configured pads under the existing MMC3 reset policy; clone-specific
+reset electrical behavior has not been measured.
+
+Tests exercise all 256 PRG control values in both MMC3 PRG modes, every CHR slot
+through inversion, paired banks, outer pin independence, write-only aliases,
+WRAM-gate bypass, all pad values and open bus, IRQ repeats, bounded metadata,
+component snapshots and invalid fields. Four original CPU programs cover both
+header formats and pad settings, verify full-window switching while executing,
+PPUDATA and CIRAM, and replay full-machine state with atomic malformed-state
+rollback. The shared boot/replay matrix now includes 113 boards. CLI smoke tests
+boot sixteen header/geometry/mirroring profiles, reject twelve invalid/obsolete
+headers, preserve ROMs and create no saves. No external emulator code was used;
+no commercial-title or physical-board certification is claimed.
+
+### Obsolete mapper 248 assignment
+
+[Mapper 248 revision 23288](https://www.nesdev.org/w/index.php?oldid=23288)
+identifies 248 as a mistaken assignment for games handled by mapper 115,
+including Bao Qing Tian. Its private-use reassignment is described as a proposal,
+not a separate documented cartridge circuit. The inventory therefore classifies
+248 as an obsolete duplicate and leaves it unregistered. Both core and CLI tests
+require an explicit unsupported-ID error; ROM headers are not rewritten or
+silently treated as 115.
+
+Validation passed the build, all 52 MapperBus test targets and eight serial
+ASan/UBSan suites with the macOS `detect_leaks=0` exception. The mapper executable
+passed 50,484 assertions across 318 cases. Scoped clang-tidy, formatting and
+whitespace checks passed. Isolated agent-documentation validation reported zero
+errors and the unchanged 52 warnings.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -1696,6 +1780,8 @@ the inspected 0–767 grid are not classified here.
 “New implementation” means the tested behavior described above. “Not registered”
 is an explicit remaining classification/implementation item, not a silent NROM
 fallback. The registry rejects unsupported IDs.
+Obsolete duplicates are classified separately; they do not imply another PCB
+or another registered cartridge ID.
 
 | ID | Specification identification | Implementation status | Source revision |
 |---:|---|---|---|
@@ -1814,7 +1900,7 @@ fallback. The registry rejects unsupported IDs.
 | 112 | Board-specific specification | Not registered | [r23867](https://www.nesdev.org/w/index.php?oldid=23867) |
 | 113 | Board-specific specification | New implementation: DiscreteMapper | [r20481](https://www.nesdev.org/w/index.php?oldid=20481) |
 | 114 | Board-specific specification | Not registered | [r4858](https://www.nesdev.org/w/index.php?oldid=4858) |
-| 115 | Board-specific specification | Not registered | [r21614](https://www.nesdev.org/w/index.php?oldid=21614) |
+| 115 | Kasheng SFC-02B/-03/-004 | New implementation: Mmc3 | [r21614](https://www.nesdev.org/w/index.php?oldid=21614) |
 | 116 | Board-specific specification | Not registered | [r22958](https://www.nesdev.org/w/index.php?oldid=22958) |
 | 117 | Board-specific specification | Not registered | [r4888](https://www.nesdev.org/w/index.php?oldid=4888) |
 | 118 | TxSROM / MMC3 | New implementation: Mmc3 variant | [r24058](https://www.nesdev.org/w/index.php?oldid=24058) |
@@ -1945,7 +2031,7 @@ fallback. The registry rejects unsupported IDs.
 | 244 | Board-specific specification | Not registered | [r5862](https://www.nesdev.org/w/index.php?oldid=5862) |
 | 245 | Board-specific specification | Not registered | [r5871](https://www.nesdev.org/w/index.php?oldid=5871) |
 | 246 | Board-specific specification | Not registered | [r22048](https://www.nesdev.org/w/index.php?oldid=22048) |
-| 248 | Board-specific specification | Not registered | [r23288](https://www.nesdev.org/w/index.php?oldid=23288) |
+| 248 | Obsolete duplicate of 115; private-use reassignment proposed | Obsolete; not registered | [r23288](https://www.nesdev.org/w/index.php?oldid=23288) |
 | 249 | T9552 | Not registered | [r20254](https://www.nesdev.org/w/index.php?oldid=20254) |
 | 250 | Nitra L401 / Queen Bee V | New implementation: Mmc3 | [r21044](https://www.nesdev.org/w/index.php?oldid=21044) |
 | 251 | Board-specific specification | Not registered | [r5898](https://www.nesdev.org/w/index.php?oldid=5898) |
