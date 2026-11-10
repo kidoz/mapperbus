@@ -51,6 +51,27 @@ namespace {
         return Sachen::validate_geometry(header, prg_size, chr_size);
     if (Txc::supports_mapper(header.mapper_number))
         return Txc::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 263U) {
+        if (!header.is_nes2 || header.submapper != 0U)
+            return std::unexpected("Mapper 263 requires NES 2.0 submapper 0");
+        if (prg_size < 0x8000U || prg_size > 0x80000U || prg_size % 0x2000U != 0U ||
+            chr_size < 0x2000U || chr_size > 0x40000U || chr_size % 0x400U != 0U)
+            return std::unexpected("Unsupported mapper-263 ROM geometry");
+        if (header.chr_ram_size != 0U || header.chr_nvram_size != 0U)
+            return std::unexpected("Mapper 263 supports CHR ROM without CHR RAM");
+        if (header.prg_ram_size > 0x2000U || header.prg_nvram_size > 0x2000U ||
+            header.prg_ram_size + header.prg_nvram_size > 0x2000U)
+            return std::unexpected("Mapper 263 WRAM exceeds 8 KiB");
+        const auto ram = header.prg_ram_size + header.prg_nvram_size;
+        if (ram != 0U && (ram & (ram - 1U)) != 0U)
+            return std::unexpected("Mapper 263 WRAM size must be a power of two");
+        if (header.has_battery != (header.prg_nvram_size != 0U))
+            return std::unexpected("Mapper 263 battery flag and NVRAM declaration disagree");
+        if (header.mirror_mode != MirrorMode::Horizontal &&
+            header.mirror_mode != MirrorMode::Vertical)
+            return std::unexpected("Mapper 263 supports ordinary H/V CIRAM");
+        return {};
+    }
     if (header.mapper_number == 262U) {
         if (!header.is_nes2 || header.submapper != 0U)
             return std::unexpected("Mapper 262 requires NES 2.0 submapper 0");
@@ -434,6 +455,7 @@ void register_builtin_mappers() {
     registry.register_mapper(118, make_factory<Mmc3>());
     registry.register_mapper(119, make_factory<Mmc3>());
     registry.register_mapper(262, make_factory<Mmc3>());
+    registry.register_mapper(263, make_factory<Mmc3>());
     registry.register_mapper(512, make_factory<Mmc3>());
     registry.register_mapper(513, make_factory<Mmc3>());
     registry.register_mapper(64, make_factory<Rambo1>());

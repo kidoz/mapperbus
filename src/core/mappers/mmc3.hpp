@@ -8,7 +8,7 @@
 
 namespace mapperbus::core {
 
-/// Mappers 4 (TxROM), 118 (TxSROM), 119 (TQROM), and Sachen clones 262/512/513.
+/// MMC3 (4), TxSROM (118), TQROM (119), Sachen 262/512/513, and KOF97 (263).
 /// PRG: 8 KB switchable banks, with mapper-513 outer banks up to 2 MiB
 /// CHR: 1 KB switchable banks, up to 512 KiB with mapper-262 outer pins
 /// Features: scanline IRQ counter, mirroring control, PRG RAM

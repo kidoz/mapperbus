@@ -15,11 +15,13 @@ namespace mapperbus::core {
 // Mapper 262: NESdev r7640. The four high CHR bits are selected by the
 // physical 2 KiB PPU region, independently of MMC3 CHR inversion. Its $C100
 // expansion decoder and normal $E001 MMC3 decoder are tentative in the source.
+// Mapper 263 / UNL-KOF97: NESdev r7642, CPU A12 replaces the MMC3 A0
+// register select, with permuted data pins on mapper-register writes only.
 Mmc3::Mmc3(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte> chr_rom)
     : prg_rom_(std::move(prg_rom)), chr_rom_(std::move(chr_rom)), use_chr_ram_(chr_rom_.empty()),
-      mapper_(header.mapper_number == 262U || header.mapper_number == 118U ||
-                      header.mapper_number == 119U || header.mapper_number == 512U ||
-                      header.mapper_number == 513U
+      mapper_(header.mapper_number == 262U || header.mapper_number == 263U ||
+                      header.mapper_number == 118U || header.mapper_number == 119U ||
+                      header.mapper_number == 512U || header.mapper_number == 513U
                   ? header.mapper_number
                   : 4U),
       initial_mirror_(header.mirror_mode), mirror_mode_(header.mirror_mode),
@@ -168,6 +170,13 @@ void Mmc3::write_prg(Address addr, Byte value) {
     }
     if (addr < 0x8000)
         return;
+
+    if (mapper_ == 263U) {
+        addr = static_cast<Address>((addr & 0xE000U) | ((addr >> 12U) & 1U));
+        const auto data = static_cast<unsigned>(value);
+        value = static_cast<Byte>((data & 0xD8U) | ((data & 0x20U) >> 4U) | ((data & 4U) << 3U) |
+                                  ((data & 2U) >> 1U) | ((data & 1U) << 2U));
+    }
 
     bool even = (addr & 0x01) == 0;
 
