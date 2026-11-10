@@ -51,6 +51,20 @@ namespace {
         return Sachen::validate_geometry(header, prg_size, chr_size);
     if (Txc::supports_mapper(header.mapper_number))
         return Txc::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 114U) {
+        if (header.is_nes2 && header.submapper > 1U)
+            return std::unexpected("Mapper 114 supports submappers 0 and 1");
+        if (prg_size < 0x8000U || prg_size > 0x80000U || prg_size % 0x2000U != 0U ||
+            chr_size < 0x2000U || chr_size > 0x80000U || chr_size % 0x400U != 0U)
+            return std::unexpected("Unsupported mapper-114 ROM geometry");
+        if (header.has_battery || header.chr_ram_size != 0U || header.chr_nvram_size != 0U ||
+            header.prg_nvram_size != 0U || (header.is_nes2 && header.prg_ram_size != 0U))
+            return std::unexpected("Mapper 114 supported profile requires PRG/CHR ROM without RAM");
+        if (header.mirror_mode != MirrorMode::Horizontal &&
+            header.mirror_mode != MirrorMode::Vertical)
+            return std::unexpected("Mapper 114 supports ordinary H/V CIRAM");
+        return {};
+    }
     if (header.mapper_number == 115U) {
         if (header.is_nes2 && header.submapper != 0U)
             return std::unexpected("Mapper 115 supports submapper 0");
@@ -485,6 +499,7 @@ void register_builtin_mappers() {
     registry.register_mapper(2, make_factory<Uxrom>());
     registry.register_mapper(3, make_factory<Cnrom>());
     registry.register_mapper(4, make_factory<Mmc3>());
+    registry.register_mapper(114, make_factory<Mmc3>());
     registry.register_mapper(115, make_factory<Mmc3>());
     registry.register_mapper(118, make_factory<Mmc3>());
     registry.register_mapper(119, make_factory<Mmc3>());
