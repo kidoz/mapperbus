@@ -4,12 +4,12 @@ This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
 complete.** Updated 2026-11-10 against the working-tree registry.
 
-There are **124 registered cartridge IDs**: the original 14, 53 added in the first
+There are **125 registered cartridge IDs**: the original 14, 53 added in the first
 batch, and Irem 32/65/77, Sunsoft 67/68, Taito 33/48/80/207/82/552, Jaleco 18/72/92/101,
 Namco 210, MMC3 variants 118/119, RAMBO-1 64/158, Bandai 16/153/159, and Datach
 157, UNROM 512 30, GTROM/direct MMC1 111, and J.Y. Company
 35/90/209/211/281/282/295/358/386/387/388/397, plus the sixteen Sachen/TXC
-IDs and Sachen MMC3 clones 262/512/513 detailed below.
+IDs, Sachen MMC3 clones 262/512/513, and Rex Soft's 263 detailed below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
 unusual ROM geometry.
@@ -18,6 +18,7 @@ unusual ROM geometry.
 
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
+| Rex Soft UNL-KOF97 (follow-up) | 263 | Scrambled register addresses/data pins, standard MMC3 banking and IRQs, header-selected WRAM/NVRAM, CPU execution, persistence and snapshots. |
 | Sachen Street Heroes (follow-up) | 262 | Physical-region CHR outer pins, banked ROM/RAM switching, four-screen VRAM, title jumper with partial bus drivers, shared MMC3 IRQs and snapshots. |
 | Sachen SA-9602B (follow-up) | 513 | PPU-selected outer PRG banks, fixed outer-zero windows, 32 KiB battery CHR RAM, shared MMC3 IRQs, snapshots and persistence. |
 | Sachen MMC3 clone (follow-up) | 512 | MMC3 PRG/CHR banking and IRQs, separate pattern/nametable RAM, four graphics modes, always-enabled WRAM, battery saves and snapshots. |
@@ -1532,6 +1533,77 @@ static-analysis cleanup. Scoped clang-tidy, formatting and whitespace checks
 passed. Isolated agent-documentation validation reported zero errors and the
 unchanged 52 warnings.
 
+## Rex Soft mapper-263 follow-up: UNL-KOF97
+
+Mapper 263 implements the MMC3 clone used by Rex Soft's The King of Fighters '97
+and Boogerman II: The Final Adventure, using
+[NESdev revision 7642](https://www.nesdev.org/w/index.php?oldid=7642).
+Its CPU A12 supplies the ordinary MMC3 register-select A0. The remaining low
+address bits are ignored, so each native port has 4096 aliases:
+
+| Native port | Ordinary MMC3 register |
+|---|---|
+| $8000 | $8000 bank select |
+| $9000 | $8001 bank data |
+| $A000 | $A000 mirroring |
+| $B000 | $A001 WRAM gates |
+| $C000 | $C000 IRQ latch |
+| $D000 | $C001 IRQ reload |
+| $E000 | $E000 IRQ disable/acknowledge |
+| $F000 | $E001 IRQ enable |
+
+The clone's written pins D0..D7 reach ordinary MMC3 pins D2,D0,D5,D3,D4,D1,D6,D7.
+For example, written $01 becomes $04, $02 becomes $01, and $20 becomes $02.
+This permutation applies to every mapper-register write at $8000–$FFFF. WRAM
+writes at $6000–$7FFF keep their original bytes, and PRG/CHR ROM reads are not
+permuted. Address and data normalization occurs before the shared MMC3 handler;
+PRG modes, six-bit PRG pins, paired CHR rounding, inversion, H/V CIRAM, WRAM
+protection and IRQ progress then use the existing implementation.
+
+The supported NES 2.0 submapper-0 profile accepts 32–512 KiB PRG in 8 KiB units
+and 8–256 KiB CHR ROM in 1 KiB units. CHR RAM/NVRAM, four-screen headers and
+nonzero submappers are rejected. These are normal MMC3 pin-range bounds rather
+than certification of every ROM population. Non-power-of-two sizes wrap by
+physical ROM size. CPU WRAM is absent unless explicitly declared in the header;
+volatile and nonvolatile portions may total at most 8 KiB, with a power-of-two
+total. The battery flag must agree with the presence of PRG NVRAM. These optional
+memory populations follow the shared MMC3 model; the source does not provide a
+complete physical memory survey for both titles.
+
+Snapshots store normalized MMC3 registers, RAM and partial IRQ state in the
+existing compact variant format. No additional latch, bus/PPU state field or
+machine-version change is needed. Old mapper payloads and machine version 20
+remain unchanged. Battery files contain only the header-declared NVRAM suffix
+of physical WRAM, without the register permutation; volatile prefixes stay out
+of saves. Existing bounded loading rejects oversized battery files atomically.
+Console reset follows shared MMC3 register/IRQ reset and RAM-retention policy.
+
+Original tests check all 256 data inputs at all eight ports against the existing
+compact MMC3 register/IRQ payload, using an independent pin table for expected
+values. Alias tests include both A0 levels and offsets across each 4 KiB range.
+Other tests verify full CHR values, paired banks, PRG masks/swaps, ROM protection,
+WRAM data/gates, mixed volatile/nonvolatile storage, IRQ progression, metadata,
+and malformed component states. Native CPU programs self-check banking,
+PPUDATA, CIRAM and mapper IRQs before full-machine replay and atomic rollback.
+The shared boot/replay matrix now includes 111 boards. CLI programs verify six
+self-check/reload launches across 2/4/8 KiB NVRAM, two volatile/no-WRAM boot
+profiles, ten invalid headers and unchanged source ROMs.
+
+The article notes that many KOF97 images were converted to mapper 4 and that
+some fail to inhibit APU frame IRQs. This implementation does not reinterpret
+such images or change APU behavior. Original CPU/CLI fixtures explicitly inhibit
+the APU frame IRQ so their handler observes the mapper. Clone-specific timing
+and exact A12 filtering remain unverified: the shared MMC3 IRQ path retains its
+dot-260 rendered-scanline approximation. No external emulator code was
+incorporated; no commercial-title or physical-board certification is claimed.
+
+Validation passed the build, all 50 MapperBus test targets and eight serial
+ASan/UBSan suites with the macOS `detect_leaks=0` exception. The mapper executable
+passed 39,607 assertions across 304 cases. Before registration, both initial
+native-mapper tests failed at factory creation; they passed after the change.
+Scoped clang-tidy, formatting and whitespace checks passed. Isolated agent
+documentation validation reported zero errors and the unchanged 52 warnings.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -1808,7 +1880,7 @@ fallback. The registry rejects unsupported IDs.
 | 260 | Board-specific specification | Not registered | [r22170](https://www.nesdev.org/w/index.php?oldid=22170) |
 | 261 | Board-specific specification | Not registered | [r18984](https://www.nesdev.org/w/index.php?oldid=18984) |
 | 262 | Sachen Street Heroes / UNL-SHERO | New implementation: Mmc3 | [r7640](https://www.nesdev.org/w/index.php?oldid=7640) |
-| 263 | Board-specific specification | Not registered | [r7642](https://www.nesdev.org/w/index.php?oldid=7642) |
+| 263 | Rex Soft UNL-KOF97 | New implementation: Mmc3 | [r7642](https://www.nesdev.org/w/index.php?oldid=7642) |
 | 264 | Board-specific specification | Not registered | [r24580](https://www.nesdev.org/w/index.php?oldid=24580) |
 | 265 | Board-specific specification | Not registered | [r21955](https://www.nesdev.org/w/index.php?oldid=21955) |
 | 266 | Board-specific specification | Not registered | [r7660](https://www.nesdev.org/w/index.php?oldid=7660) |
