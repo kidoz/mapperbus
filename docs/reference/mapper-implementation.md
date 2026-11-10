@@ -4,13 +4,13 @@ This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
 complete.** Updated 2026-11-10 against the working-tree registry.
 
-There are **129 registered cartridge IDs**: the original 14, 53 added in the first
+There are **130 registered cartridge IDs**: the original 14, 53 added in the first
 batch, and Irem 32/65/77, Sunsoft 67/68, Taito 33/48/80/207/82/552, Jaleco 18/72/92/101,
 Namco 210, MMC3 variants 118/119, RAMBO-1 64/158, Bandai 16/153/159, and Datach
 157, UNROM 512 30, GTROM/direct MMC1 111, and J.Y. Company
 35/90/209/211/281/282/295/358/386/387/388/397, plus the sixteen Sachen/TXC
-IDs, Sachen MMC3 clones 262/512/513, Rex Soft's 263, Nitra 250, and mappers 114/115/123
-detailed below.
+IDs, Sachen MMC3 clones 262/512/513, Rex Soft's 263, Nitra 250, mappers
+114/115/123, and T9552 249 / 4:5 detailed below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
 unusual ROM geometry.
@@ -19,6 +19,7 @@ unusual ROM geometry.
 
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
+| Waixing T9552 (follow-up) | 249; 4:5 profile | All eight address-scrambling patterns, legacy/canonical file order, optional WRAM, IRQs, CPU execution, snapshots and saves. |
 | Kasheng H2288 (follow-up) | 123 | Bank-index scrambling, $5800 PRG override, write-only open bus, ordinary CHR/CIRAM, default MMC3 IRQs, CPU execution and snapshots. |
 | Scrambled MMC3 boards (follow-up) | 114 | Both submapper address/index permutations, NROM override, CHR outer bank, non-repeating zero IRQ profile, native CPU execution and snapshots. |
 | Kasheng SFC boards (follow-up) | 115 | MMC3/NROM PRG modes, independent outer PRG/CHR pins, solder-pad open-bus reads, zero-latch IRQ repeats, CPU execution and snapshots. |
@@ -1926,6 +1927,78 @@ at unsupported factory creation before implementation, then passed. Scoped
 clang-tidy, formatting and whitespace checks passed. Isolated agent-documentation
 validation reported zero errors, 52 warnings and three infos, matching baseline.
 
+## T9552 follow-up: mapper 249 and mapper 4 submapper 5
+
+The Waixing T9552 profile follows [NESdev revision 20254](https://www.nesdev.org/w/index.php?title=T9552&oldid=20254)
+and the [43-319 PCB dump measurements](https://forums.nesdev.org/viewtopic.php?t=24314).
+Both headers describe the same circuit. Mapper 249 files use the bank order
+observed with pattern zero; NES 2.0 mapper 4 submapper 5 uses pattern two's
+canonical order. The loader preserves each file's order without rewriting its
+header or guessing from filenames. Mapper 4 submapper 0 remains ordinary MMC3.
+
+A write-only latch at `$5000–$5FFF`, mask `$F000`, selects four PRG patterns
+with D0–D1 and eight CHR patterns with D0–D2. Other data bits are ignored.
+Power-on selects zero, including for mapper 4:5; writing two makes a canonical
+file appear in ordinary MMC3 order. Low reads float, and A001 WRAM gates do not
+inhibit the latch. MMC3 register addresses and data retain their ordinary wiring.
+
+The source's columns identify MMC3 signals at physical ROM pins. Address routing
+maps the selected column into the file-order column: zero for 249, two for 4:5.
+PRG A14–A17 and CHR A12–A17 are permuted. Other address bits pass through.
+Apply this after MMC3 PRG-mode selection and CHR pair rounding/inversion, before
+wrapping by file size. In particular, do not modulo a small image's raw bank
+number before scrambling: disconnected high outputs can be routed into lower
+file address pins. Derived offsets are refreshed on latch/register writes.
+The published 249 example, pattern two with PRG bank two yielding file bank
+eight, has its own regression. PRG A18 passes through in 512 KiB files; that
+physical population is not established by the measurements.
+
+Factories accept legacy iNES 249 or NES 2.0 249:0 / 4:5, 32–512 KiB PRG in
+8 KiB units, 8–256 KiB CHR ROM in 1 KiB units, and H/V CIRAM. The supported
+TKROM/TLROM-like memory profiles allow no WRAM or one 8 KiB volatile/battery
+chip. NES 2.0 explicitly declares the population and requires a matching battery
+flag. Legacy battery images use 8 KiB NVRAM; legacy implied nonbattery RAM does
+not create a chip. CHR RAM/NVRAM, four-screen wiring, mixed/larger WRAM and
+unassigned 249 submappers are rejected. Non-power-of-two files use post-routing
+modulo wrapping. These are emulator geometry bounds, not certification of all
+physical populations. Legacy small dumps may need overdumped ordering; 4:5 is
+the documented canonical format that avoids that ambiguity.
+
+Ordinary MMC3 H/V control, A001 enable/write protection and the current IRQ
+counter remain shared. The implementation retains default Sharp-style zero-latch
+repeats and the existing dot-260 rendered-scanline approximation. Exact clone
+IRQ/A12 timing is unmeasured. Reset clears the T9552 latch under shared reset
+policy; only its power-on value is established by the source.
+
+Both new profiles use compact MMC3 snapshots plus a masked three-bit latch and
+validated immutable file-order marker. Loads reject invalid common fields,
+truncation and cross-order payloads; machine failures roll back atomically.
+Other mapper layouts, ordinary mapper-4 snapshots, machine version 20 and the
+4 MiB state cap are unchanged. Historical 4:5 snapshots produced by the former
+ordinary-MMC3 fallback are incompatible with the new profile. No bus/PPU timing
+or state fields were added. Battery files contain physical WRAM bytes without
+ROM address scrambling.
+
+Eleven direct tests cover both orders, all PRG/CHR data bytes, every pattern,
+PRG modes, CHR pairs/inversion/protection, post-routing small/non-power-of-two
+wrapping, all 4,096 control aliases under three WRAM gates, open bus, mirroring,
+reset, optional RAM/NVRAM, IRQ transitions and malformed/cross-order states.
+Five original CPU fixtures cover canonical, NES 2.0 legacy-order, iNES, and
+both battery profiles; each checks all patterns, PPUDATA, CIRAM, repeated IRQs
+and exact replay/rollback. The shared boot/replay matrix now contains 116 added
+IDs. CLI checks cover 26 header/memory profiles and 25 invalid headers, including
+12 CPU-verified 8 KiB save/reload cases. Smaller CLI cases are load/boot smoke;
+the full-order battery programs write a sentinel only after CPU assertions pass.
+ROM files remain unchanged. No external emulator source was incorporated.
+
+Validation passed `meson test -C buildDir --suite=mapperbus --print-errorlogs`
+(all 55 targets) and eight serial ASan/UBSan suites with the macOS
+`detect_leaks=0` exception. The complete mapper executable passed 256,358
+assertions across 346 cases. Before implementation, the two initial tests failed
+at unsupported mapper-249 creation and mapper-4:5 power-on bank selection.
+Scoped clang-tidy, formatting and whitespace checks passed. Isolated agent
+validation reported zero errors, 52 warnings and three infos, matching baseline.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -1947,7 +2020,7 @@ or another registered cartridge ID.
 | 001 | MMC1 / SxROM | Existing registration: Mmc1 | [r24550](https://www.nesdev.org/w/index.php?oldid=24550) |
 | 002 | UxROM | Existing registration: Uxrom | [r24147](https://www.nesdev.org/w/index.php?oldid=24147) |
 | 003 | CNROM | Existing registration: Cnrom | [r24346](https://www.nesdev.org/w/index.php?oldid=24346) |
-| 004 | MMC3 / MMC6 | Existing registration: Mmc3 | [r24445](https://www.nesdev.org/w/index.php?oldid=24445) |
+| 004 | MMC3 / MMC6, T9552 submapper 5 | Existing registration: Mmc3 (T9552 profile added) | [r24445](https://www.nesdev.org/w/index.php?oldid=24445) |
 | 005 | MMC5 / ExROM | Existing registration: Mmc5 | [r24329](https://www.nesdev.org/w/index.php?oldid=24329) |
 | 006 | FFE Magic Card | Not registered | [r18921](https://www.nesdev.org/w/index.php?oldid=18921) |
 | 007 | AxROM | Existing registration: Axrom | [r24152](https://www.nesdev.org/w/index.php?oldid=24152) |
@@ -2190,7 +2263,7 @@ or another registered cartridge ID.
 | 245 | Board-specific specification | Not registered | [r5871](https://www.nesdev.org/w/index.php?oldid=5871) |
 | 246 | Board-specific specification | Not registered | [r22048](https://www.nesdev.org/w/index.php?oldid=22048) |
 | 248 | Obsolete duplicate of 115; private-use reassignment proposed | Obsolete; not registered | [r23288](https://www.nesdev.org/w/index.php?oldid=23288) |
-| 249 | T9552 | Not registered | [r20254](https://www.nesdev.org/w/index.php?oldid=20254) |
+| 249 | Waixing T9552, legacy file order | New implementation: Mmc3 | [r20254](https://www.nesdev.org/w/index.php?oldid=20254) |
 | 250 | Nitra L401 / Queen Bee V | New implementation: Mmc3 | [r21044](https://www.nesdev.org/w/index.php?oldid=21044) |
 | 251 | Board-specific specification | Not registered | [r5898](https://www.nesdev.org/w/index.php?oldid=5898) |
 | 252 | Board-specific specification | Not registered | [r5906](https://www.nesdev.org/w/index.php?oldid=5906) |

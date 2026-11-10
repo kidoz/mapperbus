@@ -27,6 +27,7 @@ contains the following mapper IDs:
 | 69 | Sunsoft 5B | AY-style square channels |
 | 85 | VRC7 | FM |
 | 10 | MMC4 | — |
+| 249; 4 submapper 5 | Waixing T9552: all PRG/CHR scrambling patterns, both file orders, optional 8 KiB WRAM, IRQs and snapshots | Exact clone/A12 timing, reset behavior and 512 KiB board populations unverified |
 | 123 | Kasheng H2288: scrambled bank indices, $5800 NROM override, CHR/CIRAM, default repeating MMC3 IRQs and snapshots | ROM-only profile; exact clone IRQ/A12 timing and alternate RAM populations unverified |
 | 114 | SuperGame/Hosenkan MMC3: submappers 0/1 scrambling, NROM override, CHR outer bank, non-repeating IRQs and snapshots | ROM-only profile; tentative low decoder and exact clone IRQ behavior unverified |
 | 115 | Kasheng SFC boards: MMC3/NROM override, outer PRG/CHR banks, solder pads, repeating zero-latch IRQs and snapshots | ROM-only supported profile; exact clone/A12 timing unverified; pads use the core API |
@@ -59,7 +60,7 @@ contains the following mapper IDs:
 | 13, 34, 66, 70, 71, 78, 79, 87, 89, 93, 94, 97, 113, 140, 152, 180, 184 | Discrete cartridge boards | — |
 | 38, 46, 58, 61, 62, 81, 107, 145, 148, 149, 193, 200, 201, 203, 212, 213, 225, 226, 229, 231, 232, 240 | Additional latch boards and multicarts | — |
 
-The registry contains 129 cartridge IDs. See [mapper implementation coverage](mapper-implementation.md)
+The registry contains 130 cartridge IDs. See [mapper implementation coverage](mapper-implementation.md)
 for individual specifications, tested behavior, board limitations, and the full
 inventory of documented IDs still awaiting implementation. The expanded set has
 synthetic banking, IRQ, CPU/PPU integration and save-state coverage; this does
