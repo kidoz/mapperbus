@@ -573,12 +573,16 @@ void Mmc1::set_battery_ram(std::span<const Byte> data) {
 }
 
 std::span<const Byte> Mmc3::battery_ram() const {
+    if (mapper_ == 199U)
+        return fs309_nvram_;
     if (mapper_ == 513U)
         return chr_nvram_;
     return std::span<const Byte>(prg_ram_).subspan(prg_ram_size_ - nvram_size_, nvram_size_);
 }
 void Mmc3::set_battery_ram(std::span<const Byte> data) {
-    if (mapper_ == 513U) {
+    if (mapper_ == 199U) {
+        std::copy_n(data.begin(), std::min(data.size(), fs309_nvram_.size()), fs309_nvram_.begin());
+    } else if (mapper_ == 513U) {
         std::copy_n(data.begin(), std::min(data.size(), chr_nvram_.size()), chr_nvram_.begin());
     } else if (mapper_ == 4U && !t9552_) {
         restore_prg_ram(prg_ram_, data);

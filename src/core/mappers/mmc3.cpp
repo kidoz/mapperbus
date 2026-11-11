@@ -43,17 +43,21 @@ namespace mapperbus::core {
 // Mapper 198: NESdev r23191's TNROM640 compatibility model. Bank bit 6 selects
 // the 128 KiB chip; its unused upper address pins mirror banks $40-$4F.
 // Actual PCB/RAM circuitry remains unresolved (NESdev forum p=297200).
+// FS309 / 199: NESdev r23199. Conventional oversized PRG, fixed 8 KiB CHR RAM,
+// and battery-backed CPU $5000-$7FFF. The 32 KiB save layout uses CPU A0-A14
+// as offsets; unexposed cells are retained. Exact SRAM pin/gate wiring is unverified.
 Mmc3::Mmc3(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte> chr_rom)
     : prg_rom_(std::move(prg_rom)), chr_rom_(std::move(chr_rom)), use_chr_ram_(chr_rom_.empty()),
       mapper_(header.mapper_number == 74U || header.mapper_number == 192U ||
                       header.mapper_number == 194U || header.mapper_number == 195U ||
                       header.mapper_number == 196U || header.mapper_number == 197U ||
-                      header.mapper_number == 198U || header.mapper_number == 114U ||
-                      header.mapper_number == 115U || header.mapper_number == 123U ||
-                      header.mapper_number == 249U || header.mapper_number == 250U ||
-                      header.mapper_number == 262U || header.mapper_number == 263U ||
-                      header.mapper_number == 118U || header.mapper_number == 119U ||
-                      header.mapper_number == 512U || header.mapper_number == 513U
+                      header.mapper_number == 198U || header.mapper_number == 199U ||
+                      header.mapper_number == 114U || header.mapper_number == 115U ||
+                      header.mapper_number == 123U || header.mapper_number == 249U ||
+                      header.mapper_number == 250U || header.mapper_number == 262U ||
+                      header.mapper_number == 263U || header.mapper_number == 118U ||
+                      header.mapper_number == 119U || header.mapper_number == 512U ||
+                      header.mapper_number == 513U
                   ? header.mapper_number
                   : 4U),
       scramble_profile_(mapper_ == 114U && header.is_nes2 ? header.submapper : 0U),
@@ -67,7 +71,11 @@ Mmc3::Mmc3(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte
         mixed_chr_ram_size_ = header.is_nes2    ? header.chr_ram_size
                               : mapper_ == 192U ? 0x1000U
                                                 : 0x800U;
-    if (mapper_ == 198U) {
+    if (mapper_ == 199U) {
+        fs309_nvram_.resize(0x8000U);
+        prg_ram_size_ = 0x2000U; // CPU-visible base window; backing store is the full chip.
+        nvram_size_ = 0x2000U;
+    } else if (mapper_ == 198U) {
         mapper198_aux_ram_.resize(0x1000U);
         prg_ram_size_ = 0x2000U;
         nvram_size_ = 0x2000U;
@@ -245,7 +253,8 @@ Byte Mmc3::read_prg(Address addr) {
         if (!prg_ram_enabled_ || prg_ram_size_ == 0U) {
             return 0;
         }
-        return prg_ram_[(addr - 0x6000) % prg_ram_size_];
+        return mapper_ == 199U ? fs309_nvram_[addr & 0x7FFFU]
+                               : prg_ram_[(addr - 0x6000) % prg_ram_size_];
     }
     if (addr < 0x8000)
         return 0;
@@ -308,7 +317,10 @@ void Mmc3::write_prg(Address addr, Byte value) {
         write_expansion(addr, value);
     if (addr >= 0x6000 && addr < 0x8000) {
         if (prg_ram_enabled_ && !prg_ram_write_protected_ && prg_ram_size_ != 0U) {
-            prg_ram_[(addr - 0x6000) % prg_ram_size_] = value;
+            if (mapper_ == 199U)
+                fs309_nvram_[addr & 0x7FFFU] = value;
+            else
+                prg_ram_[(addr - 0x6000) % prg_ram_size_] = value;
         }
         return;
     }
@@ -354,7 +366,7 @@ void Mmc3::write_prg(Address addr, Byte value) {
             update_chr_banks();
         } else {
             // $8001: Bank data
-            const auto prg_mask = mapper_ == 198U ? 0x7FU : 0x3FU;
+            const auto prg_mask = mapper_ == 198U || mapper_ == 199U ? 0x7FU : 0x3FU;
             bank_registers_[bank_select_] =
                 (mapper_ != 4U || t9552_) && bank_select_ >= 6U ? value & prg_mask : value;
             if (bank_select_ < 6) {
@@ -471,6 +483,7 @@ Byte Mmc3::read_chr(Address addr) {
         if (const auto offset = fs303_chr_ram_offset(addr))
             return chr_ram_[*offset];
     if (use_chr_ram_) {
+        // FS309 intentionally uses this flat mapping, independent of CHR registers.
         return chr_ram_[addr % 0x2000];
     }
     uint8_t bank_index = (addr / 0x0400) & 0x07;
@@ -582,7 +595,7 @@ std::optional<Address> Mmc3::nametable_address(Address addr) const {
 }
 
 bool Mmc3::maps_expansion(Address addr) const {
-    if (mapper_ == 198U)
+    if (mapper_ == 198U || mapper_ == 199U)
         return (addr & 0xF000U) == 0x5000U;
     if (mapper_ == 195U)
         return fs303_aux_present_ && (addr & 0xF000U) == 0x5000U;
@@ -600,6 +613,8 @@ Byte Mmc3::expansion_read_mask(Address /*addr*/) const {
 }
 
 Byte Mmc3::read_expansion(Address addr) {
+    if (mapper_ == 199U && maps_expansion(addr))
+        return fs309_nvram_[addr & 0x7FFFU];
     if (mapper_ == 198U && maps_expansion(addr))
         return mapper198_aux_ram_[addr & 0xFFFU];
     if (mapper_ == 195U && maps_expansion(addr))
@@ -610,7 +625,9 @@ Byte Mmc3::read_expansion(Address addr) {
 void Mmc3::write_expansion(Address addr, Byte value) {
     if (!maps_expansion(addr))
         return;
-    if (mapper_ == 198U) {
+    if (mapper_ == 199U) {
+        fs309_nvram_[addr & 0x7FFFU] = value;
+    } else if (mapper_ == 198U) {
         mapper198_aux_ram_[addr & 0xFFFU] = value;
     } else if (mapper_ == 195U) {
         fs303_aux_ram_[addr & 0xFFFU] = value;
@@ -683,7 +700,10 @@ bool Mmc3::write_nametable(Address addr, Byte value) {
 // New board payloads serialize registers, never derived offsets or immutable
 // IRQ profiles. Keep mapper 4's historical payload in mapper_state.cpp intact.
 void Mmc3::save_variant_state(StateWriter& writer) const {
-    if (mapper_ == 513U) {
+    if (mapper_ == 199U) {
+        writer.write_bytes(fs309_nvram_);
+        writer.write_array(chr_ram_);
+    } else if (mapper_ == 513U) {
         writer.write_bytes(chr_nvram_);
     } else {
         writer.write_array(prg_ram_);
@@ -728,6 +748,8 @@ void Mmc3::save_variant_state(StateWriter& writer) const {
         writer.write<uint16_t>(0xC600U);
         writer.write_bytes(mapper198_aux_ram_);
     }
+    if (mapper_ == 199U)
+        writer.write<uint16_t>(0xC700U);
     if (t9552_) {
         writer.write(t9552_mode_);
         writer.write<Byte>(mapper_ == 249U ? 0U : 2U);
@@ -746,7 +768,14 @@ void Mmc3::save_variant_state(StateWriter& writer) const {
 }
 
 void Mmc3::load_variant_state(StateReader& reader) {
-    if (mapper_ == 513U) {
+    if (mapper_ == 199U) {
+        reader.read_bytes(fs309_nvram_, 0x8000U);
+        if (fs309_nvram_.size() != 0x8000U) {
+            fs309_nvram_.resize(0x8000U);
+            reader.fail();
+        }
+        reader.read_array(chr_ram_);
+    } else if (mapper_ == 513U) {
         reader.read_bytes(chr_nvram_, 0x8000U);
         if (chr_nvram_.size() != 0x8000U) {
             chr_nvram_.resize(0x8000U);
@@ -799,6 +828,7 @@ void Mmc3::load_variant_state(StateReader& reader) {
             reader.fail();
         }
     }
+    const auto fs309_tag = mapper_ == 199U ? reader.read<uint16_t>() : 0U;
     if (t9552_)
         reader.read(t9552_mode_);
     const auto t9552_order = t9552_ ? reader.read<Byte>() : Byte{0U};
@@ -819,8 +849,9 @@ void Mmc3::load_variant_state(StateReader& reader) {
     }
     const bool valid_mirror = mapper_ == 262U ? mirror == static_cast<Byte>(MirrorMode::FourScreen)
                                               : mirror <= static_cast<Byte>(MirrorMode::Vertical);
-    const auto prg_mask = mapper_ == 198U ? 0x7FU : 0x3FU;
+    const auto prg_mask = mapper_ == 198U || mapper_ == 199U ? 0x7FU : 0x3FU;
     if (!reader.ok() || mixed_chr_tag != mixed_chr_state_tag() || bank_select_ > 7U ||
+        (mapper_ == 199U && fs309_tag != 0xC700U) ||
         (mapper_ == 198U && mapper198_tag != 0xC600U) ||
         (mapper_ == 195U &&
          (fs303_tag != fs303_state_tag() || (fs303_chr_mode_ & 0xA5U) != 0x80U)) ||
