@@ -10,7 +10,7 @@ namespace mapperbus::core {
 
 /// MMC3 (4), scrambled 114, Kasheng (115/123), TxSROM (118), TQROM (119), Nitra (250),
 /// Sachen 262/512/513, KOF97 (263), T9552 (249 / 4:5), mixed CHR (74/192/194/195),
-/// and MRCM (196).
+/// MRCM (196), and larger CHR windows (197).
 /// PRG: 8 KB switchable banks, with mapper-513 outer banks up to 2 MiB
 /// CHR: 1 KB switchable banks, up to 512 KiB with mapper-114/115/262 outer pins
 /// Features: scanline IRQ counter, mirroring control, PRG RAM
@@ -93,8 +93,10 @@ class Mmc3 : public Mapper {
     Byte fs303_chr_mode_ = 0x80U;
     bool fs303_aux_present_ = false; // Immutable NES 2.0 memory population.
     std::vector<Byte> fs303_aux_ram_;
-    Byte mrcm_profile_ = 0U; // Immutable mapper-196 submapper; legacy uses profile zero.
-    Byte mrcm_prg_ = 0U;     // Bit 7: 32 KiB override; low nibble: physical bank.
+    Byte mrcm_profile_ = 0U;      // Immutable mapper-196 submapper; legacy uses profile zero.
+    Byte mrcm_prg_ = 0U;          // Bit 7: 32 KiB override; low nibble: physical bank.
+    Byte mapper197_profile_ = 0U; // Immutable CHR address-pin wiring.
+    Byte mapper197_prg_ = 0U;     // Submapper 3: S/P pins controlling PRG A17.
     std::size_t prg_ram_size_ = 0x2000;
     std::size_t nvram_size_ = 0x2000;
     MirrorMode initial_mirror_ = MirrorMode::Vertical;
