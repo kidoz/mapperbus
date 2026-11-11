@@ -51,6 +51,23 @@ namespace {
         return Sachen::validate_geometry(header, prg_size, chr_size);
     if (Txc::supports_mapper(header.mapper_number))
         return Txc::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 198U) {
+        if (header.is_nes2 && header.submapper != 0U)
+            return std::unexpected("Mapper 198 supports submapper 0");
+        if (prg_size != 0xA0000U || chr_size != 0U)
+            return std::unexpected(
+                "Mapper 198 requires 640 KiB PRG ROM and CHR RAM without CHR ROM");
+        if (!header.has_battery || header.chr_nvram_size != 0U ||
+            (header.is_nes2 &&
+             (header.prg_ram_size != 0x1000U || header.prg_nvram_size != 0x2000U ||
+              header.chr_ram_size != 0x2000U)))
+            return std::unexpected(
+                "Mapper 198 requires 4 KiB volatile CPU RAM, 8 KiB PRG NVRAM and 8 KiB CHR RAM");
+        if (header.mirror_mode != MirrorMode::Horizontal &&
+            header.mirror_mode != MirrorMode::Vertical)
+            return std::unexpected("Mapper 198 supports ordinary H/V CIRAM");
+        return {};
+    }
     if (header.mapper_number == 197U) {
         if (header.is_nes2 && header.submapper > 3U)
             return std::unexpected("Mapper 197 supports submappers 0 through 3");
@@ -628,6 +645,7 @@ void register_builtin_mappers() {
     registry.register_mapper(195, make_factory<Mmc3>());
     registry.register_mapper(196, make_factory<Mmc3>());
     registry.register_mapper(197, make_factory<Mmc3>());
+    registry.register_mapper(198, make_factory<Mmc3>());
     registry.register_mapper(249, make_factory<Mmc3>());
     registry.register_mapper(250, make_factory<Mmc3>());
     registry.register_mapper(262, make_factory<Mmc3>());
