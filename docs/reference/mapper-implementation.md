@@ -2,15 +2,16 @@
 
 This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
-complete.** Updated 2026-11-10 against the working-tree registry.
+complete.** Updated 2026-11-11 against the working-tree registry.
 
-There are **135 registered cartridge IDs**: the original 14, 53 added in the first
+There are **136 registered cartridge IDs**: the original 14, 53 added in the first
 batch, and Irem 32/65/77, Sunsoft 67/68, Taito 33/48/80/207/82/552, Jaleco 18/72/92/101,
 Namco 210, MMC3 variants 118/119, RAMBO-1 64/158, Bandai 16/153/159, and Datach
 157, UNROM 512 30, GTROM/direct MMC1 111, and J.Y. Company
 35/90/209/211/281/282/295/358/386/387/388/397, plus the sixteen Sachen/TXC
 IDs, Sachen MMC3 clones 262/512/513, Rex Soft's 263, Nitra 250, mappers
-114/115/123, T9552 249 / 4:5, mixed CHR 74/192/194/195, and MRCM 196 detailed below.
+114/115/123, T9552 249 / 4:5, mixed CHR 74/192/194/195, MRCM 196, and mapper 197
+detailed below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
 unusual ROM geometry.
@@ -19,6 +20,7 @@ unusual ROM geometry.
 
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
+| Larger MMC3 CHR windows (follow-up) | 197 | Four PPU pin-wiring profiles, 512 KiB CHR ROM, gated PRG A17 control, IRQs, CPU execution and validated snapshots. |
 | MRCM boards (follow-up) | 196 | Four register-address profiles, legacy heuristics, 32 KiB PRG override, CHR/CIRAM, IRQs, CPU execution and wiring-validated snapshots. |
 | Waixing FS303 (follow-up) | 195 | PPU-write-selected CHR RAM windows, shared physical RAM pages, optional $5000 RAM, MMC3 banking/IRQs, CPU execution, snapshots and saves. |
 | Mixed CHR at bank zero (follow-up) | 194 | Selective ROM/RAM, RAM-only bank mirroring, legacy/NES 2.0 populations, IRQs, CPU execution, configuration-tagged snapshots and saves. |
@@ -2287,6 +2289,68 @@ Formatting, scoped clang-tidy and whitespace checks passed. Isolated agent
 documentation validation reported zero errors, 52 warnings and three infos,
 matching baseline.
 
+## Mapper-197 follow-up: larger CHR windows and gated PRG A17
+
+Mapper 197 follows [NESdev revision 5527](https://www.nesdev.org/w/index.php?oldid=5527).
+Legacy iNES uses profile zero; NES 2.0 submappers zero–three select the documented
+wiring. Physical PPU A11 drives MMC3 PA10, while PA11 is grounded (zero/three),
+tied high (one), or also driven by A11 (two). Apply this wiring before MMC3 CHR
+inversion. MMC3's CHR bank output selects 2 KiB pages, and physical PPU A10
+passes directly to ROM A10. Preserve the full eight-bit bank output, reaching
+512 KiB of CHR ROM. The resulting non-inverted windows are:
+
+| Profile | $0000–$07FF | $0800–$0FFF | $1000–$17FF | $1800–$1FFF |
+|---|---|---|---|---|
+| 0, 3 | R0 even | R0 odd | R2 | R3 |
+| 1 | R1 even | R1 odd | R4 | R5 |
+| 2 | R0 even | R1 odd | R2 | R5 |
+
+Inversion swaps the two halves of each row after pin wiring. Registers excluded
+by a profile remain writable, without affecting that profile's CHR output.
+Pattern ROM ignores writes. Apply physical-size wrapping after address wiring.
+
+Submapper three's $6000–$7FFF latch retains data bits 3 (S) and 0 (P). With S
+clear, MMC3 drives PRG A17; with S set, P supplies A17. Writes require A001's
+RAM-enable bit and a clear write-protect bit. Use the 256 KiB raw PRG aperture
+with fixed pages 30/31, then apply the A17 mux to every window before wrapping.
+This avoids wrapping away the source pin on small/non-power-of-two ROMs. Other
+profiles retain ordinary six-bit MMC3 PRG banking and ignore this low latch.
+
+Supported factories require ROM-only H/V boards: 32–512 KiB PRG in 8 KiB units
+(up to 256 KiB for submapper three) and 8–512 KiB CHR in 2 KiB units. Reject
+unassigned submappers, RAM/NVRAM, battery flags, CHR-less images and alternate
+nametable layouts. Ignore legacy iNES's implied CPU RAM allocation. The low
+window is write-only, reads retain CPU open bus and no battery file is created.
+RAM-capable populations, exact clone/A12 timing and electrical reset behavior
+are unverified. Keep the existing repeating-zero/dot-260 MMC3 IRQ policy. Shared
+reset clears the mux and restores enabled/unprotected RAM-interface gates.
+
+New state appends a $C500-plus-profile wiring tag and the normalized S/P byte.
+Validate the immutable profile and unused bits; only submapper three can carry
+nonzero S/P state. Retain gate flags, pending IRQ progress and all MMC3 registers.
+Machine loads roll back atomically on corruption. Existing mapper payloads,
+machine version 20 and the 4 MiB state cap remain unchanged.
+
+Tests cover every CHR register value in all profiles and inversion modes, both
+physical A10 halves, full-size and wrapped ROMs, PRG modes, fixed/switchable A17
+selection, every gate/control byte and low-window alias, reset, IRQs, headers,
+open bus and malformed/cross-profile snapshots. Five original CPU programs
+cover legacy and NES 2.0 profiles zero–three, including gated PRG, CHR reads and
+write protection, CIRAM, positive/repeated-zero IRQs, replay and atomic rollback
+after live-register corruption. CLI smoke tests load 40 header/geometry/mirroring
+profiles and reject 14 invalid configurations while preserving inputs and
+creating no saves. Both initial regressions failed at factory creation before
+implementation.
+
+Validation: all 59 regular targets passed. All eight focused ASan+UBSan targets
+passed serially; the mapper target took 73.65 seconds within its configured
+120-second sanitizer timeout. Both builds passed 1,490,144 mapper assertions
+across 402 cases; the mapper-197 group passed 700,705 assertions across twelve
+cases. Formatting, scoped clang-tidy and whitespace checks passed. Isolated
+agent-document validation reported zero errors, 71 warnings and three infos,
+identical to the unchanged November 11 baseline. Nineteen documents crossed
+their verification freshness limit since the previous day's 52-warning run.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -2501,7 +2565,7 @@ or another registered cartridge ID.
 | 194 | MMC3 mixed CHR, RAM starting at bank zero | New implementation: Mmc3 | [r23951](https://www.nesdev.org/w/index.php?oldid=23951) |
 | 195 | Waixing FS303, PPU-write-selected mixed CHR | New implementation: Mmc3 | [r23952](https://www.nesdev.org/w/index.php?oldid=23952) |
 | 196 | MRCM MMC3 register wiring and 32 KiB PRG override | New implementation: Mmc3 | [r22320](https://www.nesdev.org/w/index.php?oldid=22320) |
-| 197 | Board-specific specification | Not registered | [r5527](https://www.nesdev.org/w/index.php?oldid=5527) |
+| 197 | MMC3 larger CHR windows, submapper-3 PRG A17 mux | New implementation: Mmc3 | [r5527](https://www.nesdev.org/w/index.php?oldid=5527) |
 | 198 | Board-specific specification | Not registered | [r23191](https://www.nesdev.org/w/index.php?oldid=23191) |
 | 199 | Board-specific specification | Not registered | [r23199](https://www.nesdev.org/w/index.php?oldid=23199) |
 | 200 | Board-specific specification | New implementation: DiscreteMapper | [r20921](https://www.nesdev.org/w/index.php?oldid=20921) |
