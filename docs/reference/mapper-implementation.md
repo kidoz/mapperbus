@@ -4,14 +4,14 @@ This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
 complete.** Updated 2026-11-12 against the working-tree registry.
 
-There are **138 registered cartridge IDs**: the original 14, 53 added in the first
+There are **139 registered cartridge IDs**: the original 14, 53 added in the first
 batch, and Irem 32/65/77, Sunsoft 67/68, Taito 33/48/80/207/82/552, Jaleco 18/72/92/101,
 Namco 210, MMC3 variants 118/119, RAMBO-1 64/158, Bandai 16/153/159, and Datach
 157, UNROM 512 30, GTROM/direct MMC1 111, and J.Y. Company
 35/90/209/211/281/282/295/358/386/387/388/397, plus the sixteen Sachen/TXC
 IDs, Sachen MMC3 clones 262/512/513, Rex Soft's 263, Nitra 250, mappers
 114/115/123, T9552 249 / 4:5, mixed CHR 74/192/194/195, MRCM 196, mapper 197,
-TNROM640 198, and Waixing FS309 199 detailed below.
+TNROM640 198, Waixing FS309 199, and the mapper-202 multicart detailed below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
 unusual ROM geometry.
@@ -20,6 +20,7 @@ unusual ROM geometry.
 
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
+| 150-in-1 multicart (follow-up) | 202 | Address-latched PRG/CHR, mirrored 16 KiB and consecutive-page 32 KiB modes, H/V CIRAM, CPU execution and compact validated snapshots. |
 | Waixing FS309 (follow-up) | 199 | Conventional PRG through 1 MiB, fixed CHR RAM, full-chip NVRAM persistence, IRQs, CPU execution and validated snapshots. |
 | TNROM640 compatibility model (follow-up) | 198 | Two-chip 640 KiB PRG banking, banked CHR RAM, separate auxiliary/NVRAM windows, IRQs, CPU execution, snapshots and battery saves. |
 | Larger MMC3 CHR windows (follow-up) | 197 | Four PPU pin-wiring profiles, 512 KiB CHR ROM, gated PRG A17 control, IRQs, CPU execution and validated snapshots. |
@@ -2479,6 +2480,57 @@ scoped clang-tidy and whitespace checks passed. Isolated agent documentation
 validation reported zero errors, 71 warnings and three infos, with findings
 identical to the pre-change November 12 baseline.
 
+## Mapper-202 follow-up: 150-in-1 address-latched multicart
+
+Mapper 202 follows [NESdev revision 5551](https://www.nesdev.org/w/index.php?oldid=5551),
+which identifies a 150-in-1 cartridge shipped with the SP60 Famiclone.
+Writes anywhere in $8000–$FFFF latch address A0–A3; CPU data and higher
+address bits are ignored. A1–A3 select a shared page for 16 KiB PRG and 8 KiB
+CHR. A0 selects vertical (zero) or horizontal (one) CIRAM. Reads never relatch.
+Ordinary mode mirrors the selected PRG page into both CPU windows. When A3
+and A0 are both set, use the 32 KiB mode described by the source.
+
+**32 KiB bank alignment remains a compatibility interpretation.** The text
+does not resolve odd page selections, and the linked schematic could not be
+retrieved during this implementation. MapperBus maps the selected 16 KiB page
+at $8000 and its successor at $C000, with three-bit wrap: page 5 selects 5/6,
+and page 7 selects 7/0. It does not align to an even pair. These choices are
+explicit regression expectations, not a hardware measurement. Power-on and
+soft reset normalize the latch to zero and select vertical CIRAM; actual
+electrical reset behavior also remains unverified.
+
+The supported profile accepts legacy iNES and NES 2.0 submapper zero,
+16–128 KiB PRG in 16 KiB units, 8–64 KiB CHR ROM in 8 KiB units, and H/V CIRAM.
+Smaller and non-power-of-two images wrap by physical ROM size after the
+three-bit page selection; this is an image compatibility policy. Reject
+other submappers, battery flags, declared NES 2.0 RAM/NVRAM, CHR RAM and other
+nametable layouts. The generic legacy PRG-RAM default does not create RAM.
+Unmapped CPU addresses retain all open-bus bits. There is no battery storage,
+IRQ or expansion audio in this profile; CHR ROM writes are ignored.
+
+New mapper-202 state contains only a $CA00 tag and a canonical four-bit latch.
+Recompute mirroring from the latch. Reject wrong tags, out-of-range latches
+and truncation; failed component loads restore the zero latch. Whole-machine
+loads roll back atomically. Existing mapper payloads, machine version 20 and
+the 4 MiB snapshot limit are unchanged.
+
+Tests cover every latch/data byte, every high write address, all one-through-eight
+PRG/CHR page counts in both header formats, ROM protection, low-address decode,
+open bus, reset and malformed state. Four original CPU programs verify both
+header formats and H/V metadata, odd and wrapping PRG pairs, CHR banking,
+CIRAM, snapshot replay and rollback. CLI smoke tests load twelve header/size
+profiles and reject fourteen invalid headers without modifying ROMs or creating
+saves; CPU completion is asserted by the unit fixtures, not by the CLI smoke.
+
+Validation: all 62 regular targets and all eight focused ASan+UBSan targets
+passed. The sanitizer mapper target took 74.50 seconds within its configured
+120-second timeout. Both builds passed 2,026,081 mapper assertions across 432
+cases; the mapper-202 group passed 229,184 assertions across nine cases. The
+two initial regressions failed at unsupported factory creation before the
+implementation. Formatting, scoped clang-tidy, whitespace and registry/ledger
+checks passed. Isolated agent-document validation reported zero errors,
+71 warnings and three infos, identical to the pre-change November 12 baseline.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -2698,7 +2750,7 @@ or another registered cartridge ID.
 | 199 | Waixing FS309, conventional oversized PRG and fixed CHR RAM | New implementation: Mmc3 | [r23199](https://www.nesdev.org/w/index.php?oldid=23199) |
 | 200 | Board-specific specification | New implementation: DiscreteMapper | [r20921](https://www.nesdev.org/w/index.php?oldid=20921) |
 | 201 | Board-specific specification | New implementation: DiscreteMapper | [r24516](https://www.nesdev.org/w/index.php?oldid=24516) |
-| 202 | Board-specific specification | Not registered | [r5551](https://www.nesdev.org/w/index.php?oldid=5551) |
+| 202 | 150-in-1 address-latched multicart; 32 KiB alignment compatibility policy | New implementation: DiscreteMapper | [r5551](https://www.nesdev.org/w/index.php?oldid=5551) |
 | 203 | Board-specific specification | New implementation: DiscreteMapper | [r5555](https://www.nesdev.org/w/index.php?oldid=5555) |
 | 204 | Board-specific specification | Not registered | [r5557](https://www.nesdev.org/w/index.php?oldid=5557) |
 | 205 | Board-specific specification | Not registered | [r5566](https://www.nesdev.org/w/index.php?oldid=5566) |
