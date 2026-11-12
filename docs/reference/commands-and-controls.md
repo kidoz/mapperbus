@@ -222,8 +222,8 @@ input. Invalid arguments and load/save failures return failure.
 
 For mapper 250, `--board-profile nitra-queen-bee-v` selects Queen Bee V's extra
 PRG wiring. The default is `nitra-l401`, which can also be selected explicitly.
-This works with raw ROMs and archive members; other mappers, FDS disks and unknown
-profile names are rejected. The choice applies to this run, and snapshots require
+This works with raw ROMs and archive members; Nitra profiles are rejected for
+other mappers and FDS disks. The choice applies to this run, and snapshots require
 the same PCB profile. For example:
 
 ```sh
@@ -231,6 +231,12 @@ the same PCB profile. For example:
 ```
 
 See [Nitra coverage and limits](mapper-implementation.md#nitra-mapper-250-follow-up-address-data-and-queen-bee-v-wiring).
+
+For mapper 205, `--board-profile jc-016-2-force-block3` selects the solder pad
+that redirects block 1 to block 3. The default is `jc-016-2`, also accepted
+explicitly. Snapshots require the same solder-pad profile. Unknown profile
+names and profiles belonging to a different mapper are rejected.
+See [JC-016-2 coverage and limits](mapper-implementation.md#mapper-205-follow-up-jc-016-2-block-pins-and-solder-pad).
 
 For Datach (mapper 157), `--barcode` accepts 8 EAN-8, 12 UPC-A or 13 EAN-13
 digits including the check digit. `--barcode-frame` schedules a scan before the

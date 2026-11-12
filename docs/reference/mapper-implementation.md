@@ -4,14 +4,14 @@ This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
 complete.** Updated 2026-11-12 against the working-tree registry.
 
-There are **139 registered cartridge IDs**: the original 14, 53 added in the first
+There are **140 registered cartridge IDs**: the original 14, 53 added in the first
 batch, and Irem 32/65/77, Sunsoft 67/68, Taito 33/48/80/207/82/552, Jaleco 18/72/92/101,
 Namco 210, MMC3 variants 118/119, RAMBO-1 64/158, Bandai 16/153/159, and Datach
 157, UNROM 512 30, GTROM/direct MMC1 111, and J.Y. Company
 35/90/209/211/281/282/295/358/386/387/388/397, plus the sixteen Sachen/TXC
 IDs, Sachen MMC3 clones 262/512/513, Rex Soft's 263, Nitra 250, mappers
 114/115/123, T9552 249 / 4:5, mixed CHR 74/192/194/195, MRCM 196, mapper 197,
-TNROM640 198, Waixing FS309 199, and the mapper-202 multicart detailed below.
+TNROM640 198, Waixing FS309 199, and multicarts 202/205 detailed below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
 unusual ROM geometry.
@@ -20,6 +20,7 @@ unusual ROM geometry.
 
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
+| JC-016-2 multicart (follow-up) | 205 | MMC3 block pins on both ROMs and fixed PRG banks, selectable solder pad, write-only low register, IRQs, CPU execution and compact validated snapshots. |
 | 150-in-1 multicart (follow-up) | 202 | Address-latched PRG/CHR, mirrored 16 KiB and consecutive-page 32 KiB modes, H/V CIRAM, CPU execution and compact validated snapshots. |
 | Waixing FS309 (follow-up) | 199 | Conventional PRG through 1 MiB, fixed CHR RAM, full-chip NVRAM persistence, IRQs, CPU execution and validated snapshots. |
 | TNROM640 compatibility model (follow-up) | 198 | Two-chip 640 KiB PRG banking, banked CHR RAM, separate auxiliary/NVRAM windows, IRQs, CPU execution, snapshots and battery saves. |
@@ -2531,6 +2532,82 @@ implementation. Formatting, scoped clang-tidy, whitespace and registry/ledger
 checks passed. Isolated agent-document validation reported zero errors,
 71 warnings and three infos, identical to the pre-change November 12 baseline.
 
+## Mapper-204 investigation: register specification still needed
+
+[NESdev revision 5557](https://www.nesdev.org/w/index.php?oldid=5557) identifies
+4-in-1, 64-in-1, 80-in-1 and 150-in-1 multicarts, but contains no register,
+banking, mirroring or reset description. The [mapper discussion](https://www.nesdev.org/wiki/Talk:Mapper)
+also lists usage without supplying a decoder. [CaH4e3's original changelog](https://cah4e3.shedevr.org.ru/fceultra.php)
+records a mapper-204 correction for a 64-in-1 dump in December 2003, but gives no
+register specification. The inspected Kevin Horton multicart indices and
+Krzysiobal mapper-204 cartridge search did not establish matching hardware wiring.
+The [JY-006 64-in-1 record](http://krzysiobal.com/carts/?action=view&id=268) has no
+mapper assignment; its title alone is insufficient to identify it as mapper 204.
+
+Keep 204 unregistered. A matched PCB schematic, register truth table or documented
+hardware trace is needed to establish write decoding, PRG/CHR bank equations,
+CIRAM selection, memory population and startup/reset behavior. Existing-emulator
+support and a shared multicart title do not establish those details. No mapping
+equations, ROM-size profile or synthetic success test were invented for this ID.
+The mapper-205 implementation below advances the broader mapper work using a
+published register specification; it does not close the mapper-204 gap.
+
+## Mapper-205 follow-up: JC-016-2 block pins and solder pad
+
+Mapper 205 follows [NESdev revision 5566](https://www.nesdev.org/w/index.php?oldid=5566),
+including Disch's register table and the JC-016-2 solder-pad note. All writes at
+$6000–$7FFF latch data bits 0–1. They select the outer PRG/CHR block immediately,
+independently of MMC3 A001 gates. The low window contains no SRAM; reads retain
+all CPU open-bus bits. Ordinary MMC3 registers remain at $8000–$FFFF.
+
+Apply the published AND/OR masks to MMC3 outputs, including fixed PRG pages,
+before physical-ROM wrapping:
+
+| Block | PRG AND / OR (8 KiB pages) | CHR AND / OR (1 KiB pages) |
+|---|---|---|
+| 0 | $1F / $00 | $FF / $000 |
+| 1 | $1F / $10 | $FF / $080 |
+| 2 | $0F / $20 | $7F / $100 |
+| 3 | $0F / $30 | $7F / $180 |
+
+Retain the OR overlap in block 1. Do not replace it with an ordinary independent
+outer bank. Normalize fixed PRG outputs to $3E/$3F before applying the block;
+deriving them from a smaller physical image first would change the wiring.
+CHR pairing and inversion precede the block pins, including CHR address bit 18.
+CHR ROM remains write-protected. Block writes preserve IRQ progress and CIRAM.
+
+The default `jc-016-2` profile uses the table directly. An optional solder pad
+redirects raw block 1 to effective block 3 for both ROMs. Select it before
+installation through `configure_board_jumpers(1)` or
+`configure_board_profile("jc-016-2-force-block3")`; value zero / `jc-016-2`
+restores ordinary wiring. The headless CLI uses the existing `--board-profile`
+option. Do not infer pad position from a filename or multicart menu title.
+
+The supported population is 32–512 KiB PRG in 8 KiB units, 8–512 KiB CHR ROM in
+1 KiB units, H/V CIRAM and legacy iNES / NES 2.0 submapper zero. Reject battery
+flags, declared NES 2.0 RAM/NVRAM, CHR RAM and alternate nametable/submapper
+metadata. Ignore the legacy parser's generic PRG-RAM default. Wrapping smaller
+or non-power-of-two ROMs after address-pin decoding is an image compatibility
+policy. Shared reset clears block/register/IRQ state, restores header mirroring
+and retains the physical solder pad. Exact electrical reset and clone/A12 IRQ
+behavior remain unverified; retain the shared repeating-zero/dot-260 IRQ model.
+
+New mapper-205 state omits unused RAM arrays. Its 18-byte payload stores the
+compact MMC3 registers/flags, a $CD00/$CD01 immutable pad tag and the canonical
+two-bit block latch. Validate the tag, latch and shared fields before rebuilding
+offsets. Failed component loads reset safely; whole-machine failures roll back
+atomically. Other mapper payloads, machine version 20 and the 4 MiB cap remain
+unchanged. There is no battery file or expansion audio.
+
+Regression tests cover all inner/outer data bits, PRG modes/fixed windows, CHR
+pairing/inversion/high address pins, every low-register address, A001 gates,
+open bus, smaller ROMs, reset, pad/profile selection and malformed snapshots.
+Eight original CPU fixtures exercise both headers, H/V metadata and pad states,
+ROM/CIRAM, positive and repeating-zero IRQs, replay and atomic rejection.
+CLI tests smoke-load fourteen geometry/profile combinations and reject fourteen
+invalid headers/profiles without changing ROMs or creating saves. CPU completion
+is asserted in unit fixtures; CLI loading is smoke coverage.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -2752,8 +2829,8 @@ or another registered cartridge ID.
 | 201 | Board-specific specification | New implementation: DiscreteMapper | [r24516](https://www.nesdev.org/w/index.php?oldid=24516) |
 | 202 | 150-in-1 address-latched multicart; 32 KiB alignment compatibility policy | New implementation: DiscreteMapper | [r5551](https://www.nesdev.org/w/index.php?oldid=5551) |
 | 203 | Board-specific specification | New implementation: DiscreteMapper | [r5555](https://www.nesdev.org/w/index.php?oldid=5555) |
-| 204 | Board-specific specification | Not registered | [r5557](https://www.nesdev.org/w/index.php?oldid=5557) |
-| 205 | Board-specific specification | Not registered | [r5566](https://www.nesdev.org/w/index.php?oldid=5566) |
+| 204 | Multicart usage documented; register/hardware specification still needed | Not registered | [r5557](https://www.nesdev.org/w/index.php?oldid=5557) |
+| 205 | JC-016-2 MMC3 block pins with selectable block-1-to-3 solder pad | New implementation: Mmc3 | [r5566](https://www.nesdev.org/w/index.php?oldid=5566) |
 | 206 | Namco 108/118 / DxROM | New implementation: Namco108 | [r23830](https://www.nesdev.org/w/index.php?oldid=23830) |
 | 207 | Taito X1-005 nametable variant | New implementation: TaitoX1005 | [r24116](https://www.nesdev.org/w/index.php?oldid=24116) |
 | 208 | Board-specific specification | Not registered | [r5614](https://www.nesdev.org/w/index.php?oldid=5614) |
