@@ -10,7 +10,7 @@ namespace mapperbus::core {
 
 /// MMC3 (4), scrambled 114, Kasheng (115/123), TxSROM (118), TQROM (119), Nitra (250),
 /// Sachen 262/512/513, KOF97 (263), T9552 (249 / 4:5), mixed CHR (74/192/194/195),
-/// MRCM (196), larger CHR windows (197), TNROM640 (198), and FS309 (199).
+/// MRCM (196), larger CHR windows (197), TNROM640 (198), FS309 (199), and JC-016-2 (205).
 /// PRG: 8 KB switchable banks, with mapper-513 outer banks up to 2 MiB
 /// CHR: 1 KB switchable banks, up to 512 KiB with mapper-114/115/262 outer pins
 /// Features: scanline IRQ counter, mirroring control, PRG RAM
@@ -54,6 +54,7 @@ class Mmc3 : public Mapper {
   private:
     void update_prg_banks();
     void update_chr_banks();
+    Byte mapper205_block() const;
     Byte chr_bank(Address addr) const;
     std::optional<std::size_t> mixed_chr_ram_offset(Address addr) const;
     uint16_t mixed_chr_state_tag() const;
@@ -75,8 +76,9 @@ class Mmc3 : public Mapper {
     Byte title_jumper_ = 0U;
     // Immutable mapper-250 PCB wiring selected before cartridge installation.
     bool nitra_prg_mux_ = false;
-    // Mapper 262: CHR outer pins/RAM select. Mapper 512: graphics mode.
+    // Mapper 262: CHR outer pins/RAM select. Mapper 512: graphics mode. Mapper 205: block.
     Byte board_mode_ = 0U;
+    bool mapper205_force_block3_ = false; // Immutable solder-pad configuration.
     // Mappers 114/115/123: PRG override; 114/115 CHR outer pin; 115 solder pads.
     Byte kasheng_prg_ = 0U;
     Byte kasheng_chr_ = 0U;
