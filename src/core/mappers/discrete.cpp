@@ -5,6 +5,9 @@
 #include "core/state/state.hpp"
 
 namespace mapperbus::core {
+namespace {
+constexpr uint16_t kMapper202StateTag = 0xCA00U;
+} // namespace
 
 // docs/reference/mapper-implementation.md records NESdev source revisions for
 // these explicit board cases, including unresolved electrical behavior.
@@ -52,6 +55,7 @@ void DiscreteMapper::reset() {
     case 61U:
     case 62U:
     case 200U:
+    case 202U:
     case 212U:
     case 213U:
     case 225U:
@@ -141,6 +145,13 @@ std::size_t DiscreteMapper::prg_offset(Address address) const {
     case 201U:
         bank = latched_address & 0xFFU;
         break;
+    case 202U:
+        bank = (latched_address >> 1U) & 7U;
+        // Compatibility interpretation of NESdev r5551: the upper window
+        // advances one 16 KiB page in 32 KiB mode, without pair alignment.
+        if ((latched_address & 9U) == 9U && addr >= 0xC000U)
+            bank = (bank + 1U) & 7U;
+        return bank * 0x4000U + (addr & 0x3FFFU);
     case 203U:
         return (value >> 2U) * 0x4000U + (addr & 0x3FFFU);
     case 212U:
@@ -309,6 +320,10 @@ void DiscreteMapper::write_prg(Address addr, Byte data) {
     if (addr < 0x8000U)
         return;
     switch (mapper_) {
+    case 202U:
+        address_latch_ = addr & 15U;
+        mirror_ = (addr & 1U) != 0U ? MirrorMode::Horizontal : MirrorMode::Vertical;
+        return;
     case 46U:
     case 107U:
     case 203U:
@@ -484,6 +499,9 @@ std::size_t DiscreteMapper::chr_offset(Address address) const {
     case 201U:
         bank = latched_address & 0xFFU;
         break;
+    case 202U:
+        bank = (latched_address >> 1U) & 7U;
+        break;
     case 203U:
         bank = value & 3U;
         break;
@@ -561,6 +579,11 @@ MirrorMode DiscreteMapper::mirror_mode() const {
 }
 
 void DiscreteMapper::save_state(StateWriter& writer) const {
+    if (mapper_ == 202U) {
+        writer.write(kMapper202StateTag);
+        writer.write(static_cast<Byte>(address_latch_));
+        return;
+    }
     writer.write_array(registers_);
     writer.write(address_latch_);
     writer.write(register_select_);
@@ -571,6 +594,18 @@ void DiscreteMapper::save_state(StateWriter& writer) const {
 }
 
 void DiscreteMapper::load_state(StateReader& reader) {
+    if (mapper_ == 202U) {
+        const auto tag = reader.read<uint16_t>();
+        const auto latch = reader.read<Byte>();
+        if (!reader.ok() || tag != kMapper202StateTag || latch > 15U) {
+            reset();
+            reader.fail();
+            return;
+        }
+        address_latch_ = latch;
+        mirror_ = (latch & 1U) != 0U ? MirrorMode::Horizontal : MirrorMode::Vertical;
+        return;
+    }
     reader.read_array(registers_);
     reader.read(address_latch_);
     reader.read(register_select_);

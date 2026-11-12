@@ -51,6 +51,20 @@ namespace {
         return Sachen::validate_geometry(header, prg_size, chr_size);
     if (Txc::supports_mapper(header.mapper_number))
         return Txc::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 202U) {
+        if (header.is_nes2 && header.submapper != 0U)
+            return std::unexpected("Mapper 202 supports submapper 0");
+        if (prg_size < 0x4000U || prg_size > 0x20000U || prg_size % 0x4000U != 0U ||
+            chr_size < 0x2000U || chr_size > 0x10000U || chr_size % 0x2000U != 0U)
+            return std::unexpected("Unsupported mapper-202 ROM geometry");
+        if (header.has_battery || header.chr_ram_size != 0U || header.chr_nvram_size != 0U ||
+            (header.is_nes2 && (header.prg_ram_size != 0U || header.prg_nvram_size != 0U)))
+            return std::unexpected("Mapper 202 supports ROM-only board memory");
+        if (header.mirror_mode != MirrorMode::Horizontal &&
+            header.mirror_mode != MirrorMode::Vertical)
+            return std::unexpected("Mapper 202 supports ordinary H/V CIRAM");
+        return {};
+    }
     if (header.mapper_number == 199U) {
         if (header.is_nes2 && header.submapper != 0U)
             return std::unexpected("Mapper 199 supports submapper 0");
@@ -722,8 +736,8 @@ void register_builtin_mappers() {
     for (const uint16_t id : {76, 88, 95, 154, 206}) {
         registry.register_mapper(id, make_factory<Namco108>());
     }
-    for (const uint16_t id : {38,  46,  58,  61,  62,  81,  107, 145, 148, 149, 193,
-                              200, 201, 203, 212, 213, 225, 226, 229, 231, 232, 240}) {
+    for (const uint16_t id : {38,  46,  58,  61,  62,  81,  107, 145, 148, 149, 193, 200,
+                              201, 202, 203, 212, 213, 225, 226, 229, 231, 232, 240}) {
         registry.register_mapper(id, make_factory<DiscreteMapper>());
     }
 }
