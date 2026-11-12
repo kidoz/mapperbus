@@ -2608,6 +2608,15 @@ CLI tests smoke-load fourteen geometry/profile combinations and reject fourteen
 invalid headers/profiles without changing ROMs or creating saves. CPU completion
 is asserted in unit fixtures; CLI loading is smoke coverage.
 
+Validation: all 63 regular targets and all eight focused ASan+UBSan targets
+passed. The sanitizer mapper target took 79.78 seconds within its configured
+120-second timeout. Both builds passed 2,233,285 mapper assertions across 442
+cases; mapper 205 passed 207,189 assertions across ten cases. The three initial
+regressions failed at unsupported factory creation before implementation.
+Formatting, scoped clang-tidy, whitespace and registry/ledger checks passed.
+Isolated agent-document validation reported zero errors, 71 warnings and three
+infos, identical to the pre-change November 12 baseline.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
