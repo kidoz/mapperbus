@@ -11,7 +11,7 @@ namespace mapperbus::core {
 /// MMC3 (4), scrambled 114, Kasheng (115/123), TxSROM (118), TQROM (119), Nitra (250),
 /// Sachen 262/512/513, KOF97 (263), T9552 (249 / 4:5), mixed CHR (74/192/194/195),
 /// MRCM (196), larger CHR windows (197), TNROM640 (198), FS309 (199), JC-016-2 (205),
-/// Gouder / JJ-01 (208), and Sugar Softec (215).
+/// Gouder / JJ-01 (208), Sugar Softec (215), and Kasheng A9461 (219).
 /// PRG: 8 KB switchable banks, with outer banks up to 2 MiB on 215/513
 /// CHR: 1 KB switchable banks, up to 2 MiB with mapper-215 outer pins
 /// Features: scanline IRQ counter, mirroring control, PRG RAM
@@ -58,6 +58,7 @@ class Mmc3 : public Mapper {
     Byte mapper205_block() const;
     uint32_t sugar_address(uint32_t addr, bool chr) const;
     void write_gouder_bank(Byte value);
+    void write_a9461_bank(Byte value);
     Byte chr_bank(Address addr) const;
     std::optional<std::size_t> mixed_chr_ram_offset(Address addr) const;
     uint16_t mixed_chr_state_tag() const;
@@ -89,6 +90,13 @@ class Mmc3 : public Mapper {
     Byte sugar_prg_ = 0U;
     Byte sugar_outer_ = 0x0FU;
     Byte sugar_scramble_ = 0U;
+    // Mapper 219: independent MMC3/extended register files and shared outer pins.
+    Byte a9461_select_ = 0U;
+    bool a9461_extended_ = false;
+    Byte a9461_chr_latch_ = 0U;
+    Byte a9461_outer_ = 3U;
+    std::array<Byte, 4> a9461_prg_{};
+    std::array<Byte, 8> a9461_chr_{};
     // Mappers 114/115/123: PRG override; 114/115 CHR outer pin; 115 solder pads.
     Byte kasheng_prg_ = 0U;
     Byte kasheng_chr_ = 0U;
