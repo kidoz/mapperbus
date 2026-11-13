@@ -4,14 +4,15 @@ This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
 complete.** Updated 2026-11-13 against the working-tree registry.
 
-There are **141 registered cartridge IDs**: the original 14, 53 added in the first
+There are **142 registered cartridge IDs**: the original 14, 53 added in the first
 batch, and Irem 32/65/77, Sunsoft 67/68, Taito 33/48/80/207/82/552, Jaleco 18/72/92/101,
 Namco 210, MMC3 variants 118/119, RAMBO-1 64/158, Bandai 16/153/159, and Datach
 157, UNROM 512 30, GTROM/direct MMC1 111, and J.Y. Company
 35/90/209/211/281/282/295/358/386/387/388/397, plus the sixteen Sachen/TXC
 IDs, Sachen MMC3 clones 262/512/513, Rex Soft's 263, Nitra 250, mappers
 114/115/123, T9552 249 / 4:5, mixed CHR 74/192/194/195, MRCM 196, mapper 197,
-TNROM640 198, Waixing FS309 199, multicarts 202/205, and Gouder/JJ-01 208 detailed below.
+TNROM640 198, Waixing FS309 199, multicarts 202/205, Gouder/JJ-01 208, and
+Sugar Softec 215 detailed below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
 unusual ROM geometry.
@@ -20,6 +21,7 @@ unusual ROM geometry.
 
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
+| Sugar Softec (follow-up) | 215 | Both outer-pin submappers, eight address/index scrambling modes, MMC3/NROM banking, CHR/CIRAM, IRQs, CPU execution and compact validated snapshots. |
 | Gouder / JJ-01 (follow-up) | 208 | Both submappers, 32 KiB PRG control, XOR protection and executable registers, CHR/CIRAM, IRQs, CPU execution and compact validated snapshots. |
 | JC-016-2 multicart (follow-up) | 205 | MMC3 block pins on both ROMs and fixed PRG banks, selectable solder pad, write-only low register, IRQs, CPU execution and compact validated snapshots. |
 | 150-in-1 multicart (follow-up) | 202 | Address-latched PRG/CHR, mirrored 16 KiB and consecutive-page 32 KiB modes, H/V CIRAM, CPU execution and compact validated snapshots. |
@@ -2689,6 +2691,101 @@ before implementation. Formatting, scoped clang-tidy, whitespace and registry/
 ledger checks passed. Isolated agent-document validation reported zero errors,
 72 warnings and three infos, unchanged from the pre-change November 13 baseline.
 
+## Mapper-214 investigation: register specification still missing
+
+[NESdev revision 5675](https://www.nesdev.org/w/index.php?oldid=5675)
+identifies Super Gun 20-in-1 but provides no register addresses, data/address-bit
+decode, PRG/CHR routing, CIRAM control or reset behavior. The
+[mapper discussion](https://www.nesdev.org/wiki/Talk:Mapper) also lists this
+cartridge under undocumented/unimplemented mappers. Neither identification
+establishes a banking specification. Mapper 81's separately documented Super Gun
+board must not be assumed to describe this multicart.
+
+Mapper 214 remains explicitly unregistered. A matching schematic, measured
+register truth table or published hardware/register description is needed before
+implementation. No behavior was inferred from a ROM filename or copied from
+another emulator. The next implementable documented slot in this pass is 215.
+
+## Mapper-215 follow-up: Sugar Softec scrambling and outer banks
+
+Mapper 215 implements the register specification in
+[NESdev revision 5704](https://www.nesdev.org/w/index.php?oldid=5704).
+Its numeric permutation tables are functional specification data; the code is
+original and no external emulator implementation was read or incorporated.
+NES 2.0 submapper 0 selects UNL-8237; submapper 1 selects UNL-8237A. Legacy
+iNES selects profile 0. Neither titles nor checksums choose a different profile.
+
+Three write-only ports use address mask $F007: $5000 controls PRG override and
+bank width, $5001 selects outer banks, and $5007 selects one of eight scrambling
+patterns. Other low ports float. Low writes bypass MMC3 A001 gates. Scramble
+the $E001-decoded MMC3 register address first, then permute only the low three
+bits of writes reaching logical $8000. Preserve its PRG/CHR mode bits; ordinary
+bank data, mirroring, RAM-gate and IRQ writes retain their original data bits.
+Patterns 5–7 use identity address and index mappings.
+
+| ROM output | UNL-8237 source bits in $5001 | UNL-8237A source bits in $5001 |
+|---|---|---|
+| PRG A18/A19[/A20] | D0/D1 | D0/D1/D3 |
+| CHR A18/A19[/A20] | D2/D3 | D1/D2/D3 |
+| PRG A17 when $5000 D6 is set | D4 | D4 |
+| CHR A17 when $5000 D6 is set | D5 | D5 |
+
+With $5000 D6 clear, retain the inner A17 outputs for 256 KiB outer windows.
+When set, replace them for 128 KiB windows. These pins affect switchable and
+fixed MMC3 PRG banks and paired/inverted CHR banks before physical ROM wrapping.
+Raw fixed PRG outputs are $3E/$3F, independent of fitted image size. D7 of $5000
+overrides PRG with its low-nibble 16 KiB page in both CPU halves; D5 replaces
+the page's low bit with CPU A14 for aligned 32 KiB NROM mode. MMC3 registers
+continue accepting writes during override and become visible again when it
+is cleared. CHR remains MMC3-controlled and write-protected in every PRG mode.
+Outer/mode/scrambling writes preserve CIRAM selection and IRQ progress.
+
+Supported profiles are H/V CIRAM, PRG 32 KiB–1 MiB (profile 0) or 2 MiB
+(profile 1), in 8 KiB units; CHR ROM 8 KiB–1/2 MiB respectively, in 1 KiB
+units. These maxima are decoder bounds, not verified physical chip populations.
+This implementation supports ROM-only boards. Reject declared RAM/NVRAM,
+battery, CHR-RAM, alternate CIRAM and unknown submappers. Ignore legacy generic
+PRG-RAM metadata. Optional SRAM populations are not established by this article
+and are not modeled. No speculative $6xxx control aliases or mapper-258 readable
+protection ports are exposed. Smaller and non-power-of-two images wrap after pin
+decoding as an explicit compatibility policy. Independent PRG/CHR wrapping also
+supports the article's single-game dumps with a forced PRG A18 solder pad.
+
+Initialize $5000/$5007 to zero and canonicalize $5001's documented $xF value to
+$0F. A reset restores those defaults along with shared MMC3 registers, header
+mirroring and IRQ state. The article documents outer-register reset on M2
+interruption; unknown power-up bits, exact reset effects on the remaining clone
+registers and clone IRQ/A12 circuitry remain unverified. Retain the shared
+repeating-zero/dot-260 IRQ policy. There is no expansion audio or battery file.
+
+New 20-byte snapshots omit unused RAM, retain compact MMC3 fields, and append
+the immutable $D700/$D701 wiring tag plus three canonical control bytes.
+Validate the tag, register masks and shared fields before rebuilding offsets.
+Component failures reset safely; whole-machine failures roll back atomically.
+Existing board payloads, machine version 20 and the 4 MiB state cap are unchanged.
+
+Regressions cover both wirings, all eight scrambling patterns and select bytes,
+PRG override combinations, fixed banks, CHR pairing/inversion, low and MMC3 port
+aliases, unused bits, open bus, A001 gates, smaller/non-power-of-two ROMs,
+positive/repeating-zero IRQs, reset and malformed/truncated/wrong-profile states.
+Six original CPU fixtures cover both submappers, legacy/NES 2.0 and H/V headers,
+all scrambling modes, banked instruction fetches, CHR/CIRAM, production IRQs,
+deterministic replay and failed-load rollback. CLI tests smoke-load eighteen
+profiles and reject twenty-two invalid headers without changing ROMs or creating
+saves; CPU completion is asserted by the unit fixtures.
+
+Validation: all 65 regular targets (including required GPU checks) and all eight
+focused ASan+UBSan targets passed. The sanitizer mapper target took 84.32 seconds
+within its configured 120-second timeout. Both builds passed 3,327,826 mapper
+assertions across 462 cases; mapper 215 passed 379,074 assertions across eleven
+cases. The initial power-up regression failed at unsupported factory creation
+before implementation. An isolated run exposed a test-fixture registry setup
+dependency; the helper now initializes its own registry. Final focused and
+isolated loading/CPU cases pass in both builds. Formatting, scoped clang-tidy,
+whitespace and registry/ledger checks passed. Isolated agent-document validation
+reported zero errors, 72 warnings and three infos across 193 documents, unchanged
+from the pre-change November 13 baseline.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -2920,8 +3017,8 @@ or another registered cartridge ID.
 | 211 | J.Y. Company ASIC | New implementation: JyCompany | [r24184](https://www.nesdev.org/w/index.php?oldid=24184) |
 | 212 | Board-specific specification | New implementation: DiscreteMapper | [r24309](https://www.nesdev.org/w/index.php?oldid=24309) |
 | 213 | Board-specific specification | New implementation: DiscreteMapper | [r5674](https://www.nesdev.org/w/index.php?oldid=5674) |
-| 214 | Board-specific specification | Not registered | [r5675](https://www.nesdev.org/w/index.php?oldid=5675) |
-| 215 | Board-specific specification | Not registered | [r5704](https://www.nesdev.org/w/index.php?oldid=5704) |
+| 214 | Super Gun 20-in-1 (identification only) | Not registered: register specification missing | [r5675](https://www.nesdev.org/w/index.php?oldid=5675) |
+| 215 | Sugar Softec UNL-8237/8237A | New implementation: Mmc3 (submappers 0/1) | [r5704](https://www.nesdev.org/w/index.php?oldid=5704) |
 | 216 | Board-specific specification | Not registered | [r5705](https://www.nesdev.org/w/index.php?oldid=5705) |
 | 217 | Board-specific specification | Not registered | [r5706](https://www.nesdev.org/w/index.php?oldid=5706) |
 | 218 | Magic Floor | Not registered | [r22660](https://www.nesdev.org/w/index.php?oldid=22660) |
