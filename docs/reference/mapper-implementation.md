@@ -4,7 +4,7 @@ This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
 complete.** Updated 2026-11-13 against the working-tree registry.
 
-There are **145 registered cartridge IDs**: the original 14, 53 added in the first
+There are **146 registered cartridge IDs**: the original 14, 53 added in the first
 batch, and Irem 32/65/77, Sunsoft 67/68, Taito 33/48/80/207/82/552, Jaleco 18/72/92/101,
 Namco 210, MMC3 variants 118/119, RAMBO-1 64/158, Bandai 16/153/159, and Datach
 157, UNROM 512 30, GTROM/direct MMC1 111, and J.Y. Company
@@ -12,7 +12,7 @@ Namco 210, MMC3 variants 118/119, RAMBO-1 64/158, Bandai 16/153/159, and Datach
 IDs, Sachen MMC3 clones 262/512/513, Rex Soft's 263, Nitra 250, mappers
 114/115/123, T9552 249 / 4:5, mixed CHR 74/192/194/195, MRCM 196, mapper 197,
 TNROM640 198, Waixing FS309 199, multicarts 202/205, Gouder/JJ-01 208,
-Sugar Softec 215, Single Chip 218, Kasheng A9461 219 and NTDEC N625092 221
+Sugar Softec 215, Single Chip 218, Kasheng A9461 219, NTDEC N625092 221 and address-latched multicarts/RPGs 227
 detailed below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
@@ -22,6 +22,7 @@ unusual ROM geometry.
 
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
+| Address-latched multicarts / RPGs (follow-up) | 227 | Three submappers, fixed/mirrored/aligned PRG modes, solder-pad menus, CHR protection, battery WRAM, CPU execution and validated snapshots. |
 | NTDEC N625092 (follow-up) | 221 | Address-latched 16/32 KiB and UNROM modes, PRG A17–A20, H/V CIRAM, protected unbanked CHR RAM, CPU execution and validated snapshots. |
 | Kasheng A9461 compatibility model (follow-up) | 219 | MMC3/extended bank protocols, reversed PRG pins, staged CHR latch, shared outer banks, CIRAM/IRQs, CPU execution and compact validated snapshots. |
 | Single Chip / Magic Floor (follow-up) | 218 | All four CIRAM wirings, shared pattern/nametable memory, background/sprite rendering, raw PPU aliases, palette buffering, CPU execution and validated snapshots. |
@@ -3035,6 +3036,90 @@ ledger checks passed. Isolated agent-document validation reported zero errors,
 72 warnings and three infos across 193 documents, unchanged from the pre-change
 November 13 baseline.
 
+## Mapper-227 follow-up: address-latched multicarts and RPG boards
+
+Original implementation in `Multicart227` follows [NESdev mapper 227 r23188](https://www.nesdev.org/w/index.php?oldid=23188)
+and the [hardware-tested 32 KiB alignment clarification, talk r14159](https://www.nesdev.org/w/index.php?oldid=14159).
+No external emulator implementation was consulted or copied. The supported
+profiles are submappers 0, 1 and 2, plus legacy headers with battery-based
+population selection. Registration now covers 146 cartridge IDs.
+
+All writes at $8000-$FFFF replace an eleven-bit address latch; write data and
+A11-A14 are ignored. A6/A5/A2 select inner PRG A16-A14; A8/A4/A3 select outer
+A19-A17. S selects mirrored 16 KiB or an aligned 32 KiB pair. O=0 selects a
+fixed upper inner bank, first or last according to L, on multicart populations.
+A1 independently selects H/V CIRAM. Submapper 2 applies its outer A18/A17 zero
+rule separately to either CPU window selecting inner bank zero, retaining A19.
+The decoder precedes fitted-ROM wrapping, including non-power-of-two compatibility
+images; such image sizes are not a claim about physical chip populations.
+
+Submapper 1's m bit replaces ROM A3-A0 with four solder pads for every ROM read,
+including instruction fetches. Pads default to zero, are configured through
+`configure_board_jumpers(0..15)` or `--board-profile menu-0` through `menu-15`,
+and survive console reset. Other submappers reject these configuration requests
+and ignore m. A RAM-resident original CPU probe verifies pad reads before
+clearing m and returning to ROM.
+
+The source's submapper-zero description conflicts with its explicit no-battery
+CHR-protection rule. This implementation follows the population rule: no-battery
+submapper 0 is a multicart, while battery-backed submapper 0 is the RPG variant.
+Submappers 1/2 are multicarts and reject battery RAM. Multicarts inhibit CHR writes
+when O=1. RPG boards have writable CHR throughout and unbanked 8 KiB NVRAM at
+$6000-$7FFF. The statement that RPG boards omit UNROM modes is interpreted as
+NROM banking independent of O. That O=0 interpretation and the submapper-2
+window-by-window rule remain compatibility assumptions pending stronger PCB
+or hardware-test evidence; synthetic fixtures verify the stated model.
+
+Accept PRG ROM from 16 KiB through 1 MiB in 16 KiB units, no CHR ROM, ordinary
+H/V CIRAM and exactly 8 KiB volatile CHR RAM in NES 2.0 headers. NES 2.0 RPG
+headers must declare exactly 8 KiB PRG NVRAM and no volatile CPU RAM. Other
+RAM, CHR NVRAM, alternate CIRAM, larger ROMs and unknown submappers are rejected.
+Ignore legacy generic PRG-RAM inference on multicarts. Only fitted WRAM is
+allocated. Low CPU addresses float without that chip; there is no IRQ or audio.
+Reset clears the latch to bank zero/vertical/write-enabled, retaining CHR RAM,
+WRAM and solder pads. Power-on RAM zeroing is deterministic emulator policy.
+
+Component snapshots contain a two-byte hardware/pad tag, two-byte latch,
+8 KiB CHR RAM and, only for RPG boards, 8 KiB WRAM: 8196 or 16388 bytes.
+Read RAM locally and validate tag, canonical latch and truncation before commit.
+Component rejection resets the latch while retaining prior RAM and configured
+pads; whole-machine rejection rolls back atomically. Existing board payloads,
+machine version 20 and the 4 MiB allocation ceiling are unchanged.
+
+Regression coverage includes all bank/mode/mirroring combinations, all register
+addresses, data-byte independence, smaller ROM wrapping, every CHR cell,
+protection, solder-pad nibbles, absent-memory open bus, WRAM import and reset,
+header rejection, malformed snapshots and configuration mismatch. Eight original
+CPU fixtures cover legacy/NES 2.0, every population, menu pads 0/5/15, PPUDATA,
+CIRAM, reset retention and deterministic replay. CLI tests check 34 loading
+profiles, six battery-save reloads and 22 rejected inputs. Battery firmware leaves
+an observable completion marker and increments a persisted boot counter; CLI
+frame completion alone is only loading smoke for non-battery populations.
+
+Validation: all 69 regular targets, including required GPU checks, and all eight
+focused ASan+UBSan targets passed. Both builds passed 5,059,838 mapper assertions
+across 504 cases; mapper 227 contributes 559,357 assertions across ten cases.
+The sanitizer mapper target took 95.81 seconds within its configured 120-second
+timeout. The initial regression failed at factory creation before implementation.
+Formatting, scoped clang-tidy, whitespace and registry/ledger equality checks
+passed. Isolated canonical-document validation retained the November 13 baseline:
+zero errors, 72 warnings and three infos across 193 documents.
+
+### Classification of the preceding unimplemented IDs
+
+- [Mapper 222 r5746](https://www.nesdev.org/w/index.php?oldid=5746) identifies
+  CTC-31 and related ports using VRC2 plus discrete IRQ logic, but supplies no
+  register or IRQ truth table and points to an emulator implementation. It stays
+  unregistered until published hardware/register evidence supports original code.
+- [Mapper 223 r24635](https://www.nesdev.org/w/index.php?oldid=24635) calls the
+  assignment an apparent duplicate and directs use of mapper 199, already
+  implemented here. It is classified as obsolete; no speculative blanket alias
+  or ROM-hash correction is added.
+- [Mapper 224 r5752](https://www.nesdev.org/w/index.php?oldid=5752) identifies
+  Jncota KT-008 and the same chipset as mapper 268 submapper 1. Chipset identity
+  alone does not establish complete wiring equivalence. Keep 224 unregistered
+  pending KT-008/268 family research and a tested board-specific contract.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -3274,12 +3359,12 @@ or another registered cartridge ID.
 | 219 | Kasheng A9461 / NT-8029 | New implementation: Mmc3 (ROM-only compatibility model) | [r21696](https://www.nesdev.org/w/index.php?oldid=21696) |
 | 220 | Tool/debug assignment | Not registered: affected images require verified board identification | [r23976](https://www.nesdev.org/w/index.php?oldid=23976) |
 | 221 | NTDEC N625092 / BMC-N625092 | New implementation: NtdecN625092 | [r5744](https://www.nesdev.org/w/index.php?oldid=5744) |
-| 222 | Board-specific specification | Not registered | [r5746](https://www.nesdev.org/w/index.php?oldid=5746) |
-| 223 | Board-specific specification | Not registered | [r24635](https://www.nesdev.org/w/index.php?oldid=24635) |
-| 224 | Board-specific specification | Not registered | [r5752](https://www.nesdev.org/w/index.php?oldid=5752) |
+| 222 | CTC-31 / VRC2 plus discrete IRQ logic | Not registered: hardware/register evidence gap | [r5746](https://www.nesdev.org/w/index.php?oldid=5746) |
+| 223 | Obsolete apparent duplicate of 199 | Not registered: source directs mapper 199 | [r24635](https://www.nesdev.org/w/index.php?oldid=24635) |
+| 224 | Jncota KT-008 / mapper-268 chipset | Not registered: board wiring requires research | [r5752](https://www.nesdev.org/w/index.php?oldid=5752) |
 | 225 | Board-specific specification | New implementation: DiscreteMapper | [r18874](https://www.nesdev.org/w/index.php?oldid=18874) |
 | 226 | Board-specific specification | New implementation: DiscreteMapper | [r22261](https://www.nesdev.org/w/index.php?oldid=22261) |
-| 227 | Board-specific specification | Not registered | [r23188](https://www.nesdev.org/w/index.php?oldid=23188) |
+| 227 | Address-latched multicart / RPG boards | New implementation: Multicart227 | [r23188](https://www.nesdev.org/w/index.php?oldid=23188) |
 | 228 | Action 52 / Active Enterprises | Not registered | [r5784](https://www.nesdev.org/w/index.php?oldid=5784) |
 | 229 | Board-specific specification | New implementation: DiscreteMapper | [r5785](https://www.nesdev.org/w/index.php?oldid=5785) |
 | 230 | Board-specific specification | Not registered | [r5788](https://www.nesdev.org/w/index.php?oldid=5788) |
