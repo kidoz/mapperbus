@@ -18,6 +18,7 @@
 #include "core/mappers/mmc3.hpp"
 #include "core/mappers/mmc4.hpp"
 #include "core/mappers/mmc5.hpp"
+#include "core/mappers/multicart227.hpp"
 #include "core/mappers/namco108.hpp"
 #include "core/mappers/namco163.hpp"
 #include "core/mappers/namco175340.hpp"
@@ -55,6 +56,8 @@ namespace {
         return Txc::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 221U)
         return NtdecN625092::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 227U)
+        return Multicart227::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 219U) {
         if (header.is_nes2 && header.submapper != 0U)
             return std::unexpected("Mapper 219 supports submapper 0");
@@ -747,6 +750,7 @@ void register_builtin_mappers() {
     registry.register_mapper(218, make_factory<SingleChip>());
     registry.register_mapper(219, make_factory<Mmc3>());
     registry.register_mapper(221, make_factory<NtdecN625092>());
+    registry.register_mapper(227, make_factory<Multicart227>());
     registry.register_mapper(249, make_factory<Mmc3>());
     registry.register_mapper(250, make_factory<Mmc3>());
     registry.register_mapper(262, make_factory<Mmc3>());
