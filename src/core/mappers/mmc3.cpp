@@ -60,6 +60,8 @@ Byte gouder_mask(Byte index) {
 // including MMC3 fixed PRG banks. A solder pad optionally redirects block 1 to 3.
 // Gouder / 208: NESdev r5614's published compatibility specification, including
 // the incompatible JJ-01 submapper. Exact reset and clone IRQ circuitry is unverified.
+// Sugar Softec / 215: NESdev r5704. Register permutations are functional data
+// from the published specification. Apply the outer pins before physical ROM wrapping.
 Mmc3::Mmc3(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte> chr_rom)
     : prg_rom_(std::move(prg_rom)), chr_rom_(std::move(chr_rom)), use_chr_ram_(chr_rom_.empty()),
       mapper_(header.mapper_number == 74U || header.mapper_number == 192U ||
@@ -67,12 +69,12 @@ Mmc3::Mmc3(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte
                       header.mapper_number == 196U || header.mapper_number == 197U ||
                       header.mapper_number == 198U || header.mapper_number == 199U ||
                       header.mapper_number == 205U || header.mapper_number == 208U ||
-                      header.mapper_number == 114U || header.mapper_number == 115U ||
-                      header.mapper_number == 123U || header.mapper_number == 249U ||
-                      header.mapper_number == 250U || header.mapper_number == 262U ||
-                      header.mapper_number == 263U || header.mapper_number == 118U ||
-                      header.mapper_number == 119U || header.mapper_number == 512U ||
-                      header.mapper_number == 513U
+                      header.mapper_number == 215U || header.mapper_number == 114U ||
+                      header.mapper_number == 115U || header.mapper_number == 123U ||
+                      header.mapper_number == 249U || header.mapper_number == 250U ||
+                      header.mapper_number == 262U || header.mapper_number == 263U ||
+                      header.mapper_number == 118U || header.mapper_number == 119U ||
+                      header.mapper_number == 512U || header.mapper_number == 513U
                   ? header.mapper_number
                   : 4U),
       scramble_profile_(mapper_ == 114U && header.is_nes2 ? header.submapper : 0U),
@@ -109,7 +111,8 @@ Mmc3::Mmc3(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte
                                              : 0U;
         nvram_size_ = header.is_nes2 ? header.prg_nvram_size : prg_ram_size_;
     } else if (mapper_ == 114U || mapper_ == 115U || mapper_ == 123U || mapper_ == 196U ||
-               mapper_ == 197U || mapper_ == 205U || mapper_ == 208U || mapper_ == 250U) {
+               mapper_ == 197U || mapper_ == 205U || mapper_ == 208U || mapper_ == 215U ||
+               mapper_ == 250U) {
         prg_ram_size_ = 0U;
         nvram_size_ = 0U;
     } else if (mapper_ == 262U) {
@@ -140,6 +143,7 @@ Mmc3::Mmc3(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte
     num_prg_banks_8k_ = prg_rom_.size() / 0x2000U;
     num_chr_banks_1k_ = use_chr_ram_ ? 8 : static_cast<uint16_t>(chr_rom_.size() / 0x0400);
     gouder_profile_ = mapper_ == 208U && header.is_nes2 ? header.submapper : 0U;
+    sugar_profile_ = mapper_ == 215U && header.is_nes2 ? header.submapper : 0U;
     reset();
 }
 
@@ -154,6 +158,9 @@ void Mmc3::reset() {
     board_mode_ = mapper_ == 208U && gouder_profile_ == 0U ? 0x11U : 0U;
     gouder_index_ = 0U;
     gouder_registers_.fill(0U);
+    sugar_prg_ = 0U;
+    sugar_outer_ = 0x0FU;
+    sugar_scramble_ = 0U;
     bank_select_ = 0;
     prg_mode_ = false;
     chr_inversion_ = false;
@@ -184,7 +191,7 @@ void Mmc3::update_prg_banks() {
     }
     const std::size_t inner_banks =
         mapper_ == 198U                                                    ? 128U
-        : mapper_ == 205U || mapper_ == 513U || t9552_                     ? 64U
+        : mapper_ == 205U || mapper_ == 215U || mapper_ == 513U || t9552_  ? 64U
         : mapper_ == 115U || (mapper_ == 197U && mapper197_profile_ == 3U) ? 32U
                                                                            : num_prg_banks_8k_;
     const std::size_t r6 = bank_registers_[6] % inner_banks;
@@ -217,6 +224,28 @@ void Mmc3::update_prg_banks() {
     if (t9552_)
         for (auto& offset : prg_offsets_)
             offset = t9552_address(offset, false) % prg_rom_.size();
+    if (mapper_ == 215U)
+        for (unsigned slot = 0U; slot < prg_offsets_.size(); ++slot) {
+            auto& offset = prg_offsets_[slot];
+            if ((sugar_prg_ & 0x80U) != 0U) {
+                offset =
+                    (static_cast<unsigned>(sugar_prg_ & 15U) << 14U) | (slot * 0x2000U & 0x3FFFU);
+                if ((sugar_prg_ & 0x20U) != 0U)
+                    offset = (offset & ~0x4000U) | (slot * 0x2000U & 0x4000U);
+            }
+            offset = sugar_address(offset, false);
+        }
+}
+
+uint32_t Mmc3::sugar_address(uint32_t addr, bool chr) const {
+    const unsigned outer =
+        chr ? (sugar_profile_ == 0U ? (sugar_outer_ >> 2U) & 3U : (sugar_outer_ >> 1U) & 7U)
+            : (sugar_outer_ & 3U) | (sugar_profile_ == 0U ? 0U : (sugar_outer_ & 8U) >> 1U);
+    addr = (addr & 0x3FFFFU) | (outer << 18U);
+    if ((sugar_prg_ & 0x40U) != 0U)
+        addr = (addr & ~0x20000U) |
+               (static_cast<unsigned>((sugar_outer_ >> (chr ? 5U : 4U)) & 1U) << 17U);
+    return addr;
 }
 
 Byte Mmc3::mapper205_block() const {
@@ -253,6 +282,8 @@ void Mmc3::update_chr_banks() {
         return;
 
     auto bank = [this](uint8_t reg) -> uint32_t {
+        if (mapper_ == 215U)
+            return sugar_address(static_cast<uint32_t>(reg) * 0x400U, true) % chr_rom_.size();
         if (mapper_ == 205U) {
             const unsigned block = mapper205_block();
             const auto mask = block < 2U ? 0xFFU : 0x7FU;
@@ -386,6 +417,24 @@ void Mmc3::write_prg(Address addr, Byte value) {
                           : mrcm_profile_ == 2U ? (addr & 4U) != 0U
                                                 : (addr & 2U) != 0U;
         addr = static_cast<Address>((addr & 0xE000U) | (data ? 1U : 0U));
+    } else if (mapper_ == 215U) {
+        constexpr std::array<std::array<Address, 8>, 5> kPorts = {
+            {{0x8000U, 0x8001U, 0xA000U, 0xA001U, 0xC000U, 0xC001U, 0xE000U, 0xE001U},
+             {0xA001U, 0xA000U, 0x8000U, 0xC000U, 0x8001U, 0xC001U, 0xE000U, 0xE001U},
+             {0x8000U, 0x8001U, 0xA000U, 0xA001U, 0xC000U, 0xC001U, 0xE000U, 0xE001U},
+             {0xC001U, 0x8000U, 0x8001U, 0xA000U, 0xA001U, 0xE001U, 0xE000U, 0xC000U},
+             {0xA001U, 0x8001U, 0x8000U, 0xC000U, 0xA000U, 0xC001U, 0xE000U, 0xE001U}}};
+        constexpr std::array<std::array<Byte, 8>, 5> kIndices = {
+            {{0U, 1U, 2U, 3U, 4U, 5U, 6U, 7U},
+             {0U, 2U, 6U, 1U, 7U, 3U, 4U, 5U},
+             {0U, 5U, 4U, 1U, 7U, 2U, 6U, 3U},
+             {0U, 6U, 3U, 7U, 5U, 2U, 4U, 1U},
+             {0U, 2U, 5U, 3U, 6U, 1U, 7U, 4U}}};
+        const unsigned pattern = sugar_scramble_ < 5U ? sugar_scramble_ : 0U;
+        const unsigned slot = ((static_cast<unsigned>(addr) >> 12U) & 6U) | (addr & 1U);
+        addr = kPorts[pattern][slot];
+        if (addr == 0x8000U)
+            value = static_cast<Byte>((value & 0xC0U) | kIndices[pattern][value & 7U]);
     } else if (mapper_ == 114U) {
         constexpr std::array<std::array<Address, 8>, 2> kPorts = {
             {{0xA001U, 0xA000U, 0x8000U, 0xC000U, 0x8001U, 0xC001U, 0xE000U, 0xE001U},
@@ -660,6 +709,8 @@ std::optional<Address> Mmc3::nametable_address(Address addr) const {
 }
 
 bool Mmc3::maps_expansion(Address addr) const {
+    if (mapper_ == 215U)
+        return (addr & 0xF000U) == 0x5000U && ((addr & 7U) < 2U || (addr & 7U) == 7U);
     if (mapper_ == 208U)
         return gouder_profile_ == 0U && addr >= 0x4800U && addr < 0x6000U;
     if (mapper_ == 198U || mapper_ == 199U)
@@ -674,6 +725,8 @@ bool Mmc3::maps_expansion(Address addr) const {
 }
 
 Byte Mmc3::expansion_read_mask(Address addr) const {
+    if (mapper_ == 215U)
+        return 0U;
     if (mapper_ == 208U)
         return gouder_profile_ == 0U && addr >= 0x5800U && addr < 0x6000U ? 0xFFU : 0U;
     if (mapper_ == 262U)
@@ -696,7 +749,16 @@ Byte Mmc3::read_expansion(Address addr) {
 void Mmc3::write_expansion(Address addr, Byte value) {
     if (!maps_expansion(addr))
         return;
-    if (mapper_ == 208U) {
+    if (mapper_ == 215U) {
+        if ((addr & 7U) == 0U)
+            sugar_prg_ = value & 0xEFU;
+        else if ((addr & 7U) == 1U)
+            sugar_outer_ = value & 0x3FU;
+        else
+            sugar_scramble_ = value & 7U;
+        update_prg_banks();
+        update_chr_banks();
+    } else if (mapper_ == 208U) {
         if (addr < 0x5000U)
             write_gouder_bank(value);
         else if (addr < 0x5800U)
@@ -803,7 +865,7 @@ void Mmc3::save_variant_state(StateWriter& writer) const {
         writer.write_array(chr_ram_);
     } else if (mapper_ == 513U) {
         writer.write_bytes(chr_nvram_);
-    } else if (mapper_ != 205U && mapper_ != 208U) {
+    } else if (mapper_ != 205U && mapper_ != 208U && mapper_ != 215U) {
         writer.write_array(prg_ram_);
         writer.write_array(chr_ram_);
     }
@@ -861,6 +923,12 @@ void Mmc3::save_variant_state(StateWriter& writer) const {
             writer.write_array(gouder_registers_);
         }
     }
+    if (mapper_ == 215U) {
+        writer.write<uint16_t>(static_cast<uint16_t>(0xD700U | sugar_profile_));
+        writer.write(sugar_prg_);
+        writer.write(sugar_outer_);
+        writer.write(sugar_scramble_);
+    }
     if (t9552_) {
         writer.write(t9552_mode_);
         writer.write<Byte>(mapper_ == 249U ? 0U : 2U);
@@ -892,7 +960,7 @@ void Mmc3::load_variant_state(StateReader& reader) {
             chr_nvram_.resize(0x8000U);
             reader.fail();
         }
-    } else if (mapper_ != 205U && mapper_ != 208U) {
+    } else if (mapper_ != 205U && mapper_ != 208U && mapper_ != 215U) {
         reader.read_array(prg_ram_);
         reader.read_array(chr_ram_);
     }
@@ -949,6 +1017,12 @@ void Mmc3::load_variant_state(StateReader& reader) {
         reader.read(gouder_index_);
         reader.read_array(gouder_registers_);
     }
+    const auto sugar_tag = mapper_ == 215U ? reader.read<uint16_t>() : 0U;
+    if (mapper_ == 215U) {
+        reader.read(sugar_prg_);
+        reader.read(sugar_outer_);
+        reader.read(sugar_scramble_);
+    }
     if (t9552_)
         reader.read(t9552_mode_);
     const auto t9552_order = t9552_ ? reader.read<Byte>() : Byte{0U};
@@ -972,6 +1046,9 @@ void Mmc3::load_variant_state(StateReader& reader) {
     const auto prg_mask = mapper_ == 198U || mapper_ == 199U ? 0x7FU : 0x3FU;
     const auto r6_mask = mapper_ == 208U && gouder_profile_ == 1U ? 0xFFU : prg_mask;
     if (!reader.ok() || mixed_chr_tag != mixed_chr_state_tag() || bank_select_ > 7U ||
+        (mapper_ == 215U &&
+         (sugar_tag != (0xD700U | sugar_profile_) || (sugar_prg_ & 0x10U) != 0U ||
+          sugar_outer_ > 0x3FU || sugar_scramble_ > 7U)) ||
         (mapper_ == 199U && fs309_tag != 0xC700U) ||
         (mapper_ == 208U &&
          (gouder_tag != (0xD000U | gouder_profile_) ||
