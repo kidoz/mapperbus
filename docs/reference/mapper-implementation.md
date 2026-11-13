@@ -4,7 +4,7 @@ This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
 complete.** Updated 2026-11-13 against the working-tree registry.
 
-There are **144 registered cartridge IDs**: the original 14, 53 added in the first
+There are **145 registered cartridge IDs**: the original 14, 53 added in the first
 batch, and Irem 32/65/77, Sunsoft 67/68, Taito 33/48/80/207/82/552, Jaleco 18/72/92/101,
 Namco 210, MMC3 variants 118/119, RAMBO-1 64/158, Bandai 16/153/159, and Datach
 157, UNROM 512 30, GTROM/direct MMC1 111, and J.Y. Company
@@ -12,7 +12,8 @@ Namco 210, MMC3 variants 118/119, RAMBO-1 64/158, Bandai 16/153/159, and Datach
 IDs, Sachen MMC3 clones 262/512/513, Rex Soft's 263, Nitra 250, mappers
 114/115/123, T9552 249 / 4:5, mixed CHR 74/192/194/195, MRCM 196, mapper 197,
 TNROM640 198, Waixing FS309 199, multicarts 202/205, Gouder/JJ-01 208,
-Sugar Softec 215, Single Chip 218 and Kasheng A9461 219 detailed below.
+Sugar Softec 215, Single Chip 218, Kasheng A9461 219 and NTDEC N625092 221
+detailed below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
 unusual ROM geometry.
@@ -21,6 +22,7 @@ unusual ROM geometry.
 
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
+| NTDEC N625092 (follow-up) | 221 | Address-latched 16/32 KiB and UNROM modes, PRG A17–A20, H/V CIRAM, protected unbanked CHR RAM, CPU execution and validated snapshots. |
 | Kasheng A9461 compatibility model (follow-up) | 219 | MMC3/extended bank protocols, reversed PRG pins, staged CHR latch, shared outer banks, CIRAM/IRQs, CPU execution and compact validated snapshots. |
 | Single Chip / Magic Floor (follow-up) | 218 | All four CIRAM wirings, shared pattern/nametable memory, background/sprite rendering, raw PPU aliases, palette buffering, CPU execution and validated snapshots. |
 | Sugar Softec (follow-up) | 215 | Both outer-pin submappers, eight address/index scrambling modes, MMC3/NROM banking, CHR/CIRAM, IRQs, CPU execution and compact validated snapshots. |
@@ -2950,6 +2952,89 @@ registry/ledger checks passed. Isolated agent-document validation reported zero
 errors, 72 warnings and three infos across 193 documents, unchanged from the
 pre-change November 13 baseline.
 
+## Mapper 220: tool/debug assignment
+
+[NESdev revision 23976](https://www.nesdev.org/w/index.php?oldid=23976) describes
+mapper 220 as a debugging assignment used by FCEUX. It also notes that some ROMs
+carry this number despite needing a different mapper. Keep this slot explicitly
+unregistered; it does not identify a single cartridge register layout. A verified
+hash-to-board identification record is required to correct an affected image.
+This pass adds no speculative hash entries, filename-based substitutions or
+blanket alias. Unsupported mapper-220 images continue to be rejected.
+
+## Mapper-221 follow-up: NTDEC N625092
+
+`NtdecN625092` implements the published register wiring in
+[NESdev revision 5744](https://www.nesdev.org/w/index.php?oldid=5744), with
+[UNIF-to-NES 2.0 mapping](https://www.nesdev.org/wiki/UNIF_to_NES_2.0_Mapping)
+identifying BMC-N625092 as mapper 221 submapper zero. The implementation is original;
+no external emulator source was read or incorporated. It owns the PRG image and
+one 8 KiB unbanked CHR RAM array, with no unused CPU-RAM backing store.
+
+Writes to $8000–$BFFF latch address bits A0–A4, A8 and A9; writes to $C000–$FFFF
+latch A0–A3. Written data is ignored, reads never relatch, and the two registers
+are independent. Outer A0 selects vertical/horizontal CIRAM. A2–A4 drive PRG
+A17–A19, and A9 drives PRG A20 under the article's register model. Decode the
+inner 16 KiB page before wrapping the fitted ROM size:
+
+| Outer A1 | Outer A8 | PRG $8000–$BFFF | PRG $C000–$FFFF |
+|---|---|---|---|
+| 0 | Either | Inner A0–A2 | Same page |
+| 1 | 0 | Inner page with bit 0 cleared | Following odd page |
+| 1 | 1 | Inner A0–A2 | Page 7 within the selected 128 KiB block |
+
+The 32 KiB mode aligns the pair; odd inner selections choose the same pair as
+the preceding even selection. The article repeats the label NROM-128 in that
+line, but explicitly describes a 32 KiB window selected by Inner Bank >> 1.
+Follow the size/formula rather than reproducing the inconsistent label.
+CHR RAM reads are always enabled. Inner A3 inhibits writes across the full
+8 KiB; changing outer/mode/mirroring bits leaves both the protection bit and RAM
+contents intact. Re-enabling writes preserves the previous bytes. No banked
+CHR memory, low CPU registers, IRQs, expansion audio or battery storage exist
+in the supported board model. Unmapped CPU reads retain open bus.
+
+Support legacy iNES and NES 2.0 submapper zero, ordinary H/V CIRAM metadata,
+16 KiB–2 MiB PRG in 16 KiB units and no CHR ROM. The 2 MiB limit follows the
+published PRG-A20 decoder; it does not certify that every PCB revision exposes
+that pin or fits that population. Smaller/non-power-of-two images wrap after
+bank-pin decoding as an explicit image compatibility policy. NES 2.0 must
+declare exactly 8 KiB volatile CHR RAM and no other RAM/NVRAM. Reject batteries,
+alternate CIRAM, unknown submappers and incompatible memory geometries. Ignore
+the legacy parser's generic WRAM default; its inferred CHR RAM supplies this
+board's documented pattern memory. UNIF parsing itself is unchanged.
+
+Power-on uses zeroed CHR RAM and zero latches. Mapper reset clears both latches,
+restores mirrored page zero/vertical CIRAM and enables CHR writes while retaining
+RAM. The register article does not specify exact electrical power-up/reset
+values, so these are deterministic emulator policies pending hardware evidence.
+Header mirroring does not override the reset latch or later A0 writes.
+
+New component state is 8,197 bytes: tag $DD00, canonical two-byte outer latch,
+one-byte inner latch and the 8 KiB RAM. Validate fields and read RAM into fixed-size
+temporary storage before committing it. A failed component load resets latches
+and retains existing RAM. Whole-machine rejection restores all latches and bytes
+atomically. Existing board payloads, machine version 20 and the 4 MiB state cap
+are unchanged.
+
+Regressions cover all inner/outer/mode/mirror combinations, PRG A20, all write
+data bytes, every register address and CHR cell, independent protection, smaller
+ROMs, low open bus, reset, geometry and malformed states. Four original CPU
+fixtures exercise both headers/H/V metadata, instruction fetches through all PRG
+modes, PPUDATA protection, CIRAM, CHR retention across reset, deterministic replay
+and atomic rejection after a malformed state changes RAM. CLI tests smoke-load
+twelve profiles and reject eighteen invalid images, preserving ROM bytes and
+creating no saves. CPU completion is asserted in unit fixtures.
+
+Validation: all 68 regular targets (including required GPU checks) and all eight
+focused ASan+UBSan targets passed. Both builds passed 4,500,466 mapper assertions
+across 494 cases; mapper 221 accounts for 290,429 assertions across ten cases.
+The sanitizer mapper target took 91.98 seconds within its configured 120-second
+timeout. The initial banking regression failed at unsupported factory creation
+before implementation. Formatting, scoped clang-tidy, whitespace and registry/
+ledger checks passed. Isolated agent-document validation reported zero errors,
+72 warnings and three infos across 193 documents, unchanged from the pre-change
+November 13 baseline.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -3187,8 +3272,8 @@ or another registered cartridge ID.
 | 217 | 500/2000-in-1 (identification only) | Not registered: register specification missing | [r5706](https://www.nesdev.org/w/index.php?oldid=5706) |
 | 218 | Single Chip / Magic Floor | New implementation: SingleChip (all four CIRAM wirings) | [r22660](https://www.nesdev.org/w/index.php?oldid=22660) |
 | 219 | Kasheng A9461 / NT-8029 | New implementation: Mmc3 (ROM-only compatibility model) | [r21696](https://www.nesdev.org/w/index.php?oldid=21696) |
-| 220 | Emulator tool use | Not registered | [r23976](https://www.nesdev.org/w/index.php?oldid=23976) |
-| 221 | Board-specific specification | Not registered | [r5744](https://www.nesdev.org/w/index.php?oldid=5744) |
+| 220 | Tool/debug assignment | Not registered: affected images require verified board identification | [r23976](https://www.nesdev.org/w/index.php?oldid=23976) |
+| 221 | NTDEC N625092 / BMC-N625092 | New implementation: NtdecN625092 | [r5744](https://www.nesdev.org/w/index.php?oldid=5744) |
 | 222 | Board-specific specification | Not registered | [r5746](https://www.nesdev.org/w/index.php?oldid=5746) |
 | 223 | Board-specific specification | Not registered | [r24635](https://www.nesdev.org/w/index.php?oldid=24635) |
 | 224 | Board-specific specification | Not registered | [r5752](https://www.nesdev.org/w/index.php?oldid=5752) |
