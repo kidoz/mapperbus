@@ -14,6 +14,7 @@ core_sources = files(
     'mappers/mapper_registry.cpp',
     'mappers/mapper_state.cpp',
     'mappers/nrom.cpp',
+    'mappers/ntdec_n625092.cpp',
     'mappers/single_chip.cpp',
     'mappers/mmc1.cpp',
     'mappers/mmc2.cpp',
