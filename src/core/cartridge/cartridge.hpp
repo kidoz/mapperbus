@@ -3,6 +3,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "core/cartridge/ines_header.hpp"
 #include "core/cartridge/rom_sha256.hpp"
@@ -179,6 +180,10 @@ class Cartridge {
     }
 
   private:
+    [[nodiscard]] static Result<Cartridge> from_data_impl(std::span<const Byte> rom_data,
+                                                          std::string_view filename,
+                                                          std::span<const Byte> dcs_option,
+                                                          std::vector<Byte>* owned_data);
     Cartridge(INesHeader header, std::unique_ptr<Mapper> mapper);
 
     Sha256Digest content_hash_{};

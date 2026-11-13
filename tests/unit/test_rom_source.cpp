@@ -27,6 +27,7 @@
 #include "app/rom_source.hpp"
 #include "core/binary_file.hpp"
 #include "core/mappers/mapper_registry.hpp"
+#include "core/state/state.hpp"
 #include "platform/audio/null_audio.hpp"
 #include "platform/input/null_input.hpp"
 #include "platform/video/null_video.hpp"
@@ -68,6 +69,70 @@ std::vector<Byte> make_rom(Byte value = 42, bool battery = false) {
 
 using Member = mapperbus::tests::ArchiveMember;
 using mapperbus::tests::write_archive;
+
+TEST_CASE("Owned PRG-only files preserve borrowed-image identity, banks and snapshots",
+          "[rom-source][cartridge][memory]") {
+    ArchiveFixture fixture;
+    for (bool legacy : {false, true})
+        for (bool trainer : {false, true})
+            for (bool padding : {false, true}) {
+                const std::size_t start = trainer ? 528U : 16U;
+                std::vector<Byte> bytes(start + 1024U * 1024U + (padding ? 1024U : 0U));
+                const std::array<Byte, 16> header = {'N',
+                                                     'E',
+                                                     'S',
+                                                     0x1AU,
+                                                     64U,
+                                                     0U,
+                                                     static_cast<Byte>(0xF1U | (trainer ? 4U : 0U)),
+                                                     static_cast<Byte>(legacy ? 0x10U : 0x18U),
+                                                     0U,
+                                                     0U,
+                                                     0U,
+                                                     static_cast<Byte>(legacy ? 0U : 7U),
+                                                     0U,
+                                                     0U,
+                                                     0U,
+                                                     0U};
+                std::ranges::copy(header, bytes.begin());
+                std::fill(
+                    bytes.begin() + 16U, bytes.begin() + static_cast<std::ptrdiff_t>(start), 0xA5U);
+                for (std::size_t i = start; i < bytes.size(); ++i)
+                    bytes[i] = static_cast<Byte>((i - start) ^ ((i - start) >> 12U));
+                const auto path = fixture.root / "owned (E).nes";
+                REQUIRE(core::write_binary_file_atomic(path.string(), bytes, "test image"));
+                auto owned = core::Cartridge::from_file(path.string());
+                auto borrowed = core::Cartridge::from_data(bytes, path.string());
+                REQUIRE(owned);
+                REQUIRE(borrowed);
+                REQUIRE(owned->content_hash() == core::rom_sha256(bytes));
+                REQUIRE(owned->base_content_hash() == borrowed->base_content_hash());
+                REQUIRE(owned->header().region == borrowed->header().region);
+                REQUIRE(owned->mirror_mode() == borrowed->mirror_mode());
+                for (unsigned bank = 0U; bank < 256U; ++bank) {
+                    owned->write_expansion(0x5FF8U, static_cast<Byte>(bank));
+                    borrowed->write_expansion(0x5FF8U, static_cast<Byte>(bank));
+                    for (core::Address a : {0x8000U, 0x8001U, 0x8123U, 0x8FFFU}) {
+                        const auto expected = static_cast<Byte>((a & 0xFFFU) ^ bank);
+                        REQUIRE(owned->read_prg(a) == expected);
+                        REQUIRE(borrowed->read_prg(a) == expected);
+                    }
+                }
+                owned->write_chr(0x123U, 0xA7U);
+                borrowed->write_chr(0x123U, 0xA7U);
+                core::StateWriter a, b;
+                owned->save_state(a);
+                borrowed->save_state(b);
+                REQUIRE(a.data() == b.data());
+                auto disk =
+                    core::read_binary_file_capped(path.string(), bytes.size(), "test image");
+                REQUIRE(disk);
+                REQUIRE(*disk == bytes);
+                std::ranges::fill(bytes, 0U);
+                REQUIRE(owned->read_prg(0x8000U) == 255U);
+                REQUIRE(borrowed->read_prg(0x8000U) == 255U);
+            }
+}
 
 // Keep battery files in the fixture instead of the user's application data.
 class TestDataHome {

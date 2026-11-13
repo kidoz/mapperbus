@@ -28,12 +28,19 @@ Result<Cartridge> Cartridge::from_file(const std::string& path, std::span<const 
         return std::unexpected(data.error());
     }
 
-    return from_data(*data, path, dcs_option);
+    return from_data_impl(*data, path, dcs_option, &*data);
 }
 
 Result<Cartridge> Cartridge::from_data(std::span<const Byte> rom_data,
                                        std::string_view filename,
                                        std::span<const Byte> dcs_option) {
+    return from_data_impl(rom_data, filename, dcs_option, nullptr);
+}
+
+Result<Cartridge> Cartridge::from_data_impl(std::span<const Byte> rom_data,
+                                            std::string_view filename,
+                                            std::span<const Byte> dcs_option,
+                                            std::vector<Byte>* owned_data) {
     if (rom_data.size() > kMaxRomBytes) {
         return std::unexpected("ROM data exceeds maximum size");
     }
@@ -56,13 +63,31 @@ Result<Cartridge> Cartridge::from_data(std::span<const Byte> rom_data,
         return std::unexpected("ROM data is smaller than declared in header");
     }
 
-    std::vector<Byte> prg_rom(rom_data.begin() + offset, rom_data.begin() + offset + prg_size);
-    offset += prg_size;
-    if (chr_size > rom_data.size() - offset) {
+    const auto chr_offset = offset + prg_size;
+    if (chr_size > rom_data.size() - chr_offset) {
         return std::unexpected("ROM data is smaller than declared in header");
     }
 
-    std::vector<Byte> chr_rom(rom_data.begin() + offset, rom_data.begin() + offset + chr_size);
+    // Reuse only an exact-size owned PRG-only image. Padded/mixed images and
+    // borrowed spans keep independent payload buffers instead of retaining
+    // unused capacity. Hash the original bytes before erasing the header/trainer.
+    const bool reuse = owned_data && chr_size == 0U && chr_offset == rom_data.size() &&
+                       owned_data->capacity() == rom_data.size();
+    Sha256Digest original_hash{};
+    std::uint32_t original_crc = 0U;
+    std::vector<Byte> prg_rom;
+    std::vector<Byte> chr_rom;
+    if (reuse) {
+        original_hash = rom_sha256(rom_data);
+        if (!header.is_nes2)
+            original_crc = rom_crc32(rom_data);
+        owned_data->erase(owned_data->begin(),
+                          owned_data->begin() + static_cast<std::ptrdiff_t>(offset));
+        prg_rom = std::move(*owned_data);
+    } else {
+        prg_rom.assign(rom_data.begin() + offset, rom_data.begin() + chr_offset);
+        chr_rom.assign(rom_data.begin() + chr_offset, rom_data.begin() + chr_offset + chr_size);
+    }
 
     auto mapper_result =
         MapperRegistry::instance().create(header, std::move(prg_rom), std::move(chr_rom));
@@ -75,7 +100,7 @@ Result<Cartridge> Cartridge::from_data(std::span<const Byte> rom_data,
     }
 
     Cartridge cartridge(header, std::move(*mapper_result));
-    cartridge.content_hash_ = rom_sha256(rom_data);
+    cartridge.content_hash_ = reuse ? original_hash : rom_sha256(rom_data);
     cartridge.base_content_hash_ = cartridge.content_hash_;
     if (!dcs_option.empty()) {
         // Domain-separated, fixed-length composition; file paths are not identity.
@@ -86,7 +111,7 @@ Result<Cartridge> Cartridge::from_data(std::span<const Byte> rom_data,
     }
     // Header wins, then content database, then the logical ROM filename.
     if (!header.is_nes2) {
-        if (auto region = lookup_region_by_crc32(rom_crc32(rom_data))) {
+        if (auto region = lookup_region_by_crc32(reuse ? original_crc : rom_crc32(rom_data))) {
             cartridge.header_.region = *region;
         } else if (auto filename_region = detect_region_from_filename(std::string(filename))) {
             cartridge.header_.region = *filename_region;
