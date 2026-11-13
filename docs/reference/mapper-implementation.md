@@ -4,7 +4,7 @@ This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
 complete.** Updated 2026-11-13 against the working-tree registry.
 
-There are **142 registered cartridge IDs**: the original 14, 53 added in the first
+There are **143 registered cartridge IDs**: the original 14, 53 added in the first
 batch, and Irem 32/65/77, Sunsoft 67/68, Taito 33/48/80/207/82/552, Jaleco 18/72/92/101,
 Namco 210, MMC3 variants 118/119, RAMBO-1 64/158, Bandai 16/153/159, and Datach
 157, UNROM 512 30, GTROM/direct MMC1 111, and J.Y. Company
@@ -12,7 +12,7 @@ Namco 210, MMC3 variants 118/119, RAMBO-1 64/158, Bandai 16/153/159, and Datach
 IDs, Sachen MMC3 clones 262/512/513, Rex Soft's 263, Nitra 250, mappers
 114/115/123, T9552 249 / 4:5, mixed CHR 74/192/194/195, MRCM 196, mapper 197,
 TNROM640 198, Waixing FS309 199, multicarts 202/205, Gouder/JJ-01 208, and
-Sugar Softec 215 detailed below.
+Sugar Softec 215 and Single Chip 218 detailed below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
 unusual ROM geometry.
@@ -21,6 +21,7 @@ unusual ROM geometry.
 
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
+| Single Chip / Magic Floor (follow-up) | 218 | All four CIRAM wirings, shared pattern/nametable memory, background/sprite rendering, raw PPU aliases, palette buffering, CPU execution and validated snapshots. |
 | Sugar Softec (follow-up) | 215 | Both outer-pin submappers, eight address/index scrambling modes, MMC3/NROM banking, CHR/CIRAM, IRQs, CPU execution and compact validated snapshots. |
 | Gouder / JJ-01 (follow-up) | 208 | Both submappers, 32 KiB PRG control, XOR protection and executable registers, CHR/CIRAM, IRQs, CPU execution and compact validated snapshots. |
 | JC-016-2 multicart (follow-up) | 205 | MMC3 block pins on both ROMs and fixed PRG banks, selectable solder pad, write-only low register, IRQs, CPU execution and compact validated snapshots. |
@@ -2786,6 +2787,84 @@ whitespace and registry/ledger checks passed. Isolated agent-document validation
 reported zero errors, 72 warnings and three infos across 193 documents, unchanged
 from the pre-change November 13 baseline.
 
+## Mappers 216/217: register specifications still missing
+
+The inspected primary articles identify
+[mapper 216](https://www.nesdev.org/w/index.php?oldid=5705) games, with a possible
+Dendy timing requirement, and [mapper 217](https://www.nesdev.org/w/index.php?oldid=5706)
+multicarts. Neither supplies register addresses or a banking/mirroring truth table.
+Both remain explicitly unregistered pending a matching hardware/register source.
+This pass proceeds to the documented single-chip board, mapper 218.
+
+## Mapper-218 follow-up: Single Chip / Magic Floor
+
+`SingleChip` implements [NESdev revision 22660](https://www.nesdev.org/w/index.php?oldid=22660)
+with original code derived from its published wiring specification. No external
+emulator implementation was read or incorporated. The board has a PRG ROM and
+uses the console's existing 2 KiB CIRAM for pattern and nametable data. There is
+no cartridge CHR memory, WRAM, battery, bank register, IRQ or expansion audio.
+
+| Flags 6 wiring bits (3/0) | CIRAM A10 source | Pattern layout | Nametables at $2000–$2FFF |
+|---|---|---|---|
+| $0 (full flags $A0) | PPU A11 | 2 KiB, mirrored | Horizontal |
+| $1 (full flags $A1) | PPU A10 | 2 KiB, mirrored | Vertical |
+| $8 (full flags $A8) | PPU A12 | One 1 KiB bank per pattern table | Lower single screen |
+| $9 (full flags $A9) | PPU A13 | Lower 1 KiB bank in both pattern tables | Upper single screen |
+
+CIRAM A0–A9 follow the low ten PPU address bits. Preserve raw A12/A13 before
+ordinary $3000 nametable folding: configuration $8 exposes the other physical
+bank at $3000–$3EFF. Pattern and nametable aliases always access the same bytes.
+Internal palette reads/writes remain separate, while palette reads refill the
+PPUDATA buffer through the mapped $2Fxx address.
+
+The small optional `Mapper::ciram_address` hook maps external PPU $0000–$3EFF
+addresses to console CIRAM indices. Cartridge forwards it and PPU resolves it
+before normal CHR/nametable routing. Both background and sprite pattern fetches
+use that same resolver. Shared-memory writes invalidate cached background tile
+bytes. All other boards default to ordinary routing. CIRAM remains PPU-owned;
+the mapper allocates no duplicate RAM. Direct cartridge-only CHR reads have no
+backing memory: emulated CPU and renderer accesses go through the PPU.
+Dot timing and ADR-001's per-pixel/prefetch rules are unchanged; this is not a
+new shift-register or electrical-timing model.
+
+Support legacy iNES and NES 2.0 submapper zero, all four raw wiring flags and
+nonempty power-of-two PRG images up to 32 KiB. Mirror smaller images using their
+fitted address pins; arbitrary non-power-of-two dumps are rejected. The small-ROM
+decoder range is an explicit supported image policy, not proof of every physical
+chip population. Reject CHR ROM, NES 2.0 cartridge RAM/NVRAM, battery flags,
+unknown submappers and inconsistent raw nametable metadata. Ignore legacy
+generic WRAM and its automatically inferred 8 KiB CHR RAM: neither exists on
+this board. Speculative extra-memory variants discussed outside the article are
+not implemented. Low CPU reads remain open bus and ROM writes have no effect.
+
+The mapper is stateless across reset and serializes only its immutable wiring
+tag ($DA00/$DA01/$DA08/$DA09), two bytes. CIRAM is saved exactly once in the
+existing PPU payload. Reject truncated, damaged and wrong-wiring tags; a rejected
+whole-machine load restores previously decoded CIRAM atomically. The existing
+console reset clears PPU RAM under its established policy. Other mapper/state
+layouts, machine version 20 and the 4 MiB allocation cap are unchanged.
+
+Regressions check every external PPU address against an independent CIRAM
+model, bidirectional aliases, untouched extra VRAM, palette buffering, ROM pins,
+open bus, memory/header rejection, configuration tags and truncated states.
+Rendered pixels verify both background/sprite pattern-table selections and
+cache invalidation through a nametable alias. Twenty original CPU fixtures cover
+all wirings, both headers and supported NTSC/PAL/Dendy combinations, PPUDATA,
+ROM protection, reset, deterministic replay and rollback after decoded CIRAM
+was changed by a malformed state. CLI smoke tests load twenty-four profiles
+(including NES 2.0 4/8 KiB PRG) and reject forty-five invalid images, preserving
+ROM bytes and creating no saves. CPU completion is asserted in unit fixtures.
+
+Validation: all 66 regular targets (including required GPU checks) and all eight
+focused ASan+UBSan targets passed. Both builds passed 3,737,431 mapper assertions
+across 471 cases; mapper 218 accounts for 409,590 assertions across nine cases.
+The sanitizer mapper target took 86.12 seconds within its configured 120-second
+timeout. The initial shared-memory regression failed at unsupported factory
+creation before implementation. Formatting, scoped clang-tidy, whitespace and
+registry/ledger checks passed. Isolated agent-document validation reported zero
+errors, 72 warnings and three infos across 193 documents, unchanged from the
+pre-change November 13 baseline.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -3019,9 +3098,9 @@ or another registered cartridge ID.
 | 213 | Board-specific specification | New implementation: DiscreteMapper | [r5674](https://www.nesdev.org/w/index.php?oldid=5674) |
 | 214 | Super Gun 20-in-1 (identification only) | Not registered: register specification missing | [r5675](https://www.nesdev.org/w/index.php?oldid=5675) |
 | 215 | Sugar Softec UNL-8237/8237A | New implementation: Mmc3 (submappers 0/1) | [r5704](https://www.nesdev.org/w/index.php?oldid=5704) |
-| 216 | Board-specific specification | Not registered | [r5705](https://www.nesdev.org/w/index.php?oldid=5705) |
-| 217 | Board-specific specification | Not registered | [r5706](https://www.nesdev.org/w/index.php?oldid=5706) |
-| 218 | Magic Floor | Not registered | [r22660](https://www.nesdev.org/w/index.php?oldid=22660) |
+| 216 | RCM/Russian games (identification only) | Not registered: register specification missing | [r5705](https://www.nesdev.org/w/index.php?oldid=5705) |
+| 217 | 500/2000-in-1 (identification only) | Not registered: register specification missing | [r5706](https://www.nesdev.org/w/index.php?oldid=5706) |
+| 218 | Single Chip / Magic Floor | New implementation: SingleChip (all four CIRAM wirings) | [r22660](https://www.nesdev.org/w/index.php?oldid=22660) |
 | 219 | Board-specific specification | Not registered | [r21696](https://www.nesdev.org/w/index.php?oldid=21696) |
 | 220 | Emulator tool use | Not registered | [r23976](https://www.nesdev.org/w/index.php?oldid=23976) |
 | 221 | Board-specific specification | Not registered | [r5744](https://www.nesdev.org/w/index.php?oldid=5744) |
