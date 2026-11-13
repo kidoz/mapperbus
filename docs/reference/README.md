@@ -7,6 +7,7 @@ Reference pages describe the implemented interfaces, defaults, and boundaries.
 - [Configuration](configuration.md) — `mapperbus.conf` locations, keys, and defaults.
 - [Compatibility](compatibility.md) — supported mapper numbers, regions, and frontend scope.
 - [Mapper implementation coverage](mapper-implementation.md) — implemented boards, validation boundaries, and the remaining documented mapper inventory.
+- [Memory measurements](memory-measurements.md) — ROM-loading allocation comparison, GPU-buffer baseline, and reproducible probes.
 - [Hybrid mode](dendy-research.md) — machine timing, color approximation, overrides, and diagnostics.
 - [DMA timing](dma-timing.md) — CPU/DMC/OAM arbitration, register conflicts, controller clocks, and diagnostics.
 - [Interrupt timing](interrupt-timing.md) — IRQ/NMI polling, vector takeover, and source timing.
