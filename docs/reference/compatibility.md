@@ -30,6 +30,7 @@ contains the following mapper IDs:
 | 199 | Waixing FS309: conventional PRG through 1 MiB, fixed CHR RAM, 32 KiB SRAM backing a persistent $5000–$7FFF window, IRQs and snapshots | SRAM offset/gate conventions are documented; exact pin wiring, clone timing and alternate populations unverified |
 | 202 | 150-in-1 multicart: address-latched PRG/CHR, 16/32 KiB PRG modes, H/V CIRAM and snapshots | Consecutive odd/wrapping PRG pairs and zero-latch reset are compatibility policies awaiting hardware verification; ROM-only submapper 0 |
 | 205 | JC-016-2: MMC3 PRG/CHR blocks, fixed-bank rewiring, selectable solder pad, IRQs and snapshots | ROM-only submapper 0; exact electrical reset and clone/A12 behavior unverified |
+| 208 | Gouder submapper 0: 32 KiB PRG/CIRAM and executable XOR-protection registers; JJ-01 submapper 1: R6-controlled 32 KiB PRG; MMC3 CHR/IRQs and snapshots | Published compatibility model, ROM-only profiles; exact reset, physical register width and clone/A12 behavior unverified |
 | 198 | TNROM640 compatibility model: 640 KiB two-chip PRG, banked CHR RAM, 4 KiB auxiliary RAM, 8 KiB NVRAM, IRQs, snapshots and saves | Physical PCB RAM banking, auxiliary gating, high-bank aliases and exact clone timing unverified |
 | 197 | MMC3 clone: submappers 0–3, 512 KiB CHR ROM, larger CHR windows, gated PRG A17 mux, IRQs and validated snapshots | ROM-only supported population; exact clone timing, reset and alternate RAM populations unverified |
 | 196 | MRCM: submappers 0–3, register-address wiring, 32 KiB PRG override, MMC3 CHR/IRQs and validated snapshots | ROM-only supported population; profile-zero and nibble folding use documented compatibility conventions; exact clone timing unverified |
@@ -69,7 +70,7 @@ contains the following mapper IDs:
 | 13, 34, 66, 70, 71, 78, 79, 87, 89, 93, 94, 97, 113, 140, 152, 180, 184 | Discrete cartridge boards | — |
 | 38, 46, 58, 61, 62, 81, 107, 145, 148, 149, 193, 200, 201, 203, 212, 213, 225, 226, 229, 231, 232, 240 | Additional latch boards and multicarts | — |
 
-The registry contains 140 cartridge IDs. See [mapper implementation coverage](mapper-implementation.md)
+The registry contains 141 cartridge IDs. See [mapper implementation coverage](mapper-implementation.md)
 for individual specifications, tested behavior, board limitations, and the full
 inventory of documented IDs still awaiting implementation. The expanded set has
 synthetic banking, IRQ, CPU/PPU integration and save-state coverage; this does

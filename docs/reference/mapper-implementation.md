@@ -2,16 +2,16 @@
 
 This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
-complete.** Updated 2026-11-12 against the working-tree registry.
+complete.** Updated 2026-11-13 against the working-tree registry.
 
-There are **140 registered cartridge IDs**: the original 14, 53 added in the first
+There are **141 registered cartridge IDs**: the original 14, 53 added in the first
 batch, and Irem 32/65/77, Sunsoft 67/68, Taito 33/48/80/207/82/552, Jaleco 18/72/92/101,
 Namco 210, MMC3 variants 118/119, RAMBO-1 64/158, Bandai 16/153/159, and Datach
 157, UNROM 512 30, GTROM/direct MMC1 111, and J.Y. Company
 35/90/209/211/281/282/295/358/386/387/388/397, plus the sixteen Sachen/TXC
 IDs, Sachen MMC3 clones 262/512/513, Rex Soft's 263, Nitra 250, mappers
 114/115/123, T9552 249 / 4:5, mixed CHR 74/192/194/195, MRCM 196, mapper 197,
-TNROM640 198, Waixing FS309 199, and multicarts 202/205 detailed below.
+TNROM640 198, Waixing FS309 199, multicarts 202/205, and Gouder/JJ-01 208 detailed below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
 unusual ROM geometry.
@@ -20,6 +20,7 @@ unusual ROM geometry.
 
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
+| Gouder / JJ-01 (follow-up) | 208 | Both submappers, 32 KiB PRG control, XOR protection and executable registers, CHR/CIRAM, IRQs, CPU execution and compact validated snapshots. |
 | JC-016-2 multicart (follow-up) | 205 | MMC3 block pins on both ROMs and fixed PRG banks, selectable solder pad, write-only low register, IRQs, CPU execution and compact validated snapshots. |
 | 150-in-1 multicart (follow-up) | 202 | Address-latched PRG/CHR, mirrored 16 KiB and consecutive-page 32 KiB modes, H/V CIRAM, CPU execution and compact validated snapshots. |
 | Waixing FS309 (follow-up) | 199 | Conventional PRG through 1 MiB, fixed CHR RAM, full-chip NVRAM persistence, IRQs, CPU execution and validated snapshots. |
@@ -2617,6 +2618,77 @@ Formatting, scoped clang-tidy, whitespace and registry/ledger checks passed.
 Isolated agent-document validation reported zero errors, 71 warnings and three
 infos, identical to the pre-change November 12 baseline.
 
+## Mapper-208 follow-up: Gouder protection and JJ-01 submapper
+
+Mapper 208 follows [NESdev revision 5614](https://www.nesdev.org/w/index.php?oldid=5614).
+The article explicitly bases its original-board description on an emulator
+compatibility model, with additional mirroring information. This implementation
+uses the published register specification and functional truth table; no source
+code from another emulator was read or incorporated. Exact hardware behavior
+beyond that specification remains unverified.
+
+| Profile | Selection | PRG and mirroring control | Protection |
+|---|---|---|---|
+| Gouder | Legacy iNES or NES 2.0 submapper 0 | Data bits 4/0 select a 32 KiB page; bit 5 selects H/V at $4800–$4FFF or $6800–$6FFF | $5000–$57FF key index; four decoded bytes at $5800–$5FFF |
+| JJ-01 | NES 2.0 submapper 1 | Whole 32 KiB PRG page from R6 >> 2; ordinary MMC3 A000 mirroring | Original-board low registers are absent |
+
+Both profiles retain MMC3 CHR pairing/inversion and IRQ registers. MMC3 PRG
+mode and R7 do not split the 32 KiB window. On Gouder, ordinary A000 writes do
+not drive CIRAM. Both low bank-register aliases operate independently of A001
+RAM gates. Protection reads drive all eight CPU bits; the other low ports
+remain open bus. Each protection-data write stores CPU data XOR the indexed
+mask in one of four registers selected by address A0/A1. Changing the index
+later does not alter already-decoded bytes. Instruction fetches use those same
+register reads.
+
+Production code computes the mask with an original Boolean reduction. An
+independent test fixture contains all 256 published functional values and checks
+every index/data/slot combination. Tests also execute a decoded absolute JMP
+from $5800, rather than verifying protection only through direct method calls.
+
+The supported ROM-only profiles accept 32–128 KiB PRG for Gouder or 32 KiB–2 MiB
+for JJ-01, in 32 KiB units, and 8–256 KiB CHR ROM in 1 KiB units. Preserve the
+full R6 byte only on JJ-01 and apply the literal R6 >> 2 rule before physical-size
+wrapping. The large-size bounds describe the supported decoder model, not
+verified PCB populations or physical register width. Smaller/non-power-of-two
+images wrap after decoding. Require ordinary H/V CIRAM; reject other submappers,
+battery flags, declared NES 2.0 RAM/NVRAM and CHR-RAM populations. The generic
+legacy PRG-RAM default does not create RAM. No filename or CRC override chooses
+the submapper, including dumps carrying an unrelated game title.
+
+Gouder initializes its bank/mirroring latch to the documented $11 (page 3,
+vertical). Shared reset normalizes the key/protection registers to zero and
+restores that latch. JJ-01 resets R6 to zero and restores header mirroring.
+Those reset policies and the shared repeating-zero/dot-260 IRQ approximation
+are not electrical reset or clone/A12 measurements. No expansion audio or
+battery persistence is exposed in these supported profiles.
+
+New snapshots omit unused RAM arrays. The compact MMC3 state is followed by
+a $D000/$D001 immutable profile tag. Gouder adds its canonical $31-masked latch,
+key and four decoded bytes: 23 bytes total versus 17 on JJ-01. Validate the tag,
+common fields and Gouder latch/mirroring consistency before rebuilding maps.
+Failed component loads reset safely; whole-machine rejection rolls back state
+atomically, including decoded protection bytes. Previous mapper payloads,
+machine version 20 and the 4 MiB allocation cap remain unchanged.
+
+Regression coverage includes every key/data byte, four protection slots, low
+address aliases and open-bus drivers, PRG modes/data bytes, CHR pairing/inversion,
+physical-size wrapping, A001 independence, header rejection, reset and invalid
+snapshots. Six original CPU fixtures cover legacy/NES 2.0 Gouder and NES 2.0
+JJ-01 under both H/V headers, protection instruction fetches, CIRAM, positive
+and repeated-zero IRQs, replay and atomic rollback. CLI smoke coverage loads
+fourteen geometry/header profiles and rejects sixteen invalid headers without
+modifying ROMs or creating saves; CPU completion is asserted by unit fixtures.
+
+Validation: all 64 regular targets passed with GPU checks required, and all
+eight focused ASan+UBSan targets passed serially. The sanitizer mapper target
+took 78.02 seconds within its configured 120-second timeout. Both builds passed
+2,948,737 mapper assertions across 451 cases; mapper 208 passed 715,437 assertions
+across nine cases. Both initial regressions failed at unsupported factory creation
+before implementation. Formatting, scoped clang-tidy, whitespace and registry/
+ledger checks passed. Isolated agent-document validation reported zero errors,
+72 warnings and three infos, unchanged from the pre-change November 13 baseline.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -2842,7 +2914,7 @@ or another registered cartridge ID.
 | 205 | JC-016-2 MMC3 block pins with selectable block-1-to-3 solder pad | New implementation: Mmc3 | [r5566](https://www.nesdev.org/w/index.php?oldid=5566) |
 | 206 | Namco 108/118 / DxROM | New implementation: Namco108 | [r23830](https://www.nesdev.org/w/index.php?oldid=23830) |
 | 207 | Taito X1-005 nametable variant | New implementation: TaitoX1005 | [r24116](https://www.nesdev.org/w/index.php?oldid=24116) |
-| 208 | Board-specific specification | Not registered | [r5614](https://www.nesdev.org/w/index.php?oldid=5614) |
+| 208 | Gouder protected registers and JJ-01 R6-controlled PRG, submappers 0/1 | New implementation: Mmc3 | [r5614](https://www.nesdev.org/w/index.php?oldid=5614) |
 | 209 | J.Y. Company ASIC | New implementation: JyCompany | [r24184](https://www.nesdev.org/w/index.php?oldid=24184) |
 | 210 | Namco 175/340 | New implementation: Namco175340 (submappers 0/1/2) | [r23707](https://www.nesdev.org/w/index.php?oldid=23707) |
 | 211 | J.Y. Company ASIC | New implementation: JyCompany | [r24184](https://www.nesdev.org/w/index.php?oldid=24184) |
