@@ -4,15 +4,15 @@ This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
 complete.** Updated 2026-11-13 against the working-tree registry.
 
-There are **143 registered cartridge IDs**: the original 14, 53 added in the first
+There are **144 registered cartridge IDs**: the original 14, 53 added in the first
 batch, and Irem 32/65/77, Sunsoft 67/68, Taito 33/48/80/207/82/552, Jaleco 18/72/92/101,
 Namco 210, MMC3 variants 118/119, RAMBO-1 64/158, Bandai 16/153/159, and Datach
 157, UNROM 512 30, GTROM/direct MMC1 111, and J.Y. Company
 35/90/209/211/281/282/295/358/386/387/388/397, plus the sixteen Sachen/TXC
 IDs, Sachen MMC3 clones 262/512/513, Rex Soft's 263, Nitra 250, mappers
 114/115/123, T9552 249 / 4:5, mixed CHR 74/192/194/195, MRCM 196, mapper 197,
-TNROM640 198, Waixing FS309 199, multicarts 202/205, Gouder/JJ-01 208, and
-Sugar Softec 215 and Single Chip 218 detailed below.
+TNROM640 198, Waixing FS309 199, multicarts 202/205, Gouder/JJ-01 208,
+Sugar Softec 215, Single Chip 218 and Kasheng A9461 219 detailed below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
 unusual ROM geometry.
@@ -21,6 +21,7 @@ unusual ROM geometry.
 
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
+| Kasheng A9461 compatibility model (follow-up) | 219 | MMC3/extended bank protocols, reversed PRG pins, staged CHR latch, shared outer banks, CIRAM/IRQs, CPU execution and compact validated snapshots. |
 | Single Chip / Magic Floor (follow-up) | 218 | All four CIRAM wirings, shared pattern/nametable memory, background/sprite rendering, raw PPU aliases, palette buffering, CPU execution and validated snapshots. |
 | Sugar Softec (follow-up) | 215 | Both outer-pin submappers, eight address/index scrambling modes, MMC3/NROM banking, CHR/CIRAM, IRQs, CPU execution and compact validated snapshots. |
 | Gouder / JJ-01 (follow-up) | 208 | Both submappers, 32 KiB PRG control, XOR protection and executable registers, CHR/CIRAM, IRQs, CPU execution and compact validated snapshots. |
@@ -2865,6 +2866,90 @@ registry/ledger checks passed. Isolated agent-document validation reported zero
 errors, 72 warnings and three infos across 193 documents, unchanged from the
 pre-change November 13 baseline.
 
+## Mapper-219 follow-up: Kasheng A9461 compatibility model
+
+Mapper 219 implements the published register description in
+[NESdev revision 21696](https://www.nesdev.org/w/index.php?oldid=21696).
+The article identifies Toy Story and Super 1997 4-in-1 / NT-8029 and cites emulator
+implementations as its sources. This is a compatibility model, with explicit
+policies for unresolved transitions and reset behavior. Production code is
+original; no external emulator source was read or incorporated.
+
+The $E003-decoded $8002 mode port takes priority over the ordinary $E001 MMC3
+decoder. Its D5 alone selects MMC3 or extended operation; both $8000 and $8002
+select the following bank-data destination. $8000 D5 is an index bit and cannot
+change modes. $8001/$8003 data aliases use the current destination. In MMC3 mode,
+use normal pairing, inversion and fixed PRG slots, with PRG banks reduced to four
+bits and CHR banks to seven bits before adding shared 128 KiB outer banks.
+Normalize fixed inner PRG outputs to $0E/$0F before wrapping physical ROMs.
+
+Extended mode offers four independently programmable 8 KiB PRG windows. Selectors
+$26/$25/$24/$23 address CPU $8000/$A000/$C000/$E000 respectively. Data D2/D3/D4/D5
+drive bank bits 3/2/1/0. Selector D3 is dotted in the published diagram, so this
+decoder also accepts $2E/$2D/$2C/$2B; these aliases are a diagram-based inference,
+not a measured pin result. Selector D6/D7 do not invert extended mappings.
+
+Even CHR selectors $08–$1E update one shared three-bit latch. Odd $09/$0B/$0D/$0F
+commit one 1 KiB window in the lower pattern table, combining data >> 1, the latch
+shifted left four, and selector D1 shifted right one. The latter OR operation
+forces odd banks for the second/fourth windows; these are not atomic 2 KiB updates.
+Odd $11–$1F address upper 1 KiB windows using selector D2/D3, with D1 ignored.
+Those commits combine data >> 1 and latch << 4. Latch updates leave stored CHR
+banks unchanged until another commit. Unsupported selectors retain outputs.
+
+Low ports use the published $5003 decode: $5002 D0 writes outer bit 0; $5003 D5
+writes outer bit 1. Each preserves the other bit and controls both ROMs. The low
+decoder includes $7002/$7003 aliases and bypasses MMC3 A001 gates. Reads float;
+there is no SRAM behind these ports. Scope this decoder to CPU $4020–$7FFF;
+ROM-area writes retain MMC3 register decode. The article does not establish
+electrical /ROMSEL gating or high-address overlap behavior. Outer/mode/index
+writes preserve IRQ progress and CIRAM selection. A000/A001/C000/C001/E000/E001
+retain their shared MMC3 behavior in either bank protocol.
+
+Mode changes select independent retained MMC3 and extended bank files. The article
+does not resolve whether physical bank storage is shared; this retention/remapping
+rule is an explicit interpretation requiring hardware verification. Reset uses
+MMC3 mode, outer $03 as required by the published menu note, zero selectors/latch,
+header H/V CIRAM and cleared shared IRQs. Initialize extended PRG to 0/0/14/15 and
+CHR to 0/1/0/1/0/0/0/0, matching the initial MMC3 output layout. Exact reset values
+apart from the menu's outer-bank requirement, clone IRQ circuitry and A12 filtering
+remain unverified. Retain the shared repeating-zero/dot-260 IRQ policy. Tests
+assert these model decisions; they do not establish unmeasured hardware behavior.
+
+Support legacy iNES and NES 2.0 submapper zero, H/V CIRAM, 32–512 KiB PRG in
+8 KiB units and 8–512 KiB CHR ROM in 1 KiB units. The maxima are decoder bounds,
+not verified chip populations. Only ROM-only profiles are modeled: reject battery,
+declared NES 2.0 RAM/NVRAM, CHR RAM, alternate CIRAM and unknown submappers.
+Ignore legacy generic WRAM. Optional SRAM populations are not specified by this
+article. Apply pin limits before wrapping smaller/non-power-of-two images as an
+explicit compatibility policy. There is no expansion audio or battery file.
+
+New 33-byte state omits unused RAM, retains the compact MMC3 fields and appends
+tag $DB00, selector, mode flag, CHR latch, outer bank and both extended bank arrays.
+Validate widths, flags, all register arrays and normal-mode selector agreement,
+then rebuild mappings. Failed component loads reset safely; whole-machine
+failures roll back decoded outer banks atomically. Existing board payloads,
+machine version 20 and the 4 MiB allocation cap are unchanged.
+
+Regressions cover every data byte, outer bank, inversion mode, extended PRG slot,
+CHR latch/commit selector and neighboring window; all mode/data and low-port
+aliases; mode retention, unsupported selectors, smaller ROMs, open bus, A001 gates,
+IRQs, reset, geometry and malformed snapshots. Four original CPU fixtures exercise
+both headers/H/V metadata, both banking protocols, both ROMs, CIRAM, production
+IRQs, reset, deterministic replay and atomic rejection. CLI tests smoke-load
+twelve profiles and reject eighteen invalid images without changing ROM bytes
+or creating saves. CPU completion is asserted in unit fixtures.
+
+Validation: all 67 regular targets (including required GPU checks) and all eight
+focused ASan+UBSan targets passed. Both builds passed 4,210,022 mapper assertions
+across 484 cases; mapper 219 accounts for 472,576 assertions across thirteen
+cases. The sanitizer mapper target took 88.53 seconds within its configured
+120-second timeout. The initial startup regression failed at unsupported factory
+creation before implementation. Formatting, scoped clang-tidy, whitespace and
+registry/ledger checks passed. Isolated agent-document validation reported zero
+errors, 72 warnings and three infos across 193 documents, unchanged from the
+pre-change November 13 baseline.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -3101,7 +3186,7 @@ or another registered cartridge ID.
 | 216 | RCM/Russian games (identification only) | Not registered: register specification missing | [r5705](https://www.nesdev.org/w/index.php?oldid=5705) |
 | 217 | 500/2000-in-1 (identification only) | Not registered: register specification missing | [r5706](https://www.nesdev.org/w/index.php?oldid=5706) |
 | 218 | Single Chip / Magic Floor | New implementation: SingleChip (all four CIRAM wirings) | [r22660](https://www.nesdev.org/w/index.php?oldid=22660) |
-| 219 | Board-specific specification | Not registered | [r21696](https://www.nesdev.org/w/index.php?oldid=21696) |
+| 219 | Kasheng A9461 / NT-8029 | New implementation: Mmc3 (ROM-only compatibility model) | [r21696](https://www.nesdev.org/w/index.php?oldid=21696) |
 | 220 | Emulator tool use | Not registered | [r23976](https://www.nesdev.org/w/index.php?oldid=23976) |
 | 221 | Board-specific specification | Not registered | [r5744](https://www.nesdev.org/w/index.php?oldid=5744) |
 | 222 | Board-specific specification | Not registered | [r5746](https://www.nesdev.org/w/index.php?oldid=5746) |
