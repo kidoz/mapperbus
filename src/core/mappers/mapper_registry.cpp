@@ -51,6 +51,21 @@ namespace {
         return Sachen::validate_geometry(header, prg_size, chr_size);
     if (Txc::supports_mapper(header.mapper_number))
         return Txc::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 208U) {
+        if (header.is_nes2 && header.submapper > 1U)
+            return std::unexpected("Mapper 208 supports submappers 0 and 1");
+        const auto max_prg = header.is_nes2 && header.submapper == 1U ? 0x200000U : 0x20000U;
+        if (prg_size < 0x8000U || prg_size > max_prg || prg_size % 0x8000U != 0U ||
+            chr_size < 0x2000U || chr_size > 0x40000U || chr_size % 0x400U != 0U)
+            return std::unexpected("Unsupported mapper-208 ROM geometry");
+        if (header.has_battery || header.chr_ram_size != 0U || header.chr_nvram_size != 0U ||
+            (header.is_nes2 && (header.prg_ram_size != 0U || header.prg_nvram_size != 0U)))
+            return std::unexpected("Mapper 208 supports ROM-only board memory");
+        if (header.mirror_mode != MirrorMode::Horizontal &&
+            header.mirror_mode != MirrorMode::Vertical)
+            return std::unexpected("Mapper 208 supports ordinary H/V CIRAM");
+        return {};
+    }
     if (header.mapper_number == 205U) {
         if (header.is_nes2 && header.submapper != 0U)
             return std::unexpected("Mapper 205 supports submapper 0");
@@ -692,6 +707,7 @@ void register_builtin_mappers() {
     registry.register_mapper(198, make_factory<Mmc3>());
     registry.register_mapper(199, make_factory<Mmc3>());
     registry.register_mapper(205, make_factory<Mmc3>());
+    registry.register_mapper(208, make_factory<Mmc3>());
     registry.register_mapper(249, make_factory<Mmc3>());
     registry.register_mapper(250, make_factory<Mmc3>());
     registry.register_mapper(262, make_factory<Mmc3>());
