@@ -109,6 +109,9 @@ class Cartridge {
     [[nodiscard]] MirrorMode mirror_mode() const {
         return mapper_->mirror_mode();
     }
+    [[nodiscard]] std::optional<Address> ciram_address(Address addr) const {
+        return mapper_->ciram_address(addr);
+    }
     [[nodiscard]] std::optional<Address> nametable_address(Address addr) const {
         return mapper_->nametable_address(addr);
     }

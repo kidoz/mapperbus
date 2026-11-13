@@ -14,16 +14,18 @@ using namespace mapperbus::core;
 
 namespace {
 
-constexpr std::array<uint16_t, 128> kNewBoards = {
+constexpr std::array<uint16_t, 129> kNewBoards = {
     10,  13,  34,  66,  70,  71,  76,  78,  79,  87,  88,  89,  93,  94,  95,  97,  113, 140, 152,
     154, 180, 184, 206, 38,  46,  58,  61,  62,  81,  107, 145, 148, 149, 193, 200, 201, 203, 212,
     213, 225, 226, 229, 231, 232, 240, 21,  22,  23,  25,  73,  75,  28,  31,  32,  65,  67,  68,
     33,  48,  80,  207, 82,  552, 18,  72,  92,  101, 77,  210, 118, 119, 64,  158, 16,  153, 159,
     157, 30,  111, 35,  90,  209, 211, 281, 282, 295, 358, 386, 387, 388, 397, 36,  132, 133, 135,
     136, 137, 138, 139, 141, 143, 146, 147, 150, 172, 173, 243, 512, 513, 262, 263, 250, 115, 114,
-    123, 249, 74,  192, 194, 195, 196, 197, 198, 199, 202, 205, 208, 215};
+    123, 249, 74,  192, 194, 195, 196, 197, 198, 199, 202, 205, 208, 215, 218};
 
 std::size_t board_prg_size(uint16_t id) {
+    if (id == 218U)
+        return 0x8000U;
     if (id == 208U)
         return 0x20000U;
     if (id == 202U)
@@ -60,6 +62,8 @@ std::size_t board_prg_size(uint16_t id) {
 }
 
 std::size_t board_chr_size(uint16_t id) {
+    if (id == 218U)
+        return 0U;
     if (id == 202U)
         return 0x10000U;
     if (id == 198U || id == 199U)
@@ -121,6 +125,8 @@ INesHeader board_header(uint16_t id, uint8_t submapper = 0) {
     header.submapper = submapper;
     header.is_nes2 = true;
     header.mirror_mode = MirrorMode::Vertical;
+    if (id == 218U)
+        header.nametable_bits = 1U;
     if (id == 199U) {
         header.has_battery = true;
         header.prg_nvram_size = 32768U;

@@ -24,6 +24,7 @@
 #include "core/mappers/nrom.hpp"
 #include "core/mappers/rambo1.hpp"
 #include "core/mappers/sachen.hpp"
+#include "core/mappers/single_chip.hpp"
 #include "core/mappers/sunsoft34.hpp"
 #include "core/mappers/sunsoft5b.hpp"
 #include "core/mappers/taito_tc.hpp"
@@ -51,6 +52,8 @@ namespace {
         return Sachen::validate_geometry(header, prg_size, chr_size);
     if (Txc::supports_mapper(header.mapper_number))
         return Txc::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 218U)
+        return SingleChip::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 215U) {
         if (header.is_nes2 && header.submapper > 1U)
             return std::unexpected("Mapper 215 supports submappers 0 and 1");
@@ -724,6 +727,7 @@ void register_builtin_mappers() {
     registry.register_mapper(205, make_factory<Mmc3>());
     registry.register_mapper(208, make_factory<Mmc3>());
     registry.register_mapper(215, make_factory<Mmc3>());
+    registry.register_mapper(218, make_factory<SingleChip>());
     registry.register_mapper(249, make_factory<Mmc3>());
     registry.register_mapper(250, make_factory<Mmc3>());
     registry.register_mapper(262, make_factory<Mmc3>());

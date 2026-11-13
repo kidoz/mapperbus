@@ -40,6 +40,12 @@ class Mapper {
     virtual void write_chr(Address addr, Byte value) = 0;
 
     virtual MirrorMode mirror_mode() const = 0;
+    /// Direct console CIRAM mapping for external PPU $0000-$3EFF accesses.
+    /// Return a 2 KiB CIRAM index, or nullopt for normal CHR/nametable routing.
+    /// Raw address pins are preserved, including $3000-$3EFF (mapper 218).
+    virtual std::optional<Address> ciram_address(Address /*addr*/) const {
+        return std::nullopt;
+    }
     /// Board-specific CIRAM wiring. Return an index in the console's 2 KiB
     /// nametable RAM, or nullopt to use the ordinary mirror_mode arrangement.
     virtual std::optional<Address> nametable_address(Address /*addr*/) const {

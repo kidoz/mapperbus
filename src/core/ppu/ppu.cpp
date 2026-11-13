@@ -518,6 +518,9 @@ void Ppu::write_oam_dma(Byte value) {
 
 Byte Ppu::read_vram(Address addr) const {
     addr &= 0x3FFFU;
+    if (addr < 0x3F00U && cartridge_ != nullptr)
+        if (const auto mapped = cartridge_->ciram_address(addr))
+            return vram_[*mapped & 0x7FFU];
     if (addr < 0x2000) {
         return cartridge_ != nullptr ? cartridge_->read_chr(addr) : 0;
     }
@@ -540,6 +543,13 @@ Byte Ppu::read_vram(Address addr) const {
 
 void Ppu::write_vram(Address addr, Byte value) {
     addr &= 0x3FFFU;
+    if (addr < 0x3F00U && cartridge_ != nullptr)
+        if (const auto mapped = cartridge_->ciram_address(addr)) {
+            vram_[*mapped & 0x7FFU] = value;
+            // Pattern and nametable aliases can change a cached tile's planes.
+            bg_tile_cache_ = BgTileCache{};
+            return;
+        }
     if (addr < 0x2000) {
         if (cartridge_ != nullptr) {
             cartridge_->write_chr(addr, value);
@@ -700,8 +710,8 @@ void Ppu::render_pixel() {
             attribute = read_vram(loopy::attribute_address(bg_v));
             int fine_y = static_cast<int>(loopy::fine_y(bg_v));
             Address pattern_addr = static_cast<Address>(pattern_base + tile_index * 16 + fine_y);
-            plane0 = cartridge_ != nullptr ? cartridge_->read_chr(pattern_addr) : 0;
-            plane1 = cartridge_ != nullptr ? cartridge_->read_chr(pattern_addr + 8) : 0;
+            plane0 = read_vram(pattern_addr);
+            plane1 = read_vram(pattern_addr + 8);
 
             bg_tile_cache_.addr = bg_v;
             bg_tile_cache_.pattern_addr = pattern_base;
@@ -764,8 +774,8 @@ void Ppu::render_pixel() {
                 }
 
                 Address pat_addr = static_cast<Address>(pat_base + tile * 16 + pattern_row);
-                Byte plane0 = cartridge_ != nullptr ? cartridge_->read_chr(pat_addr) : 0;
-                Byte plane1 = cartridge_ != nullptr ? cartridge_->read_chr(pat_addr + 8) : 0;
+                Byte plane0 = read_vram(pat_addr);
+                Byte plane1 = read_vram(pat_addr + 8);
 
                 int bit_index = flip_h ? col : (7 - col);
                 Byte color_index = static_cast<Byte>(((plane0 >> bit_index) & 0x01) |
