@@ -4,7 +4,7 @@ This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
 complete.** Updated 2026-11-14 against the working-tree registry.
 
-There are **156 registered cartridge IDs**: the original 14, 53 added in the first
+There are **157 registered cartridge IDs**: the original 14, 53 added in the first
 batch, and Irem 32/65/77, Sunsoft 67/68, Taito 33/48/80/207/82/552, Jaleco 18/72/92/101,
 Namco 210, MMC3 variants 118/119, RAMBO-1 64/158, Bandai 16/153/159, and Datach
 157, UNROM 512 30, GTROM/direct MMC1 111, and J.Y. Company
@@ -14,7 +14,7 @@ IDs, Sachen MMC3 clones 262/512/513, Rex Soft's 263, Nitra 250, mappers
 TNROM640 198, Waixing FS309 199, multicarts 202/205, Gouder/JJ-01 208,
 Sugar Softec 215, Single Chip 218, Kasheng A9461 219, NTDEC N625092 221,
 address-latched multicarts/RPGs 227, Active Enterprises 228, reset-driven 22-in-1 230 and
-profiled 42 Games 233, Maxi 15 234, Golden Game 235, Realtec 236, Teletubbies 237, Contra Fighter 238, BxROM/WRAM 241 and 43272/ET-113 242
+profiled 42 Games 233, Maxi 15 234, Golden Game 235, Realtec 236, Teletubbies 237, Contra Fighter 238, BxROM/WRAM 241, 43272/ET-113 242 and C&E Decathlon 244
 detailed below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
@@ -24,6 +24,7 @@ unusual ROM geometry.
 
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
+| C&E Decathlon (follow-up) | 244 | Scrambled independent 32 KiB PRG / 8 KiB CHR latches, old-bank bus conflicts, fixed H/V, retained soft-reset banks and four-byte atomic snapshots. |
 | 43272 / Waixing RPG / ET-113 (follow-up) | 242 | Address-latched PRG modes, asymmetric ROM chips, five menu pads, CHR protection, battery WRAM and validated snapshots. |
 | Standard BxROM with WRAM (follow-up) | 241 | Full-byte 32 KiB PRG banking, fixed H/V, 8 KiB WRAM with optional battery, fixed CHR ROM/RAM and atomic snapshots. Optional LPC speech is available through the explicit `lpc` profile. |
 | Contra Fighter compatibility model (follow-up) | 238 | Shared protection latch, MMC3 PRG/CHR/CIRAM and IRQs, CPU/DMA execution, explicit reset policy and compact atomic snapshots. |
@@ -3993,6 +3994,98 @@ The complete rerun passed: shared mappers took 111.26 seconds and J.Y. Company
 11.04 seconds, each within the original budget. Include `jy-company` alongside
 `mappers` in focused checks; full Meson suite runs already include both.
 
+## Mapper-244 follow-up: C&E Decathlon
+
+`Decathlon` implements the ROM-only bank-switching board identified by the
+[NESdev r5862 stub](https://www.nesdev.org/w/index.php?oldid=5862). Register
+behavior comes from the original author's [Everynes specification](https://problemkaputt.de/everynes.htm#mapper244ceprg32kvrom8k),
+with published emulator behavior used where that description is incomplete.
+The core is original Boolean bit-routing code; no external implementation
+code or commercial ROM contents are incorporated.
+
+All CPU writes at $8000-$FFFF share two independent latches. Before decoding,
+the written byte is ANDed with the byte driven by the **current** PRG bank.
+The resulting D3 selects PRG or CHR, so a conflict can change both the intended
+destination and its bank bits. PRG selection uses D1-D0, complemented by D4
+and exchanged by D5; D2/D6/D7 have no PRG-selection effect. CHR uses D2-D0,
+with ordered exchanges of pins 0/1, 1/2 and 2/0 controlled by D4/D5/D6.
+Mode seven complements the three bits instead of exchanging them.
+
+Everynes leaves CHR mode six unspecified. Both
+[Mesen at b9fa69d](https://github.com/SourMesen/Mesen2/blob/b9fa69ddc6d0a331fb103fdb5eef6904305703c2/Core/NES/Mappers/Unlicensed/Mapper244.h)
+and [NintendulatorNRS-DBG at b685625](https://github.com/gmestanley/NintendulatorNRS-DBG/blob/b685625310ec026afa844340d94503f9767b72df/src-mappers/src/iNES/mapper244.cpp)
+map it to the same complement as mode seven; that is the explicit compatibility
+policy here. Those references do not apply the bus conflict in their register
+handlers. This implementation follows Everynes's conflict claim, using the
+ordinary wired-AND model. Actual PCB drive strength, mode-six electrical
+behavior and exact reset circuitry remain unmeasured. `no-conflicts` is not
+an alternate profile silently selected by title or hash.
+
+Support the 128 KiB PRG / 64 KiB CHR-ROM population recorded in
+[MAME software metadata at 484b993](https://github.com/mamedev/mame/blob/484b993578e6b7155e5a039c4e4962a5d1ad78e8/hash/nes.xml).
+Its Decathlon entry marks both chips as bad dumps and reports graphics
+problems; that metadata is a geometry reference, not game-library or physical
+board certification. No dump was downloaded or patched. Native NES 2.0 requires
+submapper zero, no CPU/CHR RAM or NVRAM, no battery and ordinary H/V mirroring.
+Legacy generic WRAM inference is ignored. Smaller, larger, partial, RAM-based
+or otherwise ambiguous populations are rejected explicitly. Mislabelled MMC3
+translations carrying mapper 244 are not automatically repaired.
+
+The selected PRG bank maps the full 32 KiB CPU window, and CHR the full 8 KiB
+pattern window. CHR is always read-only. H/V mirroring is fixed from the header;
+metadata describes vertical mirroring on the recorded title, while horizontal
+metadata is supported as a fixed wiring model. There is no WRAM, expansion
+register, IRQ or expansion audio. Low cartridge addresses float on the CPU bus.
+The class owns only its immutable PRG and CHR images and two bank bytes, with
+no unused generic mapper RAM buffers.
+
+Cold power selects PRG/CHR bank zero. Soft reset retains both latches, agreeing
+with the published reference policy; exact electrical reset behavior is not
+claimed. State is four bytes: a two-byte fixed-mirroring tag and two bank bytes.
+PRG must be 0..3 and CHR 0..7. Fixed local staging rejects wrong tags, invalid
+banks and truncation before mutation, and whole-machine rejection stays atomic.
+Other mapper payloads, machine state version 20 and the 4 MiB cap are unchanged.
+
+`mapper244` checks every command byte against independent truth tables, every
+CPU write address, all four initial PRG banks across all 256-by-256 ROM/data
+conflicts, every PRG/CHR cell, ROM protection, open bus, reset, unsupported
+metadata and malformed states. Four original 6502 images span both headers
+and H/V. Identical code/vectors in each PRG bank allow live switching; they
+exercise every permutation, conflict-driven destination changes, PPUDATA/CIRAM,
+and a real INC instruction whose dummy write changes the bank before its final
+write. They verify a fresh completion marker, retained soft-reset banks,
+cold defaults and deterministic replay.
+
+`rom-source-mapper244` covers raw, ZIP and 7z loading, preparation/adoption,
+reload, reset/power, state replay and failed-load rollback without save-file
+creation. The existing loader timeout is preserved by keeping the matrix in
+its own target. CLI loading checks twenty valid profiles and twenty-six
+rejected inputs, unchanged source files and absent battery saves; CPU execution
+completion is asserted in C++ tests. All fixtures contain original programs
+and synthetic bank data.
+
+Validation on 2026-11-14 passed all 96 regular Meson targets with GPU checks
+required and twenty-six focused ASan+UBSan targets with four workers (leak
+detection disabled on macOS). Both builds passed 1,246,933 mapper-244 assertions
+in ten cases and 220 loading assertions. The complete build, including SDL3 and
+NodalKit, formatting, scoped clang-tidy, whitespace and exact 157-ID registry/
+ledger checks passed. Isolated strict-consumer standards validation retained
+zero errors, 72 warnings and three infos across 193 documents.
+
+Earlier sanitizer attempts timed out in the shared mapper/loading targets at
+120/30 seconds; reducing parallelism alone was insufficient. The older
+multicart matrices now run as `mapper-multicarts` and `rom-source-multicarts`.
+Exact case-name/tag comparisons preserve all cases: 516 mapper cases become
+465 + 51, and 43 shared loading cases become 38 + 5. Their assertion totals
+remain 7,120,377 and 21,101 respectively. Isolation exposed older mapper-233/234
+fixtures relying on another test to register built-in mappers; three explicit
+setup calls fix that dependency without changing assertions or emulator code.
+The final complete sanitizer run passed: shared mapper 81.62 seconds, multicart
+mapper 26.88, shared loading 9.12 and multicart loading 13.93. All original
+timeout limits remain unchanged. Include both new matrix targets, `jy-company`
+and the existing per-board targets in focused checks; full suite runs already
+discover them automatically.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -4253,7 +4346,7 @@ or another registered cartridge ID.
 | 241 | BxROM with 8 KiB WRAM and optional LPC speech profile | New implementation: BxromWram | [r23728](https://www.nesdev.org/w/index.php?oldid=23728) |
 | 242 | 43272 multicart / battery Waixing RPG / ET-113 replacement menu | New implementation: Multicart242 | [r19709](https://www.nesdev.org/w/index.php?oldid=19709) |
 | 243 | Sachen board | New implementation: Sachen | [r5861](https://www.nesdev.org/w/index.php?oldid=5861) |
-| 244 | Board-specific specification | Not registered | [r5862](https://www.nesdev.org/w/index.php?oldid=5862) |
+| 244 | C&E Decathlon / scrambled bank latches | New implementation: Decathlon | [r5862](https://www.nesdev.org/w/index.php?oldid=5862) |
 | 245 | Board-specific specification | Not registered | [r5871](https://www.nesdev.org/w/index.php?oldid=5871) |
 | 246 | Board-specific specification | Not registered | [r22048](https://www.nesdev.org/w/index.php?oldid=22048) |
 | 248 | Obsolete duplicate of 115; private-use reassignment proposed | Obsolete; not registered | [r23288](https://www.nesdev.org/w/index.php?oldid=23288) |
