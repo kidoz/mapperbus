@@ -19,6 +19,7 @@
 #include "../support/dcs_rom.hpp"
 #include "../support/fds_image.hpp"
 #include "../support/flash_rom.hpp"
+#include "../support/mapper230_rom.hpp"
 #include "../support/rom_archive.hpp"
 #include "app/async_fds_bios_validation.hpp"
 #include "app/async_rom_loader.hpp"
@@ -1864,6 +1865,68 @@ TEST_CASE("Board profiles select Nitra wiring before raw or archived cartridge i
     }
     REQUIRE(core::read_binary_file_capped(raw.string(), image.size(), "ROM") ==
             core::Result<std::vector<Byte>>(image));
+}
+
+TEST_CASE("Reset-driven mapper startup and power cycling remain distinct across loading paths",
+          "[rom-source][mapper230][reset]") {
+    ArchiveFixture fixture;
+    for (bool legacy : {false, true}) {
+        const auto raw = fixture.root / (legacy ? "legacy230.nes" : "native230.nes");
+        const auto archive = fixture.root / (legacy ? "legacy230.zip" : "native230.zip");
+        const auto bytes = tests::make_mapper230_rom(legacy);
+        REQUIRE(core::write_binary_file_atomic(raw.string(), bytes, "mapper 230 fixture"));
+        write_archive(archive, {{"22in1.nes", bytes}});
+        EmulationSession session(std::make_unique<platform::NullVideo>(),
+                                 std::make_unique<platform::NullAudio>(),
+                                 std::make_unique<platform::NullInput>());
+        REQUIRE(session.open_rom(raw.string()));
+        auto& e = session.emulator();
+        REQUIRE(e.read_cpu(0x9A00U) == 0U);
+        REQUIRE(e.read_cpu(0xFA00U) == 7U);
+        e.step_frame();
+        REQUIRE(e.read_cpu(0x12U) == 0xC7U);
+        session.reset();
+        e.step_frame();
+        REQUIRE(e.read_cpu(0x12U) == 0xD7U);
+        session.power_cycle();
+        e.step_frame();
+        REQUIRE(e.read_cpu(0x12U) == 0xC7U);
+        REQUIRE(e.read_cpu(0x14U) == 0U);
+        session.reset();
+        e.step_frame();
+        REQUIRE(e.read_cpu(0x12U) == 0xD7U);
+        REQUIRE(session.open_rom(raw.string()));
+        session.emulator().step_frame();
+        REQUIRE(session.emulator().read_cpu(0x12U) == 0xC7U);
+
+        RomLoadRequest request;
+        request.path = archive.string();
+        request.member = "22in1.nes";
+        request.state_storage.directory = fixture.root / "states";
+        auto prepared = prepare_rom(request);
+        REQUIRE(prepared);
+        REQUIRE(prepared->emulator);
+        REQUIRE(prepared->emulator->read_cpu(0x9A00U) == 0U);
+        REQUIRE(prepared->emulator->read_cpu(0xFA00U) == 7U);
+        prepared->emulator->step_frame();
+        REQUIRE(prepared->emulator->read_cpu(0x12U) == 0xC7U);
+        prepared->emulator->reset();
+        prepared->emulator->step_frame();
+        REQUIRE(prepared->emulator->read_cpu(0x12U) == 0xD7U);
+        session.adopt_rom(std::move(*prepared));
+        REQUIRE(session.emulator().read_cpu(0x12U) == 0xD7U);
+        session.reset();
+        session.emulator().step_frame();
+        REQUIRE(session.emulator().read_cpu(0x12U) == 0xC7U);
+        session.reset();
+        session.emulator().step_frame();
+        REQUIRE(session.emulator().read_cpu(0x12U) == 0xD7U);
+        session.power_cycle();
+        session.emulator().step_frame();
+        REQUIRE(session.emulator().read_cpu(0x12U) == 0xC7U);
+        REQUIRE_FALSE(
+            std::filesystem::exists(std::filesystem::path(raw).replace_extension(".sav")));
+    }
 }
 } // namespace
 } // namespace mapperbus::app

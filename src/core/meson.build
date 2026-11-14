@@ -17,6 +17,7 @@ core_sources = files(
     'mappers/ntdec_n625092.cpp',
     'mappers/multicart227.cpp',
     'mappers/action52.cpp',
+    'mappers/multicart230.cpp',
     'mappers/single_chip.cpp',
     'mappers/mmc1.cpp',
     'mappers/mmc2.cpp',
