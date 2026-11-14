@@ -4,7 +4,7 @@ This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
 complete.** Updated 2026-11-14 against the working-tree registry.
 
-There are **154 registered cartridge IDs**: the original 14, 53 added in the first
+There are **155 registered cartridge IDs**: the original 14, 53 added in the first
 batch, and Irem 32/65/77, Sunsoft 67/68, Taito 33/48/80/207/82/552, Jaleco 18/72/92/101,
 Namco 210, MMC3 variants 118/119, RAMBO-1 64/158, Bandai 16/153/159, and Datach
 157, UNROM 512 30, GTROM/direct MMC1 111, and J.Y. Company
@@ -14,7 +14,7 @@ IDs, Sachen MMC3 clones 262/512/513, Rex Soft's 263, Nitra 250, mappers
 TNROM640 198, Waixing FS309 199, multicarts 202/205, Gouder/JJ-01 208,
 Sugar Softec 215, Single Chip 218, Kasheng A9461 219, NTDEC N625092 221,
 address-latched multicarts/RPGs 227, Active Enterprises 228, reset-driven 22-in-1 230 and
-profiled 42 Games 233, Maxi 15 234, Golden Game 235, Realtec 236, Teletubbies 237 and Contra Fighter 238
+profiled 42 Games 233, Maxi 15 234, Golden Game 235, Realtec 236, Teletubbies 237, Contra Fighter 238 and standard BxROM/WRAM 241
 detailed below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
@@ -24,6 +24,7 @@ unusual ROM geometry.
 
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
+| Standard BxROM with WRAM (follow-up) | 241 | Full-byte 32 KiB PRG banking, fixed H/V, 8 KiB WRAM with optional battery, fixed CHR ROM/RAM and atomic snapshots. Optional LPC speech remains unimplemented. |
 | Contra Fighter compatibility model (follow-up) | 238 | Shared protection latch, MMC3 PRG/CHR/CIRAM and IRQs, CPU/DMA execution, explicit reset policy and compact atomic snapshots. |
 | Teletubbies 420-in-1 (follow-up) | 237 | Four PRG modes, configuration lock, forced ROM A1 type detection, H/V CIRAM, CHR RAM, CPU execution and validated snapshots. |
 | Realtec multicarts (follow-up) | 236 | Three ROM/RAM populations, four PRG modes, address-substituting solder pads, H/V CIRAM, CHR ROM/RAM, CPU execution and validated snapshots. |
@@ -3725,6 +3726,80 @@ Formatting, scoped clang-tidy, whitespace and exact 154-ID registry/ledger
 checks passed. Isolated canonical-document validation preserved zero errors,
 72 warnings and three infos across 193 documents.
 
+## Mapper-241 follow-up: standard BxROM with WRAM
+
+`BxromWram` implements the standard population described by
+[NESdev mapper 241 revision 23728](https://www.nesdev.org/w/index.php?oldid=23728):
+32 KiB PRG banking, fixed horizontal/vertical mirroring and 8 KiB WRAM at
+$6000-$7FFF, optionally battery-backed. All $8000-$FFFF writes latch the data
+byte without bus conflicts. $7FFD-$7FFF remain ordinary WRAM, with no NINA-001
+register overlay. There are no mapper-controlled mirroring bits or IRQs.
+
+The full eight-bit PRG latch agrees with
+[Mesen's published reference at b9fa69d](https://github.com/SourMesen/Mesen2/blob/b9fa69ddc6d0a331fb103fdb5eef6904305703c2/Core/NES/Mappers/Unlicensed/Mapper241.h).
+The implementation is original; external emulator source is a behavioral
+reference. Accept power-of-two PRG chips from 32 KiB through 8 MiB; unconnected
+upper address outputs alias the smaller population. The 8 MiB ceiling follows
+that compatibility model, rather than certifying every PCB's physical latch
+width. No FCEUX-style D7-to-bank-8 overdump repair is applied: proper dumps of
+the relevant Subor board use mapper 481. Fixed 8 KiB CHR ROM or 8 KiB volatile
+CHR RAM is supported, without CHR banking.
+
+Native NES 2.0 submapper zero must declare exactly 8 KiB PRG RAM or NVRAM,
+matching its battery flag, and exactly 8 KiB volatile CHR RAM when CHR ROM is
+absent. Reject unknown submappers, partial/non-power-of-two PRG, other CHR
+sizes, mixed or extra RAM/NVRAM and non-H/V mirroring. Legacy iNES always has
+the physical 8 KiB WRAM, ignoring generic RAM-size inference. Native CHR-NVRAM
+and incomplete memory descriptions are unsupported.
+
+Soft reset selects bank zero and preserves WRAM/CHR RAM. Cold power also
+selects zero, clears volatile WRAM and CHR RAM, and preserves battery WRAM,
+including saves loaded before power-on. These are explicit deterministic
+compatibility policies; exact electrical reset state and individual PCB pin
+populations remain unverified. Battery APIs expose only the 8 KiB persistent
+WRAM; short save imports update the supplied prefix and oversized direct
+imports stop at chip capacity, following ordinary RAM policy. File imports
+retain the existing 8 KiB cap and atomic file writes.
+
+The optional TMS5220C-data-compatible LPC chip described in the same article
+is **not implemented**. Base boards have no device at $4020-$5FFF, including
+$5000-$5FFF: reads float and writes are ignored. No fake ready bit, silent
+speech engine, undocumented LPC submapper, or keyboard/printer repair for
+hacked educational images is supplied. `--board-profile lpc` is rejected.
+Completing the optional LPC interface and audio decoder is the next mapper-241
+step; this registration does not claim speech-cartridge compatibility.
+
+A dedicated class owns only its actual 8 KiB WRAM and one 8 KiB CHR ROM/RAM
+buffer, with no unused large generic mapper RAM arrays. Snapshots contain a
+2-byte immutable-configuration tag, the complete raw bank latch, WRAM and CHR
+RAM only when present: 8,195 bytes with CHR ROM or 16,387 with CHR RAM. Tags bind
+PRG geometry, mirroring, battery and CHR population; fixed-size staging rejects
+malformed/truncated component states atomically. Whole-machine rollback,
+other mapper payloads, state version 20 and the 4 MiB cap are unchanged.
+
+The dedicated `mapper241` target covers nine PRG sizes, both header formats,
+H/V, volatile/persistent WRAM and CHR ROM/RAM; every bank value and CPU write
+address; WRAM/NINA separation, fixed CHR protection, open-bus speech addresses,
+OAM DMA, reset, geometry rejection and malformed snapshots. Original 6502
+firmware replicated into each PRG bank checks completion, PPUDATA/CIRAM,
+soft/cold RAM policy and deterministic replay, including an 8 MiB image.
+`rom-source-mapper241` checks raw, ZIP and 7z loading, session close/reload,
+prepare/adopt, battery persistence and failed-load rollback. CLI probes cover
+24 valid profiles and 16 rejected inputs, asserting actual battery bytes,
+no volatile saves and unchanged ROM files. No commercial ROM data is used.
+
+Validation on 2026-11-14 passed all 87 regular Meson targets with GPU checks
+required and eighteen focused ASan+UBSan targets (leak detection disabled on
+macOS). Both builds passed 424,369 assertions in seven dedicated mapper cases
+and 672 loading/persistence assertions; the shared mapper target passed
+7,123,554 assertions in 534 cases. Its sanitizer run took 117.17 seconds within
+the unchanged 120-second budget. The first regular run exposed an incorrect
+new DMA assertion; accounting for the PPU's absent OAM attribute bits fixed the
+test, and the complete rerun passed. Formatting, scoped clang-tidy, whitespace,
+and exact 155-ID registry/ledger checks passed. Isolated strict-consumer
+standards validation preserved zero errors, 72 warnings and three infos across
+193 documents. Existing user changes were preserved.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -3982,7 +4057,7 @@ or another registered cartridge ID.
 | 237 | Teletubbies 420-in-1 / forced-A1 type wiring | New implementation: Teletubbies | [r5823](https://www.nesdev.org/w/index.php?oldid=5823) |
 | 238 | Contra Fighter / UNL-603-5052 protection compatibility model | New implementation: Mmc3 | [r5824](https://www.nesdev.org/w/index.php?oldid=5824) |
 | 240 | Board-specific specification | New implementation: DiscreteMapper | [r21944](https://www.nesdev.org/w/index.php?oldid=21944) |
-| 241 | Board-specific specification | Not registered | [r23728](https://www.nesdev.org/w/index.php?oldid=23728) |
+| 241 | Standard BxROM with 8 KiB WRAM; optional LPC speech pending | New implementation: BxromWram | [r23728](https://www.nesdev.org/w/index.php?oldid=23728) |
 | 242 | Board-specific specification | Not registered | [r19709](https://www.nesdev.org/w/index.php?oldid=19709) |
 | 243 | Sachen board | New implementation: Sachen | [r5861](https://www.nesdev.org/w/index.php?oldid=5861) |
 | 244 | Board-specific specification | Not registered | [r5862](https://www.nesdev.org/w/index.php?oldid=5862) |
