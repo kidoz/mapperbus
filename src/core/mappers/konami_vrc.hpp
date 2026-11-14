@@ -9,7 +9,8 @@
 namespace mapperbus::core {
 
 /// VRC1/2/3/4 boards (21/22/23/25/73/75), with chip-specific capabilities
-/// and explicit NES 2.0 address wiring. No expansion sound hardware.
+/// and explicit NES 2.0 address wiring, plus Waixing mixed-CHR mapper 252.
+/// No expansion sound hardware.
 class KonamiVrc final : public Mapper {
   public:
     KonamiVrc(const INesHeader& header, std::vector<Byte> prg, std::vector<Byte> chr);
@@ -24,12 +25,16 @@ class KonamiVrc final : public Mapper {
     bool irq_pending() const override;
     void acknowledge_irq() override;
     void reset() override;
+    void power_on() override;
     void save_state(StateWriter& writer) const override;
     void load_state(StateReader& reader) override;
     std::span<const Byte> battery_ram() const override;
     void set_battery_ram(std::span<const Byte> data) override;
 
   private:
+    uint16_t waixing_state_tag() const;
+    void save_waixing_state(StateWriter& writer) const;
+    void load_waixing_state(StateReader& reader);
     Byte port(Address addr) const;
     std::size_t chr_offset(Address addr) const;
     void irq_control(Byte value);

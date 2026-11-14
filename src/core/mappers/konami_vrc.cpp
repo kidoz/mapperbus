@@ -16,6 +16,9 @@ std::size_t ram_bytes(const INesHeader& header) {
 } // namespace
 
 // Specifications: NESdev VRC1, VRC2_and_VRC4, VRC3, VRC_IRQ.
+// Waixing 252: r5906, VRC4 r24169 and IRQ r22720. Exact CHR banks 6/7
+// select RAM before ROM wrapping. Clone-specific dynamic RAM relocation and
+// propagation delays are unverified; retain the documented VRC4e digital model.
 KonamiVrc::KonamiVrc(const INesHeader& header, std::vector<Byte> prg, std::vector<Byte> chr)
     : prg_rom_(std::move(prg)), chr_rom_(std::move(chr)), prg_ram_(ram_bytes(header)),
       mapper_(header.mapper_number), submapper_(header.is_nes2 ? header.submapper : 0U),
@@ -24,6 +27,15 @@ KonamiVrc::KonamiVrc(const INesHeader& header, std::vector<Byte> prg, std::vecto
                                  : (header.has_battery ? prg_ram_.size() : 0U)),
       initial_mirror_(header.mirror_mode), mirror_(initial_mirror_) {
     reset();
+}
+
+void KonamiVrc::power_on() {
+    reset();
+    if (mapper_ == 252U) {
+        chr_ram_.fill(0U);
+        if (nvram_size_ == 0U)
+            std::ranges::fill(prg_ram_, 0U);
+    }
 }
 
 void KonamiVrc::reset() {
@@ -37,6 +49,8 @@ void KonamiVrc::reset() {
 
 Byte KonamiVrc::port(Address address) const {
     const auto addr = static_cast<unsigned>(address);
+    if (mapper_ == 252U)
+        return (addr >> 2U) & 3U;
     if (mapper_ == 21U) {
         if (submapper_ == 1U)
             return (addr >> 1U) & 3U;
@@ -108,6 +122,8 @@ void KonamiVrc::irq_control(Byte data) {
     irq_control_ = value & 7U;
     irq_enabled_ = (value >> 1U) & 1U;
     irq_pending_ = 0U;
+    if (mapper_ == 252U)
+        irq_prescaler_ = 341U;
     if (irq_enabled_ != 0U) {
         irq_counter_ = irq_latch_;
         irq_prescaler_ = 341U;
@@ -204,11 +220,22 @@ std::size_t KonamiVrc::chr_offset(Address addr) const {
     return bank * 0x400U + (addr & 0x03FFU);
 }
 Byte KonamiVrc::read_chr(Address addr) {
+    if (mapper_ == 252U) {
+        const auto bank = chr_banks_[(addr >> 10U) & 7U];
+        if (bank == 6U || bank == 7U)
+            return chr_ram_[(bank - 6U) * 1024U + (addr & 0x3FFU)];
+    }
     const auto offset = chr_offset(addr & 0x1FFFU);
     return chr_rom_.empty() ? chr_ram_[offset % chr_ram_.size()]
                             : chr_rom_[offset % chr_rom_.size()];
 }
 void KonamiVrc::write_chr(Address addr, Byte value) {
+    if (mapper_ == 252U) {
+        const auto bank = chr_banks_[(addr >> 10U) & 7U];
+        if (bank == 6U || bank == 7U)
+            chr_ram_[(bank - 6U) * 1024U + (addr & 0x3FFU)] = value;
+        return;
+    }
     if (chr_rom_.empty())
         chr_ram_[chr_offset(addr & 0x1FFFU) % chr_ram_.size()] = value;
 }
@@ -243,6 +270,10 @@ void KonamiVrc::acknowledge_irq() {
 }
 
 void KonamiVrc::save_state(StateWriter& w) const {
+    if (mapper_ == 252U) {
+        save_waixing_state(w);
+        return;
+    }
     w.write_array(prg_banks_);
     w.write_array(chr_banks_);
     w.write(mirror_);
@@ -258,6 +289,10 @@ void KonamiVrc::save_state(StateWriter& w) const {
     w.write_array(chr_ram_);
 }
 void KonamiVrc::load_state(StateReader& r) {
+    if (mapper_ == 252U) {
+        load_waixing_state(r);
+        return;
+    }
     r.read_array(prg_banks_);
     r.read_array(chr_banks_);
     r.read(mirror_);
@@ -280,6 +315,65 @@ void KonamiVrc::load_state(StateReader& r) {
         reset();
         r.fail();
     }
+}
+uint16_t KonamiVrc::waixing_state_tag() const {
+    return static_cast<uint16_t>(0xFC00U | (initial_mirror_ == MirrorMode::Vertical ? 1U : 0U) |
+                                 (nvram_size_ != 0U ? 2U : 0U));
+}
+void KonamiVrc::save_waixing_state(StateWriter& w) const {
+    w.write(waixing_state_tag());
+    w.write(prg_banks_[0U]);
+    w.write(prg_banks_[1U]);
+    w.write_array(chr_banks_);
+    w.write(mirror_);
+    w.write(mode_);
+    w.write(static_cast<Byte>(irq_latch_));
+    w.write(static_cast<Byte>(irq_counter_));
+    w.write(irq_prescaler_);
+    w.write(irq_control_);
+    w.write(irq_enabled_);
+    w.write(irq_pending_);
+    for (const auto value : prg_ram_)
+        w.write(value);
+    for (const auto value : std::span(chr_ram_).first(2048U))
+        w.write(value);
+}
+void KonamiVrc::load_waixing_state(StateReader& r) {
+    const auto tag = r.read<uint16_t>();
+    std::array<Byte, 2> prg{};
+    std::array<uint16_t, 8> chr{};
+    r.read_array(prg);
+    r.read_array(chr);
+    const auto mirror = r.read<MirrorMode>();
+    const auto mode = r.read<Byte>();
+    const auto latch = r.read<Byte>(), counter = r.read<Byte>();
+    const auto prescaler = r.read<uint16_t>();
+    const auto control = r.read<Byte>(), enabled = r.read<Byte>(), pending = r.read<Byte>();
+    std::array<Byte, 8192> wram{};
+    std::array<Byte, 2048> cram{};
+    r.read_array(wram);
+    r.read_array(cram);
+    if (!r.ok() || tag != waixing_state_tag() || prg[0U] > 31U || prg[1U] > 31U ||
+        std::ranges::any_of(chr, [](uint16_t bank) { return bank > 511U; }) ||
+        mirror > MirrorMode::SingleUpper || mirror == MirrorMode::FourScreen || mode > 3U ||
+        prescaler == 0U || prescaler > 341U || control > 7U || enabled > 1U || pending > 1U ||
+        (pending != 0U && enabled == 0U)) {
+        r.fail();
+        return;
+    }
+    prg_banks_ = {prg[0U], prg[1U], 0U};
+    chr_banks_ = chr;
+    mirror_ = mirror;
+    mode_ = mode;
+    microwire_ = 0U;
+    irq_latch_ = latch;
+    irq_counter_ = counter;
+    irq_prescaler_ = prescaler;
+    irq_control_ = control;
+    irq_enabled_ = enabled;
+    irq_pending_ = pending;
+    std::ranges::copy(wram, prg_ram_.begin());
+    std::ranges::copy(cram, chr_ram_.begin());
 }
 std::span<const Byte> KonamiVrc::battery_ram() const {
     return std::span<const Byte>(prg_ram_).last(std::min(nvram_size_, prg_ram_.size()));
