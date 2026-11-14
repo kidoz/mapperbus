@@ -26,6 +26,7 @@
 #include "../support/mapper236_rom.hpp"
 #include "../support/mapper237_rom.hpp"
 #include "../support/mapper238_rom.hpp"
+#include "../support/mapper241_rom.hpp"
 #include "../support/rom_archive.hpp"
 #include "app/async_fds_bios_validation.hpp"
 #include "app/async_rom_loader.hpp"
@@ -2316,6 +2317,88 @@ TEST_CASE("Contra Fighter loading paths preserve protection on reset and clear i
             REQUIRE_FALSE(
                 std::filesystem::exists(std::filesystem::path(raw).replace_extension(".sav")));
         }
+}
+TEST_CASE("BxROM WRAM loading preserves battery across raw archived and staged sessions",
+          "[rom-source][mapper241][battery]") {
+    ArchiveFixture fixture;
+    TestDataHome data_home(fixture.root / "data");
+    for (bool legacy : {false, true})
+        for (bool vertical : {false, true})
+            for (bool battery : {false, true})
+                for (bool chr_rom : {false, true}) {
+                    const auto stem = std::to_string(legacy) + std::to_string(vertical) +
+                                      std::to_string(battery) + std::to_string(chr_rom);
+                    const auto raw = fixture.root / (stem + ".nes");
+                    const auto save = fixture.root / (stem + ".sav");
+                    const auto archive = fixture.root / (stem + ".zip");
+                    const auto storage = fixture.root / (stem + "-storage");
+                    const auto bytes =
+                        tests::make_mapper241_rom(legacy, vertical, battery, chr_rom);
+                    REQUIRE(core::write_binary_file_atomic(raw.string(), bytes, "BxROM fixture"));
+                    write_archive(archive, {{"bxrom.nes", bytes}});
+                    {
+                        EmulationSession session(std::make_unique<platform::NullVideo>(),
+                                                 std::make_unique<platform::NullAudio>(),
+                                                 std::make_unique<platform::NullInput>());
+                        REQUIRE(session.open_rom(raw.string()));
+                        session.emulator().step_frame();
+                        REQUIRE(session.emulator().read_cpu(0x12U) == 0xC7U);
+                        session.reset();
+                        session.emulator().step_frame();
+                        REQUIRE(session.emulator().read_cpu(0x14U) == 0xA7U);
+                        session.power_cycle();
+                        session.emulator().step_frame();
+                        REQUIRE(session.emulator().read_cpu(0x14U) == (battery ? 0xA7U : 0U));
+                        session.close_rom();
+                        REQUIRE(std::filesystem::exists(save) == battery);
+                        if (battery) {
+                            const auto persisted =
+                                core::read_binary_file_capped(save.string(), 8192U, "BxROM save");
+                            REQUIRE(persisted);
+                            REQUIRE(persisted->size() == 8192U);
+                            REQUIRE((*persisted)[0] == 0xA7U);
+                            REQUIRE((*persisted)[0x1FFDU] == 0x5AU);
+                        }
+                        REQUIRE(session.open_rom(raw.string()));
+                        session.emulator().step_frame();
+                        REQUIRE(session.emulator().read_cpu(0x14U) == (battery ? 0xA7U : 0U));
+                        RomLoadRequest request;
+                        request.path = archive.string();
+                        request.member = "bxrom.nes";
+                        request.persistence_directory = storage;
+                        request.state_storage.directory = fixture.root / "states";
+                        auto prepared = prepare_rom(request);
+                        REQUIRE(prepared);
+                        prepared->emulator->step_frame();
+                        REQUIRE(prepared->emulator->read_cpu(0x12U) == 0xC7U);
+                        const auto snapshot = prepared->emulator->save_state();
+                        session.adopt_rom(std::move(*prepared));
+                        REQUIRE(session.emulator().save_state() == snapshot);
+                        session.close_rom();
+                    }
+                    const auto archive_save =
+                        storage / "battery" / (core::sha256_hex(core::rom_sha256(bytes)) + ".sav");
+                    REQUIRE(std::filesystem::exists(archive_save) == battery);
+                    for (bool seven_zip : {false, true}) {
+                        const auto path = fixture.root / (stem + (seven_zip ? ".7z" : ".zip"));
+                        if (seven_zip)
+                            write_archive(path, {{"bxrom.nes", bytes}}, true);
+                        core::Emulator restored;
+                        REQUIRE(load_rom_source(restored, path.string(), "bxrom.nes", {}, storage));
+                        restored.step_frame();
+                        REQUIRE(restored.read_cpu(0x12U) == 0xC7U);
+                        REQUIRE(restored.read_cpu(0x14U) == (battery ? 0xA7U : 0U));
+                        const auto before = restored.save_state();
+                        auto bad = bytes;
+                        bad[6] |= 8U;
+                        const auto invalid = fixture.root / "invalid.nes";
+                        REQUIRE(core::write_binary_file_atomic(invalid.string(), bad, "invalid"));
+                        REQUIRE_FALSE(load_rom_source(restored, invalid.string(), {}, {}, storage));
+                        REQUIRE(restored.save_state() == before);
+                    }
+                    REQUIRE(core::read_binary_file_capped(raw.string(), bytes.size(), "ROM") ==
+                            core::Result<std::vector<Byte>>(bytes));
+                }
 }
 } // namespace
 } // namespace mapperbus::app

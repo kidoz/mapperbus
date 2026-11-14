@@ -14,6 +14,7 @@ core_sources = files(
     'mappers/mapper_registry.cpp',
     'mappers/mapper_state.cpp',
     'mappers/nrom.cpp',
+    'mappers/bxrom_wram.cpp',
     'mappers/ntdec_n625092.cpp',
     'mappers/multicart227.cpp',
     'mappers/action52.cpp',

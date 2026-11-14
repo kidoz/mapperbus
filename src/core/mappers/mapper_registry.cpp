@@ -3,6 +3,7 @@
 #include "core/mappers/action52.hpp"
 #include "core/mappers/axrom.hpp"
 #include "core/mappers/bandai_fcg.hpp"
+#include "core/mappers/bxrom_wram.hpp"
 #include "core/mappers/cnrom.hpp"
 #include "core/mappers/color_dreams.hpp"
 #include "core/mappers/datach.hpp"
@@ -79,6 +80,8 @@ namespace {
         return RealtecMulticart::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 235U)
         return GoldenGame::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 241U)
+        return BxromWram::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 238U) {
         if (header.is_nes2 && header.submapper != 0U)
             return std::unexpected("Mapper 238 supports submapper 0");
@@ -793,6 +796,7 @@ void register_builtin_mappers() {
     registry.register_mapper(236, make_factory<RealtecMulticart>());
     registry.register_mapper(237, make_factory<Teletubbies>());
     registry.register_mapper(238, make_factory<Mmc3>());
+    registry.register_mapper(241, make_factory<BxromWram>());
     registry.register_mapper(249, make_factory<Mmc3>());
     registry.register_mapper(250, make_factory<Mmc3>());
     registry.register_mapper(262, make_factory<Mmc3>());
