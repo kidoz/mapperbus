@@ -42,7 +42,8 @@ class EmulationSession {
     core::Result<void> initialize();
     core::Result<void> open_rom(const std::string& rom_path,
                                 std::string_view member = {},
-                                const std::string& dcs_option_path = {});
+                                const std::string& dcs_option_path = {},
+                                std::string_view board_profile = {});
     core::Result<void> load_rom(const std::string& rom_path);
     /// Adopt media prepared off-thread after the paused outgoing machine has been saved.
     void adopt_rom(PreparedRom media);

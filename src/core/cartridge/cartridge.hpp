@@ -166,6 +166,9 @@ class Cartridge {
     [[nodiscard]] bool has_expansion_audio() const {
         return mapper_->has_expansion_audio();
     }
+    void set_region(Region region) {
+        mapper_->set_region(region);
+    }
     void clock_audio() {
         mapper_->clock_audio();
     }

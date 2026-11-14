@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "core/types.hpp"
+#include "lpc_stream.hpp"
 
 namespace mapperbus::tests {
 /// Original firmware replicated into each 32 KiB page so switching remains executable.
@@ -94,6 +95,40 @@ inline std::vector<core::Byte> make_mapper241_rom(bool legacy = false,
     }
     if (chr_rom)
         std::fill_n(bytes.begin() + static_cast<std::ptrdiff_t>(16U + prg_size), 8192U, 0x23U);
+    return bytes;
+}
+/// Polls the real ready bit before every nibble, then leaves a WRAM completion
+/// signature. Several repeat frames keep speech playing across machine snapshots.
+inline std::vector<core::Byte> make_mapper241_lpc_rom(bool legacy = false,
+                                                      bool vertical = true,
+                                                      bool battery = false,
+                                                      bool chr_rom = false) {
+    using core::Byte;
+    auto bytes = make_mapper241_rom(legacy, vertical, battery, chr_rom);
+    std::vector<Byte> code{0x78U};
+    const auto store = [&code](core::Address addr, Byte value) {
+        code.insert(code.end(),
+                    {0xA9U, value, 0x8DU, static_cast<Byte>(addr), static_cast<Byte>(addr >> 8U)});
+    };
+    store(0x4017U, 0x40U);
+    store(0x5000U, 0U);
+    LpcStream stream;
+    stream.frame();
+    for (unsigned i = 0; i < 3U; ++i)
+        stream.frame(14U, 20U, true);
+    stream.frame(15U);
+    for (Byte nibble : stream.nibbles()) {
+        code.insert(code.end(), {0xADU, 0U, 0x50U, 0x29U, 0x40U, 0xF0U, 0xF9U});
+        store(0x5FFFU, static_cast<Byte>(0x50U | nibble));
+    }
+    store(0x6000U, 0xA7U);
+    store(0x7FFFU, 0x5AU);
+    store(0x12U, 0xC7U);
+    const auto loop = static_cast<core::Address>(0xE000U + code.size());
+    code.insert(code.end(), {0x4CU, static_cast<Byte>(loop), static_cast<Byte>(loop >> 8U)});
+    for (std::size_t bank = 0; bank < 4U; ++bank)
+        std::ranges::copy(
+            code, bytes.begin() + static_cast<std::ptrdiff_t>(16U + bank * 32768U + 0x6000U));
     return bytes;
 }
 } // namespace mapperbus::tests

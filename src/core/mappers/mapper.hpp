@@ -157,6 +157,7 @@ class Mapper {
     virtual bool has_expansion_audio() const {
         return false;
     }
+    virtual void set_region(Region /*region*/) {}
     virtual void clock_audio() {}
     virtual float audio_output() const {
         return 0.0f;

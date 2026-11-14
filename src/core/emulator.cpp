@@ -215,6 +215,8 @@ Result<void> Emulator::load_cartridge(Cartridge cartridge,
     ppu_.set_region(region_);
     apu_.set_region(region_);
     bus_.set_region(region_);
+    if (cartridge_)
+        cartridge_->set_region(region_);
 
     battery_save_path_ = battery_path;
 
@@ -404,6 +406,8 @@ void Emulator::unload_cartridge() {
     ppu_.set_region(region_);
     apu_.set_region(region_);
     bus_.set_region(region_);
+    if (cartridge_)
+        cartridge_->set_region(region_);
     ppu_.reset();
     apu_.reset();
     fds_.reset();

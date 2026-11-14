@@ -26,6 +26,7 @@ struct RomLoadRequest {
     /// Owned reader-thread diagnostic carrying the resolved member (empty for raw media).
     std::function<void(std::string)> on_fds_bios_error = {};
     std::string dcs_option_path = {};
+    std::string board_profile = {};
 };
 
 struct PreparedRom {

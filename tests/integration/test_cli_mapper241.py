@@ -6,7 +6,7 @@ import sys
 import tempfile
 
 
-def rom(legacy=False, vertical=True, battery=False, chr_rom=False, prg_size=131072):
+def rom(legacy=False, vertical=True, battery=False, chr_rom=False, prg_size=131072, speech=False):
     header = bytearray(b"NES\x1a" + bytes(12))
     header[4], header[5] = (prg_size // 16384) & 255, int(chr_rom)
     header[6], header[7] = 0x10 | int(vertical) | (2 if battery else 0), 0xF0 if legacy else 0xF8
@@ -33,6 +33,33 @@ def rom(legacy=False, vertical=True, battery=False, chr_rom=False, prg_size=1310
     store(0x12, 0xC7)
     loop = 0xE000 + len(code)
     code.extend([0x4C, loop & 255, loop >> 8])
+    if speech:
+        code = bytearray([0x78])
+        store(0x4017, 0x40)
+        store(0x5000, 0)
+        fields = []
+
+        def bits(value, width):
+            fields.extend((value >> i) & 1 for i in range(width - 1, -1, -1))
+
+        bits(14, 4)
+        bits(0, 1)
+        bits(20, 6)
+        for value, width in zip((23, 9, 8, 6, 7, 6, 6, 3, 3, 3), (5, 5, 4, 4, 4, 4, 4, 3, 3, 3)):
+            bits(value, width)
+        for _ in range(3):
+            bits(14, 4)
+            bits(1, 1)
+            bits(20, 6)
+        bits(15, 4)
+        for offset in range(0, len(fields), 4):
+            nibble = sum(value << i for i, value in enumerate(fields[offset:offset + 4]))
+            code.extend([0xAD, 0, 0x50, 0x29, 0x40, 0xF0, 0xF9])
+            store(0x5000, 0x50 | nibble)
+        for address, value in ((0x6000, 0xA7), (0x7FFD, 0x5A), (0x7FFE, 0x83), (0x7FFF, 0x91)):
+            store(address, value)
+        loop = 0xE000 + len(code)
+        code.extend([0x4C, loop & 255, loop >> 8])
     prg = bytearray()
     for page in range(prg_size // 32768):
         data = bytearray([page]) * 32768
@@ -49,7 +76,7 @@ def main():
         root = Path(temp)
         env = dict(os.environ, XDG_CONFIG_HOME=str(root / "config"), XDG_DATA_HOME=str(root / "data"))
 
-        def probe(data, accepted=True, profile=None):
+        def probe(data, accepted=True, profile=None, region=None):
             nonlocal valid, invalid
             source = root / "probe.nes"
             save = source.with_suffix(".sav")
@@ -58,6 +85,8 @@ def main():
             args = [str(binary), str(source), "--frames", "2"]
             if profile is not None:
                 args.extend(["--board-profile", profile])
+            if region is not None:
+                args.extend(["--region", region])
             result = subprocess.run(args, env=env, capture_output=True, text=True, timeout=15, check=False)
             if accepted:
                 assert result.returncode == 0 and "Ran 2 frames successfully" in result.stderr, result.stderr
@@ -86,8 +115,14 @@ def main():
             data = rom()
             data[offset] = value
             probe(data, accepted=False)
-        for profile in ("lpc", "unknown"):
-            probe(rom(), accepted=False, profile=profile)
+        for legacy in (False, True):
+            for vertical in (False, True):
+                for chr_rom in (False, True):
+                    probe(rom(legacy, vertical, True, chr_rom, speech=True), profile="lpc")
+        for region in ("pal", "hybrid"):
+            probe(rom(battery=True, speech=True), profile="lpc", region=region)
+        probe(rom(battery=True), profile="standard")
+        probe(rom(), accepted=False, profile="unknown")
     print(f"Mapper 241: {valid} loading profiles and {invalid} rejected inputs passed")
 
 

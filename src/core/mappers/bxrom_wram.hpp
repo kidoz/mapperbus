@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <memory>
 #include <vector>
 
 #include "core/cartridge/ines_header.hpp"
@@ -8,13 +9,25 @@
 
 namespace mapperbus::core {
 
-/// Mapper 241's standard BxROM/WRAM population; optional LPC device is not emulated.
+class LpcSpeech;
+
+/// Mapper 241: standard BxROM/WRAM, with an explicit optional LPC speech profile.
 class BxromWram final : public Mapper {
   public:
     BxromWram(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte> chr_rom);
+    ~BxromWram() override;
     static Result<void> validate_geometry(const INesHeader& header,
                                           std::size_t prg_size,
                                           std::size_t chr_size);
+    Result<void> configure_board_profile(std::string_view profile) override;
+    bool maps_expansion(Address addr) const override;
+    Byte expansion_read_mask(Address addr) const override;
+    Byte read_expansion(Address addr) override;
+    void write_expansion(Address addr, Byte data) override;
+    bool has_expansion_audio() const override;
+    void clock_audio() override;
+    float audio_output() const override;
+    void set_region(Region region) override;
     Byte read_prg(Address addr) override;
     void write_prg(Address addr, Byte value) override;
     bool maps_prg(Address addr) const override;
@@ -37,6 +50,8 @@ class BxromWram final : public Mapper {
     bool chr_ram_;
     bool battery_;
     Byte bank_ = 0U;
+    Region region_ = Region::NTSC;
+    std::unique_ptr<LpcSpeech> speech_;
 };
 
 } // namespace mapperbus::core

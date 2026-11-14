@@ -211,6 +211,8 @@ class Emulator {
         ppu_.set_region(region_);
         apu_.set_region(region_);
         bus_.set_region(region_);
+        if (cartridge_)
+            cartridge_->set_region(region_);
     }
 
   private:

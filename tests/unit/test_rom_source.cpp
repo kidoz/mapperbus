@@ -2400,5 +2400,67 @@ TEST_CASE("BxROM WRAM loading preserves battery across raw archived and staged s
                             core::Result<std::vector<Byte>>(bytes));
                 }
 }
+TEST_CASE("LPC board profile survives raw archive and staged session loading",
+          "[rom-source][mapper241][lpc]") {
+    ArchiveFixture fixture;
+    TestDataHome data_home(fixture.root / "data");
+    for (bool legacy : {false, true})
+        for (bool battery : {false, true}) {
+            const auto stem = std::to_string(legacy) + std::to_string(battery);
+            const auto raw = fixture.root / (stem + ".nes");
+            const auto archive = fixture.root / (stem + ".zip");
+            const auto storage = fixture.root / (stem + "-storage");
+            const auto bytes = tests::make_mapper241_lpc_rom(legacy, true, battery);
+            REQUIRE(core::write_binary_file_atomic(raw.string(), bytes, "speech fixture"));
+            write_archive(archive, {{"speech.nes", bytes}});
+            EmulationSession session(std::make_unique<platform::NullVideo>(),
+                                     std::make_unique<platform::NullAudio>(),
+                                     std::make_unique<platform::NullInput>());
+            REQUIRE(session.open_rom(raw.string(), {}, {}, "lpc"));
+            session.emulator().step_frame();
+            session.emulator().step_frame();
+            REQUIRE(session.emulator().read_cpu(0x12U) == 0xC7U);
+            const auto saved = session.emulator().save_state();
+            session.reset();
+            session.emulator().step_frame();
+            session.emulator().step_frame();
+            REQUIRE(session.emulator().read_cpu(0x12U) == 0xC7U);
+            REQUIRE(session.emulator().load_state(saved));
+            RomLoadRequest request;
+            request.path = archive.string();
+            request.member = "speech.nes";
+            request.persistence_directory = storage;
+            request.board_profile = "lpc";
+            request.state_storage.directory = fixture.root / "states";
+            auto prepared = prepare_rom(request);
+            REQUIRE(prepared);
+            prepared->emulator->step_frame();
+            prepared->emulator->step_frame();
+            REQUIRE(prepared->emulator->read_cpu(0x12U) == 0xC7U);
+            const auto staged = prepared->emulator->save_state();
+            REQUIRE(session.emulator().flush_persistent_data());
+            session.adopt_rom(std::move(*prepared));
+            REQUIRE(session.emulator().save_state() == staged);
+            session.close_rom();
+            REQUIRE(std::filesystem::exists(fixture.root / (stem + ".sav")) == battery);
+            for (bool seven_zip : {false, true}) {
+                const auto path = fixture.root / (stem + (seven_zip ? ".7z" : ".zip"));
+                if (seven_zip)
+                    write_archive(path, {{"speech.nes", bytes}}, true);
+                core::Emulator loaded;
+                REQUIRE(load_rom_source(
+                    loaded, path.string(), "speech.nes", {}, storage, {}, {}, {}, "lpc"));
+                loaded.step_frame();
+                loaded.step_frame();
+                REQUIRE(loaded.read_cpu(0x12U) == 0xC7U);
+                const auto before = loaded.save_state();
+                REQUIRE_FALSE(load_rom_source(
+                    loaded, path.string(), "speech.nes", {}, storage, {}, {}, {}, "bad-profile"));
+                REQUIRE(loaded.save_state() == before);
+            }
+            request.board_profile = "bad-profile";
+            REQUIRE_FALSE(prepare_rom(request));
+        }
+}
 } // namespace
 } // namespace mapperbus::app

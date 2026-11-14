@@ -11,5 +11,7 @@ inline constexpr float kMmc5Pcm = 0.002f;
 inline constexpr float kN163 = 0.0004f;
 inline constexpr float kSunsoft5b = 0.005f;
 inline constexpr float kFds = 0.15f;
+// Nominal normalized LPC gain; cartridge speech output resistance is unmeasured.
+inline constexpr float kLpc = 0.15f;
 
 } // namespace mapperbus::core::expansion_gains
