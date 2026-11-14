@@ -7,6 +7,7 @@
 #include "core/mappers/cnrom.hpp"
 #include "core/mappers/color_dreams.hpp"
 #include "core/mappers/datach.hpp"
+#include "core/mappers/decathlon.hpp"
 #include "core/mappers/discrete.hpp"
 #include "core/mappers/flash_boards.hpp"
 #include "core/mappers/golden_game.hpp"
@@ -81,6 +82,8 @@ namespace {
         return RealtecMulticart::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 235U)
         return GoldenGame::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 244U)
+        return Decathlon::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 242U)
         return Multicart242::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 241U)
@@ -801,6 +804,7 @@ void register_builtin_mappers() {
     registry.register_mapper(238, make_factory<Mmc3>());
     registry.register_mapper(241, make_factory<BxromWram>());
     registry.register_mapper(242, make_factory<Multicart242>());
+    registry.register_mapper(244, make_factory<Decathlon>());
     registry.register_mapper(249, make_factory<Mmc3>());
     registry.register_mapper(250, make_factory<Mmc3>());
     registry.register_mapper(262, make_factory<Mmc3>());

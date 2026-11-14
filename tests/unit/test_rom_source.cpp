@@ -28,6 +28,7 @@
 #include "../support/mapper238_rom.hpp"
 #include "../support/mapper241_rom.hpp"
 #include "../support/mapper242_rom.hpp"
+#include "../support/mapper244_rom.hpp"
 #include "../support/rom_archive.hpp"
 #include "app/async_fds_bios_validation.hpp"
 #include "app/async_rom_loader.hpp"
@@ -2561,6 +2562,86 @@ TEST_CASE("Mapper 242 raw archived and staged loading preserve menu pads and bat
                 REQUIRE(core::read_binary_file_capped(raw.string(), bytes.size(), "ROM") ==
                         core::Result<std::vector<Byte>>(bytes));
             }
+}
+TEST_CASE("Decathlon raw archived and staged loading distinguish soft reset from cold banks",
+          "[rom-source][mapper244]") {
+    ArchiveFixture fixture;
+    for (bool legacy : {false, true})
+        for (bool vertical : {false, true}) {
+            const auto stem = std::to_string(legacy) + std::to_string(vertical);
+            const auto raw = fixture.root / (stem + ".nes"),
+                       archive = fixture.root / (stem + ".zip"),
+                       storage = fixture.root / (stem + "-storage");
+            const auto bytes = tests::make_mapper244_rom(legacy, vertical);
+            REQUIRE(core::write_binary_file_atomic(raw.string(), bytes, "Decathlon fixture"));
+            write_archive(archive, {{"decathlon.nes", bytes}});
+            EmulationSession session(std::make_unique<platform::NullVideo>(),
+                                     std::make_unique<platform::NullAudio>(),
+                                     std::make_unique<platform::NullInput>());
+            REQUIRE(session.open_rom(raw.string()));
+            session.emulator().step_frame();
+            REQUIRE(session.emulator().read_cpu(0x12U) == 0xC7U);
+            REQUIRE(session.emulator().read_cpu(0x14U) == 0U);
+            REQUIRE(session.emulator().read_cpu(0x15U) == 0U);
+            const auto saved = session.emulator().save_state();
+            session.reset();
+            session.emulator().step_frame();
+            REQUIRE(session.emulator().read_cpu(0x12U) == 0xC7U);
+            REQUIRE(session.emulator().read_cpu(0x14U) == 3U);
+            REQUIRE(session.emulator().read_cpu(0x15U) == 7U);
+            session.power_cycle();
+            session.emulator().step_frame();
+            REQUIRE(session.emulator().read_cpu(0x12U) == 0xC7U);
+            REQUIRE(session.emulator().read_cpu(0x14U) == 0U);
+            REQUIRE(session.emulator().read_cpu(0x15U) == 0U);
+            REQUIRE(session.emulator().load_state(saved));
+            REQUIRE(session.open_rom(raw.string()));
+            session.emulator().step_frame();
+            REQUIRE(session.emulator().read_cpu(0x12U) == 0xC7U);
+            REQUIRE(session.emulator().read_cpu(0x14U) == 0U);
+            RomLoadRequest request;
+            request.path = archive.string();
+            request.member = "decathlon.nes";
+            request.persistence_directory = storage;
+            request.state_storage.directory = fixture.root / "states";
+            auto prepared = prepare_rom(request);
+            REQUIRE(prepared);
+            prepared->emulator->step_frame();
+            REQUIRE(prepared->emulator->read_cpu(0x12U) == 0xC7U);
+            const auto staged = prepared->emulator->save_state();
+            REQUIRE(session.emulator().flush_persistent_data());
+            session.adopt_rom(std::move(*prepared));
+            REQUIRE(session.emulator().save_state() == staged);
+            session.reset();
+            session.emulator().step_frame();
+            REQUIRE(session.emulator().read_cpu(0x14U) == 3U);
+            REQUIRE(session.emulator().read_cpu(0x15U) == 7U);
+            session.close_rom();
+            for (bool seven_zip : {false, true}) {
+                const auto path = fixture.root / (stem + (seven_zip ? ".7z" : ".zip"));
+                if (seven_zip)
+                    write_archive(path, {{"decathlon.nes", bytes}}, true);
+                core::Emulator loaded;
+                REQUIRE(load_rom_source(loaded, path.string(), "decathlon.nes", {}, storage));
+                loaded.step_frame();
+                REQUIRE(loaded.read_cpu(0x12U) == 0xC7U);
+                REQUIRE(loaded.read_cpu(0x14U) == 0U);
+                const auto before = loaded.save_state();
+                REQUIRE_FALSE(load_rom_source(
+                    loaded, path.string(), "decathlon.nes", {}, storage, {}, {}, {}, "unknown"));
+                REQUIRE(loaded.save_state() == before);
+                auto bad = bytes;
+                bad[6] |= 2U;
+                const auto invalid = fixture.root / "bad.nes";
+                REQUIRE(core::write_binary_file_atomic(invalid.string(), bad, "invalid"));
+                REQUIRE_FALSE(load_rom_source(loaded, invalid.string(), {}, {}, storage));
+                REQUIRE(loaded.save_state() == before);
+            }
+            REQUIRE_FALSE(std::filesystem::exists(fixture.root / (stem + ".sav")));
+            REQUIRE_FALSE(std::filesystem::exists(storage / "battery"));
+            REQUIRE(core::read_binary_file_capped(raw.string(), bytes.size(), "ROM") ==
+                    core::Result<std::vector<Byte>>(bytes));
+        }
 }
 } // namespace
 } // namespace mapperbus::app

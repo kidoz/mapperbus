@@ -238,6 +238,7 @@ Byte pread(Ppu& p, Address a) {
 }
 TEST_CASE("Mapper 234 models CPU and PPU ROM gates including permanently enabled Australian CHR",
           "[mappers][mapper234][ppu]") {
+    register_builtin_mappers();
     for (unsigned population = 0U; population < 3U; ++population) {
         auto bytes = image(population);
         bytes[16U + 0x7F9FU] = 0xFFU;

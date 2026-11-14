@@ -369,6 +369,7 @@ Cartridge cartridge(unsigned profile = 0U, bool legacy = false, bool vertical = 
 }
 TEST_CASE("Mapper 233 vector read observes the old byte and leaves other profiles unchanged",
           "[mappers][mapper233]") {
+    register_builtin_mappers();
     for (unsigned profile = 0U; profile < 3U; ++profile) {
         auto bytes = mapperbus::tests::make_mapper233_rom(1U);
         const auto p = rom(32U);
@@ -452,6 +453,7 @@ TEST_CASE(
 }
 TEST_CASE("Mapper 233 machine snapshots reject a different profile even for identical ROM bytes",
           "[mappers][mapper233][state]") {
+    register_builtin_mappers();
     const auto bytes = mapperbus::tests::make_mapper233_rom(1U);
     Emulator source;
     auto c = Cartridge::from_data(bytes);

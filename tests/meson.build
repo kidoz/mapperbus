@@ -225,6 +225,11 @@ if get_option('enable_cli')
         depends : mapperbus_cli,
         timeout : 60,
     )
+    test('cli-mapper244', cli_python,
+        args : [files('integration/test_cli_mapper244.py'), mapperbus_cli],
+        depends : mapperbus_cli,
+        timeout : 60,
+    )
     test('cli-datach', cli_python,
         args : [files('integration/test_cli_datach.py'), mapperbus_cli],
         depends : mapperbus_cli,
@@ -301,7 +306,15 @@ mapper_test_timeout = 60
 if mapper_test_sanitize.contains('address') or mapper_test_sanitize.contains('undefined')
     mapper_test_timeout = 120
 endif
-test('mappers', test_mappers, timeout : mapper_test_timeout)
+# Keep the older multicart matrices separate from unrelated mapper families.
+test('mappers', test_mappers,
+    args : ['~[mapper227]~[mapper228]~[mapper230]~[mapper233]~[mapper234]'],
+    timeout : mapper_test_timeout,
+)
+test('mapper-multicarts', test_mappers,
+    args : ['[mapper227],[mapper228],[mapper230],[mapper233],[mapper234]'],
+    timeout : mapper_test_timeout,
+)
 
 # J.Y. Company is a substantial family; isolate it without dropping any cases.
 test_jy_company = executable('test-jy-company',
@@ -353,6 +366,12 @@ test_mapper242 = executable('test-mapper242',
     dependencies : [mapperbus_core_dep, catch2_dep],
 )
 test('mapper242', test_mapper242, timeout : mapper_test_timeout)
+
+test_mapper244 = executable('test-mapper244',
+    'unit/test_mapper244.cpp',
+    dependencies : [mapperbus_core_dep, catch2_dep],
+)
+test('mapper244', test_mapper244, timeout : mapper_test_timeout)
 
 test_battle_city_render = executable('test-battle-city-render',
     'integration/test_battle_city_render.cpp',
@@ -422,11 +441,15 @@ test_rom_source = executable('test-rom-source',
     dependencies : [mapperbus_app_dep, catch2_dep],
 )
 # Run the new mapper's full loading matrix within its own unchanged timeout budget.
-test('rom-source', test_rom_source, args : ['~[mapper237]~[mapper238]~[mapper241]~[mapper242]'])
+test('rom-source', test_rom_source, args : ['~[mapper237]~[mapper238]~[mapper241]~[mapper242]~[mapper244]~[mapper230]~[mapper233]~[mapper234]~[mapper235]~[mapper236]'])
 test('rom-source-mapper237', test_rom_source, args : ['[mapper237]'])
 test('rom-source-mapper238', test_rom_source, args : ['[mapper238]'])
 test('rom-source-mapper241', test_rom_source, args : ['[mapper241]'])
 test('rom-source-mapper242', test_rom_source, args : ['[mapper242]'])
+test('rom-source-mapper244', test_rom_source, args : ['[mapper244]'])
+test('rom-source-multicarts', test_rom_source,
+    args : ['[mapper230],[mapper233],[mapper234],[mapper235],[mapper236]'],
+)
 
 test_state_storage = executable('test-state-storage',
     'unit/test_state_storage.cpp',
