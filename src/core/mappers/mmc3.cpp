@@ -1,6 +1,7 @@
 #include "core/mappers/mmc3.hpp"
 
 #include <algorithm>
+#include <bit>
 
 #include "core/state/state.hpp"
 
@@ -64,6 +65,9 @@ Byte gouder_mask(Byte index) {
 // the incompatible JJ-01 submapper. Exact reset and clone IRQ circuitry is unverified.
 // Sugar Softec / 215: NESdev r5704. Register permutations are functional data
 // from the published specification. Apply the outer pins before physical ROM wrapping.
+// F003 / 245: NESdev r5871. Force CHR-selector A12 low, route CHR A11 to
+// PRG A19 on every CPU slot, while pattern RAM uses raw PPU pins. The existing
+// scanline IRQ model is retained as compatibility policy; clone IRQ wiring is unresolved.
 // Kasheng A9461 / 219: NESdev r21696's compatibility specification. Independent
 // mode register files and reset defaults are policies pending hardware verification.
 Mmc3::Mmc3(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte> chr_rom)
@@ -74,12 +78,13 @@ Mmc3::Mmc3(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte
                       header.mapper_number == 198U || header.mapper_number == 199U ||
                       header.mapper_number == 205U || header.mapper_number == 208U ||
                       header.mapper_number == 215U || header.mapper_number == 219U ||
-                      header.mapper_number == 238U || header.mapper_number == 114U ||
-                      header.mapper_number == 115U || header.mapper_number == 123U ||
-                      header.mapper_number == 249U || header.mapper_number == 250U ||
-                      header.mapper_number == 262U || header.mapper_number == 263U ||
-                      header.mapper_number == 118U || header.mapper_number == 119U ||
-                      header.mapper_number == 512U || header.mapper_number == 513U
+                      header.mapper_number == 238U || header.mapper_number == 245U ||
+                      header.mapper_number == 114U || header.mapper_number == 115U ||
+                      header.mapper_number == 123U || header.mapper_number == 249U ||
+                      header.mapper_number == 250U || header.mapper_number == 262U ||
+                      header.mapper_number == 263U || header.mapper_number == 118U ||
+                      header.mapper_number == 119U || header.mapper_number == 512U ||
+                      header.mapper_number == 513U
                   ? header.mapper_number
                   : 4U),
       scramble_profile_(mapper_ == 114U && header.is_nes2 ? header.submapper : 0U),
@@ -156,6 +161,8 @@ void Mmc3::power_on() {
     if (mapper_ == 238U)
         contra_protection_ = 0U;
     reset();
+    if (mapper_ == 245U)
+        chr_ram_.fill(0U);
 }
 
 void Mmc3::reset() {
@@ -212,10 +219,12 @@ void Mmc3::update_prg_banks() {
             prg_offsets_[slot] = page * 0x8000U + slot * 0x2000U;
         return;
     }
+    const bool inner_512k =
+        mapper_ == 205U || mapper_ == 215U || mapper_ == 245U || mapper_ == 513U || t9552_;
     const std::size_t inner_banks =
         mapper_ == 219U                                                    ? 16U
         : mapper_ == 198U                                                  ? 128U
-        : mapper_ == 205U || mapper_ == 215U || mapper_ == 513U || t9552_  ? 64U
+        : inner_512k                                                       ? 64U
         : mapper_ == 115U || (mapper_ == 197U && mapper197_profile_ == 3U) ? 32U
                                                                            : num_prg_banks_8k_;
     const std::size_t r6 = bank_registers_[6] % inner_banks;
@@ -399,6 +408,11 @@ Byte Mmc3::read_prg(Address addr) {
         if (prg_rom_.size() == 0x180000U && outer == 3U)
             outer = 2U;
         offset += outer * 0x80000U;
+    }
+    if (mapper_ == 245U) {
+        const auto selector = static_cast<Address>((ppu_chr_slot_ & 3U) * 0x400U);
+        const auto a19 = static_cast<unsigned>(chr_bank(selector) & 2U) << 18U;
+        offset = (offset & 0x7FFFFU) | a19;
     }
     // Modulo (not a power-of-two mask): bank offsets are modulo-bounded at
     // write time, but a malformed save-state can inject raw offsets, and
@@ -942,15 +956,16 @@ Result<void> Mmc3::configure_board_profile(std::string_view profile) {
 }
 
 bool Mmc3::observes_ppu_address() const {
-    return mapper_ == 513U;
+    return mapper_ == 513U || mapper_ == 245U;
 }
 
 void Mmc3::observe_ppu_address(Address addr) {
     // Keep actual address pins separate from cached renderer CHR lookups.
     // Track the slot rather than the resulting bank: CHR-register/inversion
     // writes then change the outer PRG pins immediately without a stale latch.
-    if (mapper_ == 513U)
-        ppu_chr_slot_ = static_cast<Byte>((static_cast<unsigned>(addr) >> 10U) & 7U);
+    if (mapper_ == 513U || mapper_ == 245U)
+        ppu_chr_slot_ =
+            static_cast<Byte>((static_cast<unsigned>(addr) >> 10U) & (mapper_ == 245U ? 3U : 7U));
 }
 
 std::optional<Byte> Mmc3::read_nametable(Address addr) const {
@@ -970,6 +985,12 @@ bool Mmc3::write_nametable(Address addr, Byte value) {
         return false;
     chr_ram_[0x1000U + (addr & 0xFFFU)] = value;
     return true;
+}
+
+uint16_t Mmc3::f003_state_tag() const {
+    const auto geometry = std::bit_width(prg_rom_.size() / 32768U) - 1U;
+    return static_cast<uint16_t>(0xF500U | geometry |
+                                 (initial_mirror_ == MirrorMode::Vertical ? 8U : 0U));
 }
 
 // New board payloads serialize registers, never derived offsets or immutable
@@ -1068,6 +1089,10 @@ void Mmc3::save_variant_state(StateWriter& writer) const {
         writer.write(board_mode_);
     if (mapper_ == 513U)
         writer.write(ppu_chr_slot_);
+    if (mapper_ == 245U) {
+        writer.write(f003_state_tag());
+        writer.write(ppu_chr_slot_);
+    }
     if (mapper_ == 262U) {
         writer.write_bytes(nametable_ram_);
         writer.write(board_mode_);
@@ -1076,11 +1101,11 @@ void Mmc3::save_variant_state(StateWriter& writer) const {
 }
 
 void Mmc3::load_variant_state(StateReader& reader) {
-    if (mapper_ != 238U) {
+    if (mapper_ != 238U && mapper_ != 245U) {
         load_variant_state_impl(reader);
         return;
     }
-    // This ROM-only board has an 18-byte payload; rollback needs no ROM/RAM copy.
+    // Bounded payload backup: no ROM copy. 238 is 18 bytes; 245 includes 16 KiB RAM.
     StateWriter backup;
     save_variant_state(backup);
     load_variant_state_impl(reader);
@@ -1190,6 +1215,9 @@ void Mmc3::load_variant_state_impl(StateReader& reader) {
         reader.read(board_mode_);
     if (mapper_ == 513U)
         reader.read(ppu_chr_slot_);
+    const auto f003_tag = mapper_ == 245U ? reader.read<uint16_t>() : 0U;
+    if (mapper_ == 245U)
+        reader.read(ppu_chr_slot_);
     if (mapper_ == 262U) {
         reader.read_bytes(nametable_ram_, 0x1000U);
         if (nametable_ram_.size() != 0x1000U) {
@@ -1217,7 +1245,7 @@ void Mmc3::load_variant_state_impl(StateReader& reader) {
              return bank <= 127U;
          }));
     if (!reader.ok() || mixed_chr_tag != mixed_chr_state_tag() || bank_select_ > 7U ||
-        !valid_a9461 ||
+        (mapper_ == 245U && (f003_tag != f003_state_tag() || ppu_chr_slot_ > 3U)) || !valid_a9461 ||
         (mapper_ == 238U &&
          (contra_tag != 0xEE00U || contra_protection_ > 3U || contra_protection_ == 1U)) ||
         (mapper_ == 215U &&

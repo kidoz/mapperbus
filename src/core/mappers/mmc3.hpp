@@ -11,10 +11,11 @@ namespace mapperbus::core {
 /// MMC3 (4), scrambled 114, Kasheng (115/123), TxSROM (118), TQROM (119), Nitra (250),
 /// Sachen 262/512/513, KOF97 (263), T9552 (249 / 4:5), mixed CHR (74/192/194/195),
 /// MRCM (196), larger CHR windows (197), TNROM640 (198), FS309 (199), JC-016-2 (205),
-/// Gouder / JJ-01 (208), Sugar Softec (215), Kasheng A9461 (219), and Contra Fighter (238).
-/// PRG: 8 KB switchable banks, with outer banks up to 2 MiB on 215/513
-/// CHR: 1 KB switchable banks, up to 2 MiB with mapper-215 outer pins
-/// Features: scanline IRQ counter, mirroring control, PRG RAM
+/// Gouder / JJ-01 (208), Sugar Softec (215), Kasheng A9461 (219), Contra Fighter (238),
+/// and Waixing F003 (245).
+/// PRG: 8 KB switchable banks, with outer banks up to 2 MiB on 215/513.
+/// CHR: 1 KB switchable banks, up to 2 MiB with mapper-215 outer pins.
+/// Features: scanline IRQ counter, mirroring control, PRG RAM.
 class Mmc3 : public Mapper {
   public:
     Mmc3(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte> chr_rom);
@@ -63,6 +64,7 @@ class Mmc3 : public Mapper {
     Byte chr_bank(Address addr) const;
     std::optional<std::size_t> mixed_chr_ram_offset(Address addr) const;
     uint16_t mixed_chr_state_tag() const;
+    uint16_t f003_state_tag() const;
     std::optional<std::size_t> fs303_chr_ram_offset(Address addr) const;
     uint16_t fs303_state_tag() const;
     uint32_t t9552_address(uint32_t addr, bool chr) const;
@@ -76,7 +78,7 @@ class Mmc3 : public Mapper {
     std::array<Byte, 0x2000> chr_ram_{};
     // Mapper 513 has battery-backed pattern memory, not CPU-visible WRAM.
     std::vector<Byte> chr_nvram_;
-    Byte ppu_chr_slot_ = 0U;
+    Byte ppu_chr_slot_ = 0U; // Physical PPU selector for 245/513; not cached CHR reads.
     // Mapper 262: independent, permanently mapped four-screen VRAM.
     std::vector<Byte> nametable_ram_;
     Byte title_jumper_ = 0U;

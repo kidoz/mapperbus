@@ -230,6 +230,11 @@ if get_option('enable_cli')
         depends : mapperbus_cli,
         timeout : 60,
     )
+    test('cli-mapper245', cli_python,
+        args : [files('integration/test_cli_mapper245.py'), mapperbus_cli],
+        depends : mapperbus_cli,
+        timeout : 60,
+    )
     test('cli-datach', cli_python,
         args : [files('integration/test_cli_datach.py'), mapperbus_cli],
         depends : mapperbus_cli,
@@ -373,6 +378,12 @@ test_mapper244 = executable('test-mapper244',
 )
 test('mapper244', test_mapper244, timeout : mapper_test_timeout)
 
+test_mapper245 = executable('test-mapper245',
+    'unit/test_mapper245.cpp',
+    dependencies : [mapperbus_core_dep, catch2_dep],
+)
+test('mapper245', test_mapper245, timeout : mapper_test_timeout)
+
 test_battle_city_render = executable('test-battle-city-render',
     'integration/test_battle_city_render.cpp',
     dependencies : [mapperbus_core_dep, catch2_dep],
@@ -441,12 +452,13 @@ test_rom_source = executable('test-rom-source',
     dependencies : [mapperbus_app_dep, catch2_dep],
 )
 # Run the new mapper's full loading matrix within its own unchanged timeout budget.
-test('rom-source', test_rom_source, args : ['~[mapper237]~[mapper238]~[mapper241]~[mapper242]~[mapper244]~[mapper230]~[mapper233]~[mapper234]~[mapper235]~[mapper236]'])
+test('rom-source', test_rom_source, args : ['~[mapper237]~[mapper238]~[mapper241]~[mapper242]~[mapper244]~[mapper245]~[mapper230]~[mapper233]~[mapper234]~[mapper235]~[mapper236]'])
 test('rom-source-mapper237', test_rom_source, args : ['[mapper237]'])
 test('rom-source-mapper238', test_rom_source, args : ['[mapper238]'])
 test('rom-source-mapper241', test_rom_source, args : ['[mapper241]'])
 test('rom-source-mapper242', test_rom_source, args : ['[mapper242]'])
 test('rom-source-mapper244', test_rom_source, args : ['[mapper244]'])
+test('rom-source-mapper245', test_rom_source, args : ['[mapper245]'])
 test('rom-source-multicarts', test_rom_source,
     args : ['[mapper230],[mapper233],[mapper234],[mapper235],[mapper236]'],
 )

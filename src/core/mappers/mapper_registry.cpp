@@ -1,5 +1,7 @@
 #include "core/mappers/mapper_registry.hpp"
 
+#include <bit>
+
 #include "core/mappers/action52.hpp"
 #include "core/mappers/axrom.hpp"
 #include "core/mappers/bandai_fcg.hpp"
@@ -82,6 +84,23 @@ namespace {
         return RealtecMulticart::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 235U)
         return GoldenGame::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 245U) {
+        if (header.is_nes2 && header.submapper != 0U)
+            return std::unexpected("Mapper 245 supports submapper 0");
+        if (prg_size < 32768U || prg_size > 1048576U || !std::has_single_bit(prg_size) ||
+            chr_size != 0U)
+            return std::unexpected(
+                "Mapper 245 requires power-of-two 32 KiB-1 MiB PRG and no CHR ROM");
+        if (!header.has_battery ||
+            (header.is_nes2 && (header.prg_ram_size != 0U || header.prg_nvram_size != 8192U ||
+                                header.chr_ram_size != 8192U || header.chr_nvram_size != 0U)))
+            return std::unexpected(
+                "Mapper 245 requires 8 KiB battery WRAM and 8 KiB volatile CHR RAM");
+        if (header.mirror_mode != MirrorMode::Horizontal &&
+            header.mirror_mode != MirrorMode::Vertical)
+            return std::unexpected("Mapper 245 supports ordinary H/V CIRAM");
+        return {};
+    }
     if (header.mapper_number == 244U)
         return Decathlon::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 242U)
@@ -805,6 +824,7 @@ void register_builtin_mappers() {
     registry.register_mapper(241, make_factory<BxromWram>());
     registry.register_mapper(242, make_factory<Multicart242>());
     registry.register_mapper(244, make_factory<Decathlon>());
+    registry.register_mapper(245, make_factory<Mmc3>());
     registry.register_mapper(249, make_factory<Mmc3>());
     registry.register_mapper(250, make_factory<Mmc3>());
     registry.register_mapper(262, make_factory<Mmc3>());
