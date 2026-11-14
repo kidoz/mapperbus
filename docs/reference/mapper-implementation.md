@@ -4,7 +4,7 @@ This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
 complete.** Updated 2026-11-14 against the working-tree registry.
 
-There are **147 registered cartridge IDs**: the original 14, 53 added in the first
+There are **148 registered cartridge IDs**: the original 14, 53 added in the first
 batch, and Irem 32/65/77, Sunsoft 67/68, Taito 33/48/80/207/82/552, Jaleco 18/72/92/101,
 Namco 210, MMC3 variants 118/119, RAMBO-1 64/158, Bandai 16/153/159, and Datach
 157, UNROM 512 30, GTROM/direct MMC1 111, and J.Y. Company
@@ -13,7 +13,7 @@ IDs, Sachen MMC3 clones 262/512/513, Rex Soft's 263, Nitra 250, mappers
 114/115/123, T9552 249 / 4:5, mixed CHR 74/192/194/195, MRCM 196, mapper 197,
 TNROM640 198, Waixing FS309 199, multicarts 202/205, Gouder/JJ-01 208,
 Sugar Softec 215, Single Chip 218, Kasheng A9461 219, NTDEC N625092 221,
-address-latched multicarts/RPGs 227 and Active Enterprises 228 detailed below.
+address-latched multicarts/RPGs 227, Active Enterprises 228 and reset-driven 22-in-1 230 detailed below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
 unusual ROM geometry.
@@ -22,6 +22,7 @@ unusual ROM geometry.
 
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
+| Reset-driven 22-in-1 (follow-up) | 230 | Contra/multicart chip selection, soft-reset alternation, explicit cold start, 16/32 KiB PRG, H/V CIRAM, retained CHR RAM, CPU execution and snapshots. |
 | Active Enterprises (follow-up) | 228 | Packed three-chip Action 52 and always-enabled single-chip profiles, 16/32 KiB PRG, CHR ROM, H/V CIRAM, missing-chip open bus, CPU execution and compact snapshots. |
 | Address-latched multicarts / RPGs (follow-up) | 227 | Three submappers, fixed/mirrored/aligned PRG modes, solder-pad menus, CHR protection, battery WRAM, CPU execution and validated snapshots. |
 | NTDEC N625092 (follow-up) | 221 | Address-latched 16/32 KiB and UNROM modes, PRG A17–A20, H/V CIRAM, protected unbanked CHR RAM, CPU execution and validated snapshots. |
@@ -3185,6 +3186,72 @@ Formatting, scoped clang-tidy, whitespace and registry/ledger equality checks
 passed. Isolated canonical-document validation retained the November 14 baseline:
 zero errors, 72 warnings and three infos across 193 documents.
 
+## Mapper-230 follow-up: reset-driven 22-in-1
+
+Original `Multicart230` implementation follows [NESdev r5788](https://www.nesdev.org/w/index.php?oldid=5788).
+No external emulator implementation was consulted or copied. This is a distinct
+reset/chip-selection contract; it is not registered as a blanket mapper-226 alias.
+
+The image packs 128 KiB Contra PRG followed by a separate 512 KiB multicart chip.
+Contra selects a lower 16 KiB page with D2-D0, fixes the upper page at seven and
+uses vertical CIRAM. Multicart D4-D0 select the page, D5 chooses mirrored 16 KiB
+or an aligned even/odd 32 KiB pair, and D6 selects H/V (one is vertical).
+All $8000-$FFFF addresses latch the supplied data. Ignore upper data bits per
+mode; CPU reads do not relatch. Decode each chip separately, without applying
+whole-image modulo across the 640 KiB package.
+
+Every soft reset changes the active chip. The brief source does not establish
+cold electrical defaults, reset-time register retention or pattern-memory gates.
+The explicit compatibility model starts in Contra, clears the bank register on
+each reset and uses writable, unbanked 8 KiB CHR RAM in both modes. Soft resets
+retain CHR bytes; power-on zeroes them deterministically. No speculative CHR
+protection, IRQ, expansion audio, WRAM or battery storage is added. PCB-level
+reset and write-protection evidence remains a validation limit.
+
+`Mapper::power_on()` and the cartridge/emulator forwarding distinguish startup
+from `reset()`. The default mapper hook invokes the existing reset method, so
+previous boards preserve their policy. Mapper 230 overrides it to select Contra;
+soft reset toggles the mode without an extra first-reset flag. CLI startup,
+synchronous session loading, background preparation and session power cycling
+use power-on. Session reset remains soft; adopting prepared media adds no reset.
+This hook controls cartridge initialization and the existing console device reset
+sequence; it does not introduce a complete transistor-level power-cycle model.
+
+Accept legacy and NES 2.0 submapper zero, exactly 640 KiB PRG, no CHR ROM, ordinary
+H/V metadata, and exactly 8 KiB volatile CHR RAM in NES 2.0. Reject other ROM
+populations, battery, additional RAM/NVRAM, alternate CIRAM and unknown submappers.
+Ignore legacy generic PRG-RAM inference. Low CPU memory remains undriven.
+
+Component snapshots are 8196 bytes: $E600 tag, one-byte mode, one-byte canonical
+bank register and 8 KiB CHR. Validate the mode (0/1), mode-specific bank mask,
+tag and truncation before committing local RAM. Failed component loads leave
+all state unchanged; rejection never toggles the selected game. Whole-machine
+failure rolls back atomically. Mode and RAM restoration determine the next
+soft-reset result, without a hidden boot counter. Existing board payloads,
+machine version 20 and the 4 MiB state allocation ceiling are unchanged.
+
+Tests cover every data byte and register address in both modes, chip boundaries,
+mirroring, ignored bits, every CHR RAM cell, repeated reset/power-on, open bus,
+geometry, malformed states and failed-load retention. Four original CPU images
+exercise legacy/NES 2.0 and both H/V metadata values, with separate firmware on
+each physical chip. They check banked instruction fetches, PPUDATA, CIRAM,
+CHR retention, both reset phases and replay. Shared original firmware also checks
+raw session startup/reload, archive background preparation, adoption, soft reset
+and power cycling. CLI tests check six startup profiles and 24 invalid images,
+preserve ROM bytes and create no saves. CLI frame completion is loading smoke;
+CPU mode-completion markers are asserted in the unit and application fixtures.
+
+Validation: all 71 regular targets, including required GPU checks, and all nine
+focused ASan+UBSan targets passed. Both builds passed 5,906,309 mapper assertions
+across 522 cases; mapper 230 contributes 400,812 assertions across nine cases.
+The loading-path regression passed 60 assertions; the complete ROM-source and
+session targets passed in both builds. The sanitizer mapper target took 101.07
+seconds within its existing 120-second timeout. The initial regression failed
+at factory creation before implementation. Formatting, scoped clang-tidy,
+whitespace and registry/ledger equality checks passed. Isolated canonical-document
+validation retained the November 14 baseline: zero errors, 72 warnings and three
+infos across 193 documents.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -3432,7 +3499,7 @@ or another registered cartridge ID.
 | 227 | Address-latched multicart / RPG boards | New implementation: Multicart227 | [r23188](https://www.nesdev.org/w/index.php?oldid=23188) |
 | 228 | Action 52 / Active Enterprises | New implementation: Action52 | [r5784](https://www.nesdev.org/w/index.php?oldid=5784) |
 | 229 | Board-specific specification | New implementation: DiscreteMapper | [r5785](https://www.nesdev.org/w/index.php?oldid=5785) |
-| 230 | Board-specific specification | Not registered | [r5788](https://www.nesdev.org/w/index.php?oldid=5788) |
+| 230 | Reset-driven 22-in-1 / Contra + multicart | New implementation: Multicart230 | [r5788](https://www.nesdev.org/w/index.php?oldid=5788) |
 | 231 | Board-specific specification | New implementation: DiscreteMapper | [r5791](https://www.nesdev.org/w/index.php?oldid=5791) |
 | 232 | Codemasters Quattro | New implementation: DiscreteMapper | [r5797](https://www.nesdev.org/w/index.php?oldid=5797) |
 | 233 | Board-specific specification | Not registered | [r5799](https://www.nesdev.org/w/index.php?oldid=5799) |
