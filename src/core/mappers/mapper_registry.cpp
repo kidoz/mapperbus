@@ -30,6 +30,7 @@
 #include "core/mappers/nrom.hpp"
 #include "core/mappers/ntdec_n625092.hpp"
 #include "core/mappers/rambo1.hpp"
+#include "core/mappers/realtec_multicart.hpp"
 #include "core/mappers/sachen.hpp"
 #include "core/mappers/single_chip.hpp"
 #include "core/mappers/sunsoft34.hpp"
@@ -71,6 +72,8 @@ namespace {
         return Multicart233::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 234U)
         return Maxi15::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 236U)
+        return RealtecMulticart::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 235U)
         return GoldenGame::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 219U) {
@@ -771,6 +774,7 @@ void register_builtin_mappers() {
     registry.register_mapper(233, make_factory<Multicart233>());
     registry.register_mapper(234, make_factory<Maxi15>());
     registry.register_mapper(235, make_factory<GoldenGame>());
+    registry.register_mapper(236, make_factory<RealtecMulticart>());
     registry.register_mapper(249, make_factory<Mmc3>());
     registry.register_mapper(250, make_factory<Mmc3>());
     registry.register_mapper(262, make_factory<Mmc3>());

@@ -23,6 +23,7 @@
 #include "../support/mapper233_rom.hpp"
 #include "../support/mapper234_rom.hpp"
 #include "../support/mapper235_rom.hpp"
+#include "../support/mapper236_rom.hpp"
 #include "../support/rom_archive.hpp"
 #include "app/async_fds_bios_validation.hpp"
 #include "app/async_rom_loader.hpp"
@@ -2116,6 +2117,73 @@ TEST_CASE("Golden Game loading paths preserve CHR RAM and empty sockets until co
             REQUIRE((memory(session.emulator()) == std::array<Byte, 3>{0U, 0U, running[2]}));
             session.power_cycle();
             REQUIRE((memory(session.emulator()) == std::array<Byte, 3>{0U, 0U, 0U}));
+            REQUIRE_FALSE(
+                std::filesystem::exists(std::filesystem::path(raw).replace_extension(".sav")));
+        }
+}
+
+TEST_CASE("Realtec loading paths preserve both latches and volatile CHR through adoption and reset",
+          "[rom-source][mapper236][reset]") {
+    ArchiveFixture fixture;
+    const auto memory = [](const core::Emulator& e, unsigned population) {
+        const auto bytes = e.save_state();
+        core::StateWriter tail;
+        core::Controller{}.save_state(tail);
+        core::Controller{}.save_state(tail);
+        const auto offset = bytes.size() - tail.data().size() - (population == 2U ? 8196U : 4U);
+        return std::array<Byte, 3>{bytes[offset + 2U],
+                                   bytes[offset + 3U],
+                                   population == 2U ? bytes[offset + 4U + 0x123U] : Byte{0U}};
+    };
+    for (unsigned population = 0U; population < 3U; ++population)
+        for (bool legacy : {false, true}) {
+            const std::array<Byte, 3> running = population == 2U
+                                                    ? std::array<Byte, 3>{0x27U, 0x37U, 0x5AU}
+                                                    : std::array<Byte, 3>{0x2FU, 0x3FU, 0U};
+            const auto stem = std::to_string(population) + (legacy ? "-legacy" : "-native");
+            const auto raw = fixture.root / (stem + ".nes");
+            const auto archive = fixture.root / (stem + ".zip");
+            const auto bytes = tests::make_mapper236_rom(population, 0U, legacy);
+            REQUIRE(core::write_binary_file_atomic(raw.string(), bytes, "Realtec fixture"));
+            write_archive(archive, {{"realtec.nes", bytes}});
+            EmulationSession session(std::make_unique<platform::NullVideo>(),
+                                     std::make_unique<platform::NullAudio>(),
+                                     std::make_unique<platform::NullInput>());
+            REQUIRE(session.open_rom(raw.string()));
+            REQUIRE((memory(session.emulator(), population) == std::array<Byte, 3>{0U, 0U, 0U}));
+            session.emulator().step_frame();
+            REQUIRE(session.emulator().read_cpu(0x12U) == 0xC7U);
+            REQUIRE(memory(session.emulator(), population) == running);
+            const auto saved = session.emulator().save_state();
+            session.reset();
+            REQUIRE((memory(session.emulator(), population) ==
+                     std::array<Byte, 3>{0U, 0U, running[2]}));
+            session.emulator().step_frame();
+            REQUIRE(session.emulator().read_cpu(0x12U) == 0xC7U);
+            REQUIRE(session.emulator().read_cpu(0x14U) == running[2]);
+            session.power_cycle();
+            REQUIRE((memory(session.emulator(), population) == std::array<Byte, 3>{0U, 0U, 0U}));
+            REQUIRE(session.emulator().load_state(saved));
+            REQUIRE(memory(session.emulator(), population) == running);
+            REQUIRE(session.open_rom(raw.string()));
+            REQUIRE((memory(session.emulator(), population) == std::array<Byte, 3>{0U, 0U, 0U}));
+            RomLoadRequest request;
+            request.path = archive.string();
+            request.member = "realtec.nes";
+            request.state_storage.directory = fixture.root / "states";
+            auto prepared = prepare_rom(request);
+            REQUIRE(prepared);
+            REQUIRE(prepared->emulator);
+            REQUIRE((memory(*prepared->emulator, population) == std::array<Byte, 3>{0U, 0U, 0U}));
+            prepared->emulator->step_frame();
+            REQUIRE(prepared->emulator->read_cpu(0x12U) == 0xC7U);
+            session.adopt_rom(std::move(*prepared));
+            REQUIRE(memory(session.emulator(), population) == running);
+            session.reset();
+            REQUIRE((memory(session.emulator(), population) ==
+                     std::array<Byte, 3>{0U, 0U, running[2]}));
+            session.power_cycle();
+            REQUIRE((memory(session.emulator(), population) == std::array<Byte, 3>{0U, 0U, 0U}));
             REQUIRE_FALSE(
                 std::filesystem::exists(std::filesystem::path(raw).replace_extension(".sav")));
         }
