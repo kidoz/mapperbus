@@ -34,6 +34,7 @@ contains the following mapper IDs:
 | 215 | Sugar Softec UNL-8237/8237A: eight MMC3 address/index scrambling modes, outer banks, NROM override, CHR/CIRAM, IRQs and snapshots | ROM-only submappers 0/1; exact clone reset and IRQ/A12 behavior unverified |
 | 218 | Single Chip / Magic Floor: four CIRAM wirings, shared pattern/nametable bytes, background/sprite rendering, PPUDATA and snapshots | PRG-only submapper 0; no cartridge CHR RAM, WRAM or speculative extra-memory variants |
 | 219 | Kasheng A9461: MMC3/extended protocols, reversed PRG pins, CHR latch/commits, outer banks, CIRAM/IRQs and snapshots | ROM-only submapper 0 compatibility model; mode retention, reset defaults and electrical clone details unverified |
+| 233 | 42 Games: default reset-42, explicit disch-233/everynes-vector profiles, PRG banking, CIRAM/AAAB, CHR gates and profile-bound snapshots | Sources conflict; vector trigger is tentative, PCB reset/gates unverified, unidentified CHR-ROM dump unsupported; see coverage ledger |
 | 230 | Reset-driven 22-in-1: Contra/multicart chip selection, explicit power-on, alternating soft resets, 16/32 KiB PRG, H/V CIRAM, 8 KiB CHR RAM and snapshots | Cold Contra selection, reset-cleared bank register and always-writable CHR are explicit compatibility policies; PCB reset/protection details remain unverified |
 | 228 | Active Enterprises: packed three-chip and always-enabled single-chip PRG, 16/32 KiB modes, CHR ROM, H/V CIRAM, missing-chip open bus and snapshots | ROM-size population selection; no rumored expansion RAM; alternate PCB revisions and electrical reset remain unverified |
 | 227 | Address-latched multicarts/RPG boards: submappers 0/1/2, PRG modes, protected CHR RAM, solder-pad menus, battery WRAM and snapshots | RPG O=0 and submapper-2 outer-zero semantics follow the explicit compatibility model in the ledger; hardware certification pending |
@@ -77,7 +78,7 @@ contains the following mapper IDs:
 | 13, 34, 66, 70, 71, 78, 79, 87, 89, 93, 94, 97, 113, 140, 152, 180, 184 | Discrete cartridge boards | — |
 | 38, 46, 58, 61, 62, 81, 107, 145, 148, 149, 193, 200, 201, 203, 212, 213, 225, 226, 229, 231, 232, 240 | Additional latch boards and multicarts | — |
 
-The registry contains 148 cartridge IDs. See [mapper implementation coverage](mapper-implementation.md)
+The registry contains 149 cartridge IDs. See [mapper implementation coverage](mapper-implementation.md)
 for individual specifications, tested behavior, board limitations, and the full
 inventory of documented IDs still awaiting implementation. The expanded set has
 synthetic banking, IRQ, CPU/PPU integration and save-state coverage; this does
