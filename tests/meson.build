@@ -195,6 +195,11 @@ if get_option('enable_cli')
         depends : mapperbus_cli,
         timeout : 60,
     )
+    test('cli-mapper235', cli_python,
+        args : [files('integration/test_cli_mapper235.py'), mapperbus_cli],
+        depends : mapperbus_cli,
+        timeout : 60,
+    )
     test('cli-datach', cli_python,
         args : [files('integration/test_cli_datach.py'), mapperbus_cli],
         depends : mapperbus_cli,
@@ -274,6 +279,13 @@ if mapper_test_sanitize.contains('address') or mapper_test_sanitize.contains('un
     mapper_test_timeout = 120
 endif
 test('mappers', test_mappers, timeout : mapper_test_timeout)
+
+# Keep the extensive socket matrix separate from the shared mapper timeout budget.
+test_mapper235 = executable('test-mapper235',
+    'unit/test_mapper235.cpp',
+    dependencies : [mapperbus_core_dep, catch2_dep],
+)
+test('mapper235', test_mapper235, timeout : mapper_test_timeout)
 
 test_battle_city_render = executable('test-battle-city-render',
     'integration/test_battle_city_render.cpp',

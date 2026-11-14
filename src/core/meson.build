@@ -20,6 +20,7 @@ core_sources = files(
     'mappers/multicart230.cpp',
     'mappers/multicart233.cpp',
     'mappers/maxi15.cpp',
+    'mappers/golden_game.cpp',
     'mappers/single_chip.cpp',
     'mappers/mmc1.cpp',
     'mappers/mmc2.cpp',

@@ -8,6 +8,7 @@
 #include "core/mappers/datach.hpp"
 #include "core/mappers/discrete.hpp"
 #include "core/mappers/flash_boards.hpp"
+#include "core/mappers/golden_game.hpp"
 #include "core/mappers/irem.hpp"
 #include "core/mappers/irem_lrog017.hpp"
 #include "core/mappers/jaleco_discrete.hpp"
@@ -70,6 +71,8 @@ namespace {
         return Multicart233::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 234U)
         return Maxi15::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 235U)
+        return GoldenGame::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 219U) {
         if (header.is_nes2 && header.submapper != 0U)
             return std::unexpected("Mapper 219 supports submapper 0");
@@ -767,6 +770,7 @@ void register_builtin_mappers() {
     registry.register_mapper(230, make_factory<Multicart230>());
     registry.register_mapper(233, make_factory<Multicart233>());
     registry.register_mapper(234, make_factory<Maxi15>());
+    registry.register_mapper(235, make_factory<GoldenGame>());
     registry.register_mapper(249, make_factory<Mmc3>());
     registry.register_mapper(250, make_factory<Mmc3>());
     registry.register_mapper(262, make_factory<Mmc3>());
