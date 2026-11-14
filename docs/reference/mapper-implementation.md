@@ -4,7 +4,7 @@ This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
 complete.** Updated 2026-11-14 against the working-tree registry.
 
-There are **150 registered cartridge IDs**: the original 14, 53 added in the first
+There are **151 registered cartridge IDs**: the original 14, 53 added in the first
 batch, and Irem 32/65/77, Sunsoft 67/68, Taito 33/48/80/207/82/552, Jaleco 18/72/92/101,
 Namco 210, MMC3 variants 118/119, RAMBO-1 64/158, Bandai 16/153/159, and Datach
 157, UNROM 512 30, GTROM/direct MMC1 111, and J.Y. Company
@@ -14,7 +14,7 @@ IDs, Sachen MMC3 clones 262/512/513, Rex Soft's 263, Nitra 250, mappers
 TNROM640 198, Waixing FS309 199, multicarts 202/205, Gouder/JJ-01 208,
 Sugar Softec 215, Single Chip 218, Kasheng A9461 219, NTDEC N625092 221,
 address-latched multicarts/RPGs 227, Active Enterprises 228, reset-driven 22-in-1 230 and
-profiled 42 Games 233 and Maxi 15 234 detailed below.
+profiled 42 Games 233, Maxi 15 234 and Golden Game 235 detailed below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
 unusual ROM geometry.
@@ -23,6 +23,7 @@ unusual ROM geometry.
 
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
+| Golden Game (follow-up) | 235 | Eight ROM socket profiles, 16/32 KiB PRG, empty-socket open bus, H/V/single CIRAM, CHR RAM, CPU execution and wiring-bound snapshots. |
 | Maxi 15 (follow-up) | 234 | CNROM/NINA inner/outer banking, read-triggered latches, bus-conflicting writes, one-way lock, ROM gates, Australian fixed CHR, CPU execution and compact snapshots. |
 | Profiled 42 Games (follow-up) | 233 | Reset-selected/software-controlled A19, separate Disch and tentative vector-read profiles, PRG modes, custom CIRAM, CHR gates, CPU execution and profile-bound snapshots. |
 | Reset-driven 22-in-1 (follow-up) | 230 | Contra/multicart chip selection, soft-reset alternation, explicit cold start, 16/32 KiB PRG, H/V CIRAM, retained CHR RAM, CPU execution and snapshots. |
@@ -3412,6 +3413,90 @@ Formatting, scoped clang-tidy, whitespace and registry/ledger equality checks
 passed. Isolated canonical-document validation retained the November 14 baseline:
 zero errors, 72 warnings and three infos across 193 documents.
 
+## Mapper-235 follow-up: Golden Game
+
+Original `GoldenGame` code follows [NESdev r22514](https://www.nesdev.org/w/index.php?oldid=22514),
+[Kevin Horton's board description](http://kevtris.org/mappers/bmc_nes/BTL_150in1A.html),
+[the populated-socket hardware discussion](https://forums.nesdev.org/viewtopic.php?start=45&t=16551),
+and [the corrected 2025 dumping report](https://forums.nesdev.org/viewtopic.php?p=299736).
+The newer report corrects the original description's reversed PRG mode bit.
+No external emulator implementation or commercial ROM bytes were used.
+
+Every write at $8000-$FFFF latches address pins; data is ignored. A4-A0 select
+one of 32 aligned 32 KiB blocks inside a 1 MiB chip, A9-A8 select its physical
+socket, A11 selects mirrored 16 KiB instead of 32 KiB, and A12 selects the
+16 KiB half in that mode. A13 selects vertical instead of horizontal CIRAM;
+A10 overrides it with single-screen lower. A14 and A7-A5 are unconnected.
+The canonical latch mask is $3F1F. There is 8 KiB unbanked writable CHR RAM,
+with no CPU RAM, IRQ, expansion audio or battery storage.
+
+Four physical sockets allow eight populations with socket zero present. The
+CLI `--board-profile` / core `configure_board_profile` names are:
+
+| Populated sockets | Profile | Packed PRG |
+|---|---|---|
+| 0 | `slots-0` | 1 MiB |
+| 0, 1 | `slots-0-1` | 2 MiB |
+| 0, 2 | `slots-0-2` | 2 MiB |
+| 0, 1, 2 | `slots-0-1-2` | 3 MiB |
+| 0, 3 | `slots-0-3` | 2 MiB |
+| 0, 1, 3 | `slots-0-1-3` | 3 MiB |
+| 0, 2, 3 | `slots-0-2-3` | 3 MiB |
+| 0, 1, 2, 3 | `slots-0-1-2-3` | 4 MiB |
+
+Files pack full 1 MiB chip blocks in ascending physical socket order. Defaults
+are sockets 0 for 1 MiB, 0/2 for the documented 2 MiB 150-in-1, 0/1/2 for the
+newer 3 MiB dump report, and all four for 4 MiB. Other layouts require explicit
+selection; ROM length cannot distinguish equal-size socket populations. Profiles
+validate the chip count, and snapshots bind to the selected wiring. These eight
+decoder models do not certify every possible physical board. Smaller EPROMs,
+other packing orders and incomplete dumps need separate evidence/normalization;
+loading performs no title/hash detection, chip replication or automatic repair.
+The old 4 MiB dump with a duplicated fourth block is not proof of four chips.
+
+Absent sockets leave all CPU data bits floating via `prg_read_mask=0`, without
+wrapping into another chip. RAM-resident code can reconnect ROM with another
+write. CHR RAM and CIRAM remain accessible while CPU ROM floats. Reset clears
+the address latch and retains CHR RAM; cold power-on additionally clears CHR
+RAM as a deterministic initialization policy. The hardware report only says
+reset appears to clear the latches; analog power-up contents are not certified.
+
+Accept legacy iNES and NES 2.0 submapper zero with exact 1/2/3/4 MiB PRG, no CHR
+ROM, ordinary H/V metadata and 8 KiB volatile CHR RAM. The 4 MiB file uses NES
+2.0 extended PRG size. Legacy generic PRG-RAM inference is ignored. Reject
+battery, CPU RAM/NVRAM, alternate CHR populations, partial chips, other CIRAM
+metadata and unknown submappers.
+
+The mapper payload is 8,196 bytes: two-byte $EB00-or-socket-mask wiring tag,
+two-byte canonical address latch, and 8 KiB CHR RAM. Validate before commit;
+failed component restores leave the board unchanged, and machine restores roll
+back atomically. Existing mapper payloads, machine version 20 and the 4 MiB
+state cap remain unchanged. Only actual CHR RAM is allocated beside ROM.
+
+The dedicated `mapper235` target checks all socket/bank/mode/mirroring
+combinations, every register address, ignored data/pins, all CHR cells, geometry,
+profiles and malformed states. Twenty-nine original CPU images cover the eight
+layouts and both header formats where representable, including fourteen
+RAM-resident empty-socket programs. They assert banking, PPUDATA/CIRAM, cold and
+soft reset, deterministic replay and atomic rejection. Bus fixtures check all
+256 floating values, CIRAM access and ROM reconnection; equal-ROM machine
+fixtures reject different wiring. Shared mapper tests retain registration,
+CPU boot and machine-state coverage. Application fixtures check raw/archive
+preparation, adoption, reload, reset and power cycling. CLI checks 51 loading
+profiles and 33 rejected inputs, preserving source bytes and creating no saves;
+CPU completion markers are asserted in unit/application fixtures.
+
+Validation: all 75 regular targets, including required GPU checks, and all ten
+focused ASan+UBSan targets passed. Both builds passed 726,721 assertions across
+ten cases in the dedicated mapper-235 target, and 7,124,747 assertions across
+545 cases in the shared mapper target. The new application regression passed
+203 assertions. The shared sanitizer mapper target took 117.99 seconds within
+its existing 120-second timeout; mapper 235 took 17.92 seconds in its own target.
+The initial regression failed at factory creation before implementation.
+Formatting, scoped clang-tidy, whitespace and exact 151-ID registry/ledger
+checks passed. Isolated canonical-document validation preserved the baseline:
+zero errors, 72 warnings and three infos across 193 documents.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -3664,7 +3749,7 @@ or another registered cartridge ID.
 | 232 | Codemasters Quattro | New implementation: DiscreteMapper | [r5797](https://www.nesdev.org/w/index.php?oldid=5797) |
 | 233 | 42 Games / conflicting legacy models | New implementation: Multicart233 (profiled compatibility models) | [r5799](https://www.nesdev.org/w/index.php?oldid=5799) |
 | 234 | Maxi 15 / AVE and Australian HES wiring | New implementation: Maxi15 | [r24540](https://www.nesdev.org/w/index.php?oldid=24540) |
-| 235 | Board-specific specification | Not registered | [r22514](https://www.nesdev.org/w/index.php?oldid=22514) |
+| 235 | Golden Game / eight packed ROM socket populations | New implementation: GoldenGame | [r22514](https://www.nesdev.org/w/index.php?oldid=22514) |
 | 236 | Board-specific specification | Not registered | [r18875](https://www.nesdev.org/w/index.php?oldid=18875) |
 | 237 | Board-specific specification | Not registered | [r5823](https://www.nesdev.org/w/index.php?oldid=5823) |
 | 238 | Board-specific specification | Not registered | [r5824](https://www.nesdev.org/w/index.php?oldid=5824) |
