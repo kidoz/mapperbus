@@ -4,7 +4,7 @@ This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
 complete.** Updated 2026-11-14 against the working-tree registry.
 
-There are **153 registered cartridge IDs**: the original 14, 53 added in the first
+There are **154 registered cartridge IDs**: the original 14, 53 added in the first
 batch, and Irem 32/65/77, Sunsoft 67/68, Taito 33/48/80/207/82/552, Jaleco 18/72/92/101,
 Namco 210, MMC3 variants 118/119, RAMBO-1 64/158, Bandai 16/153/159, and Datach
 157, UNROM 512 30, GTROM/direct MMC1 111, and J.Y. Company
@@ -14,7 +14,7 @@ IDs, Sachen MMC3 clones 262/512/513, Rex Soft's 263, Nitra 250, mappers
 TNROM640 198, Waixing FS309 199, multicarts 202/205, Gouder/JJ-01 208,
 Sugar Softec 215, Single Chip 218, Kasheng A9461 219, NTDEC N625092 221,
 address-latched multicarts/RPGs 227, Active Enterprises 228, reset-driven 22-in-1 230 and
-profiled 42 Games 233, Maxi 15 234, Golden Game 235, Realtec 236 and Teletubbies 237
+profiled 42 Games 233, Maxi 15 234, Golden Game 235, Realtec 236, Teletubbies 237 and Contra Fighter 238
 detailed below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
@@ -24,6 +24,7 @@ unusual ROM geometry.
 
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
+| Contra Fighter compatibility model (follow-up) | 238 | Shared protection latch, MMC3 PRG/CHR/CIRAM and IRQs, CPU/DMA execution, explicit reset policy and compact atomic snapshots. |
 | Teletubbies 420-in-1 (follow-up) | 237 | Four PRG modes, configuration lock, forced ROM A1 type detection, H/V CIRAM, CHR RAM, CPU execution and validated snapshots. |
 | Realtec multicarts (follow-up) | 236 | Three ROM/RAM populations, four PRG modes, address-substituting solder pads, H/V CIRAM, CHR ROM/RAM, CPU execution and validated snapshots. |
 | Golden Game (follow-up) | 235 | Eight ROM socket profiles, 16/32 KiB PRG, empty-socket open bus, H/V/single CIRAM, CHR RAM, CPU execution and wiring-bound snapshots. |
@@ -3647,6 +3648,83 @@ whitespace and exact 153-ID registry/ledger checks passed. Isolated canonical
 document validation preserved zero errors, 72 warnings and three infos across
 193 documents.
 
+## Mapper-238 follow-up: Contra Fighter compatibility model
+
+`Mmc3` now supports Contra Fighter / UNL-603-5052. The
+[NESdev r5824 entry](https://www.nesdev.org/w/index.php?oldid=5824) is a title-only
+stub, with no register specification. [CaH4e3's original 2006 dump report](https://cah4e3.shedevr.org.ru/dumping_2006.php)
+identifies the protected MMC3 board. Its functional compatibility model was
+checked against [CaH4e3's published reference](https://github.com/TASEmulators/fceux/blob/master/src/boards/603-5052.cpp)
+and [Mesen's reference at revision 152abf6](https://github.com/SourMesen/Mesen2/blob/152abf690bb0568cd36de34f1744462d6be66f45/Core/NES/Mappers/Mmc3Variants/MMC3_238.h).
+The implementation here uses the existing MapperBus MMC3 and an independently
+expressed Boolean decoder; external implementation code is not incorporated.
+No commercial ROM data was downloaded or used.
+
+All CPU reads/writes at $4020-$7FFF address one protection latch. Input bits
+D1-D0 produce responses 0, 2, 2, 3 for values 0, 1, 2, 3; higher input bits and
+address bits within the window are ignored. Output D1 is the OR of the inputs,
+and D0 their AND. Reads drive a complete byte in this compatibility model;
+physical bus-drive masks have not been measured. The $4020-$5FFF expansion
+route and $6000-$7FFF cartridge route share the same latch. MMC3's $A001 WRAM
+gates do not block it, and writes never modify PRG/CHR banking or IRQ state.
+Console I/O through $401F stays separate, including OAM DMA control at $4014.
+
+Support the reference's 128 KiB PRG / 256 KiB CHR-ROM population, legacy iNES or
+NES 2.0 submapper zero and ordinary H/V metadata. [MAME's software metadata](https://github.com/mamedev/mame/blob/master/hash/nes.xml)
+also lists this size pair, while marking its dump bad; that is not hardware
+certification or a reason to repair images automatically. Reject other size
+pairs, partial chips, battery, native CPU RAM/NVRAM, CHR RAM/NVRAM, alternate
+CIRAM and unknown submappers. Ignore legacy generic WRAM inference. There is no
+accessible WRAM, CHR RAM or expansion audio. Existing MMC3 banking, CHR write
+protection, CIRAM and scanline IRQ behavior are reused.
+
+Cold power clears protection to zero; soft reset retains it while applying
+MapperBus's existing MMC3 core-reset policy. These are explicit compatibility
+policies. Exact PCB reset behavior, analog bus drive, clone A12 filtering and
+zero-latch IRQ behavior are unverified. The existing repeating-zero MMC3 IRQ
+model is retained, with no PPU timing changes or speculative Huang-1 supervisor
+modes from other boards added.
+
+State is 18 bytes: fifteen existing compact MMC3 register/IRQ/control bytes,
+a two-byte $EE00 tag and one protection-response byte. Only 0/2/3 are reachable
+latch values; other values and malformed common fields are rejected. An 18-byte
+backup restores the component atomically on failure, without copying ROM or
+large RAM buffers. Whole-machine rejection remains atomic. The existing MMC3
+class's fixed backing arrays remain allocated but inaccessible; they are not
+serialized for this ROM-only board. Existing mapper payloads, machine version
+20 and its 4 MiB state cap remain unchanged.
+
+The dedicated `mapper238` target checks all CPU register addresses, every input
+byte, protection aliases, fully driven reads, absent-WRAM gates, all PRG/CHR
+register values and mode bits, ROM protection, IRQs, reset and malformed states.
+Sixteen original CPU images span both header formats, H/V metadata and all four
+protection inputs, asserting completion, PPUDATA/CIRAM, PPU-driven IRQs, replay
+and atomic rejection. Bus fixtures verify protection reads during OAM DMA and
+separation from console I/O. The shared mapper matrix retains registration,
+CPU boot and state checks. `rom-source-mapper238` covers raw/archive loading,
+preparation/adoption, reload, soft reset and cold power without growing the
+shared loading timeout. CLI checks sixteen loading profiles and 27 rejected
+inputs, preserving source bytes and creating no saves; C++ fixtures assert CPU
+completion markers rather than treating CLI frame completion as execution proof.
+
+Validation: all 84 regular targets, including required GPU checks, passed.
+Sixteen focused ASan+UBSan targets passed across the initial run and affected
+checks rerun. The initial shared mapper run hit its existing 120-second limit;
+`test_flash_boards.cpp` was moved unchanged into `flash-boards`. Every check is
+retained and no timeout was increased. Fourteen other sanitizer targets passed
+initially; both reorganized targets passed afterward.
+
+Both builds passed 398,995 dedicated mapper-238 assertions across nine cases,
+plus the new application's 124 assertions. Shared mapper and flash targets
+retain exactly the previous combined 7,124,792 assertions across 545 cases:
+7,123,539/534 in `mappers` and 1,253/11 in `flash-boards`. The sanitizer retry took
+117.56 and 3.98 seconds respectively, within each existing 120-second budget.
+All 45 loading cases remain registered across the shared and two dedicated
+loading targets. Factory creation was unsupported before implementation.
+Formatting, scoped clang-tidy, whitespace and exact 154-ID registry/ledger
+checks passed. Isolated canonical-document validation preserved zero errors,
+72 warnings and three infos across 193 documents.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -3902,7 +3980,7 @@ or another registered cartridge ID.
 | 235 | Golden Game / eight packed ROM socket populations | New implementation: GoldenGame | [r22514](https://www.nesdev.org/w/index.php?oldid=22514) |
 | 236 | Realtec 8031/8155, 8099 and CHR-RAM 8106 | New implementation: RealtecMulticart | [r18875](https://www.nesdev.org/w/index.php?oldid=18875) |
 | 237 | Teletubbies 420-in-1 / forced-A1 type wiring | New implementation: Teletubbies | [r5823](https://www.nesdev.org/w/index.php?oldid=5823) |
-| 238 | Board-specific specification | Not registered | [r5824](https://www.nesdev.org/w/index.php?oldid=5824) |
+| 238 | Contra Fighter / UNL-603-5052 protection compatibility model | New implementation: Mmc3 | [r5824](https://www.nesdev.org/w/index.php?oldid=5824) |
 | 240 | Board-specific specification | New implementation: DiscreteMapper | [r21944](https://www.nesdev.org/w/index.php?oldid=21944) |
 | 241 | Board-specific specification | Not registered | [r23728](https://www.nesdev.org/w/index.php?oldid=23728) |
 | 242 | Board-specific specification | Not registered | [r19709](https://www.nesdev.org/w/index.php?oldid=19709) |

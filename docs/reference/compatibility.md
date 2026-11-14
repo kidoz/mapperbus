@@ -34,6 +34,7 @@ contains the following mapper IDs:
 | 215 | Sugar Softec UNL-8237/8237A: eight MMC3 address/index scrambling modes, outer banks, NROM override, CHR/CIRAM, IRQs and snapshots | ROM-only submappers 0/1; exact clone reset and IRQ/A12 behavior unverified |
 | 218 | Single Chip / Magic Floor: four CIRAM wirings, shared pattern/nametable bytes, background/sprite rendering, PPUDATA and snapshots | PRG-only submapper 0; no cartridge CHR RAM, WRAM or speculative extra-memory variants |
 | 219 | Kasheng A9461: MMC3/extended protocols, reversed PRG pins, CHR latch/commits, outer banks, CIRAM/IRQs and snapshots | ROM-only submapper 0 compatibility model; mode retention, reset defaults and electrical clone details unverified |
+| 238 | Contra Fighter: shared protection latch, MMC3 PRG/CHR, CIRAM, IRQs and compact snapshots | Published compatibility model for 128/256 KiB ROM; physical reset, bus-drive mask and clone IRQ/A12 details unverified |
 | 237 | Teletubbies 420-in-1: four PRG modes, configuration lock, forced ROM A1 type probe, H/V CIRAM, CHR RAM and snapshots | Documented 1 MiB board only; other type wiring unverified; uncertain reset bits explicitly cleared |
 | 236 | Realtec multicarts: three ROM/RAM populations, UNROM/pad/NROM modes, solder-pad address substitution, H/V CIRAM, CHR and snapshots | Zero-latch reset/pad default and cold RAM clearing are explicit policies; other sizes and electrical PCB behavior unverified |
 | 235 | Golden Game: eight ROM socket profiles, 16/32 KiB PRG, absent-socket open bus, H/V/single-lower CIRAM, 8 KiB CHR RAM and snapshots | Defaults use 0/2 for 2 MiB and 0/1/2 for 3 MiB; other layouts require explicit profiles; partial/smaller chips and other PCB wiring unverified |
@@ -82,7 +83,7 @@ contains the following mapper IDs:
 | 13, 34, 66, 70, 71, 78, 79, 87, 89, 93, 94, 97, 113, 140, 152, 180, 184 | Discrete cartridge boards | — |
 | 38, 46, 58, 61, 62, 81, 107, 145, 148, 149, 193, 200, 201, 203, 212, 213, 225, 226, 229, 231, 232, 240 | Additional latch boards and multicarts | — |
 
-The registry contains 153 cartridge IDs. See [mapper implementation coverage](mapper-implementation.md)
+The registry contains 154 cartridge IDs. See [mapper implementation coverage](mapper-implementation.md)
 for individual specifications, tested behavior, board limitations, and the full
 inventory of documented IDs still awaiting implementation. The expanded set has
 synthetic banking, IRQ, CPU/PPU integration and save-state coverage; this does
