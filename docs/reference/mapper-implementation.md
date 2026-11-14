@@ -24,7 +24,7 @@ unusual ROM geometry.
 
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
-| Standard BxROM with WRAM (follow-up) | 241 | Full-byte 32 KiB PRG banking, fixed H/V, 8 KiB WRAM with optional battery, fixed CHR ROM/RAM and atomic snapshots. Optional LPC speech remains unimplemented. |
+| Standard BxROM with WRAM (follow-up) | 241 | Full-byte 32 KiB PRG banking, fixed H/V, 8 KiB WRAM with optional battery, fixed CHR ROM/RAM and atomic snapshots. Optional LPC speech is available through the explicit `lpc` profile. |
 | Contra Fighter compatibility model (follow-up) | 238 | Shared protection latch, MMC3 PRG/CHR/CIRAM and IRQs, CPU/DMA execution, explicit reset policy and compact atomic snapshots. |
 | Teletubbies 420-in-1 (follow-up) | 237 | Four PRG modes, configuration lock, forced ROM A1 type detection, H/V CIRAM, CHR RAM, CPU execution and validated snapshots. |
 | Realtec multicarts (follow-up) | 236 | Three ROM/RAM populations, four PRG modes, address-substituting solder pads, H/V CIRAM, CHR ROM/RAM, CPU execution and validated snapshots. |
@@ -3761,13 +3761,11 @@ WRAM; short save imports update the supplied prefix and oversized direct
 imports stop at chip capacity, following ordinary RAM policy. File imports
 retain the existing 8 KiB cap and atomic file writes.
 
-The optional TMS5220C-data-compatible LPC chip described in the same article
-is **not implemented**. Base boards have no device at $4020-$5FFF, including
-$5000-$5FFF: reads float and writes are ignored. No fake ready bit, silent
-speech engine, undocumented LPC submapper, or keyboard/printer repair for
-hacked educational images is supplied. `--board-profile lpc` is rejected.
-Completing the optional LPC interface and audio decoder is the next mapper-241
-step; this registration does not claim speech-cartridge compatibility.
+The initial implementation covered the base board only. The optional LPC
+speech device is now available through the explicit `lpc` profile described in
+the following section. The default/`standard` profile still has no device at
+$4020-$5FFF: reads float and writes are ignored. No keyboard/printer repair for
+hacked educational images or undocumented graphics submapper is supplied.
 
 A dedicated class owns only its actual 8 KiB WRAM and one 8 KiB CHR ROM/RAM
 buffer, with no unused large generic mapper RAM arrays. Snapshots contain a
@@ -3799,6 +3797,110 @@ test, and the complete rerun passed. Formatting, scoped clang-tidy, whitespace,
 and exact 155-ID registry/ledger checks passed. Isolated strict-consumer
 standards validation preserved zero errors, 72 warnings and three infos across
 193 documents. Existing user changes were preserved.
+
+## Mapper-241 LPC follow-up: optional speech profile
+
+Select `--board-profile lpc` for the optional nibble-stream speech device;
+omitting the option or selecting `standard` retains the original base board.
+Both profiles use the same documented ROM/WRAM/CHR geometry. No submapper or
+automatic ROM-title detection is invented. The profile also flows through
+`EmulationSession::open_rom` and `RomLoadRequest`/`prepare_rom` before cartridge
+installation, including raw, ZIP and 7z images. Snapshots require the same profile.
+
+The register interface comes from
+[NESdev mapper 241 r23728](https://www.nesdev.org/w/index.php?oldid=23728).
+The speech profile maps $5000-$5FFF; D6 reports readiness and other data-bus
+bits float. Writes with D6 and D4 both high submit D0-D3; both low reset the
+chip. Mixed control levels are undefined in the specification and ignored
+here; D7/D5 do not participate in decoding. D6-only drive and mixed-level
+handling are compatibility policies; actual clone pin masks are unmeasured.
+Other expansion addresses stay
+unmapped, and speech accesses cannot modify PRG/CHR banking or WRAM.
+Open-bus D6 can already appear high on an unpopulated board, so a ready poll
+alone cannot reliably detect the presence of speech hardware.
+
+Unspecified board-level behavior uses the published
+[NintendulatorNRS-DBG reference at b685625](https://github.com/gmestanley/NintendulatorNRS-DBG/blob/b685625310ec026afa844340d94503f9767b72df/src-mappers/src/iNES/mapper241.cpp)
+and its [LPC reference](https://github.com/gmestanley/NintendulatorNRS-DBG/blob/b685625310ec026afa844340d94503f9767b72df/src-mappers/src/Hardware/Sound/s_LPC10.cpp):
+low-bit-first nibbles, a bounded 128-bit FIFO, readiness below 64 queued bits,
+768 kHz oscillator and 16,000 oscillator clocks of reset latency. The decoder
+accepts complete nibbles until capacity, then drops overflowing nibbles without
+changing queued data. Partial fields wait for more bits. Between incomplete
+frames output is muted while filter/parameter history is retained. Stop energy
+15 clears the speech output/filter and discards queued padding to the next
+byte boundary; following queued messages can resume. Reset clears FIFO,
+parameters, noise, filter, output and clock phase, and restarts the busy delay.
+Both soft reset and cold power reset the speech device; existing WRAM/CHR
+reset and persistence rules remain intact.
+
+`LpcSpeech` is original implementation code with fixed, bounded storage. It
+parses 4-bit energy, repeat, 6-bit pitch and ten reflection coefficients with
+widths 5/5/4/4/4/4/4/3/3/3. Unvoiced frames decode K1-K4; repeat frames reuse
+prior coefficients, preserving raw K5-K10 for subsequent voiced frames
+while suppressing their unvoiced contribution. Energy zero denotes silence.
+There is no TMS5220 parallel-command/SPEAK EXTERNAL byte protocol on this
+custom interface, and no LPC-D6 or multi-rate format has been added.
+
+Parameter and excitation tables record factual TMS5220 ROM contents published
+in [MAME's decapping research at 484b993](https://github.com/mamedev/mame/blob/484b993578e6b7155e5a039c4e4962a5d1ad78e8/src/devices/sound/tms5110r.hxx),
+with the [TI TMS5220 manual](https://cdn.hackaday.io/files/21000898464000/tms5220.pdf)
+and patents linked by NESdev as supporting references. No external emulator
+implementation code or commercial speech/ROM recordings are incorporated.
+Voiced excitation uses the PE chirp table; unvoiced excitation uses signed
+noise from a deterministic 13-bit LFSR advanced twenty steps per sample.
+A ten-stage fixed-point lattice uses Q9 reflection coefficients, bounded
+15-bit arithmetic and signed eight-bit output quantization. Unlike the
+reference's approximate D6 excitation for PE, the PE chirp is used here.
+
+One sample advances every eighty speech clocks: nominally 9.6 kHz. A fractional
+integer clock accumulator derives speech clocks from the selected NTSC, PAL
+or Dendy CPU clock, rounded to the nearest Hz. `Mapper::set_region` is a no-op
+by default; the cartridge/emulator forward region changes to the speech mapper,
+including overrides and state loading. Region changes preserve phase modulo
+the new CPU-clock denominator. Mixing uses the existing per-CPU-cycle expansion
+audio seam; `expansion_gains::kLpc` supplies a nominal normalized gain of 0.15.
+No analog board resistance or reconstruction filter has been measured.
+
+This is a **functional frame/sample compatibility model**, not a cycle-exact
+TMS5220 or a measured clone-netlist implementation. Each frame is 200 samples;
+eight 25-sample interpolation updates occur simultaneously per period.
+Voicing/zero-energy transitions apply the new parameters immediately when
+interpolation is inhibited. The TI chip staggers parameter updates through
+its arithmetic cycles, and exact clone startup, underflow, stop/ramp and analog
+waveform behavior remain unverified. The published reference's separate
+experimental 1bpp/CHR-split submapper is outside this documented speech profile.
+These limits require hardware evidence before claiming exact recording matches.
+
+Speech adds a fixed 129-byte payload behind a distinct mapper profile tag.
+It includes all FIFO bits, read cursor/count, fractional clock phase, reset and
+sample counters, partial-frame parser, three parameter frames, interpolation,
+pitch/noise state, filter delays and output. Fixed local staging rejects
+truncation, malformed fields and impossible bounds before committing any mapper
+state. Standard mapper-241 payloads, other mappers, machine version 20 and the
+4 MiB cap remain unchanged. A speech device is allocated only for `lpc`.
+
+Original synthetic streams check analytic chirp samples, voiced/unvoiced repeat
+equivalence, silence/stop, FIFO threshold/overflow, partial-frame refill, every
+coefficient index, interpolation transitions and deterministic replay. CPU
+firmware polls readiness before writing each nibble and produces a WRAM
+completion marker. Tests verify changing finite audio at the APU mixer across
+regions, profile separation, state rollback and raw/archive preparation/adoption
+with real battery persistence. CLI checks 35 valid profiles and 15 rejected
+inputs, including speech firmware completion through persisted WRAM and region
+overrides. Only synthetic parameters and original 6502 code are used.
+
+Validation on 2026-11-14 passed all 87 regular targets with GPU checks required
+and nineteen focused ASan+UBSan targets, including mixer/audio, region, session,
+loading and state paths (leak detection disabled on macOS). Both builds passed
+627,371 mapper-241 assertions in fifteen cases and 808 loading assertions in
+two cases. The shared mapper target retained 7,123,554 assertions in 534 cases;
+its sanitizer run took 114.72 seconds within the unchanged 120-second budget.
+The complete build, including SDL3 and NodalKit applications, formatting,
+scoped clang-tidy and whitespace checks passed. The exact registry/ledger set
+remains 155 IDs. Isolated strict-consumer standards validation retained zero
+errors, 72 warnings and three infos across 193 documents. Initial integration
+test failures corrected assumptions about open-bus ready reads and the caller's
+save flush before session adoption; the full subsequent run passed.
 
 ## Every documented registry slot
 
@@ -4057,7 +4159,7 @@ or another registered cartridge ID.
 | 237 | Teletubbies 420-in-1 / forced-A1 type wiring | New implementation: Teletubbies | [r5823](https://www.nesdev.org/w/index.php?oldid=5823) |
 | 238 | Contra Fighter / UNL-603-5052 protection compatibility model | New implementation: Mmc3 | [r5824](https://www.nesdev.org/w/index.php?oldid=5824) |
 | 240 | Board-specific specification | New implementation: DiscreteMapper | [r21944](https://www.nesdev.org/w/index.php?oldid=21944) |
-| 241 | Standard BxROM with 8 KiB WRAM; optional LPC speech pending | New implementation: BxromWram | [r23728](https://www.nesdev.org/w/index.php?oldid=23728) |
+| 241 | BxROM with 8 KiB WRAM and optional LPC speech profile | New implementation: BxromWram | [r23728](https://www.nesdev.org/w/index.php?oldid=23728) |
 | 242 | Board-specific specification | Not registered | [r19709](https://www.nesdev.org/w/index.php?oldid=19709) |
 | 243 | Sachen board | New implementation: Sachen | [r5861](https://www.nesdev.org/w/index.php?oldid=5861) |
 | 244 | Board-specific specification | Not registered | [r5862](https://www.nesdev.org/w/index.php?oldid=5862) |

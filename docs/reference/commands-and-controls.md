@@ -238,6 +238,12 @@ explicitly. Snapshots require the same solder-pad profile. Unknown profile
 names and profiles belonging to a different mapper are rejected.
 See [JC-016-2 coverage and limits](mapper-implementation.md#mapper-205-follow-up-jc-016-2-block-pins-and-solder-pad).
 
+For mapper 241, `--board-profile lpc` enables the optional LPC-PE speech chip.
+The default, also selectable as `standard`, leaves speech registers unmapped.
+The choice works for raw ROMs and archive members and must match when restoring
+a snapshot. Speech timing follows `--region`; analog gain and exact clone
+microsequencing are unverified. See [speech coverage and limits](mapper-implementation.md#mapper-241-lpc-follow-up-optional-speech-profile).
+
 For Datach (mapper 157), `--barcode` accepts 8 EAN-8, 12 UPC-A or 13 EAN-13
 digits including the check digit. `--barcode-frame` schedules a scan before the
 specified zero-based frame (default 0, less than `--frames`); `--barcode-cycles`
