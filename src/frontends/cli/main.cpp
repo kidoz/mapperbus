@@ -159,7 +159,7 @@ int main(int argc, char* argv[]) {
             controller_overrides));
     if (region_override)
         emulator.set_region(*region_override);
-    emulator.reset();
+    emulator.power_on();
     for (int frame = 0; frame < frames; ++frame) {
         if (!barcode.empty() && frame == barcode_frame) {
             if (auto scanned = emulator.scan_barcode(barcode, barcode_cycles); !scanned) {

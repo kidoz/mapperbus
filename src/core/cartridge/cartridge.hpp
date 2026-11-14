@@ -103,6 +103,9 @@ class Cartridge {
     [[nodiscard]] const Sha256Digest& base_content_hash() const {
         return base_content_hash_;
     }
+    void power_on() {
+        mapper_->power_on();
+    }
     void reset() {
         mapper_->reset();
     }

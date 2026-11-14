@@ -51,6 +51,9 @@ class Emulator {
     void set_persistence_enabled(bool enabled) {
         persistence_enabled_ = enabled;
     }
+    /// Initialize mapper power-on state and reset the console devices.
+    void power_on();
+    /// Console soft reset, including reset-driven cartridge mode changes.
     void reset();
     void step_frame();
 
@@ -211,6 +214,7 @@ class Emulator {
     }
 
   private:
+    void reset_machine(bool cold_start);
     void wire_apu();
     void retain_shared_nvram();
     [[nodiscard]] Result<void> flush_shared_nvram() const;

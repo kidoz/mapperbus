@@ -54,7 +54,7 @@ core::Result<PreparedRom> prepare_rom(const RomLoadRequest& request, std::stop_t
     if (stop.stop_requested())
         return cancelled();
     media.member = std::move(*loaded);
-    media.emulator->reset();
+    media.emulator->power_on();
     media.state_directory = state_directory_for_game(
         request.state_storage, request.path, core::sha256_hex(media.emulator->content_hash()));
     if (stop.stop_requested())

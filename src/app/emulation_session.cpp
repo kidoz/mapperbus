@@ -89,7 +89,7 @@ core::Result<void> EmulationSession::open_rom(const std::string& rom_path,
 
     suspend_live_microphone();
     emulator_->set_microphone_active(false);
-    emulator_->reset();
+    emulator_->power_on();
     turbo_input_.reset();
     // Go through set_paused() so a previously suspended audio device is
     // resumed; assigning paused_ directly would leave the new ROM silent.
@@ -302,7 +302,7 @@ void EmulationSession::power_cycle() {
         return;
     }
     suspend_live_microphone();
-    emulator_->reset();
+    emulator_->power_on();
     turbo_input_.reset();
     set_paused(false);
 }

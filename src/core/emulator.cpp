@@ -411,11 +411,22 @@ void Emulator::unload_cartridge() {
 }
 
 void Emulator::reset() {
+    reset_machine(false);
+}
+
+void Emulator::power_on() {
+    reset_machine(true);
+}
+
+void Emulator::reset_machine(bool cold_start) {
     ppu_.reset();
     apu_.reset();
     fds_.reset();
     if (cartridge_) {
-        cartridge_->reset();
+        if (cold_start)
+            cartridge_->power_on();
+        else
+            cartridge_->reset();
     }
     cpu_.reset();
 }

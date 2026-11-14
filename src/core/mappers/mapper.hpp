@@ -71,6 +71,11 @@ class Mapper {
     virtual bool write_nametable(Address /*addr*/, Byte /*value*/) {
         return false;
     }
+    /// Cartridge power-on; ordinary boards retain their existing reset policy.
+    virtual void power_on() {
+        reset();
+    }
+    /// Console soft reset; reset-driven multicarts may change the selected game.
     virtual void reset() = 0;
 
     // Save-state hooks. Each mapper serializes its mutable runtime state
