@@ -21,6 +21,7 @@ core_sources = files(
     'mappers/action52.cpp',
     'mappers/multicart230.cpp',
     'mappers/multicart233.cpp',
+    'mappers/multicart242.cpp',
     'mappers/maxi15.cpp',
     'mappers/golden_game.cpp',
     'mappers/realtec_multicart.cpp',

@@ -25,6 +25,7 @@
 #include "core/mappers/multicart227.hpp"
 #include "core/mappers/multicart230.hpp"
 #include "core/mappers/multicart233.hpp"
+#include "core/mappers/multicart242.hpp"
 #include "core/mappers/namco108.hpp"
 #include "core/mappers/namco163.hpp"
 #include "core/mappers/namco175340.hpp"
@@ -80,6 +81,8 @@ namespace {
         return RealtecMulticart::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 235U)
         return GoldenGame::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 242U)
+        return Multicart242::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 241U)
         return BxromWram::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 238U) {
@@ -797,6 +800,7 @@ void register_builtin_mappers() {
     registry.register_mapper(237, make_factory<Teletubbies>());
     registry.register_mapper(238, make_factory<Mmc3>());
     registry.register_mapper(241, make_factory<BxromWram>());
+    registry.register_mapper(242, make_factory<Multicart242>());
     registry.register_mapper(249, make_factory<Mmc3>());
     registry.register_mapper(250, make_factory<Mmc3>());
     registry.register_mapper(262, make_factory<Mmc3>());

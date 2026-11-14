@@ -27,6 +27,7 @@
 #include "../support/mapper237_rom.hpp"
 #include "../support/mapper238_rom.hpp"
 #include "../support/mapper241_rom.hpp"
+#include "../support/mapper242_rom.hpp"
 #include "../support/rom_archive.hpp"
 #include "app/async_fds_bios_validation.hpp"
 #include "app/async_rom_loader.hpp"
@@ -2461,6 +2462,105 @@ TEST_CASE("LPC board profile survives raw archive and staged session loading",
             request.board_profile = "bad-profile";
             REQUIRE_FALSE(prepare_rom(request));
         }
+}
+TEST_CASE("Mapper 242 raw archived and staged loading preserve menu pads and battery RPG memory",
+          "[rom-source][mapper242]") {
+    ArchiveFixture fixture;
+    TestDataHome data_home(fixture.root / "data");
+    for (unsigned population = 0U; population < 3U; ++population)
+        for (bool legacy : {false, true})
+            for (Byte pads : {0U, 31U}) {
+                const bool battery = population == 1U, et = population == 2U;
+                const auto stem =
+                    std::to_string(population) + std::to_string(legacy) + std::to_string(pads);
+                const auto profile = "menu-" + std::to_string(pads);
+                const auto raw = fixture.root / (stem + ".nes"),
+                           archive = fixture.root / (stem + ".zip"),
+                           save = fixture.root / (stem + ".sav"),
+                           storage = fixture.root / (stem + "-storage");
+                const auto bytes = tests::make_mapper242_rom(legacy, battery, et, pads, pads == 0U);
+                REQUIRE(core::write_binary_file_atomic(raw.string(), bytes, "242 fixture"));
+                write_archive(archive, {{"board.nes", bytes}});
+                {
+                    EmulationSession session(std::make_unique<platform::NullVideo>(),
+                                             std::make_unique<platform::NullAudio>(),
+                                             std::make_unique<platform::NullInput>());
+                    REQUIRE(session.open_rom(raw.string(), {}, {}, profile));
+                    session.emulator().step_frame();
+                    REQUIRE(session.emulator().read_cpu(0x12U) == 0xC7U);
+                    REQUIRE(session.emulator().read_cpu(0x14U) == 0U);
+                    const auto saved = session.emulator().save_state();
+                    session.reset();
+                    session.emulator().step_frame();
+                    REQUIRE(session.emulator().read_cpu(0x12U) == 0xC7U);
+                    REQUIRE(session.emulator().read_cpu(0x14U) == 0x7BU);
+                    session.power_cycle();
+                    session.emulator().step_frame();
+                    REQUIRE(session.emulator().read_cpu(0x12U) == 0xC7U);
+                    REQUIRE(session.emulator().read_cpu(0x14U) == 0U);
+                    if (battery)
+                        REQUIRE(session.emulator().read_cpu(0x15U) == 0xA7U);
+                    REQUIRE(session.emulator().load_state(saved));
+                    session.close_rom();
+                    REQUIRE(std::filesystem::exists(save) == battery);
+                    if (battery) {
+                        auto persisted =
+                            core::read_binary_file_capped(save.string(), 8192U, "RPG save");
+                        REQUIRE(persisted);
+                        REQUIRE(persisted->size() == 8192U);
+                        REQUIRE(persisted->front() == 0xA7U);
+                        REQUIRE(persisted->back() == 0x91U);
+                    }
+                    REQUIRE(session.open_rom(raw.string(), {}, {}, profile));
+                    session.emulator().step_frame();
+                    REQUIRE(session.emulator().read_cpu(0x12U) == 0xC7U);
+                    if (battery)
+                        REQUIRE(session.emulator().read_cpu(0x15U) == 0xA7U);
+                    RomLoadRequest request;
+                    request.path = archive.string();
+                    request.member = "board.nes";
+                    request.board_profile = profile;
+                    request.persistence_directory = storage;
+                    request.state_storage.directory = fixture.root / "states";
+                    auto prepared = prepare_rom(request);
+                    REQUIRE(prepared);
+                    prepared->emulator->step_frame();
+                    REQUIRE(prepared->emulator->read_cpu(0x12U) == 0xC7U);
+                    const auto staged = prepared->emulator->save_state();
+                    REQUIRE(session.emulator().flush_persistent_data());
+                    session.adopt_rom(std::move(*prepared));
+                    REQUIRE(session.emulator().save_state() == staged);
+                    session.close_rom();
+                }
+                const auto archive_save =
+                    storage / "battery" / (core::sha256_hex(core::rom_sha256(bytes)) + ".sav");
+                REQUIRE(std::filesystem::exists(archive_save) == battery);
+                for (bool seven_zip : {false, true}) {
+                    const auto path = fixture.root / (stem + (seven_zip ? ".7z" : ".zip"));
+                    if (seven_zip)
+                        write_archive(path, {{"board.nes", bytes}}, true);
+                    core::Emulator restored;
+                    REQUIRE(load_rom_source(
+                        restored, path.string(), "board.nes", {}, storage, {}, {}, {}, profile));
+                    restored.step_frame();
+                    REQUIRE(restored.read_cpu(0x12U) == 0xC7U);
+                    REQUIRE(restored.read_cpu(0x14U) == 0U);
+                    if (battery)
+                        REQUIRE(restored.read_cpu(0x15U) == 0xA7U);
+                    const auto before = restored.save_state();
+                    REQUIRE_FALSE(load_rom_source(
+                        restored, path.string(), "board.nes", {}, storage, {}, {}, {}, "menu-32"));
+                    REQUIRE(restored.save_state() == before);
+                    auto invalid = bytes;
+                    invalid[6] |= 8U;
+                    const auto bad = fixture.root / "bad.nes";
+                    REQUIRE(core::write_binary_file_atomic(bad.string(), invalid, "invalid"));
+                    REQUIRE_FALSE(load_rom_source(restored, bad.string(), {}, {}, storage));
+                    REQUIRE(restored.save_state() == before);
+                }
+                REQUIRE(core::read_binary_file_capped(raw.string(), bytes.size(), "ROM") ==
+                        core::Result<std::vector<Byte>>(bytes));
+            }
 }
 } // namespace
 } // namespace mapperbus::app
