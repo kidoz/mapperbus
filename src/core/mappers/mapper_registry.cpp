@@ -21,6 +21,7 @@
 #include "core/mappers/mmc5.hpp"
 #include "core/mappers/multicart227.hpp"
 #include "core/mappers/multicart230.hpp"
+#include "core/mappers/multicart233.hpp"
 #include "core/mappers/namco108.hpp"
 #include "core/mappers/namco163.hpp"
 #include "core/mappers/namco175340.hpp"
@@ -64,6 +65,8 @@ namespace {
         return Action52::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 230U)
         return Multicart230::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 233U)
+        return Multicart233::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 219U) {
         if (header.is_nes2 && header.submapper != 0U)
             return std::unexpected("Mapper 219 supports submapper 0");
@@ -759,6 +762,7 @@ void register_builtin_mappers() {
     registry.register_mapper(227, make_factory<Multicart227>());
     registry.register_mapper(228, make_factory<Action52>());
     registry.register_mapper(230, make_factory<Multicart230>());
+    registry.register_mapper(233, make_factory<Multicart233>());
     registry.register_mapper(249, make_factory<Mmc3>());
     registry.register_mapper(250, make_factory<Mmc3>());
     registry.register_mapper(262, make_factory<Mmc3>());

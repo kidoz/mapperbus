@@ -20,6 +20,7 @@
 #include "../support/fds_image.hpp"
 #include "../support/flash_rom.hpp"
 #include "../support/mapper230_rom.hpp"
+#include "../support/mapper233_rom.hpp"
 #include "../support/rom_archive.hpp"
 #include "app/async_fds_bios_validation.hpp"
 #include "app/async_rom_loader.hpp"
@@ -1924,6 +1925,66 @@ TEST_CASE("Reset-driven mapper startup and power cycling remain distinct across 
         session.power_cycle();
         session.emulator().step_frame();
         REQUIRE(session.emulator().read_cpu(0x12U) == 0xC7U);
+        REQUIRE_FALSE(
+            std::filesystem::exists(std::filesystem::path(raw).replace_extension(".sav")));
+    }
+}
+
+TEST_CASE("Mapper 233 reset-selected outer bank survives preparation adoption and state replay",
+          "[rom-source][mapper233][reset]") {
+    ArchiveFixture fixture;
+    for (bool legacy : {false, true}) {
+        const auto raw = fixture.root / (legacy ? "legacy233.nes" : "native233.nes");
+        const auto archive = fixture.root / (legacy ? "legacy233.zip" : "native233.zip");
+        const auto bytes = tests::make_mapper233_rom(0U, legacy);
+        REQUIRE(core::write_binary_file_atomic(raw.string(), bytes, "mapper 233 fixture"));
+        write_archive(archive, {{"42games.nes", bytes}});
+        EmulationSession session(std::make_unique<platform::NullVideo>(),
+                                 std::make_unique<platform::NullAudio>(),
+                                 std::make_unique<platform::NullInput>());
+        REQUIRE(session.open_rom(raw.string()));
+        session.emulator().step_frame();
+        REQUIRE(session.emulator().read_cpu(0x12U) == 0xC7U);
+        REQUIRE(session.emulator().read_cpu(0x14U) == 0U);
+        session.reset();
+        session.emulator().step_frame();
+        REQUIRE(session.emulator().read_cpu(0x14U) == 32U);
+        REQUIRE(session.emulator().read_cpu(0x15U) == 0x5AU);
+        const auto warm = session.emulator().save_state();
+        session.power_cycle();
+        session.emulator().step_frame();
+        REQUIRE(session.emulator().read_cpu(0x14U) == 0U);
+        REQUIRE(session.emulator().read_cpu(0x15U) == 0U);
+        REQUIRE(session.emulator().load_state(warm));
+        session.reset();
+        session.emulator().step_frame();
+        REQUIRE(session.emulator().read_cpu(0x14U) == 0U);
+        session.reset();
+        session.emulator().step_frame();
+        REQUIRE(session.emulator().read_cpu(0x14U) == 32U);
+        REQUIRE(session.open_rom(raw.string()));
+        session.emulator().step_frame();
+        REQUIRE(session.emulator().read_cpu(0x14U) == 0U);
+        RomLoadRequest request;
+        request.path = archive.string();
+        request.member = "42games.nes";
+        request.state_storage.directory = fixture.root / "states";
+        auto prepared = prepare_rom(request);
+        REQUIRE(prepared);
+        REQUIRE(prepared->emulator);
+        prepared->emulator->step_frame();
+        REQUIRE(prepared->emulator->read_cpu(0x14U) == 0U);
+        prepared->emulator->reset();
+        prepared->emulator->step_frame();
+        REQUIRE(prepared->emulator->read_cpu(0x14U) == 32U);
+        session.adopt_rom(std::move(*prepared));
+        REQUIRE(session.emulator().read_cpu(0x14U) == 32U);
+        session.reset();
+        session.emulator().step_frame();
+        REQUIRE(session.emulator().read_cpu(0x14U) == 0U);
+        session.power_cycle();
+        session.emulator().step_frame();
+        REQUIRE(session.emulator().read_cpu(0x14U) == 0U);
         REQUIRE_FALSE(
             std::filesystem::exists(std::filesystem::path(raw).replace_extension(".sav")));
     }

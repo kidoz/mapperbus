@@ -185,6 +185,11 @@ if get_option('enable_cli')
         depends : mapperbus_cli,
         timeout : 60,
     )
+    test('cli-mapper233', cli_python,
+        args : [files('integration/test_cli_mapper233.py'), mapperbus_cli],
+        depends : mapperbus_cli,
+        timeout : 60,
+    )
     test('cli-datach', cli_python,
         args : [files('integration/test_cli_datach.py'), mapperbus_cli],
         depends : mapperbus_cli,
@@ -253,6 +258,7 @@ test_mappers = executable('test-mappers',
     'unit/test_mapper227.cpp',
     'unit/test_mapper228.cpp',
     'unit/test_mapper230.cpp',
+    'unit/test_mapper233.cpp',
     dependencies : [mapperbus_core_dep, catch2_dep],
 )
 # Full-chip snapshot validation is more expensive under ASan/UBSan.

@@ -18,6 +18,7 @@ core_sources = files(
     'mappers/multicart227.cpp',
     'mappers/action52.cpp',
     'mappers/multicart230.cpp',
+    'mappers/multicart233.cpp',
     'mappers/single_chip.cpp',
     'mappers/mmc1.cpp',
     'mappers/mmc2.cpp',
