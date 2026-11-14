@@ -38,6 +38,7 @@
 #include "core/mappers/taito_tc.hpp"
 #include "core/mappers/taito_x1005.hpp"
 #include "core/mappers/taito_x1017.hpp"
+#include "core/mappers/teletubbies.hpp"
 #include "core/mappers/txc.hpp"
 #include "core/mappers/uxrom.hpp"
 #include "core/mappers/vrc6.hpp"
@@ -72,6 +73,8 @@ namespace {
         return Multicart233::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 234U)
         return Maxi15::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 237U)
+        return Teletubbies::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 236U)
         return RealtecMulticart::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 235U)
@@ -775,6 +778,7 @@ void register_builtin_mappers() {
     registry.register_mapper(234, make_factory<Maxi15>());
     registry.register_mapper(235, make_factory<GoldenGame>());
     registry.register_mapper(236, make_factory<RealtecMulticart>());
+    registry.register_mapper(237, make_factory<Teletubbies>());
     registry.register_mapper(249, make_factory<Mmc3>());
     registry.register_mapper(250, make_factory<Mmc3>());
     registry.register_mapper(262, make_factory<Mmc3>());

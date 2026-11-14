@@ -22,6 +22,7 @@ core_sources = files(
     'mappers/maxi15.cpp',
     'mappers/golden_game.cpp',
     'mappers/realtec_multicart.cpp',
+    'mappers/teletubbies.cpp',
     'mappers/single_chip.cpp',
     'mappers/mmc1.cpp',
     'mappers/mmc2.cpp',

@@ -205,6 +205,11 @@ if get_option('enable_cli')
         depends : mapperbus_cli,
         timeout : 60,
     )
+    test('cli-mapper237', cli_python,
+        args : [files('integration/test_cli_mapper237.py'), mapperbus_cli],
+        depends : mapperbus_cli,
+        timeout : 60,
+    )
     test('cli-datach', cli_python,
         args : [files('integration/test_cli_datach.py'), mapperbus_cli],
         depends : mapperbus_cli,
@@ -298,6 +303,12 @@ test_mapper236 = executable('test-mapper236',
 )
 test('mapper236', test_mapper236, timeout : mapper_test_timeout)
 
+test_mapper237 = executable('test-mapper237',
+    'unit/test_mapper237.cpp',
+    dependencies : [mapperbus_core_dep, catch2_dep],
+)
+test('mapper237', test_mapper237, timeout : mapper_test_timeout)
+
 test_battle_city_render = executable('test-battle-city-render',
     'integration/test_battle_city_render.cpp',
     dependencies : [mapperbus_core_dep, catch2_dep],
@@ -365,7 +376,9 @@ test_rom_source = executable('test-rom-source',
     'unit/test_rom_source.cpp',
     dependencies : [mapperbus_app_dep, catch2_dep],
 )
-test('rom-source', test_rom_source)
+# Run the new mapper's full loading matrix within its own unchanged timeout budget.
+test('rom-source', test_rom_source, args : ['~[mapper237]'])
+test('rom-source-mapper237', test_rom_source, args : ['[mapper237]'])
 
 test_state_storage = executable('test-state-storage',
     'unit/test_state_storage.cpp',

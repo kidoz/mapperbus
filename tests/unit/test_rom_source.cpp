@@ -24,6 +24,7 @@
 #include "../support/mapper234_rom.hpp"
 #include "../support/mapper235_rom.hpp"
 #include "../support/mapper236_rom.hpp"
+#include "../support/mapper237_rom.hpp"
 #include "../support/rom_archive.hpp"
 #include "app/async_fds_bios_validation.hpp"
 #include "app/async_rom_loader.hpp"
@@ -2187,6 +2188,71 @@ TEST_CASE("Realtec loading paths preserve both latches and volatile CHR through 
             REQUIRE_FALSE(
                 std::filesystem::exists(std::filesystem::path(raw).replace_extension(".sav")));
         }
+}
+
+TEST_CASE("Teletubbies loading paths retain locked type mode and CHR RAM until console reset",
+          "[rom-source][mapper237][reset]") {
+    ArchiveFixture fixture;
+    const auto memory = [](const core::Emulator& e) {
+        const auto bytes = e.save_state();
+        core::StateWriter tail;
+        core::Controller{}.save_state(tail);
+        core::Controller{}.save_state(tail);
+        const auto offset = bytes.size() - tail.data().size() - 8196U;
+        return std::array<Byte, 3>{
+            bytes[offset + 2U], bytes[offset + 3U], bytes[offset + 4U + 0x123U]};
+    };
+    for (unsigned mode = 0U; mode < 4U; ++mode)
+        for (bool type : {false, true})
+            for (bool legacy : {false, true}) {
+                const std::array<Byte, 3> running{
+                    static_cast<Byte>(type ? 7U : 6U), static_cast<Byte>(mode * 64U + 62U), 0x5AU};
+                const auto stem = std::to_string(mode) + (type ? "-type" : "-normal") +
+                                  (legacy ? "-legacy" : "-native");
+                const auto raw = fixture.root / (stem + ".nes");
+                const auto archive = fixture.root / (stem + ".zip");
+                const auto bytes = tests::make_mapper237_rom(mode, type, 7U, legacy);
+                REQUIRE(core::write_binary_file_atomic(raw.string(), bytes, "Teletubbies fixture"));
+                write_archive(archive, {{"teletubbies.nes", bytes}});
+                EmulationSession session(std::make_unique<platform::NullVideo>(),
+                                         std::make_unique<platform::NullAudio>(),
+                                         std::make_unique<platform::NullInput>());
+                REQUIRE(session.open_rom(raw.string()));
+                REQUIRE((memory(session.emulator()) == std::array<Byte, 3>{0U, 0U, 0U}));
+                session.emulator().step_frame();
+                REQUIRE(session.emulator().read_cpu(0x12U) == 0xC7U);
+                REQUIRE(memory(session.emulator()) == running);
+                const auto saved = session.emulator().save_state();
+                session.reset();
+                REQUIRE((memory(session.emulator()) == std::array<Byte, 3>{0U, 0U, 0x5AU}));
+                session.emulator().step_frame();
+                REQUIRE(session.emulator().read_cpu(0x12U) == 0xC7U);
+                REQUIRE(session.emulator().read_cpu(0x14U) == 0x5AU);
+                session.power_cycle();
+                REQUIRE((memory(session.emulator()) == std::array<Byte, 3>{0U, 0U, 0U}));
+                REQUIRE(session.emulator().load_state(saved));
+                REQUIRE(memory(session.emulator()) == running);
+                REQUIRE(session.open_rom(raw.string()));
+                REQUIRE((memory(session.emulator()) == std::array<Byte, 3>{0U, 0U, 0U}));
+                RomLoadRequest request;
+                request.path = archive.string();
+                request.member = "teletubbies.nes";
+                request.state_storage.directory = fixture.root / "states";
+                auto prepared = prepare_rom(request);
+                REQUIRE(prepared);
+                REQUIRE(prepared->emulator);
+                REQUIRE((memory(*prepared->emulator) == std::array<Byte, 3>{0U, 0U, 0U}));
+                prepared->emulator->step_frame();
+                REQUIRE(prepared->emulator->read_cpu(0x12U) == 0xC7U);
+                session.adopt_rom(std::move(*prepared));
+                REQUIRE(memory(session.emulator()) == running);
+                session.reset();
+                REQUIRE((memory(session.emulator()) == std::array<Byte, 3>{0U, 0U, 0x5AU}));
+                session.power_cycle();
+                REQUIRE((memory(session.emulator()) == std::array<Byte, 3>{0U, 0U, 0U}));
+                REQUIRE_FALSE(
+                    std::filesystem::exists(std::filesystem::path(raw).replace_extension(".sav")));
+            }
 }
 } // namespace
 } // namespace mapperbus::app
