@@ -4,7 +4,7 @@ This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
 complete.** Updated 2026-11-14 against the working-tree registry.
 
-There are **155 registered cartridge IDs**: the original 14, 53 added in the first
+There are **156 registered cartridge IDs**: the original 14, 53 added in the first
 batch, and Irem 32/65/77, Sunsoft 67/68, Taito 33/48/80/207/82/552, Jaleco 18/72/92/101,
 Namco 210, MMC3 variants 118/119, RAMBO-1 64/158, Bandai 16/153/159, and Datach
 157, UNROM 512 30, GTROM/direct MMC1 111, and J.Y. Company
@@ -14,7 +14,7 @@ IDs, Sachen MMC3 clones 262/512/513, Rex Soft's 263, Nitra 250, mappers
 TNROM640 198, Waixing FS309 199, multicarts 202/205, Gouder/JJ-01 208,
 Sugar Softec 215, Single Chip 218, Kasheng A9461 219, NTDEC N625092 221,
 address-latched multicarts/RPGs 227, Active Enterprises 228, reset-driven 22-in-1 230 and
-profiled 42 Games 233, Maxi 15 234, Golden Game 235, Realtec 236, Teletubbies 237, Contra Fighter 238 and standard BxROM/WRAM 241
+profiled 42 Games 233, Maxi 15 234, Golden Game 235, Realtec 236, Teletubbies 237, Contra Fighter 238, BxROM/WRAM 241 and 43272/ET-113 242
 detailed below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
@@ -24,6 +24,7 @@ unusual ROM geometry.
 
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
+| 43272 / Waixing RPG / ET-113 (follow-up) | 242 | Address-latched PRG modes, asymmetric ROM chips, five menu pads, CHR protection, battery WRAM and validated snapshots. |
 | Standard BxROM with WRAM (follow-up) | 241 | Full-byte 32 KiB PRG banking, fixed H/V, 8 KiB WRAM with optional battery, fixed CHR ROM/RAM and atomic snapshots. Optional LPC speech is available through the explicit `lpc` profile. |
 | Contra Fighter compatibility model (follow-up) | 238 | Shared protection latch, MMC3 PRG/CHR/CIRAM and IRQs, CPU/DMA execution, explicit reset policy and compact atomic snapshots. |
 | Teletubbies 420-in-1 (follow-up) | 237 | Four PRG modes, configuration lock, forced ROM A1 type detection, H/V CIRAM, CHR RAM, CPU execution and validated snapshots. |
@@ -3902,6 +3903,96 @@ errors, 72 warnings and three infos across 193 documents. Initial integration
 test failures corrected assumptions about open-bus ready reads and the caller's
 save flush before session adoption; the full subsequent run passed.
 
+## Mapper-242 follow-up: 43272, Waixing RPG and ET-113
+
+`Multicart242` implements the three populations described by
+[NESdev mapper 242 r19709](https://www.nesdev.org/w/index.php?oldid=19709):
+
+| Population | PRG ROM | CPU RAM | Reset mapping |
+|---|---|---|---|
+| 43272 multicart | 512 KiB | None | Bank 0 in both 16 KiB windows |
+| Waixing RPG | 512 KiB | 8 KiB battery WRAM | Bank 0 in both windows |
+| ET-113 multicart | 512 KiB followed by a 128 KiB replacement chip | None | Replacement-chip bank 0 in both windows |
+
+CPU writes at $8000-$FFFF latch A0-A10; data and A11-A14 do not affect the
+register. S selects mirrored 16 KiB versus consecutive 32 KiB mapping; multicart
+O=0 overrides the upper window with inner bank 0 or 7 selected by L. Outer
+bank pins select the four 128 KiB blocks. ET-113 C=0 selects only the trailing
+128 KiB chip, ignoring outer pins, and C=1 the leading 512 KiB chip. Its two
+chips are addressed separately, avoiding modulo across a non-power-of-two
+aggregate. M controls H/V CIRAM; O protects multicart CHR RAM in NROM modes.
+The RPG bypasses the UNROM override and CHR protection, with ordinary WRAM
+at $6000-$7FFF. All boards have unbanked 8 KiB volatile CHR RAM.
+
+When m is set, five solder pads replace PRG A4-A0, on both ROM chips and in
+both CPU windows. Select them with `--board-profile menu-0` through `menu-31`
+or `configure_board_jumpers(0..31)`. The default is zero, an explicit menu
+selection policy rather than identification of a specific cartridge assembly.
+Physical pads survive soft reset and cold power. The address latch resets to
+zero; soft reset preserves CHR RAM and WRAM, while cold power clears CHR RAM
+and preserves battery WRAM, including preloaded saves. Cold clearing is a
+stable emulator policy, not an assertion about analog RAM power-up contents.
+
+The primary description says the RPG lacks UNROM-like modes. Accordingly,
+O does not override its NROM selection even when clear; exact inactive-bit
+wiring on every RPG PCB remains unverified. Published emulator references
+are not uniform: [NintendulatorNRS-DBG at b685625](https://github.com/gmestanley/NintendulatorNRS-DBG/blob/b685625310ec026afa844340d94503f9767b72df/src-mappers/src/iNES/multicart%20address%20latch/mapper242.cpp)
+uses C-or-L for replacement-chip selection, ORs menu-pad bits into the read
+address, and gates CHR protection by nonzero submapper. This implementation
+follows the primary article's independent C, low-pin replacement, and
+multicart/RPG distinction. No external emulator implementation code is copied.
+Hardware traces would be needed to resolve those disagreements for alternate
+assemblies; passing synthetic tests does not certify all game dumps.
+
+Native NES 2.0 requires submapper zero, no CHR ROM, exactly 8 KiB CHR RAM,
+no CHR NVRAM and ordinary H/V metadata. Only the RPG battery flag permits
+8 KiB PRG NVRAM, with no volatile or mixed CPU RAM. ET-113 plus battery is
+rejected as an undocumented combination. Reject smaller/larger/partial PRG
+chips, alternate CHR sizes, unknown submappers and four/single-screen metadata.
+Legacy generic WRAM inference is ignored for multicarts. Other sizes and the
+incompatible mapper-380/449 variants are outside this registration; no title
+patches or guessed submappers are supplied. Expansion registers float; there
+are no mapper IRQs or expansion audio.
+
+The class owns only its PRG image, 8 KiB CHR RAM, and an 8 KiB WRAM allocation
+on the RPG board. State is 8,196 bytes for multicarts or 16,388 for the RPG:
+a two-byte population/pad tag, the eleven-bit latch, CHR RAM and optional WRAM.
+Fixed local staging validates the tag, latch and complete payload before any
+component mutation. Profile/population mismatch and truncation leave the mapper
+unchanged; whole-machine rejection remains atomic. Existing mapper payloads,
+machine version 20 and the 4 MiB allocation cap are unchanged.
+
+The dedicated `mapper242` target checks every CPU write address, all data
+values, bank modes, ignored pins, thirty-two pad configurations, ET-113 chip
+boundaries and reset, CHR protection, every RAM cell, floating reads, geometry
+rejection and malformed snapshots. An independent pin-level ROM-address
+oracle drives the bank assertions. Eighteen original 6502 images copy their
+program into console RAM before switching banks or replacing address pins;
+they check PRG, PPUDATA/CIRAM, CHR protection, soft/cold reset and replay.
+`rom-source-mapper242` checks raw, ZIP and 7z loading, session close/reload,
+prepare/adopt, battery persistence, menu profiles and failed-load rollback.
+Its loading matrix is isolated from the existing shared timeout. CLI checks
+44 valid profiles and 27 rejected inputs, including actual RPG save bytes and
+unchanged ROM files. Fixtures use only synthetic data and original programs.
+
+Validation on 2026-11-14 passed all 91 regular Meson targets with GPU checks
+required and twenty-two focused ASan+UBSan targets (leak detection disabled
+on macOS). Both builds passed 3,285,268 dedicated mapper-242 assertions in
+eight cases, plus 620 loading/persistence assertions. The complete build,
+including SDL3 and NodalKit, formatting, scoped clang-tidy, whitespace and
+exact 156-ID registry/ledger checks passed. Isolated strict-consumer standards
+validation preserved zero errors, 72 warnings and three infos across 193 docs.
+
+The first sanitizer run reached the shared mapper target's unchanged
+120-second timeout after twenty other targets passed. Measured separately,
+J.Y. Company's eighteen cases took 9.14 seconds. Its source now belongs to a
+separate `jy-company` executable, with no test-logic changes. An exact comparison
+of case names and tags proved that all 534 cases remain: 516 shared plus 18
+J.Y. Company. Their combined 7,123,569 assertions are unchanged by the split.
+The complete rerun passed: shared mappers took 111.26 seconds and J.Y. Company
+11.04 seconds, each within the original budget. Include `jy-company` alongside
+`mappers` in focused checks; full Meson suite runs already include both.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -4160,7 +4251,7 @@ or another registered cartridge ID.
 | 238 | Contra Fighter / UNL-603-5052 protection compatibility model | New implementation: Mmc3 | [r5824](https://www.nesdev.org/w/index.php?oldid=5824) |
 | 240 | Board-specific specification | New implementation: DiscreteMapper | [r21944](https://www.nesdev.org/w/index.php?oldid=21944) |
 | 241 | BxROM with 8 KiB WRAM and optional LPC speech profile | New implementation: BxromWram | [r23728](https://www.nesdev.org/w/index.php?oldid=23728) |
-| 242 | Board-specific specification | Not registered | [r19709](https://www.nesdev.org/w/index.php?oldid=19709) |
+| 242 | 43272 multicart / battery Waixing RPG / ET-113 replacement menu | New implementation: Multicart242 | [r19709](https://www.nesdev.org/w/index.php?oldid=19709) |
 | 243 | Sachen board | New implementation: Sachen | [r5861](https://www.nesdev.org/w/index.php?oldid=5861) |
 | 244 | Board-specific specification | Not registered | [r5862](https://www.nesdev.org/w/index.php?oldid=5862) |
 | 245 | Board-specific specification | Not registered | [r5871](https://www.nesdev.org/w/index.php?oldid=5871) |

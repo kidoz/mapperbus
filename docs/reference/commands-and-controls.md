@@ -244,6 +244,11 @@ The choice works for raw ROMs and archive members and must match when restoring
 a snapshot. Speech timing follows `--region`; analog gain and exact clone
 microsequencing are unverified. See [speech coverage and limits](mapper-implementation.md#mapper-241-lpc-follow-up-optional-speech-profile).
 
+For mapper 242, `--board-profile menu-0` through `menu-31` select the five
+menu solder pads (default zero). ROM size and battery metadata select the
+43272 multicart, Waixing RPG or ET-113 population. The pads survive reset and
+must match when restoring a snapshot. See [mapper-242 coverage and limits](mapper-implementation.md#mapper-242-follow-up-43272-waixing-rpg-and-et-113).
+
 For Datach (mapper 157), `--barcode` accepts 8 EAN-8, 12 UPC-A or 13 EAN-13
 digits including the check digit. `--barcode-frame` schedules a scan before the
 specified zero-based frame (default 0, less than `--frames`); `--barcode-cycles`
