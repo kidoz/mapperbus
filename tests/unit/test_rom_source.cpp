@@ -21,6 +21,7 @@
 #include "../support/flash_rom.hpp"
 #include "../support/mapper230_rom.hpp"
 #include "../support/mapper233_rom.hpp"
+#include "../support/mapper234_rom.hpp"
 #include "../support/rom_archive.hpp"
 #include "app/async_fds_bios_validation.hpp"
 #include "app/async_rom_loader.hpp"
@@ -1988,6 +1989,68 @@ TEST_CASE("Mapper 233 reset-selected outer bank survives preparation adoption an
         REQUIRE_FALSE(
             std::filesystem::exists(std::filesystem::path(raw).replace_extension(".sav")));
     }
+}
+
+TEST_CASE("Maxi 15 loading paths retain one-way locks and RAM execution until reset",
+          "[rom-source][mapper234][reset]") {
+    ArchiveFixture fixture;
+    const auto registers = [](const core::Emulator& e) {
+        const auto bytes = e.save_state();
+        core::StateWriter tail;
+        core::Controller{}.save_state(tail);
+        core::Controller{}.save_state(tail);
+        const auto offset = bytes.size() - tail.data().size() - 5U;
+        return std::array<Byte, 3>{bytes[offset + 2U], bytes[offset + 3U], bytes[offset + 4U]};
+    };
+    for (unsigned population = 0U; population < 3U; ++population)
+        for (bool legacy : {false, true}) {
+            const bool floating = population == 1U && !legacy;
+            const auto outer =
+                static_cast<Byte>(floating ? 0x30U : (population == 0U ? 0xC7U : 0xE7U));
+            const auto marker = static_cast<Byte>(floating ? 0xD7U : 0xC7U);
+            const auto stem = std::to_string(population) + (legacy ? "-legacy" : "-native");
+            const auto raw = fixture.root / (stem + ".nes");
+            const auto archive = fixture.root / (stem + ".zip");
+            const auto bytes =
+                tests::make_mapper234_rom(population, outer, false, floating, legacy);
+            REQUIRE(core::write_binary_file_atomic(raw.string(), bytes, "Maxi 15 fixture"));
+            write_archive(archive, {{"maxi15.nes", bytes}});
+            EmulationSession session(std::make_unique<platform::NullVideo>(),
+                                     std::make_unique<platform::NullAudio>(),
+                                     std::make_unique<platform::NullInput>());
+            REQUIRE(session.open_rom(raw.string()));
+            REQUIRE((registers(session.emulator()) == std::array<Byte, 3>{0U, 0U, 0U}));
+            session.emulator().step_frame();
+            REQUIRE(session.emulator().read_cpu(0x12U) == marker);
+            REQUIRE((registers(session.emulator()) == std::array<Byte, 3>{outer, 0x71U, 2U}));
+            const auto locked = session.emulator().save_state();
+            session.reset();
+            REQUIRE((registers(session.emulator()) == std::array<Byte, 3>{0U, 0U, 0U}));
+            session.emulator().step_frame();
+            REQUIRE(session.emulator().read_cpu(0x12U) == marker);
+            session.power_cycle();
+            REQUIRE((registers(session.emulator()) == std::array<Byte, 3>{0U, 0U, 0U}));
+            REQUIRE(session.emulator().load_state(locked));
+            REQUIRE((registers(session.emulator()) == std::array<Byte, 3>{outer, 0x71U, 2U}));
+            REQUIRE(session.open_rom(raw.string()));
+            REQUIRE((registers(session.emulator()) == std::array<Byte, 3>{0U, 0U, 0U}));
+            RomLoadRequest request;
+            request.path = archive.string();
+            request.member = "maxi15.nes";
+            request.state_storage.directory = fixture.root / "states";
+            auto prepared = prepare_rom(request);
+            REQUIRE(prepared);
+            REQUIRE(prepared->emulator);
+            REQUIRE((registers(*prepared->emulator) == std::array<Byte, 3>{0U, 0U, 0U}));
+            prepared->emulator->step_frame();
+            REQUIRE(prepared->emulator->read_cpu(0x12U) == marker);
+            session.adopt_rom(std::move(*prepared));
+            REQUIRE((registers(session.emulator()) == std::array<Byte, 3>{outer, 0x71U, 2U}));
+            session.power_cycle();
+            REQUIRE((registers(session.emulator()) == std::array<Byte, 3>{0U, 0U, 0U}));
+            REQUIRE_FALSE(
+                std::filesystem::exists(std::filesystem::path(raw).replace_extension(".sav")));
+        }
 }
 } // namespace
 } // namespace mapperbus::app

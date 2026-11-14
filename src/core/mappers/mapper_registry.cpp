@@ -14,6 +14,7 @@
 #include "core/mappers/jaleco_ss88006.hpp"
 #include "core/mappers/jy_company.hpp"
 #include "core/mappers/konami_vrc.hpp"
+#include "core/mappers/maxi15.hpp"
 #include "core/mappers/mmc1.hpp"
 #include "core/mappers/mmc2.hpp"
 #include "core/mappers/mmc3.hpp"
@@ -67,6 +68,8 @@ namespace {
         return Multicart230::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 233U)
         return Multicart233::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 234U)
+        return Maxi15::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 219U) {
         if (header.is_nes2 && header.submapper != 0U)
             return std::unexpected("Mapper 219 supports submapper 0");
@@ -763,6 +766,7 @@ void register_builtin_mappers() {
     registry.register_mapper(228, make_factory<Action52>());
     registry.register_mapper(230, make_factory<Multicart230>());
     registry.register_mapper(233, make_factory<Multicart233>());
+    registry.register_mapper(234, make_factory<Maxi15>());
     registry.register_mapper(249, make_factory<Mmc3>());
     registry.register_mapper(250, make_factory<Mmc3>());
     registry.register_mapper(262, make_factory<Mmc3>());
