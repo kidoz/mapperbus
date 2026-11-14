@@ -34,6 +34,7 @@ contains the following mapper IDs:
 | 215 | Sugar Softec UNL-8237/8237A: eight MMC3 address/index scrambling modes, outer banks, NROM override, CHR/CIRAM, IRQs and snapshots | ROM-only submappers 0/1; exact clone reset and IRQ/A12 behavior unverified |
 | 218 | Single Chip / Magic Floor: four CIRAM wirings, shared pattern/nametable bytes, background/sprite rendering, PPUDATA and snapshots | PRG-only submapper 0; no cartridge CHR RAM, WRAM or speculative extra-memory variants |
 | 219 | Kasheng A9461: MMC3/extended protocols, reversed PRG pins, CHR latch/commits, outer banks, CIRAM/IRQs and snapshots | ROM-only submapper 0 compatibility model; mode retention, reset defaults and electrical clone details unverified |
+| 253 | Waixing VRC4 CHR relocation: fixed CHR4/5 RAM or explicit `f009s` PPU-write decoder, VRC4e banking/CIRAM/IRQs and snapshots | Documented PPU-command relocation model; unobserved commands, bit-8 aliases, clone IRQ delays and electrical startup unverified |
 | 252 | Waixing VRC4 mixed CHR: exact VRC4e decode, PRG swap, four CIRAM arrangements, WRAM gate, two writable CHR-RAM pages, CPU IRQs and snapshots | 256/128 KiB battery/non-battery compatibility model; clone relocation, propagation delay and electrical startup unverified |
 | 246 | G0151-1 / Feng Shen Bang: independent 8 KiB PRG / 2 KiB CHR banks, narrow GAL register decode, transient A17 vector-read override, fixed H/V, 2 KiB battery RAM and snapshots | Fixed 512/512 KiB population; analog A18 effects, physical timing and commercial-title compatibility unverified |
 | 245 | Waixing F003: MMC3 banking with live PPU A10/A11 outer PRG selection, 8 KiB CHR RAM, battery WRAM, scanline IRQs and snapshots | Pin-routing compatibility model; physical PPU filtering, clone IRQ/reset circuitry and commercial-title compatibility unverified |
@@ -89,7 +90,7 @@ contains the following mapper IDs:
 | 13, 34, 66, 70, 71, 78, 79, 87, 89, 93, 94, 97, 113, 140, 152, 180, 184 | Discrete cartridge boards | — |
 | 38, 46, 58, 61, 62, 81, 107, 145, 148, 149, 193, 200, 201, 203, 212, 213, 225, 226, 229, 231, 232, 240 | Additional latch boards and multicarts | — |
 
-The registry contains 160 cartridge IDs. See [mapper implementation coverage](mapper-implementation.md)
+The registry contains 161 cartridge IDs. See [mapper implementation coverage](mapper-implementation.md)
 for individual specifications, tested behavior, board limitations, and the full
 inventory of documented IDs still awaiting implementation. The expanded set has
 synthetic banking, IRQ, CPU/PPU integration and save-state coverage; this does

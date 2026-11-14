@@ -4,7 +4,7 @@ This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
 complete.** Updated 2026-11-15 against the working-tree registry.
 
-There are **160 registered cartridge IDs**: the original 14, 53 added in the first
+There are **161 registered cartridge IDs**: the original 14, 53 added in the first
 batch, and Irem 32/65/77, Sunsoft 67/68, Taito 33/48/80/207/82/552, Jaleco 18/72/92/101,
 Namco 210, MMC3 variants 118/119, RAMBO-1 64/158, Bandai 16/153/159, and Datach
 157, UNROM 512 30, GTROM/direct MMC1 111, and J.Y. Company
@@ -14,7 +14,7 @@ IDs, Sachen MMC3 clones 262/512/513, Rex Soft's 263, Nitra 250, mappers
 TNROM640 198, Waixing FS309 199, multicarts 202/205, Gouder/JJ-01 208,
 Sugar Softec 215, Single Chip 218, Kasheng A9461 219, NTDEC N625092 221,
 address-latched multicarts/RPGs 227, Active Enterprises 228, reset-driven 22-in-1 230 and
-profiled 42 Games 233, Maxi 15 234, Golden Game 235, Realtec 236, Teletubbies 237, Contra Fighter 238, BxROM/WRAM 241, 43272/ET-113 242, C&E Decathlon 244, Waixing F003 245, G0151-1 246 and Waixing VRC4 252
+profiled 42 Games 233, Maxi 15 234, Golden Game 235, Realtec 236, Teletubbies 237, Contra Fighter 238, BxROM/WRAM 241, 43272/ET-113 242, C&E Decathlon 244, Waixing F003 245, G0151-1 246 and Waixing VRC4 252/253
 detailed below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
@@ -24,6 +24,7 @@ unusual ROM geometry.
 
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
+| Waixing VRC4 fixed/relocated CHR (follow-up) | 253 | Default CHR4/5 RAM and explicit f009s PPU-write relocation, shared 2 KiB RAM, VRC4e banking/CIRAM/IRQ and profile/geometry-bound atomic snapshots. |
 | Waixing VRC4 mixed CHR (follow-up) | 252 | Exact VRC4e A2/A3 decoding, PRG swap, four CIRAM arrangements, WRAM gate, two writable CHR pages and CPU-driven IRQs with atomic snapshots. |
 | G0151-1 / Feng Shen Bang (follow-up) | 246 | Independent 8 KiB PRG / 2 KiB CHR banks, narrow GAL register decode, transient A17 vector-read override, fixed H/V, 2 KiB battery RAM and atomic snapshots. |
 | Waixing F003 (follow-up) | 245 | Live PPU A10/A11 select the outer PRG half through MMC3 CHR registers; fixed 8 KiB CHR RAM, battery WRAM, scanline IRQ compatibility and atomic snapshots. |
@@ -4363,6 +4364,111 @@ errors, 72 warnings and three infos across 193 documents. Clone-specific analog,
 bit-8/decoder, dynamic-relocation, startup and IRQ-delay behavior remain outside
 this verified digital model; no physical board or commercial ROM was tested.
 
+## Mapper-253 follow-up: fixed CHR4/5 and F009S relocation
+
+`KonamiVrc` extends the VRC4e digital model using
+[NESdev mapper 253 revision 5910](https://www.nesdev.org/w/index.php?oldid=5910),
+[VRC4 revision 24169](https://www.nesdev.org/w/index.php?oldid=24169) and
+[VRC IRQ revision 22720](https://www.nesdev.org/w/index.php?oldid=22720).
+The default `fixed` profile maps exact raw 1 KiB CHR banks 4 and 5 to two
+writable RAM pages; other banks select protected ROM. Raw $104/$105 select
+ROM before wrapping in this literal nine-bit VRC4 model. CPU A2/A3 select
+register ports, with the same PRG swap, WRAM gate, four CIRAM arrangements,
+CPU-cycle/114–114–113 IRQ modes and acknowledge/repeat behavior as mapper 252.
+Clone-specific ninth-bit wiring, propagation delays and electrical startup
+remain unmeasured.
+
+The [2019 hardware/software investigation](https://forums.nesdev.org/viewtopic.php?p=240304)
+also identifies later mapper-253 games that move RAM by selecting a CHR bank,
+then issuing a PPU write to that bank. This is exposed explicitly through
+`--board-profile f009s`; no title/hash heuristic selects it. The fixed profile
+ignores such writes to ROM. The f009s compatibility model supports these
+raw-bank commands in any of the eight PPU slots:
+
+| Selected CHR bank on PPU write | RAM banks selected afterward | Physical RAM |
+|---|---|---|
+| $088 | $04C–$04F and $14C–$14F | Same 2 KiB, mirrored across four banks |
+| $0C2 | $07C–$07D and $17C–$17D | Same 2 KiB |
+| $0C8 | $004–$005 and $104–$105 | Same 2 KiB |
+
+Only the PPU write strobe changes the decoder. CPU bank-register writes and
+CHR reads leave it unchanged; the write byte does not select the mode.
+RAM uses the bank's low bit and raw PPU A9–A0, so all configurations preserve
+the same data. These command writes themselves address ROM and leave ROM
+contents unchanged. RAM decoder masks ignore CHR bit 8, while command matching
+requires the exact raw values above, following the published NRS handler.
+Writes to $188/$1C2/$1C8 and other unverified commands do not switch the mode.
+
+Published references disagree. The pinned
+[Mesen b9fa69d implementation](https://github.com/SourMesen/Mesen2/blob/b9fa69ddc6d0a331fb103fdb5eef6904305703c2/Core/NES/Mappers/Waixing/Mapper253.h)
+uses CPU-side CHR-register writes to toggle a ROM-only latch, a 114-cycle IRQ
+divider and narrower CPU register handlers.
+[NintendulatorNRS-DBG b685625](https://github.com/gmestanley/NintendulatorNRS-DBG/blob/b685625310ec026afa844340d94503f9767b72df/src-mappers/src/iNES/mapper252.cpp)
+shares VRC4 banking, intercepts PPU writes and records the three relocation
+commands. The original code here follows the documented VRC4 controls and
+PPU-write evidence. $88/$C8 have mapper-253 game evidence; $C2 follows the
+shared published reference and related-board investigation. No external
+implementation code or commercial ROM bytes are incorporated.
+
+Cold f009s startup selects $028–$02B/$128–$12B as RAM, using the $80 startup
+setting reported for the related GAL board and noted in NRS's later-board
+comment. Four logical pages mirror the same 2 KiB. This is an explicit startup
+inference, not a measured guarantee for every F009S board. There is no $80
+write command in this profile. The larger GAL command table on
+[mapper 544 / FS306](https://www.nesdev.org/wiki/NES_2.0_Mapper_544) is not
+silently generalized to 253: its A10/A11 ports, third PRG bank and independent
+nametable selectors remain a separate mapper. Unobserved decoder commands,
+bit-8 command aliases and clone IRQ delays remain unsupported/unverified.
+
+Accept power-of-two PRG sizes 32–256 KiB and CHR-ROM sizes 8–512 KiB. This
+is the VRC4 address-width compatibility envelope; smaller images alias
+unconnected high ROM pins. It is not certification of every physical chip
+population or every dump bearing mapper 253. No ROM-size correction or
+extended PRG banking is inferred from unrelated Waixing title metadata.
+Native NES 2.0 requires submapper zero, 8 KiB PRG RAM/NVRAM according to the
+battery flag, exactly 2 KiB volatile CHR RAM, no CHR NVRAM and H/V startup
+mirroring. Legacy missing mixed-RAM declarations are inferred. Both profiles
+use the same memory sizes; no new submapper assignment is invented.
+
+Soft reset restores the VRC4 registers/IRQ/header mirroring and retains WRAM,
+CHR RAM and the f009s decoder setting. Cold power additionally clears volatile
+RAM and restores the selected profile's decoder default, retaining battery
+WRAM. These are deterministic compatibility policies. Existing memory buffers
+are reused without a ROM copy or extra RAM buffer. A 10,270-byte payload adds
+one decoder byte to the compact Waixing state. Its tag binds PRG/CHR geometry,
+battery population, H/V startup and fixed/f009s selection. Fixed local staging
+rejects truncation, bad fields, unknown decoder modes and incompatible tags
+before mutation. Mapper 252's 10,269-byte payload, all older VRC states,
+machine version 20 and the 4 MiB ceiling stay unchanged.
+
+`mapper253` checks every VRC4e register alias, PRG data bytes and patterned
+cells, all 512 raw CHR banks, fixed RAM/ROM protection, every command bank in
+all eight slots, low-byte RAM decoder aliases, shared RAM across relocation,
+all 28 supported geometry combinations, WRAM gating, reset, CPU IRQ modes,
+partial-counter replay, profile/geometry mismatch and malformed-state rollback.
+Sixteen original CPU firmware images cover both headers, battery settings,
+H/V startup and both profiles. Real PPUDATA writes switch RAM windows; the
+program verifies retained data and mirrors, CIRAM modes, IRQ delivery with
+rendering disabled, cold/soft reset and deterministic machine replay.
+
+`rom-source-mapper253` covers raw/ZIP/7z loading, prepare/adopt, explicit board
+profiles, save-file contents/reload, volatile/battery reset, rejected imports
+and failed-load rollback without changing ROM bytes. The CLI checks 32 loading
+profiles and 26 rejected inputs; 16 battery signatures prove completion, while
+C++ verifies all non-battery firmware. Dedicated targets preserve the existing
+timeout limits. All fixture code and bank data are original synthetic content.
+
+Validation on 2026-11-15 passed all 108 regular Meson targets with GPU checks
+required and 34 focused ASan+UBSan targets with four workers (leak detection
+disabled on macOS). Both builds passed 6,785,172 mapper-253 assertions in
+fourteen cases and 928 loading assertions. Mapper 252 retained all 6,760,319
+assertions in ten cases. Shared mapper/multicart cases remain 465/51 and
+shared loading/multicart cases 38/5. The full SDL3/NodalKit build, formatting,
+scoped clang-tidy, whitespace and exact 161-ID registry/ledger comparison
+passed. Isolated strict-consumer standards validation retained zero errors,
+72 warnings and three infos across 193 documents. Physical startup, undocumented
+GAL commands, clone wiring/delays and commercial titles remain unverified.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -4631,7 +4737,7 @@ or another registered cartridge ID.
 | 250 | Nitra L401 / Queen Bee V | New implementation: Mmc3 | [r21044](https://www.nesdev.org/w/index.php?oldid=21044) |
 | 251 | Obsolete Nestopia assignment duplicating mapper 45 | Obsolete; not registered | [r5898](https://www.nesdev.org/w/index.php?oldid=5898) |
 | 252 | Waixing VRC4e / Sangokushi mixed CHR | New implementation: KonamiVrc | [r5906](https://www.nesdev.org/w/index.php?oldid=5906) |
-| 253 | Board-specific specification | Not registered | [r5910](https://www.nesdev.org/w/index.php?oldid=5910) |
+| 253 | Waixing VRC4 CHR4/5 / F009S relocation profile | New implementation: KonamiVrc | [r5910](https://www.nesdev.org/w/index.php?oldid=5910) |
 | 254 | Board-specific specification | Not registered | [r24273](https://www.nesdev.org/w/index.php?oldid=24273) |
 | 255 | Board-specific specification | Not registered | [r20429](https://www.nesdev.org/w/index.php?oldid=20429) |
 | 256 | OneBus | Not registered | [r23934](https://www.nesdev.org/w/index.php?oldid=23934) |
