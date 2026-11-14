@@ -210,6 +210,11 @@ if get_option('enable_cli')
         depends : mapperbus_cli,
         timeout : 60,
     )
+    test('cli-mapper238', cli_python,
+        args : [files('integration/test_cli_mapper238.py'), mapperbus_cli],
+        depends : mapperbus_cli,
+        timeout : 60,
+    )
     test('cli-datach', cli_python,
         args : [files('integration/test_cli_datach.py'), mapperbus_cli],
         depends : mapperbus_cli,
@@ -250,7 +255,6 @@ test_mappers = executable('test-mappers',
     'unit/test_rambo1.cpp',
     'unit/test_bandai_fcg.cpp',
     'unit/test_datach.cpp',
-    'unit/test_flash_boards.cpp',
     'unit/test_jy_company.cpp',
     'unit/test_sachen_txc.cpp',
     'unit/test_sachen512.cpp',
@@ -290,6 +294,13 @@ if mapper_test_sanitize.contains('address') or mapper_test_sanitize.contains('un
 endif
 test('mappers', test_mappers, timeout : mapper_test_timeout)
 
+# Flash programming/replay is substantial under sanitizers; retain all cases separately.
+test_flash_boards = executable('test-flash-boards',
+    'unit/test_flash_boards.cpp',
+    dependencies : [mapperbus_core_dep, catch2_dep],
+)
+test('flash-boards', test_flash_boards, timeout : mapper_test_timeout)
+
 # Keep large per-board matrices outside the shared mapper timeout budget.
 test_mapper235 = executable('test-mapper235',
     'unit/test_mapper235.cpp',
@@ -308,6 +319,12 @@ test_mapper237 = executable('test-mapper237',
     dependencies : [mapperbus_core_dep, catch2_dep],
 )
 test('mapper237', test_mapper237, timeout : mapper_test_timeout)
+
+test_mapper238 = executable('test-mapper238',
+    'unit/test_mapper238.cpp',
+    dependencies : [mapperbus_core_dep, catch2_dep],
+)
+test('mapper238', test_mapper238, timeout : mapper_test_timeout)
 
 test_battle_city_render = executable('test-battle-city-render',
     'integration/test_battle_city_render.cpp',
@@ -377,8 +394,9 @@ test_rom_source = executable('test-rom-source',
     dependencies : [mapperbus_app_dep, catch2_dep],
 )
 # Run the new mapper's full loading matrix within its own unchanged timeout budget.
-test('rom-source', test_rom_source, args : ['~[mapper237]'])
+test('rom-source', test_rom_source, args : ['~[mapper237]~[mapper238]'])
 test('rom-source-mapper237', test_rom_source, args : ['[mapper237]'])
+test('rom-source-mapper238', test_rom_source, args : ['[mapper238]'])
 
 test_state_storage = executable('test-state-storage',
     'unit/test_state_storage.cpp',

@@ -11,7 +11,7 @@ namespace mapperbus::core {
 /// MMC3 (4), scrambled 114, Kasheng (115/123), TxSROM (118), TQROM (119), Nitra (250),
 /// Sachen 262/512/513, KOF97 (263), T9552 (249 / 4:5), mixed CHR (74/192/194/195),
 /// MRCM (196), larger CHR windows (197), TNROM640 (198), FS309 (199), JC-016-2 (205),
-/// Gouder / JJ-01 (208), Sugar Softec (215), and Kasheng A9461 (219).
+/// Gouder / JJ-01 (208), Sugar Softec (215), Kasheng A9461 (219), and Contra Fighter (238).
 /// PRG: 8 KB switchable banks, with outer banks up to 2 MiB on 215/513
 /// CHR: 1 KB switchable banks, up to 2 MiB with mapper-215 outer pins
 /// Features: scanline IRQ counter, mirroring control, PRG RAM
@@ -37,6 +37,7 @@ class Mmc3 : public Mapper {
     Result<void> configure_board_profile(std::string_view profile) override;
     bool observes_ppu_address() const override;
     void observe_ppu_address(Address addr) override;
+    void power_on() override;
     void reset() override;
 
     bool irq_pending() const override {
@@ -67,6 +68,7 @@ class Mmc3 : public Mapper {
     uint32_t t9552_address(uint32_t addr, bool chr) const;
     void save_variant_state(StateWriter& writer) const;
     void load_variant_state(StateReader& reader);
+    void load_variant_state_impl(StateReader& reader);
 
     std::vector<Byte> prg_rom_;
     std::vector<Byte> chr_rom_;
@@ -82,6 +84,7 @@ class Mmc3 : public Mapper {
     bool nitra_prg_mux_ = false;
     // Mapper 262: CHR outer pins/RAM select. Mapper 512: graphics mode. Mapper 205: block.
     Byte board_mode_ = 0U;
+    Byte contra_protection_ = 0U;         // Mapper 238: retained on soft reset, zero on cold power.
     bool mapper205_force_block3_ = false; // Immutable solder-pad configuration.
     Byte gouder_profile_ = 0U;            // Immutable mapper-208 submapper.
     Byte gouder_index_ = 0U;

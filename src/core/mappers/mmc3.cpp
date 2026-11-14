@@ -74,12 +74,12 @@ Mmc3::Mmc3(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte
                       header.mapper_number == 198U || header.mapper_number == 199U ||
                       header.mapper_number == 205U || header.mapper_number == 208U ||
                       header.mapper_number == 215U || header.mapper_number == 219U ||
-                      header.mapper_number == 114U || header.mapper_number == 115U ||
-                      header.mapper_number == 123U || header.mapper_number == 249U ||
-                      header.mapper_number == 250U || header.mapper_number == 262U ||
-                      header.mapper_number == 263U || header.mapper_number == 118U ||
-                      header.mapper_number == 119U || header.mapper_number == 512U ||
-                      header.mapper_number == 513U
+                      header.mapper_number == 238U || header.mapper_number == 114U ||
+                      header.mapper_number == 115U || header.mapper_number == 123U ||
+                      header.mapper_number == 249U || header.mapper_number == 250U ||
+                      header.mapper_number == 262U || header.mapper_number == 263U ||
+                      header.mapper_number == 118U || header.mapper_number == 119U ||
+                      header.mapper_number == 512U || header.mapper_number == 513U
                   ? header.mapper_number
                   : 4U),
       scramble_profile_(mapper_ == 114U && header.is_nes2 ? header.submapper : 0U),
@@ -117,7 +117,7 @@ Mmc3::Mmc3(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte
         nvram_size_ = header.is_nes2 ? header.prg_nvram_size : prg_ram_size_;
     } else if (mapper_ == 114U || mapper_ == 115U || mapper_ == 123U || mapper_ == 196U ||
                mapper_ == 197U || mapper_ == 205U || mapper_ == 208U || mapper_ == 215U ||
-               mapper_ == 219U || mapper_ == 250U) {
+               mapper_ == 219U || mapper_ == 238U || mapper_ == 250U) {
         prg_ram_size_ = 0U;
         nvram_size_ = 0U;
     } else if (mapper_ == 262U) {
@@ -149,6 +149,12 @@ Mmc3::Mmc3(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte
     num_chr_banks_1k_ = use_chr_ram_ ? 8 : static_cast<uint16_t>(chr_rom_.size() / 0x0400);
     gouder_profile_ = mapper_ == 208U && header.is_nes2 ? header.submapper : 0U;
     sugar_profile_ = mapper_ == 215U && header.is_nes2 ? header.submapper : 0U;
+    reset();
+}
+
+void Mmc3::power_on() {
+    if (mapper_ == 238U)
+        contra_protection_ = 0U;
     reset();
 }
 
@@ -351,6 +357,8 @@ void Mmc3::update_chr_banks() {
 }
 
 Byte Mmc3::read_prg(Address addr) {
+    if (mapper_ == 238U && maps_expansion(addr))
+        return read_expansion(addr);
     if (mapper_ == 115U && (addr & 0xE003U) == 0x6002U)
         return kasheng_solder_pad_;
     if (mapper_ == 262U && addr >= 0x6000U && maps_expansion(addr))
@@ -399,6 +407,10 @@ Byte Mmc3::read_prg(Address addr) {
 }
 
 void Mmc3::write_prg(Address addr, Byte value) {
+    if (mapper_ == 238U && maps_expansion(addr)) {
+        write_expansion(addr, value);
+        return;
+    }
     if (mapper_ == 219U && addr < 0x8000U && maps_expansion(addr)) {
         write_expansion(addr, value);
         return;
@@ -591,6 +603,8 @@ void Mmc3::write_a9461_bank(Byte value) {
 }
 
 bool Mmc3::maps_prg(Address addr) const {
+    if (mapper_ == 238U && addr >= 0x6000U)
+        return true;
     if (mapper_ == 219U && addr >= 0x6000U && addr < 0x8000U && maps_expansion(addr))
         return true;
     if (mapper_ == 208U && gouder_profile_ == 0U && (addr & 0xF800U) == 0x6800U)
@@ -792,6 +806,8 @@ std::optional<Address> Mmc3::nametable_address(Address addr) const {
 }
 
 bool Mmc3::maps_expansion(Address addr) const {
+    if (mapper_ == 238U)
+        return addr >= 0x4020U && addr < 0x8000U;
     if (mapper_ == 219U)
         return addr >= 0x4020U && addr < 0x8000U && (addr & 0x5002U) == 0x5002U;
     if (mapper_ == 215U)
@@ -820,6 +836,8 @@ Byte Mmc3::expansion_read_mask(Address addr) const {
 }
 
 Byte Mmc3::read_expansion(Address addr) {
+    if (mapper_ == 238U && maps_expansion(addr))
+        return contra_protection_;
     if (mapper_ == 208U && gouder_profile_ == 0U && addr >= 0x5800U && addr < 0x6000U)
         return gouder_registers_[addr & 3U];
     if (mapper_ == 199U && maps_expansion(addr))
@@ -834,7 +852,13 @@ Byte Mmc3::read_expansion(Address addr) {
 void Mmc3::write_expansion(Address addr, Byte value) {
     if (!maps_expansion(addr))
         return;
-    if (mapper_ == 219U) {
+    if (mapper_ == 238U) {
+        // Compatibility facts from CaH4e3 and Mesen: shared $4020-$7FFF latch,
+        // inputs 0/1/2/3 produce 0/2/2/3. Express the two-bit truth table as
+        // Boolean outputs; no external implementation code is incorporated.
+        const unsigned a = value & 1U, b = (value >> 1U) & 1U;
+        contra_protection_ = static_cast<Byte>(((a | b) << 1U) | (a & b));
+    } else if (mapper_ == 219U) {
         a9461_outer_ =
             static_cast<Byte>((addr & 1U) == 0U ? (a9461_outer_ & 2U) | (value & 1U)
                                                 : (a9461_outer_ & 1U) | ((value >> 4U) & 2U));
@@ -956,7 +980,8 @@ void Mmc3::save_variant_state(StateWriter& writer) const {
         writer.write_array(chr_ram_);
     } else if (mapper_ == 513U) {
         writer.write_bytes(chr_nvram_);
-    } else if (mapper_ != 205U && mapper_ != 208U && mapper_ != 215U && mapper_ != 219U) {
+    } else if (mapper_ != 205U && mapper_ != 208U && mapper_ != 215U && mapper_ != 219U &&
+               mapper_ != 238U) {
         writer.write_array(prg_ram_);
         writer.write_array(chr_ram_);
     }
@@ -1001,6 +1026,10 @@ void Mmc3::save_variant_state(StateWriter& writer) const {
     }
     if (mapper_ == 199U)
         writer.write<uint16_t>(0xC700U);
+    if (mapper_ == 238U) {
+        writer.write<uint16_t>(0xEE00U);
+        writer.write(contra_protection_);
+    }
     if (mapper_ == 205U) {
         writer.write<uint16_t>(
             static_cast<uint16_t>(0xCD00U | (mapper205_force_block3_ ? 1U : 0U)));
@@ -1047,6 +1076,21 @@ void Mmc3::save_variant_state(StateWriter& writer) const {
 }
 
 void Mmc3::load_variant_state(StateReader& reader) {
+    if (mapper_ != 238U) {
+        load_variant_state_impl(reader);
+        return;
+    }
+    // This ROM-only board has an 18-byte payload; rollback needs no ROM/RAM copy.
+    StateWriter backup;
+    save_variant_state(backup);
+    load_variant_state_impl(reader);
+    if (!reader.ok()) {
+        StateReader restore(backup.data());
+        load_variant_state_impl(restore);
+    }
+}
+
+void Mmc3::load_variant_state_impl(StateReader& reader) {
     if (mapper_ == 199U) {
         reader.read_bytes(fs309_nvram_, 0x8000U);
         if (fs309_nvram_.size() != 0x8000U) {
@@ -1060,7 +1104,8 @@ void Mmc3::load_variant_state(StateReader& reader) {
             chr_nvram_.resize(0x8000U);
             reader.fail();
         }
-    } else if (mapper_ != 205U && mapper_ != 208U && mapper_ != 215U && mapper_ != 219U) {
+    } else if (mapper_ != 205U && mapper_ != 208U && mapper_ != 215U && mapper_ != 219U &&
+               mapper_ != 238U) {
         reader.read_array(prg_ram_);
         reader.read_array(chr_ram_);
     }
@@ -1108,6 +1153,9 @@ void Mmc3::load_variant_state(StateReader& reader) {
         }
     }
     const auto fs309_tag = mapper_ == 199U ? reader.read<uint16_t>() : 0U;
+    const auto contra_tag = mapper_ == 238U ? reader.read<uint16_t>() : 0U;
+    if (mapper_ == 238U)
+        reader.read(contra_protection_);
     const auto mapper205_tag = mapper_ == 205U ? reader.read<uint16_t>() : 0U;
     if (mapper_ == 205U)
         reader.read(board_mode_);
@@ -1170,6 +1218,8 @@ void Mmc3::load_variant_state(StateReader& reader) {
          }));
     if (!reader.ok() || mixed_chr_tag != mixed_chr_state_tag() || bank_select_ > 7U ||
         !valid_a9461 ||
+        (mapper_ == 238U &&
+         (contra_tag != 0xEE00U || contra_protection_ > 3U || contra_protection_ == 1U)) ||
         (mapper_ == 215U &&
          (sugar_tag != (0xD700U | sugar_profile_) || (sugar_prg_ & 0x10U) != 0U ||
           sugar_outer_ > 0x3FU || sugar_scramble_ > 7U)) ||

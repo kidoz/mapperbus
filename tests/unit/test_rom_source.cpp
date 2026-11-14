@@ -25,6 +25,7 @@
 #include "../support/mapper235_rom.hpp"
 #include "../support/mapper236_rom.hpp"
 #include "../support/mapper237_rom.hpp"
+#include "../support/mapper238_rom.hpp"
 #include "../support/rom_archive.hpp"
 #include "app/async_fds_bios_validation.hpp"
 #include "app/async_rom_loader.hpp"
@@ -2253,6 +2254,68 @@ TEST_CASE("Teletubbies loading paths retain locked type mode and CHR RAM until c
                 REQUIRE_FALSE(
                     std::filesystem::exists(std::filesystem::path(raw).replace_extension(".sav")));
             }
+}
+
+TEST_CASE("Contra Fighter loading paths preserve protection on reset and clear it on cold start",
+          "[rom-source][mapper238][reset]") {
+    ArchiveFixture fixture;
+    const auto latch = [](const core::Emulator& e) {
+        const auto bytes = e.save_state();
+        core::StateWriter tail;
+        core::Controller{}.save_state(tail);
+        core::Controller{}.save_state(tail);
+        return bytes[bytes.size() - tail.data().size() - 1U];
+    };
+    for (bool legacy : {false, true})
+        for (bool vertical : {false, true}) {
+            const auto stem = std::string(legacy ? "legacy" : "native") + (vertical ? "-v" : "-h");
+            const auto raw = fixture.root / (stem + ".nes"),
+                       archive = fixture.root / (stem + ".zip");
+            const auto bytes = tests::make_mapper238_rom(legacy, vertical);
+            REQUIRE(core::write_binary_file_atomic(raw.string(), bytes, "Contra Fighter fixture"));
+            write_archive(archive, {{"contra.nes", bytes}});
+            EmulationSession session(std::make_unique<platform::NullVideo>(),
+                                     std::make_unique<platform::NullAudio>(),
+                                     std::make_unique<platform::NullInput>());
+            REQUIRE(session.open_rom(raw.string()));
+            REQUIRE(latch(session.emulator()) == 0U);
+            session.emulator().step_frame();
+            REQUIRE(session.emulator().read_cpu(0x12U) == 0xC7U);
+            REQUIRE(session.emulator().read_cpu(0x11U) >= 3U);
+            REQUIRE(latch(session.emulator()) == 3U);
+            const auto saved = session.emulator().save_state();
+            session.reset();
+            REQUIRE(latch(session.emulator()) == 3U);
+            session.emulator().step_frame();
+            REQUIRE(session.emulator().read_cpu(0x12U) == 0xC7U);
+            REQUIRE(session.emulator().read_cpu(0x14U) == 3U);
+            session.power_cycle();
+            REQUIRE(latch(session.emulator()) == 0U);
+            REQUIRE(session.emulator().load_state(saved));
+            REQUIRE(latch(session.emulator()) == 3U);
+            REQUIRE(session.open_rom(raw.string()));
+            REQUIRE(latch(session.emulator()) == 0U);
+            RomLoadRequest request;
+            request.path = archive.string();
+            request.member = "contra.nes";
+            request.state_storage.directory = fixture.root / "states";
+            auto prepared = prepare_rom(request);
+            REQUIRE(prepared);
+            REQUIRE(prepared->emulator);
+            REQUIRE(latch(*prepared->emulator) == 0U);
+            prepared->emulator->step_frame();
+            REQUIRE(prepared->emulator->read_cpu(0x12U) == 0xC7U);
+            const auto staged = prepared->emulator->save_state();
+            session.adopt_rom(std::move(*prepared));
+            REQUIRE(session.emulator().save_state() == staged);
+            REQUIRE(latch(session.emulator()) == 3U);
+            session.reset();
+            REQUIRE(latch(session.emulator()) == 3U);
+            session.power_cycle();
+            REQUIRE(latch(session.emulator()) == 0U);
+            REQUIRE_FALSE(
+                std::filesystem::exists(std::filesystem::path(raw).replace_extension(".sav")));
+        }
 }
 } // namespace
 } // namespace mapperbus::app

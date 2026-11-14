@@ -79,6 +79,19 @@ namespace {
         return RealtecMulticart::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 235U)
         return GoldenGame::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 238U) {
+        if (header.is_nes2 && header.submapper != 0U)
+            return std::unexpected("Mapper 238 supports submapper 0");
+        if (prg_size != 0x20000U || chr_size != 0x40000U)
+            return std::unexpected("Mapper 238 supports 128 KiB PRG and 256 KiB CHR ROM");
+        if (header.has_battery || header.chr_ram_size != 0U || header.chr_nvram_size != 0U ||
+            (header.is_nes2 && (header.prg_ram_size != 0U || header.prg_nvram_size != 0U)))
+            return std::unexpected("Mapper 238 supports ROM-only board memory");
+        if (header.mirror_mode != MirrorMode::Horizontal &&
+            header.mirror_mode != MirrorMode::Vertical)
+            return std::unexpected("Mapper 238 supports ordinary H/V CIRAM");
+        return {};
+    }
     if (header.mapper_number == 219U) {
         if (header.is_nes2 && header.submapper != 0U)
             return std::unexpected("Mapper 219 supports submapper 0");
@@ -779,6 +792,7 @@ void register_builtin_mappers() {
     registry.register_mapper(235, make_factory<GoldenGame>());
     registry.register_mapper(236, make_factory<RealtecMulticart>());
     registry.register_mapper(237, make_factory<Teletubbies>());
+    registry.register_mapper(238, make_factory<Mmc3>());
     registry.register_mapper(249, make_factory<Mmc3>());
     registry.register_mapper(250, make_factory<Mmc3>());
     registry.register_mapper(262, make_factory<Mmc3>());
