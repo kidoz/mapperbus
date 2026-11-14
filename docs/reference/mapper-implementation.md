@@ -4,7 +4,7 @@ This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
 complete.** Updated 2026-11-14 against the working-tree registry.
 
-There are **149 registered cartridge IDs**: the original 14, 53 added in the first
+There are **150 registered cartridge IDs**: the original 14, 53 added in the first
 batch, and Irem 32/65/77, Sunsoft 67/68, Taito 33/48/80/207/82/552, Jaleco 18/72/92/101,
 Namco 210, MMC3 variants 118/119, RAMBO-1 64/158, Bandai 16/153/159, and Datach
 157, UNROM 512 30, GTROM/direct MMC1 111, and J.Y. Company
@@ -14,7 +14,7 @@ IDs, Sachen MMC3 clones 262/512/513, Rex Soft's 263, Nitra 250, mappers
 TNROM640 198, Waixing FS309 199, multicarts 202/205, Gouder/JJ-01 208,
 Sugar Softec 215, Single Chip 218, Kasheng A9461 219, NTDEC N625092 221,
 address-latched multicarts/RPGs 227, Active Enterprises 228, reset-driven 22-in-1 230 and
-profiled 42 Games 233 detailed below.
+profiled 42 Games 233 and Maxi 15 234 detailed below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
 unusual ROM geometry.
@@ -23,6 +23,7 @@ unusual ROM geometry.
 
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
+| Maxi 15 (follow-up) | 234 | CNROM/NINA inner/outer banking, read-triggered latches, bus-conflicting writes, one-way lock, ROM gates, Australian fixed CHR, CPU execution and compact snapshots. |
 | Profiled 42 Games (follow-up) | 233 | Reset-selected/software-controlled A19, separate Disch and tentative vector-read profiles, PRG modes, custom CIRAM, CHR gates, CPU execution and profile-bound snapshots. |
 | Reset-driven 22-in-1 (follow-up) | 230 | Contra/multicart chip selection, soft-reset alternation, explicit cold start, 16/32 KiB PRG, H/V CIRAM, retained CHR RAM, CPU execution and snapshots. |
 | Active Enterprises (follow-up) | 228 | Packed three-chip Action 52 and always-enabled single-chip profiles, 16/32 KiB PRG, CHR ROM, H/V CIRAM, missing-chip open bus, CPU execution and compact snapshots. |
@@ -3336,6 +3337,81 @@ Formatting, scoped clang-tidy, whitespace and registry/ledger equality checks
 passed. Isolated canonical-document validation retained the November 14 baseline:
 zero errors, 72 warnings and three infos across 193 documents.
 
+## Mapper-234 follow-up: Maxi 15
+
+Original `Maxi15` code follows [NESdev r24540](https://www.nesdev.org/w/index.php?oldid=24540),
+[Mark's preliminary hardware description](https://www.nesdev.org/maxi15.txt),
+and [krzysiobal's three-chip board analysis and the normalized dump discussion](https://forums.nesdev.org/viewtopic.php?t=24627).
+Direct forum access returned 403; indexed post text was available. No external
+implementation code or commercial ROM data was used.
+
+Outer control is at $FF80-$FF9F, the CIC latch at $FFC0-$FFDF, and inner control
+at $FFE8-$FFF7. CPU reads latch the byte supplied by the old mapping through the
+existing completed-read observer; opcode, dummy and DMA reads use that same seam.
+Direct mapper ROM inspection has no side effects. Writes use CPU data AND the
+old driven PRG byte; disabled ROM produces no write conflict or extra read strobe.
+CNROM mode combines an outer 32 KiB block with two inner CHR bits. NINA mode
+uses an outer 64 KiB block, one inner PRG bit and three inner CHR bits. Mirroring
+is outer-controlled H/V. CHR ROM is read-only throughout.
+
+Follow the corrected r24540 rules: any outer Q/q/block bit locks outer and CIC
+updates until reset. Mode/mirroring bits alone do not lock; inner updates remain
+available. Preserve all four meaningful inner bits even while some are masked
+by CNROM mode. Reset clears all three registers, including CIC. This deliberately
+supersedes the preliminary account's different CIC gating/reset statements.
+The two-bit CIC latch is serialized; analog charge-pump/lockout defeat is not
+modeled, and there is no mapper IRQ, audio, RAM or battery storage.
+
+ROM geometry selects the wiring: 512/512 KiB uses the original two-chip model;
+1024/512 KiB uses the Australian three-chip model, whose CHR chip is permanently
+enabled; 1024/1024 KiB models the documented four-chip layout. The latter is not
+claimed to be a released, hardware-certified population. Q selects the second
+PRG/CHR pair, while q inhibits that pair. Unpopulated selections float. The
+Australian CHR ignores both gates and the extra chip-select address bit, as its
+/CE is tied low. Its canonical 1 MiB PRG image contains a 64 KiB chip repeated
+across the first 512 KiB, followed by the main 512 KiB chip. Loading neither
+repairs nor reorders a dump; incomplete 576 KiB images are rejected.
+
+CPU floating uses `prg_read_mask=0`. Disabled CHR reads return the low external
+PPU address byte, matching the project's undriven nametable-bus policy; this is
+an explicit emulator policy, not a new analog PPU-bus model. CIRAM remains active
+when cartridge ROM output is disabled. Alternative two-chip CHR-enable wiring
+and other physical revisions are not certified by the synthetic fixtures.
+
+Accept legacy and NES 2.0 submapper zero, ordinary H/V metadata and exactly the
+three ROM-size pairs above, with no CHR RAM, CPU RAM or NVRAM. Ignore legacy
+generic PRG-RAM inference. Reject other geometries, battery, alternate CIRAM
+and unknown submappers; no speculative 1.5 MiB bank or implicit ROM wrapping.
+
+Snapshots are five bytes: $EA00/$EA01/$EA03 population tag, outer byte, inner
+byte masked to $71, and two-bit CIC byte. Validate all fields before commit;
+rejected component loads change nothing. Whole-machine rejection rolls back
+atomically. Existing board payloads, machine version 20 and the 4 MiB state cap
+are unchanged. No unused CHR/WRAM buffers are allocated.
+
+Tests cover all outer/inner pin combinations, exact register ranges across the
+full CPU address space, write conflicts, old-map read ordering, latent inner
+bits, lock conditions, ROM gates, fixed CHR, PPUDATA/CIRAM, geometry and states.
+Thirty original CPU fixtures cover both bank modes, read/write selection,
+legacy/NES 2.0 and all populations, including six RAM-resident ROM-disabled
+programs. Two further fixtures prove register effects on opcode fetches and a
+page-crossing dummy read whose actual operand comes from console RAM. They also
+check reset, power-on, replay and atomic invalid-state rollback. Application
+fixtures check raw/reloaded files, archive preparation/adoption, disabled-ROM
+execution and reset/power cycling. CLI checks 54 loading profiles and 28 invalid
+inputs, retaining ROM bytes and creating no saves. CLI frame completion is loading
+smoke; unit/application fixtures assert CPU completion markers.
+
+Validation: all 73 regular targets, including required GPU checks, and all nine
+focused ASan+UBSan targets passed. Both builds passed 7,124,732 mapper assertions
+across 545 cases; mapper 234 contributes 500,485 assertions across twelve cases.
+The new application loading/reset regression passed 162 assertions in both builds.
+The sanitizer mapper target took 116.43 seconds within its existing 120-second
+timeout. The initial regression failed at factory creation before implementation.
+Formatting, scoped clang-tidy, whitespace and registry/ledger equality checks
+passed. Isolated canonical-document validation retained the November 14 baseline:
+zero errors, 72 warnings and three infos across 193 documents.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -3587,7 +3663,7 @@ or another registered cartridge ID.
 | 231 | Board-specific specification | New implementation: DiscreteMapper | [r5791](https://www.nesdev.org/w/index.php?oldid=5791) |
 | 232 | Codemasters Quattro | New implementation: DiscreteMapper | [r5797](https://www.nesdev.org/w/index.php?oldid=5797) |
 | 233 | 42 Games / conflicting legacy models | New implementation: Multicart233 (profiled compatibility models) | [r5799](https://www.nesdev.org/w/index.php?oldid=5799) |
-| 234 | Board-specific specification | Not registered | [r24540](https://www.nesdev.org/w/index.php?oldid=24540) |
+| 234 | Maxi 15 / AVE and Australian HES wiring | New implementation: Maxi15 | [r24540](https://www.nesdev.org/w/index.php?oldid=24540) |
 | 235 | Board-specific specification | Not registered | [r22514](https://www.nesdev.org/w/index.php?oldid=22514) |
 | 236 | Board-specific specification | Not registered | [r18875](https://www.nesdev.org/w/index.php?oldid=18875) |
 | 237 | Board-specific specification | Not registered | [r5823](https://www.nesdev.org/w/index.php?oldid=5823) |
