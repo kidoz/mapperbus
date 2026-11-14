@@ -2,9 +2,9 @@
 
 This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
-complete.** Updated 2026-11-14 against the working-tree registry.
+complete.** Updated 2026-11-15 against the working-tree registry.
 
-There are **158 registered cartridge IDs**: the original 14, 53 added in the first
+There are **159 registered cartridge IDs**: the original 14, 53 added in the first
 batch, and Irem 32/65/77, Sunsoft 67/68, Taito 33/48/80/207/82/552, Jaleco 18/72/92/101,
 Namco 210, MMC3 variants 118/119, RAMBO-1 64/158, Bandai 16/153/159, and Datach
 157, UNROM 512 30, GTROM/direct MMC1 111, and J.Y. Company
@@ -14,7 +14,7 @@ IDs, Sachen MMC3 clones 262/512/513, Rex Soft's 263, Nitra 250, mappers
 TNROM640 198, Waixing FS309 199, multicarts 202/205, Gouder/JJ-01 208,
 Sugar Softec 215, Single Chip 218, Kasheng A9461 219, NTDEC N625092 221,
 address-latched multicarts/RPGs 227, Active Enterprises 228, reset-driven 22-in-1 230 and
-profiled 42 Games 233, Maxi 15 234, Golden Game 235, Realtec 236, Teletubbies 237, Contra Fighter 238, BxROM/WRAM 241, 43272/ET-113 242, C&E Decathlon 244 and Waixing F003 245
+profiled 42 Games 233, Maxi 15 234, Golden Game 235, Realtec 236, Teletubbies 237, Contra Fighter 238, BxROM/WRAM 241, 43272/ET-113 242, C&E Decathlon 244, Waixing F003 245 and G0151-1 246
 detailed below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
@@ -24,6 +24,7 @@ unusual ROM geometry.
 
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
+| G0151-1 / Feng Shen Bang (follow-up) | 246 | Independent 8 KiB PRG / 2 KiB CHR banks, narrow GAL register decode, transient A17 vector-read override, fixed H/V, 2 KiB battery RAM and atomic snapshots. |
 | Waixing F003 (follow-up) | 245 | Live PPU A10/A11 select the outer PRG half through MMC3 CHR registers; fixed 8 KiB CHR RAM, battery WRAM, scanline IRQ compatibility and atomic snapshots. |
 | C&E Decathlon (follow-up) | 244 | Scrambled independent 32 KiB PRG / 8 KiB CHR latches, old-bank bus conflicts, fixed H/V, retained soft-reset banks and four-byte atomic snapshots. |
 | 43272 / Waixing RPG / ET-113 (follow-up) | 242 | Address-latched PRG modes, asymmetric ROM chips, five menu pads, CHR protection, battery WRAM and validated snapshots. |
@@ -4173,6 +4174,90 @@ validation retained zero errors, 72 warnings and three infos across 193
 documents. Actual PCB IRQ/reset circuitry and commercial title compatibility
 remain unverified.
 
+## Mapper-246 follow-up: G0151-1 / Feng Shen Bang
+
+`G0151` implements the discrete G0151-1 board using
+[NESdev revision 22048](https://www.nesdev.org/w/index.php?oldid=22048)
+and the original [board/GAL tracing report](https://forums.nesdev.org/viewtopic.php?start=60&t=13969).
+Four six-bit registers select independent 8 KiB PRG windows; four full-byte
+registers select independent 2 KiB CHR-ROM windows. Writes decode only
+$6000–$601F. A2 selects PRG/CHR, A1/A0 select the window, and A4/A3 alias the
+registers. $6020–$67FF and $7000–$7FFF do not select registers or RAM. Register
+reads float on the CPU bus. CPU ROM writes and all CHR writes are ignored;
+there is no register bus conflict.
+
+At $FFE4–$FFE7, $FFEC–$FFEF, $FFF4–$FFF7 and $FFFC–$FFFF, reads force
+PRG A17 high while preserving the selected A18. The bank register is unchanged,
+so the next ordinary read returns to its selected page. This applies to actual
+CPU reset/interrupt vectors as well as ordinary reads. It does not redirect
+NMI vectors at $FFFA/$FFFB. Fixed H/V mirroring comes from the header. The
+board has no IRQ, expansion registers, PPU pin observer or expansion audio.
+
+The supported ROM population is 512 KiB PRG and 512 KiB CHR, as recorded in
+[MAME metadata at 484b993](https://github.com/mamedev/mame/blob/484b993578e6b7155e5a039c4e4962a5d1ad78e8/hash/nes.xml).
+That older entry lists 8 KiB battery RAM and marks its dumps bad. The hardware
+specification and newer published implementation identify a 2 KiB window at
+$6800–$6FFF, which is the memory exposed and persisted here. No dump was
+downloaded, patched or certified. Other ROM populations, CHR RAM, extra WRAM,
+non-H/V mirroring and native nonzero submappers are rejected. The battery flag
+is required; native NES 2.0 declares exactly 2 KiB PRG NVRAM and no volatile
+PRG RAM or CHR RAM/NVRAM. Legacy generic 8 KiB RAM inference is ignored.
+
+Published behavior was compared at pinned revisions:
+[Mesen b9fa69d](https://github.com/SourMesen/Mesen2/blob/b9fa69ddc6d0a331fb103fdb5eef6904305703c2/Core/NES/Mappers/Unlicensed/Mapper246.h)
+decodes the broader $6000–$67FF range and omits the vector override in its
+mapper handler;
+[NintendulatorNRS-DBG b685625](https://github.com/gmestanley/NintendulatorNRS-DBG/blob/b685625310ec026afa844340d94503f9767b72df/src-mappers/src/iNES/mapper246.cpp)
+implements the narrow decode, vector override, 2 KiB save size and retained
+soft-reset latches. This implementation is original, following the measured
+register decode and documented pin behavior. Analog A18 floating/charge effects
+from the hardware discussion are not simulated; the documented digital rule
+preserves A18. Physical timing and commercial title compatibility are unverified.
+
+Soft reset retains registers and battery RAM. Cold power selects PRG page 63
+and CHR page 255 in every slot while retaining saved RAM. R3=$FF on power-on
+is specified; extending the all-high 74'670 startup to the other cells follows
+the published reference as an explicit deterministic policy. It is not a
+power-up guarantee for every manufactured chip. Unconnected PRG D7/D6 are
+normalized away. The class owns only its immutable ROM vectors, 2 KiB RAM,
+eight bank bytes and fixed mirroring; no unused CHR RAM or generic 8 KiB WRAM
+buffer is allocated.
+
+State is 2,058 bytes: a two-byte fixed-wiring tag, four PRG banks, four CHR
+banks and 2 KiB RAM. Fixed local staging checks the tag, PRG range 0–63 and
+complete payload before mutation. Every CHR byte is valid. Truncation,
+invalid PRG banks and wrong wiring reject atomically without a ROM copy.
+Machine version 20, the 4 MiB ceiling and all older mapper payloads remain
+unchanged. Explicit battery imports use the actual 2 KiB cap; the existing
+startup best-effort import policy is unchanged.
+
+`mapper246` covers every CPU write address, every bank byte and all register
+aliases, independent windows, patterned PRG/CHR cells, every transient-read
+address, CHR protection, open bus, all RAM cells, reset policies, every snapshot
+truncation length, invalid bank fields and fixed-wiring mismatches. Four original
+6502 firmware images span native/legacy headers and H/V mirroring. Replicated
+code permits live switching; deliberately different IRQ vectors in A17-low
+pages prove BRK fetches the forced bank. The firmware also checks PPUDATA,
+CIRAM, RAM retention, cold/soft startup and deterministic machine replay.
+
+`rom-source-mapper246` covers raw/ZIP/7z loading, prepare/adopt without an
+extra reset, battery signatures and reload, explicit oversized-import rejection,
+failed profile/header loads and unchanged ROM bytes. The CLI independently
+checks completion through a 2 KiB battery signature in twelve execution
+profiles and rejects twenty-six unsupported inputs. Dedicated mapper/loading
+targets keep existing timeout budgets. All ROM contents and programs are
+original synthetic fixtures.
+
+Validation completed on 2026-11-15: all 102 regular Meson targets passed with
+GPU checks required, alongside 30 focused ASan+UBSan targets with four workers
+(leak detection disabled on macOS). Both builds passed 4,931,409 mapper-246
+assertions in ten cases and 264 loading assertions. Shared mapper/multicart
+matrices retain 465/51 cases and shared loading/multicart matrices 38/5 cases.
+The full SDL3/NodalKit build, formatting, scoped clang-tidy, whitespace and
+exact 159-ID registry/ledger comparison passed. Isolated strict-consumer
+standards validation retained zero errors, 72 warnings and three infos across
+193 documents. No commercial ROM or physical PCB was used for validation.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -4435,7 +4520,7 @@ or another registered cartridge ID.
 | 243 | Sachen board | New implementation: Sachen | [r5861](https://www.nesdev.org/w/index.php?oldid=5861) |
 | 244 | C&E Decathlon / scrambled bank latches | New implementation: Decathlon | [r5862](https://www.nesdev.org/w/index.php?oldid=5862) |
 | 245 | Waixing F003 / CHR output drives PRG A19 | New implementation: Mmc3 | [r5871](https://www.nesdev.org/w/index.php?oldid=5871) |
-| 246 | Board-specific specification | Not registered | [r22048](https://www.nesdev.org/w/index.php?oldid=22048) |
+| 246 | G0151-1 / Feng Shen Bang | New implementation: G0151 | [r22048](https://www.nesdev.org/w/index.php?oldid=22048) |
 | 248 | Obsolete duplicate of 115; private-use reassignment proposed | Obsolete; not registered | [r23288](https://www.nesdev.org/w/index.php?oldid=23288) |
 | 249 | Waixing T9552, legacy file order | New implementation: Mmc3 | [r20254](https://www.nesdev.org/w/index.php?oldid=20254) |
 | 250 | Nitra L401 / Queen Bee V | New implementation: Mmc3 | [r21044](https://www.nesdev.org/w/index.php?oldid=21044) |
