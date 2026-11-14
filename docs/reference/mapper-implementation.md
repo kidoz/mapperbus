@@ -4,7 +4,7 @@ This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
 complete.** Updated 2026-11-14 against the working-tree registry.
 
-There are **157 registered cartridge IDs**: the original 14, 53 added in the first
+There are **158 registered cartridge IDs**: the original 14, 53 added in the first
 batch, and Irem 32/65/77, Sunsoft 67/68, Taito 33/48/80/207/82/552, Jaleco 18/72/92/101,
 Namco 210, MMC3 variants 118/119, RAMBO-1 64/158, Bandai 16/153/159, and Datach
 157, UNROM 512 30, GTROM/direct MMC1 111, and J.Y. Company
@@ -14,7 +14,7 @@ IDs, Sachen MMC3 clones 262/512/513, Rex Soft's 263, Nitra 250, mappers
 TNROM640 198, Waixing FS309 199, multicarts 202/205, Gouder/JJ-01 208,
 Sugar Softec 215, Single Chip 218, Kasheng A9461 219, NTDEC N625092 221,
 address-latched multicarts/RPGs 227, Active Enterprises 228, reset-driven 22-in-1 230 and
-profiled 42 Games 233, Maxi 15 234, Golden Game 235, Realtec 236, Teletubbies 237, Contra Fighter 238, BxROM/WRAM 241, 43272/ET-113 242 and C&E Decathlon 244
+profiled 42 Games 233, Maxi 15 234, Golden Game 235, Realtec 236, Teletubbies 237, Contra Fighter 238, BxROM/WRAM 241, 43272/ET-113 242, C&E Decathlon 244 and Waixing F003 245
 detailed below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
@@ -24,6 +24,7 @@ unusual ROM geometry.
 
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
+| Waixing F003 (follow-up) | 245 | Live PPU A10/A11 select the outer PRG half through MMC3 CHR registers; fixed 8 KiB CHR RAM, battery WRAM, scanline IRQ compatibility and atomic snapshots. |
 | C&E Decathlon (follow-up) | 244 | Scrambled independent 32 KiB PRG / 8 KiB CHR latches, old-bank bus conflicts, fixed H/V, retained soft-reset banks and four-byte atomic snapshots. |
 | 43272 / Waixing RPG / ET-113 (follow-up) | 242 | Address-latched PRG modes, asymmetric ROM chips, five menu pads, CHR protection, battery WRAM and validated snapshots. |
 | Standard BxROM with WRAM (follow-up) | 241 | Full-byte 32 KiB PRG banking, fixed H/V, 8 KiB WRAM with optional battery, fixed CHR ROM/RAM and atomic snapshots. Optional LPC speech is available through the explicit `lpc` profile. |
@@ -4086,6 +4087,92 @@ timeout limits remain unchanged. Include both new matrix targets, `jy-company`
 and the existing per-board targets in focused checks; full suite runs already
 discover them automatically.
 
+## Mapper-245 follow-up: Waixing F003
+
+The existing `Mmc3` implements F003 using the pin connections in
+[NESdev revision 5871](https://www.nesdev.org/w/index.php?oldid=5871).
+CHR-selector A12 on the clone is grounded, while PPU A10/A11 remain active.
+CHR output A11 drives PRG A19. With normal CHR order, R0/R1 bit 1 selects
+one of two 512 KiB PRG halves according to PPU A11. With inverted CHR order,
+R2–R5 bit 1 selects the half according to PPU A11/A10. This applies to every
+CPU slot, including the fixed last two banks. R6/R7 retain six-bit inner
+bank selection; changing CHR registers or inversion immediately affects the
+PRG output at the currently driven PPU address. Pattern memory uses raw
+PPU addresses and remains flat 8 KiB CHR RAM in either inversion mode.
+
+The physical-address observer already used by Sachen 513 carries PPUDATA,
+PPUADDR, rendering and idle address pins. Cached renderer/debugger CHR reads
+cannot steer the outer bank. Nametable addresses still drive A10/A11, and
+PPU A12 does not change this board's CHR selector. This is a pin-routing
+interpretation of the documented wiring; no real PCB trace was measured.
+Games are expected to program the active CHR registers consistently, as the
+specification explains. Original test firmware instead replicates its code,
+IRQ handler and vectors in every PRG page to exercise inconsistent registers
+safely without commercial ROM contents.
+
+Published emulator behavior was compared as authorized by the user:
+[Mesen b9fa69d](https://github.com/SourMesen/Mesen2/blob/b9fa69ddc6d0a331fb103fdb5eef6904305703c2/Core/NES/Mappers/Mmc3Variants/MMC3_245.h)
+uses only R0 for the extension, while
+[NintendulatorNRS-DBG b685625](https://github.com/gmestanley/NintendulatorNRS-DBG/blob/b685625310ec026afa844340d94503f9767b72df/src-mappers/src/iNES/MMC3-based/mapper245.cpp)
+tracks the selected CHR read slot. The implementation here is original and
+uses the existing full physical-address seam rather than copying either
+shortcut. No external implementation code or ROM dump is incorporated.
+
+There is unresolved evidence about IRQ wiring: the article grounds ASIC A12
+but also lists scanline IRQs. MapperBus retains its existing MMC3 scanline
+counter clocked at dot 260 on rendered visible/pre-render lines, including
+its repeating-zero-latch policy. This is a compatibility model; actual clone
+A12 filtering, zero-latch behavior, startup RAM protection and exact reset
+circuitry remain unverified. The grounded-A12 rule is applied to CHR selection
+without inventing IRQ pin behavior or changing PPU timing. No expansion audio
+or alternate board profile is claimed.
+
+Accept power-of-two PRG sizes from 32 KiB through 1 MiB, no CHR ROM, and
+ordinary H/V CIRAM. Smaller PRG images alias unconnected high address pins;
+this compatibility envelope is not certification of every chip population.
+The documented battery flag is required. Native NES 2.0 requires submapper
+zero, exactly 8 KiB PRG NVRAM and 8 KiB volatile CHR RAM, no extra PRG RAM or
+CHR NVRAM. Legacy generic RAM inference does not add memory. Standard MMC3
+$A000 controls H/V mirroring and $A001 gates/protects the 8 KiB WRAM window.
+
+Soft reset restores MMC3 registers, selector, IRQ and header mirroring while
+retaining both RAMs. Cold power additionally clears volatile CHR RAM and
+retains battery WRAM, including a preloaded save. These are explicit emulator
+reset policies. The existing two 8 KiB arrays are reused: no ROM duplication,
+large optional buffers or new backing RAM allocation is added. The state
+payload is 16,402 bytes: both RAMs, common MMC3 registers, a tag binding PRG
+geometry and reset H/V wiring, and the live two-bit PPU selector. Truncation,
+invalid fields and tag mismatch reject atomically using a bounded payload
+backup. Existing mapper payloads, machine version 20 and the 4 MiB ceiling
+remain unchanged.
+
+`mapper245` covers all six PRG sizes, every CHR-register byte, both inversions
+and PRG modes, all four live selectors, fixed-bank extension, ignored upper
+PPU pins, six-bit R6/R7 masking, cached-read isolation, real PPU sprite fetches
+and PPUDATA, every CHR/WRAM cell, protection, reset, partial IRQs, malformed
+states and geometry/mirroring mismatch. Twelve original CPU firmware images
+cover both headers, H/V and representative small/large PRG sizes, IRQ delivery,
+PPUDATA, battery retention and deterministic machine replay. Generic mapper
+snapshot/boot matrices also include 245.
+
+`rom-source-mapper245` checks raw/ZIP/7z loading, prepare/adopt without extra
+reset, save-file contents and reload, soft/cold startup, failed-load rollback
+and unchanged ROM bytes. The CLI separately proves completion through the
+battery signature in 24 execution profiles and rejects 22 unsupported inputs.
+Dedicated targets preserve the existing shared mapper/loading timeout limits.
+All fixtures are original synthetic programs and bank data.
+
+Validation on 2026-11-14 passed all 99 regular Meson targets with GPU checks
+required, and 28 focused ASan+UBSan targets with four workers (leak detection
+disabled on macOS). Both builds passed 427,091 mapper-245 assertions in nine
+cases and 224 loading assertions. Shared mapper/multicart targets retain all
+465/51 cases; shared loading/multicart targets retain all 38/5 cases. The full
+SDL3/NodalKit build, formatting, scoped clang-tidy, whitespace and exact
+158-ID registry/ledger comparison passed. Isolated strict-consumer standards
+validation retained zero errors, 72 warnings and three infos across 193
+documents. Actual PCB IRQ/reset circuitry and commercial title compatibility
+remain unverified.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -4347,7 +4434,7 @@ or another registered cartridge ID.
 | 242 | 43272 multicart / battery Waixing RPG / ET-113 replacement menu | New implementation: Multicart242 | [r19709](https://www.nesdev.org/w/index.php?oldid=19709) |
 | 243 | Sachen board | New implementation: Sachen | [r5861](https://www.nesdev.org/w/index.php?oldid=5861) |
 | 244 | C&E Decathlon / scrambled bank latches | New implementation: Decathlon | [r5862](https://www.nesdev.org/w/index.php?oldid=5862) |
-| 245 | Board-specific specification | Not registered | [r5871](https://www.nesdev.org/w/index.php?oldid=5871) |
+| 245 | Waixing F003 / CHR output drives PRG A19 | New implementation: Mmc3 | [r5871](https://www.nesdev.org/w/index.php?oldid=5871) |
 | 246 | Board-specific specification | Not registered | [r22048](https://www.nesdev.org/w/index.php?oldid=22048) |
 | 248 | Obsolete duplicate of 115; private-use reassignment proposed | Obsolete; not registered | [r23288](https://www.nesdev.org/w/index.php?oldid=23288) |
 | 249 | Waixing T9552, legacy file order | New implementation: Mmc3 | [r20254](https://www.nesdev.org/w/index.php?oldid=20254) |
