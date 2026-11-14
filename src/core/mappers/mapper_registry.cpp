@@ -1,5 +1,6 @@
 #include "core/mappers/mapper_registry.hpp"
 
+#include "core/mappers/action52.hpp"
 #include "core/mappers/axrom.hpp"
 #include "core/mappers/bandai_fcg.hpp"
 #include "core/mappers/cnrom.hpp"
@@ -58,6 +59,8 @@ namespace {
         return NtdecN625092::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 227U)
         return Multicart227::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 228U)
+        return Action52::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 219U) {
         if (header.is_nes2 && header.submapper != 0U)
             return std::unexpected("Mapper 219 supports submapper 0");
@@ -751,6 +754,7 @@ void register_builtin_mappers() {
     registry.register_mapper(219, make_factory<Mmc3>());
     registry.register_mapper(221, make_factory<NtdecN625092>());
     registry.register_mapper(227, make_factory<Multicart227>());
+    registry.register_mapper(228, make_factory<Action52>());
     registry.register_mapper(249, make_factory<Mmc3>());
     registry.register_mapper(250, make_factory<Mmc3>());
     registry.register_mapper(262, make_factory<Mmc3>());
