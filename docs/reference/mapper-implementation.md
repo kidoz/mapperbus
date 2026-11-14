@@ -2,9 +2,9 @@
 
 This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
-complete.** Updated 2026-11-13 against the working-tree registry.
+complete.** Updated 2026-11-14 against the working-tree registry.
 
-There are **146 registered cartridge IDs**: the original 14, 53 added in the first
+There are **147 registered cartridge IDs**: the original 14, 53 added in the first
 batch, and Irem 32/65/77, Sunsoft 67/68, Taito 33/48/80/207/82/552, Jaleco 18/72/92/101,
 Namco 210, MMC3 variants 118/119, RAMBO-1 64/158, Bandai 16/153/159, and Datach
 157, UNROM 512 30, GTROM/direct MMC1 111, and J.Y. Company
@@ -12,8 +12,8 @@ Namco 210, MMC3 variants 118/119, RAMBO-1 64/158, Bandai 16/153/159, and Datach
 IDs, Sachen MMC3 clones 262/512/513, Rex Soft's 263, Nitra 250, mappers
 114/115/123, T9552 249 / 4:5, mixed CHR 74/192/194/195, MRCM 196, mapper 197,
 TNROM640 198, Waixing FS309 199, multicarts 202/205, Gouder/JJ-01 208,
-Sugar Softec 215, Single Chip 218, Kasheng A9461 219, NTDEC N625092 221 and address-latched multicarts/RPGs 227
-detailed below.
+Sugar Softec 215, Single Chip 218, Kasheng A9461 219, NTDEC N625092 221,
+address-latched multicarts/RPGs 227 and Active Enterprises 228 detailed below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
 unusual ROM geometry.
@@ -22,6 +22,7 @@ unusual ROM geometry.
 
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
+| Active Enterprises (follow-up) | 228 | Packed three-chip Action 52 and always-enabled single-chip profiles, 16/32 KiB PRG, CHR ROM, H/V CIRAM, missing-chip open bus, CPU execution and compact snapshots. |
 | Address-latched multicarts / RPGs (follow-up) | 227 | Three submappers, fixed/mirrored/aligned PRG modes, solder-pad menus, CHR protection, battery WRAM, CPU execution and validated snapshots. |
 | NTDEC N625092 (follow-up) | 221 | Address-latched 16/32 KiB and UNROM modes, PRG A17–A20, H/V CIRAM, protected unbanked CHR RAM, CPU execution and validated snapshots. |
 | Kasheng A9461 compatibility model (follow-up) | 219 | MMC3/extended bank protocols, reversed PRG pins, staged CHR latch, shared outer banks, CIRAM/IRQs, CPU execution and compact validated snapshots. |
@@ -3120,6 +3121,70 @@ zero errors, 72 warnings and three infos across 193 documents.
   alone does not establish complete wiring equivalence. Keep 224 unregistered
   pending KT-008/268 family research and a tested board-specific contract.
 
+## Mapper-228 follow-up: Active Enterprises Action 52 / Cheetahmen II
+
+Original `Action52` implementation follows [NESdev mapper 228 r5784](https://www.nesdev.org/w/index.php?oldid=5784),
+[mark_k's 2014-01-03 physical board examination](https://forums.nesdev.org/viewtopic.php?p=123220),
+and [talk r14166](https://www.nesdev.org/w/index.php?oldid=14166).
+The forum was available through its indexed text while direct access returned 403.
+No external emulator implementation was consulted or copied.
+
+Writes at $8000-$FFFF latch address pins and data D1-D0. Address A13 selects
+H/V CIRAM, A12-A11 select the PRG chip, A10-A6 select a 16 KiB page and A5
+selects mirrored 16 KiB versus an aligned even/odd 32 KiB pair. A3-A0 combine
+with the two data bits to select CHR; A4/A14 and data D7-D2 are ignored.
+CHR is read-only and independent of the PRG chip enable.
+
+For packed 1536 KiB PRG images, logical chips 0/1/3 map to consecutive 512 KiB
+segments. Chip select 2 drives no CPU data bits, retaining the bus through the
+existing `prg_read_mask` seam. Writes can restore another chip while reads
+float. For single-chip images through 512 KiB, all chip selections leave PRG
+enabled, following the examined 023-N509 REV 0 Cheetahmen II board's cut-trace
+population. ROM size selects these populations because no assigned submapper
+is documented. This selection is a file-format compatibility policy, not a
+claim about every physical revision. Alternative enable wiring needs evidence
+and a separate explicit profile.
+
+The often-repeated four-nibble expansion RAM is absent. Low CPU reads float and
+writes have no effect. The talk page corrects the older claim that software never
+accesses those addresses; absence of the RAM does not depend on that claim.
+No WRAM, CHR RAM, battery, IRQ or expansion audio is allocated or implemented.
+
+Accept legacy and NES 2.0 submapper zero, ordinary H/V metadata, 8-512 KiB CHR
+ROM in 8 KiB units and either packed 1536 KiB PRG or 16-512 KiB single-chip PRG
+in 16 KiB units. Decode pins before wrapping smaller fitted ROMs. Small and
+non-power-of-two single-chip images are compatibility inputs, not certified chip
+populations. Reject incomplete/more-chip PRG layouts, CHR-less images, unknown
+submappers, alternate CIRAM, battery and NES 2.0 RAM declarations. Ignore legacy
+generic PRG-RAM inference. Reset models the published reset-time $8000=0 write:
+PRG pages 0/1, CHR bank zero and vertical CIRAM. Exact electrical latch reset
+wiring is not established; this remains deterministic console-reset policy.
+
+Snapshots are five bytes: two-byte $E400/$E401 population tag, two-byte canonical
+address latch (mask $3FEF) and one-byte two-bit data latch. Validate all fields
+before commit; component rejection resets latches, while whole-machine failure
+rolls back atomically. Existing board payloads, machine version 20 and the 4 MiB
+state allocation ceiling are unchanged.
+
+Tests cover all CPU register addresses, chip/page/mode combinations, address and
+data aliases, every CHR bank, read-only pattern memory, smaller chips, low open
+bus, missing-chip reads/reconnection, header rejection and malformed snapshots.
+Eight original CPU fixtures cover both populations, legacy/NES 2.0 and H/V
+metadata. Replicated firmware checks banked instruction fetches, PPUDATA,
+CIRAM, reset and replay; a CPU-RAM routine selects the absent chip and checks
+retained absolute-operand bytes before reconnecting ROM. CLI checks 48 loading
+profiles and 26 invalid images, preserving ROM bytes and creating no saves.
+CLI frame completion is loading smoke; unit fixtures assert CPU completion.
+
+Validation: all 70 regular targets, including required GPU checks, and all eight
+focused ASan+UBSan targets passed. Both builds passed 5,505,482 mapper assertions
+across 513 cases; mapper 228 contributes 445,629 assertions across nine cases.
+The sanitizer mapper target took 97.77 seconds within its existing 120-second
+timeout. The initial regression failed at factory creation before implementation.
+Formatting, scoped clang-tidy, whitespace and registry/ledger equality checks
+passed. Isolated canonical-document validation retained the November 14 baseline:
+zero errors, 72 warnings and three infos across 193 documents.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -3365,7 +3430,7 @@ or another registered cartridge ID.
 | 225 | Board-specific specification | New implementation: DiscreteMapper | [r18874](https://www.nesdev.org/w/index.php?oldid=18874) |
 | 226 | Board-specific specification | New implementation: DiscreteMapper | [r22261](https://www.nesdev.org/w/index.php?oldid=22261) |
 | 227 | Address-latched multicart / RPG boards | New implementation: Multicart227 | [r23188](https://www.nesdev.org/w/index.php?oldid=23188) |
-| 228 | Action 52 / Active Enterprises | Not registered | [r5784](https://www.nesdev.org/w/index.php?oldid=5784) |
+| 228 | Action 52 / Active Enterprises | New implementation: Action52 | [r5784](https://www.nesdev.org/w/index.php?oldid=5784) |
 | 229 | Board-specific specification | New implementation: DiscreteMapper | [r5785](https://www.nesdev.org/w/index.php?oldid=5785) |
 | 230 | Board-specific specification | Not registered | [r5788](https://www.nesdev.org/w/index.php?oldid=5788) |
 | 231 | Board-specific specification | New implementation: DiscreteMapper | [r5791](https://www.nesdev.org/w/index.php?oldid=5791) |
