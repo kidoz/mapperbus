@@ -4,7 +4,7 @@ This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
 complete.** Updated 2026-11-14 against the working-tree registry.
 
-There are **152 registered cartridge IDs**: the original 14, 53 added in the first
+There are **153 registered cartridge IDs**: the original 14, 53 added in the first
 batch, and Irem 32/65/77, Sunsoft 67/68, Taito 33/48/80/207/82/552, Jaleco 18/72/92/101,
 Namco 210, MMC3 variants 118/119, RAMBO-1 64/158, Bandai 16/153/159, and Datach
 157, UNROM 512 30, GTROM/direct MMC1 111, and J.Y. Company
@@ -14,7 +14,8 @@ IDs, Sachen MMC3 clones 262/512/513, Rex Soft's 263, Nitra 250, mappers
 TNROM640 198, Waixing FS309 199, multicarts 202/205, Gouder/JJ-01 208,
 Sugar Softec 215, Single Chip 218, Kasheng A9461 219, NTDEC N625092 221,
 address-latched multicarts/RPGs 227, Active Enterprises 228, reset-driven 22-in-1 230 and
-profiled 42 Games 233, Maxi 15 234, Golden Game 235 and Realtec 236 detailed below.
+profiled 42 Games 233, Maxi 15 234, Golden Game 235, Realtec 236 and Teletubbies 237
+detailed below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
 unusual ROM geometry.
@@ -23,6 +24,7 @@ unusual ROM geometry.
 
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
+| Teletubbies 420-in-1 (follow-up) | 237 | Four PRG modes, configuration lock, forced ROM A1 type detection, H/V CIRAM, CHR RAM, CPU execution and validated snapshots. |
 | Realtec multicarts (follow-up) | 236 | Three ROM/RAM populations, four PRG modes, address-substituting solder pads, H/V CIRAM, CHR ROM/RAM, CPU execution and validated snapshots. |
 | Golden Game (follow-up) | 235 | Eight ROM socket profiles, 16/32 KiB PRG, empty-socket open bus, H/V/single CIRAM, CHR RAM, CPU execution and wiring-bound snapshots. |
 | Maxi 15 (follow-up) | 234 | CNROM/NINA inner/outer banking, read-triggered latches, bus-conflicting writes, one-way lock, ROM gates, Australian fixed CHR, CPU execution and compact snapshots. |
@@ -3569,6 +3571,82 @@ Formatting, scoped clang-tidy, whitespace and exact 152-ID registry/ledger
 checks passed. Isolated canonical-document validation preserved the baseline:
 zero errors, 72 warnings and three infos across 193 documents.
 
+## Mapper-237 follow-up: Teletubbies 420-in-1
+
+Original `Teletubbies` follows [NESdev r5823](https://www.nesdev.org/w/index.php?oldid=5823)
+and [BootGod's 2010 hardware report](https://forums.nesdev.org/viewtopic.php?p=55608).
+Direct downloads returned 403/DNS errors; indexed article/report text was available.
+No external emulator implementation or commercial ROM data was used. The examined
+board has 1 MiB PRG and 8 KiB unbanked CHR RAM. Other type-detection wiring is
+suggested by the source, but remains unverified and has no implemented profile.
+The old description's "CNROM" name does not denote hardware CHR banking.
+
+Writes at $8000-$FFFF capture A2-A0 and all eight data bits without conflicts.
+A2 and D4-D3 choose a 128 KiB block; D2-D0 choose the inner page. D7-D6 select
+UNROM, UNROM with its low window forced even, mirrored 16 KiB NROM, or aligned
+32 KiB NROM. D5 selects horizontal/vertical CIRAM. A0 enables type mode, forcing
+ROM A1 high in both CPU windows, including opcode/operand fetches. This returns
+actual ROM bytes at substituted addresses rather than a constant menu number.
+A1 locks every configuration bit except inner D2-D0 until reset. The write that
+sets the lock captures all fields; later address pins and D7-D3 are ignored.
+
+Only the documented 1 MiB / 8 KiB population is accepted: legacy iNES or NES 2.0
+submapper zero, no CHR ROM, H/V metadata, and no CPU RAM, NVRAM or battery.
+Native memory declarations must match; legacy generic WRAM inference is ignored.
+Reject partial/alternate ROM sizes, other CHR populations, alternate CIRAM,
+unknown submappers and speculative menu/type profiles. No IRQ or expansion audio
+is added; CPU space below $8000 remains unmapped. CHR RAM stays writable in every
+bank, type and lock mode. No unused WRAM is allocated.
+
+The source confirms reset clears lock, type, NROM mode and outer-bank bits,
+but is uncertain about transparency, mirroring and inner bits. This implementation
+explicitly clears all address/data bits on reset: UNROM 0/7, horizontal CIRAM,
+type off and unlocked. CHR RAM is retained on soft reset, and cleared additionally
+on cold power-on as a deterministic initialization policy. Electrical retention
+of the uncertain latch bits and analog RAM power-up are not certified.
+
+State is 8,196 bytes: two-byte $ED00 wiring tag, three-bit address latch,
+unmasked data byte and 8 KiB CHR RAM. Preserve latent D0 even in modes that ignore
+it. Validate tag, address pins and length before commit; component rejection
+changes nothing, and machine rejection rolls back atomically. Existing mapper
+payloads, machine version 20 and the 4 MiB state cap remain unchanged.
+
+The dedicated `mapper237` target checks every initial latch combination, lock
+updates, all 65,536 CPU write addresses both locked/unlocked, all mode/type
+paths, forced-address ROM data, CHR cells, reset, geometry and invalid states.
+Sixty-four original RAM-resident CPU images cover four modes, normal/type reads,
+outer-block boundaries and both header formats. They assert completion, actual
+menu probing, inner writes after lock, PPUDATA/CIRAM, cold/soft reset, snapshots
+with type and lock active, replay and rejection rollback. An additional CPU
+fixture proves forced A1 applies to ROM opcode/operand fetches using aliased
+instruction pairs. Bus fixtures prove type reads still drive real ROM data while
+CHR/CIRAM remain accessible. Shared mapper tests retain registration, boot and
+machine-state coverage. Application tests check raw/archive preparation,
+adoption, reload, reset and power cycling in all four modes with/without type.
+CLI checks 64 loading profiles and 30 rejected inputs, retaining ROM bytes and
+creating no saves; CPU completion markers are asserted in unit/application tests.
+
+Validation: all 80 regular targets, including required GPU checks, passed.
+Thirteen focused ASan+UBSan targets passed across the initial run and affected
+checks rerun. The first sanitizer run exposed an opcode fixture's dependency
+on prior registry setup and a 30-second aggregate ROM-loading timeout. The
+fixture now registers its own factories (also verified in isolation); the new
+loading matrix runs as `rom-source-mapper237`, with the shared target excluding
+that tag. Every case still runs, and no timeout was increased. All three affected
+targets passed after these test changes; ten unchanged targets had already passed.
+
+Both builds passed 936,196 assertions across ten dedicated mapper-237 cases.
+The regular shared mapper target passed 7,124,777 assertions across 545 cases.
+The application matrix passed 464 assertions in both builds; shared and dedicated
+loading targets together retain all 44 cases and 21,565 assertions. The shared
+sanitizer mapper target took 117.68 seconds within its existing 120-second budget.
+The mapper-237 retry took 20.30 seconds; shared/dedicated loading took 22.59/7.29
+seconds within their unchanged 30-second budgets. The initial regression failed
+at factory creation before implementation. Formatting, scoped clang-tidy,
+whitespace and exact 153-ID registry/ledger checks passed. Isolated canonical
+document validation preserved zero errors, 72 warnings and three infos across
+193 documents.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -3823,7 +3901,7 @@ or another registered cartridge ID.
 | 234 | Maxi 15 / AVE and Australian HES wiring | New implementation: Maxi15 | [r24540](https://www.nesdev.org/w/index.php?oldid=24540) |
 | 235 | Golden Game / eight packed ROM socket populations | New implementation: GoldenGame | [r22514](https://www.nesdev.org/w/index.php?oldid=22514) |
 | 236 | Realtec 8031/8155, 8099 and CHR-RAM 8106 | New implementation: RealtecMulticart | [r18875](https://www.nesdev.org/w/index.php?oldid=18875) |
-| 237 | Board-specific specification | Not registered | [r5823](https://www.nesdev.org/w/index.php?oldid=5823) |
+| 237 | Teletubbies 420-in-1 / forced-A1 type wiring | New implementation: Teletubbies | [r5823](https://www.nesdev.org/w/index.php?oldid=5823) |
 | 238 | Board-specific specification | Not registered | [r5824](https://www.nesdev.org/w/index.php?oldid=5824) |
 | 240 | Board-specific specification | New implementation: DiscreteMapper | [r21944](https://www.nesdev.org/w/index.php?oldid=21944) |
 | 241 | Board-specific specification | Not registered | [r23728](https://www.nesdev.org/w/index.php?oldid=23728) |
