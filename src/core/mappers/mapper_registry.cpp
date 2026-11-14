@@ -12,6 +12,7 @@
 #include "core/mappers/decathlon.hpp"
 #include "core/mappers/discrete.hpp"
 #include "core/mappers/flash_boards.hpp"
+#include "core/mappers/g0151.hpp"
 #include "core/mappers/golden_game.hpp"
 #include "core/mappers/irem.hpp"
 #include "core/mappers/irem_lrog017.hpp"
@@ -84,6 +85,8 @@ namespace {
         return RealtecMulticart::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 235U)
         return GoldenGame::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 246U)
+        return G0151::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 245U) {
         if (header.is_nes2 && header.submapper != 0U)
             return std::unexpected("Mapper 245 supports submapper 0");
@@ -825,6 +828,7 @@ void register_builtin_mappers() {
     registry.register_mapper(242, make_factory<Multicart242>());
     registry.register_mapper(244, make_factory<Decathlon>());
     registry.register_mapper(245, make_factory<Mmc3>());
+    registry.register_mapper(246, make_factory<G0151>());
     registry.register_mapper(249, make_factory<Mmc3>());
     registry.register_mapper(250, make_factory<Mmc3>());
     registry.register_mapper(262, make_factory<Mmc3>());

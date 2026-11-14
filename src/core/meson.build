@@ -32,6 +32,7 @@ core_sources = files(
     'mappers/mmc4.cpp',
     'mappers/discrete.cpp',
     'mappers/decathlon.cpp',
+    'mappers/g0151.cpp',
     'mappers/namco108.cpp',
     'mappers/irem.cpp',
     'mappers/irem_lrog017.cpp',

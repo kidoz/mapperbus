@@ -30,6 +30,7 @@
 #include "../support/mapper242_rom.hpp"
 #include "../support/mapper244_rom.hpp"
 #include "../support/mapper245_rom.hpp"
+#include "../support/mapper246_rom.hpp"
 #include "../support/rom_archive.hpp"
 #include "app/async_fds_bios_validation.hpp"
 #include "app/async_rom_loader.hpp"
@@ -2726,6 +2727,106 @@ TEST_CASE("F003 loading preserves battery WRAM and separates soft reset from col
             }
             REQUIRE(core::read_binary_file_capped(raw.string(), bytes.size(), "ROM") ==
                     core::Result<std::vector<Byte>>(bytes));
+        }
+}
+TEST_CASE("G0151 loading preserves narrow battery RAM and distinguishes retained latches from cold "
+          "defaults",
+          "[rom-source][mapper246]") {
+    core::register_builtin_mappers();
+    ArchiveFixture fixture;
+    TestDataHome data_home(fixture.root / "data");
+    for (bool legacy : {false, true})
+        for (bool vertical : {false, true}) {
+            const auto stem = std::to_string(legacy) + std::to_string(vertical);
+            const auto raw = fixture.root / (stem + ".nes"),
+                       archive = fixture.root / (stem + ".zip"),
+                       save = fixture.root / (stem + ".sav"),
+                       storage = fixture.root / (stem + "-storage");
+            const auto bytes = tests::make_mapper246_rom(legacy, vertical);
+            REQUIRE(core::write_binary_file_atomic(raw.string(), bytes, "G0151 fixture"));
+            write_archive(archive, {{"g0151.nes", bytes}});
+            EmulationSession session(std::make_unique<platform::NullVideo>(),
+                                     std::make_unique<platform::NullAudio>(),
+                                     std::make_unique<platform::NullInput>());
+            REQUIRE(session.open_rom(raw.string()));
+            session.emulator().step_frame();
+            REQUIRE(session.emulator().read_cpu(0x12U) == 0xC7U);
+            REQUIRE(session.emulator().read_cpu(0x14U) == 63U);
+            REQUIRE(session.emulator().read_cpu(0x15U) == 255U);
+            session.reset();
+            session.emulator().step_frame();
+            REQUIRE(session.emulator().read_cpu(0x12U) == 0xC7U);
+            REQUIRE(session.emulator().read_cpu(0x14U) == 32U);
+            REQUIRE(session.emulator().read_cpu(0x15U) == 15U);
+            REQUIRE(session.emulator().read_cpu(0x16U) == 0xA7U);
+            session.power_cycle();
+            session.emulator().step_frame();
+            REQUIRE(session.emulator().read_cpu(0x12U) == 0xC7U);
+            REQUIRE(session.emulator().read_cpu(0x16U) == 0xA7U);
+            REQUIRE(session.emulator().read_cpu(0x14U) == 63U);
+            REQUIRE(session.emulator().read_cpu(0x15U) == 255U);
+            session.close_rom();
+            auto persisted = core::read_binary_file_capped(save.string(), 2048U, "G0151 save");
+            REQUIRE(persisted);
+            REQUIRE(persisted->size() == 2048U);
+            REQUIRE(persisted->front() == 0xA7U);
+            REQUIRE(persisted->back() == 0x91U);
+            REQUIRE(session.open_rom(raw.string()));
+            session.emulator().step_frame();
+            REQUIRE(session.emulator().read_cpu(0x14U) == 63U);
+            REQUIRE(session.emulator().read_cpu(0x15U) == 255U);
+            REQUIRE(session.emulator().read_cpu(0x16U) == 0xA7U);
+            RomLoadRequest request;
+            request.path = archive.string();
+            request.member = "g0151.nes";
+            request.persistence_directory = storage;
+            auto prepared = prepare_rom(request);
+            REQUIRE(prepared);
+            prepared->emulator->step_frame();
+            REQUIRE(prepared->emulator->read_cpu(0x12U) == 0xC7U);
+            const auto staged = prepared->emulator->save_state();
+            REQUIRE(session.emulator().flush_persistent_data());
+            session.adopt_rom(std::move(*prepared));
+            REQUIRE(session.emulator().save_state() == staged);
+            session.close_rom();
+            const auto archive_save =
+                storage / "battery" / (core::sha256_hex(core::rom_sha256(bytes)) + ".sav");
+            REQUIRE(std::filesystem::exists(archive_save));
+            for (bool seven_zip : {false, true}) {
+                const auto path = fixture.root / (stem + (seven_zip ? ".7z" : ".zip"));
+                if (seven_zip)
+                    write_archive(path, {{"g0151.nes", bytes}}, true);
+                core::Emulator loaded;
+                REQUIRE(load_rom_source(loaded, path.string(), "g0151.nes", {}, storage));
+                loaded.power_on();
+                loaded.step_frame();
+                REQUIRE(loaded.read_cpu(0x12U) == 0xC7U);
+                REQUIRE(loaded.read_cpu(0x14U) == 63U);
+                REQUIRE(loaded.read_cpu(0x15U) == 255U);
+                REQUIRE(loaded.read_cpu(0x16U) == 0xA7U);
+                const auto before = loaded.save_state();
+                REQUIRE_FALSE(load_rom_source(
+                    loaded, path.string(), "g0151.nes", {}, storage, {}, {}, {}, "unknown"));
+                REQUIRE(loaded.save_state() == before);
+                auto invalid = bytes;
+                invalid[6] |= 8U;
+                const auto bad = fixture.root / "bad.nes";
+                REQUIRE(core::write_binary_file_atomic(bad.string(), invalid, "invalid G0151"));
+                REQUIRE_FALSE(load_rom_source(loaded, bad.string(), {}, {}, storage));
+                REQUIRE(loaded.save_state() == before);
+            }
+            REQUIRE(core::read_binary_file_capped(raw.string(), bytes.size(), "ROM") ==
+                    core::Result<std::vector<Byte>>(bytes));
+            core::Emulator running;
+            REQUIRE(load_rom_source(running, raw.string()));
+            running.power_on();
+            running.step_frame();
+            const auto before = running.save_state();
+            REQUIRE(core::write_binary_file_atomic(
+                save.string(), std::vector<core::Byte>(2049U), "oversized G0151 save"));
+            // Startup imports are best effort; explicit imports report the size failure.
+            REQUIRE_FALSE(running.load_battery_ram(save.string()));
+            REQUIRE(running.save_state() == before);
         }
 }
 } // namespace
