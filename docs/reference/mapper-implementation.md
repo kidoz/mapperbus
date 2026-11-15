@@ -4655,8 +4655,9 @@ problem; the ordinary mirroring case already passed.
 
 ### Remaining OneBus integration
 
-The next implementation layer is native/MMC3 PRG and CHR banking plus IRQs,
-with a bounded atomic state contract. Sources are
+The next implementation layer was native/MMC3 PRG and CHR banking plus IRQs,
+with a bounded atomic state contract; the component is described in the second
+step below. The remaining console capabilities still prevent registration. Sources are
 [PRG banking r12704](https://www.nesdev.org/w/index.php?oldid=12704),
 [CHR banking r12696](https://www.nesdev.org/w/index.php?oldid=12696),
 [MMC3 forwarding r23929](https://www.nesdev.org/w/index.php?oldid=23929) and
@@ -4664,7 +4665,8 @@ with a bounded atomic state contract. Sources are
 A OneBus image shares PRG/CHR storage; converted WXN images may use separate
 spaces. Preserve that distinction without copying a shared ROM into another
 CHR buffer. The native PRG middle/outer masks, selectable third bank and
-COMR6 pair swapping require their own address calculation. Native $4105 and
+COMR6 swapping require their own address calculation (the detailed register
+table resolves the overview's ambiguous pair-swap wording; see below). Native $4105 and
 MMC3 register selection interact; forwarding can be disabled. Do not assume
 that an unchanged Mmc3 instance implements these rules.
 
@@ -4691,6 +4693,111 @@ full SDL3/NodalKit build, formatting, scoped clang-tidy, whitespace and exact
 162-ID registry/ledger comparison passed. Isolated strict-consumer standards
 validation retained zero errors, 72 warnings and three infos across 193
 documents. No OneBus title or enhanced-console fidelity is claimed.
+
+## Mapper-256 second step: normal OneBus banking and IRQ component
+
+`OneBus` now implements the normal, unencrypted register set as an isolated
+core component. **Mapper 256 remains unregistered** and the registry count
+remains 162. This step does not enable loading OneBus games or claim a VT02,
+VT03 or VT369 machine. Native PPU controls for enhanced video, sound, GPIO,
+opcode scrambling and console capability metadata still need integration.
+
+The original implementation follows the pinned
+[PRG r12704](https://www.nesdev.org/w/index.php?oldid=12704),
+[CHR r12696](https://www.nesdev.org/w/index.php?oldid=12696),
+[forwarding r23929](https://www.nesdev.org/w/index.php?oldid=23929) and
+[detailed register r23930](https://www.nesdev.org/w/index.php?oldid=23930)
+specifications. Native $4100–$410B select inner/middle/outer PRG banks, a
+selectable third window, mirroring and IRQ controls. $2012–$2017 select the
+paired/inverted CHR windows, $2018 supplies intermediate bits and $201A
+supplies the middle mask/substitution. All eight PRG masks and CHR mask codes
+are tested. The native and MMC3 register selectors share state, all normal
+MMC3 aliases forward, and $410B.3 disables every forwarded port without
+blocking native writes. $A001 has no native WRAM port and is ignored. No
+external WRAM, battery or expansion audio is supplied by this component.
+
+The PRG overview describes COMR6 as inverting CPU A14, but the detailed
+r23930 decoding table leaves PQ1 and the fixed $FF window in place. The
+component follows that table: only PQ0 and PQ2/$FE exchange the $8000/$C000
+windows. This agrees with the
+[NRS hardware reference at b685625](https://github.com/gmestanley/NintendulatorNRS-DBG/blob/b685625310ec026afa844340d94503f9767b72df/src-mappers/src/Hardware/h_OneBus.cpp).
+The earlier first-step work list's pair-swap wording must not be used as an
+implementation rule. Reference emulator code is not incorporated.
+
+Other reference differences remain explicit policies. A forwarded $8000
+write does not forward bit 5; this component preserves native CIRAM selection
+where NRS clears it. Native $4105.5 routes pattern accesses to the console's
+existing 2 KiB CIRAM, mirrored across the pattern window, without another RAM
+buffer. CHR mask codes 3/7 are called invalid by r12696; a zero-mask fallback
+follows the published NRS compatibility behavior. Exact reserved-code wiring,
+CIRAM selection interactions and reset circuitry remain unverified.
+
+A12 mode clocks on rising edges qualified by at least three low M2 cycles;
+held-high pins and short pulses do not count. $410B.7 selects HSYNC instead.
+A new default-noop `on_ppu_hblank` callback, forwarded by Cartridge, is emitted
+at PPU dot 256 on every scanline, including blanked/vblank/pre-render lines.
+The component treats it as one timer pulse regardless of renderer enable.
+NRS gates IRQ visibility on rendering and restricts its scanline callback;
+this component instead follows the native timer interpretation as explicit
+policy. Physical phase, rendering gates and edge polarity still need hardware
+checks. The existing MMC3 dot-260 callback remains separate and does not clock
+OneBus, preventing duplicate counts. Existing mapper clocks, PPU scroll
+updates and ADR-001's omitted prefetch increments are unchanged.
+
+IRQ latch writes, next-clock reload, enable, disable/acknowledge, pending state,
+repeating zero latches and partial A12 qualification are serialized. Reset and
+cold power restore documented compatibility defaults: PRG 0/1/$FE/$FF, CHR
+0–7, vertical CIRAM and cleared IRQ/pin state. The fixed 30-byte payload contains
+a version tag, PRG/CHR sizes, bank/control registers, counter flags and filter
+phase. It is staged on the stack and validated before mutation. Truncation,
+reserved flags and mismatched geometries reject atomically without a ROM copy.
+CIRAM remains in PPU state; immutable ROMs and derived offsets are not saved.
+Existing mapper payloads, machine version 20 and the 4 MiB state ceiling stay
+unchanged.
+
+An absent CHR image addresses the existing PRG vector directly. A split image
+uses its own immutable CHR vector. There are no extra decoded CHR planes or
+ROM-sized scratch arrays. The component's bounded test envelope is power-of-two
+32 KiB–8 MiB PRG and absent or 8 KiB–4 MiB CHR, no declared RAM/NVRAM or battery,
+H/V header flags and NES 2.0 mapper 256 submapper zero. It is an address-width
+compatibility envelope, not a census of physical populations or a loader
+capability declaration. Other submappers reject; console profiles and the full
+32 MiB population remain future work. The global 16 MiB ROM-input cap is not
+raised. Native register reads use CPU open bus as policy, and unsupported
+extended graphics controls are consumed but not emulated by this test-only
+component. It must not be registered as a full console implementation.
+
+`one-bus` has ten cases covering exact CPU/PPU apertures, every MMC3 CPU write
+address, forwarding disable, native selector interaction, all bank data bytes,
+mask/middle/outer combinations, patterned PRG cells, shared/split ROM, CHR
+protection, all IRQ latches, pin qualification, reset, replay and malformed
+state rollback. Original CPU firmware runs four shared/split and H/V-header
+fixtures, checking actual PPUDATA, CIRAM aliases, both IRQ delivery paths and
+machine-state replay/rollback, including checkpoints while each IRQ source is
+active. Fixtures temporarily replace the existing
+mapper-4 factory only as a transport and restore builtin factories before
+assertions; they add no fake registry ID. Separate PPU tests exercise HSYNC
+with rendering on/off in NTSC/PAL/Dendy timing, including blanked and pre-render
+lines. PAL tests validate the generic timing seam, not a claimed PAL VTxx
+console. No commercial ROM, physical board or enhanced-console game is used.
+
+Next integrate explicit console capabilities and supported register/graphics
+profiles before registering 256. Submapper permutations and opcode-only
+variants require separate validation; the current component deliberately
+supports only normal submapper zero.
+
+Validation on 2026-11-15 passed all 113 regular Meson targets with GPU checks
+required and ten focused ASan+UBSan targets (`one-bus`, `bus`, `ppu`,
+`mapper-timing`, `save-state`, `mappers`, `rom-source`, `fds`, `cpu`,
+`cpu-accuracy`) with four workers and leak detection disabled on macOS.
+Both builds passed 1,950,857 OneBus assertions across ten cases. Existing
+bus/PPU totals remained 141,934/212 assertions in 34/21 cases; shared mapper
+and loading totals remained 5,285,691/20,632 assertions in 469/39 cases.
+The full SDL3/NodalKit build, formatting, scoped clang-tidy, whitespace and
+exact 162-ID registry/ledger comparison passed. Isolated strict-consumer
+standards validation retained zero errors, 72 warnings and three infos across
+193 documents. These are component/model results, not hardware or commercial
+title certification.
 
 ## Every documented registry slot
 
@@ -4963,7 +5070,7 @@ or another registered cartridge ID.
 | 253 | Waixing VRC4 CHR4/5 / F009S relocation profile | New implementation: KonamiVrc | [r5910](https://www.nesdev.org/w/index.php?oldid=5910) |
 | 254 | Pikachu Y2K WRAM XOR protection | New implementation: Mmc3 | [r24273](https://www.nesdev.org/w/index.php?oldid=24273) |
 | 255 | 110-in-1 / apparent duplicate of 225 | Apparent duplicate; not registered | [r20429](https://www.nesdev.org/w/index.php?oldid=20429) |
-| 256 | OneBus / VTxx native console registers | Not registered: native PPU routing prerequisite implemented | [r23934](https://www.nesdev.org/w/index.php?oldid=23934) |
+| 256 | OneBus / VTxx native console registers | Not registered: normal banking/IRQ component implemented | [r23934](https://www.nesdev.org/w/index.php?oldid=23934) |
 | 257 | Dongda / Hongda educational boards | Not registered | [r23118](https://www.nesdev.org/w/index.php?oldid=23118) |
 | 258 | Board-specific specification | Not registered | [r7627](https://www.nesdev.org/w/index.php?oldid=7627) |
 | 259 | Board-specific specification | Not registered | [r7628](https://www.nesdev.org/w/index.php?oldid=7628) |
