@@ -433,6 +433,12 @@ test_mapper254 = executable('test-mapper254',
 )
 test('mapper254', test_mapper254, timeout : mapper_test_timeout)
 
+test_one_bus = executable('test-one-bus',
+    'unit/test_one_bus.cpp',
+    dependencies : [mapperbus_core_dep, catch2_dep],
+)
+test('one-bus', test_one_bus, timeout : mapper_test_timeout)
+
 test_battle_city_render = executable('test-battle-city-render',
     'integration/test_battle_city_render.cpp',
     dependencies : [mapperbus_core_dep, catch2_dep],

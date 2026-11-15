@@ -307,6 +307,9 @@ void Ppu::step_dots(uint32_t ppu_dots) {
             }
         }
 
+        if (cycle_ == 256U && cartridge_ != nullptr)
+            cartridge_->on_ppu_hblank();
+
         // Clock mapper IRQ counter (A12 rising edge, cycle 260)
         if (cycle_ == 260 && rendering && cartridge_ != nullptr) {
             if (visible_line || pre_render) {

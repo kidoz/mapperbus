@@ -131,6 +131,8 @@ class Mapper {
     }
     virtual void acknowledge_irq() {}
     virtual void clock_irq_counter() {}
+    /// Once per physical scanline at dot 256, including blanked/vblank lines.
+    virtual void on_ppu_hblank() {}
     /// One M2/CPU cycle, including stalled and DMA cycles. Independent of audio.
     virtual void clock_cpu() {}
     /// Optional PPU address-pin observation, separate from cached pixel reads.

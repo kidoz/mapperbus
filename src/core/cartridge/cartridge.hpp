@@ -139,6 +139,9 @@ class Cartridge {
     void acknowledge_irq() {
         mapper_->acknowledge_irq();
     }
+    void on_ppu_hblank() {
+        mapper_->on_ppu_hblank();
+    }
     void clock_irq_counter() {
         mapper_->clock_irq_counter();
     }
