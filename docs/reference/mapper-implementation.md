@@ -4548,6 +4548,65 @@ strict-consumer standards validation retained zero errors, 72 warnings and
 three infos across 193 documents. Physical protection/reset/IRQ behavior and
 commercial-title compatibility remain unverified.
 
+## Mapper-255 classification: apparent duplicate of 225
+
+[NESdev mapper 255 revision 20429](https://www.nesdev.org/w/index.php?oldid=20429)
+describes the 110-in-1 address latch and calls the assignment an apparent
+duplicate of mapper 225. The corresponding
+[mapper 225 revision 18874](https://www.nesdev.org/w/index.php?oldid=18874)
+identifies ET-4310 / K-1010 boards and likewise notes the duplicate assignment.
+Following the project's existing duplicate-ID policy, 255 remains unregistered;
+its catalog row now records the research result explicitly. Core, CLI and app
+loading require `Unsupported mapper: 255`. No automatic header rewriting,
+blanket alias or extra registered cartridge ID is introduced. The registry
+still contains 162 cartridge IDs; this is classification and regression work,
+not a new mapper implementation.
+
+Existing `DiscreteMapper` 225 already implements the shared A14 outer bit for
+both PRG and CHR. A6–A11 select the inner 16 KiB PRG bank, A12 selects mirrored
+16 KiB versus aligned consecutive 32 KiB, A0–A5 select the inner 8 KiB CHR bank,
+and A13 selects H/V CIRAM. The 255 report describes four 512 KiB PRG ROMs and
+two 512 KiB CHR ROMs; tests now exercise the resulting 2 MiB / 1 MiB address
+space. The existing 225 populated-RAM model retains four low-nibble locations
+at $5800–$5803, mirrored through $5FFF, preserving undriven CPU data bits.
+
+The [original board investigation](https://forums.nesdev.org/viewtopic.php?p=209732#p209732)
+and [follow-up population discussion](https://forums.nesdev.org/viewtopic.php?start=15&t=12647)
+report boards with and without the 74'670 RAM chip. The 255 article reports
+latch reset pins tied high, hence unpredictable physical startup. These facts
+do not establish a universal RAM-population distinction between mapper IDs.
+The current 225 model includes nibble RAM and deterministically resets its
+bank latch to zero/vertical; this is compatibility policy, not emulation of
+unreset random latch contents. The RAM-absent population, physical startup
+and commercial-title compatibility remain unverified. This step does not
+claim that the populated 225 model faithfully represents every 110-in-1 PCB.
+
+Four new `[mapper225]` core cases check all 32,768 bank-select addresses with
+two data bytes, both PRG windows, shared outer CHR pins, mirroring and ROM
+write protection. They also check every low cartridge write address, nibble
+RAM boundaries/mirrors and all 256 data values. Four original CPU fixtures
+cover legacy/native headers and H/V header flags. They relocate to console
+RAM to switch both PRG windows, use PPUDATA and CIRAM, check nibble RAM and
+verify soft/cold reset plus deterministic machine replay. The full-chip
+fixtures contain only original generated bank data and firmware.
+
+A new shared loading case rejects 255 in raw/ZIP/7z and prepared-load paths,
+leaves a running 225 machine unchanged and verifies immutable source files.
+`cli-mapper255` checks eight canonical 225 boot profiles and sixteen explicit
+255 rejections across both header formats, H/V, ROM sizes and battery flags.
+No production mapper logic, old state layout, machine version, allocation
+ceiling, test timeout or PPU timing changes are needed. Mapper 256 is the next
+catalog entry to investigate.
+
+Validation on 2026-11-15 passed all 112 regular Meson targets with GPU checks
+required. The two changed suites, `mappers` and `rom-source`, also passed under
+ASan+UBSan with leak detection disabled on macOS. Both builds passed 789,430
+new core assertions in four cases; shared totals are 5,285,691 assertions /
+469 mapper cases and 20,632 assertions / 39 loading cases. The full build,
+formatting, scoped clang-tidy, whitespace and exact 162-ID registry/ledger
+comparison passed. Isolated strict-consumer standards validation retained
+zero errors, 72 warnings and three infos across 193 documents.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -4790,7 +4849,7 @@ or another registered cartridge ID.
 | 222 | CTC-31 / VRC2 plus discrete IRQ logic | Not registered: hardware/register evidence gap | [r5746](https://www.nesdev.org/w/index.php?oldid=5746) |
 | 223 | Obsolete apparent duplicate of 199 | Not registered: source directs mapper 199 | [r24635](https://www.nesdev.org/w/index.php?oldid=24635) |
 | 224 | Jncota KT-008 / mapper-268 chipset | Not registered: board wiring requires research | [r5752](https://www.nesdev.org/w/index.php?oldid=5752) |
-| 225 | Board-specific specification | New implementation: DiscreteMapper | [r18874](https://www.nesdev.org/w/index.php?oldid=18874) |
+| 225 | ET-4310 / K-1010 address-latched multicarts | New implementation: DiscreteMapper | [r18874](https://www.nesdev.org/w/index.php?oldid=18874) |
 | 226 | Board-specific specification | New implementation: DiscreteMapper | [r22261](https://www.nesdev.org/w/index.php?oldid=22261) |
 | 227 | Address-latched multicart / RPG boards | New implementation: Multicart227 | [r23188](https://www.nesdev.org/w/index.php?oldid=23188) |
 | 228 | Action 52 / Active Enterprises | New implementation: Action52 | [r5784](https://www.nesdev.org/w/index.php?oldid=5784) |
@@ -4818,7 +4877,7 @@ or another registered cartridge ID.
 | 252 | Waixing VRC4e / Sangokushi mixed CHR | New implementation: KonamiVrc | [r5906](https://www.nesdev.org/w/index.php?oldid=5906) |
 | 253 | Waixing VRC4 CHR4/5 / F009S relocation profile | New implementation: KonamiVrc | [r5910](https://www.nesdev.org/w/index.php?oldid=5910) |
 | 254 | Pikachu Y2K WRAM XOR protection | New implementation: Mmc3 | [r24273](https://www.nesdev.org/w/index.php?oldid=24273) |
-| 255 | Board-specific specification | Not registered | [r20429](https://www.nesdev.org/w/index.php?oldid=20429) |
+| 255 | 110-in-1 / apparent duplicate of 225 | Apparent duplicate; not registered | [r20429](https://www.nesdev.org/w/index.php?oldid=20429) |
 | 256 | OneBus | Not registered | [r23934](https://www.nesdev.org/w/index.php?oldid=23934) |
 | 257 | Dongda / Hongda educational boards | Not registered | [r23118](https://www.nesdev.org/w/index.php?oldid=23118) |
 | 258 | Board-specific specification | Not registered | [r7627](https://www.nesdev.org/w/index.php?oldid=7627) |

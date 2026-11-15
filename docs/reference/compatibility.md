@@ -100,6 +100,10 @@ not establish commercial-title compatibility for every new board.
 Unsupported IDs fail cartridge creation with an `Unsupported mapper` error.
 Obsolete mapper 248 remains unsupported; its documented cartridge behavior is
 covered under mapper 115, without automatic header rewriting.
+Apparent duplicate mapper 255 remains unregistered; its address-latched banking
+is already implemented by mapper 225. Mapper 225 currently models populated
+nibble RAM and deterministic reset; RAM-absent boards and physical startup
+remain unverified. See the [255 classification](mapper-implementation.md#mapper-255-classification-apparent-duplicate-of-225).
 Historical duplicate mapper 182 is likewise unregistered; its documented
 cartridge behavior is covered under mapper 114.
 Sunsoft DCS option cartridges load alongside a submapper 68:1 base using
