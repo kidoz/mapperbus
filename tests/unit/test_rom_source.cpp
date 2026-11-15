@@ -19,6 +19,7 @@
 #include "../support/dcs_rom.hpp"
 #include "../support/fds_image.hpp"
 #include "../support/flash_rom.hpp"
+#include "../support/mapper225_rom.hpp"
 #include "../support/mapper230_rom.hpp"
 #include "../support/mapper233_rom.hpp"
 #include "../support/mapper234_rom.hpp"
@@ -3157,6 +3158,61 @@ TEST_CASE("Pikachu 254 loading preserves protected raw WRAM across archives and 
                     REQUIRE(running.save_state() == before);
                 }
             }
+}
+
+TEST_CASE("App loading rejects apparent duplicate 255 without replacing a running mapper 225",
+          "[rom-source][mapper225][mapper255]") {
+    core::register_builtin_mappers();
+    ArchiveFixture fixture;
+    TestDataHome data_home(fixture.root / "data");
+    for (bool legacy : {false, true})
+        for (bool vertical : {false, true}) {
+            const auto bytes = tests::make_mapper225_rom(legacy, vertical);
+            const auto valid_path = fixture.root / "canonical.nes";
+            REQUIRE(
+                core::write_binary_file_atomic(valid_path.string(), bytes, "mapper 225 fixture"));
+            core::Emulator live;
+            REQUIRE(load_rom_source(live, valid_path.string()));
+            live.power_on();
+            live.step_frame();
+            REQUIRE(live.read_cpu(0x12U) == 0xD5U);
+            const auto before = live.save_state();
+            auto duplicate = bytes;
+            duplicate[6] |= 0xE0U;
+            duplicate[7] |= 0x10U;
+            for (unsigned format = 0U; format < 3U; ++format) {
+                const auto path = fixture.root / (format == 0U   ? "duplicate.nes"
+                                                  : format == 1U ? "duplicate.zip"
+                                                                 : "duplicate.7z");
+                if (format == 0U)
+                    REQUIRE(core::write_binary_file_atomic(
+                        path.string(), duplicate, "mapper 255 fixture"));
+                else
+                    write_archive(path, {{"duplicate.nes", duplicate}}, format == 2U);
+                const auto original =
+                    core::read_binary_file_capped(path.string(), 4194304U, "source");
+                REQUIRE(original);
+                const auto member = format == 0U ? "" : "duplicate.nes";
+                auto loaded = load_rom_source(live, path.string(), member);
+                REQUIRE_FALSE(loaded);
+                REQUIRE(loaded.error().find("Unsupported mapper: 255") != std::string::npos);
+                REQUIRE(live.save_state() == before);
+                RomLoadRequest request;
+                request.path = path.string();
+                request.member = member;
+                auto prepared = prepare_rom(request);
+                REQUIRE_FALSE(prepared);
+                REQUIRE(prepared.error().find("Unsupported mapper: 255") != std::string::npos);
+                REQUIRE(live.save_state() == before);
+                REQUIRE(core::read_binary_file_capped(path.string(), 4194304U, "source") ==
+                        original);
+                REQUIRE_FALSE(
+                    std::filesystem::exists(std::filesystem::path(path).replace_extension(".sav")));
+            }
+            REQUIRE(core::read_binary_file_capped(
+                        valid_path.string(), bytes.size(), "canonical source") ==
+                    core::Result<std::vector<Byte>>(bytes));
+        }
 }
 
 } // namespace

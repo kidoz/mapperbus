@@ -3,6 +3,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <vector>
 
+#include "../support/mapper225_rom.hpp"
 #include "core/bus/memory_bus.hpp"
 #include "core/cartridge/cartridge.hpp"
 #include "core/emulator.hpp"
@@ -662,6 +663,111 @@ TEST_CASE("Additional latch boards select their documented windows", "[mappers][
     aladdin->write_prg(0xC000, 1);
     REQUIRE(aladdin->read_prg(0x8000) == 9);
     REQUIRE(aladdin->read_prg(0xC000) == 11);
+}
+
+TEST_CASE("Mapper 225 decodes every address and shared high bank pin at full capacity",
+          "[mappers][mapper225]") {
+    register_builtin_mappers();
+    auto made = MapperRegistry::instance().create(
+        board_header(225U), bank_rom(2097152U, 16384U), bank_rom(1048576U, 8192U));
+    REQUIRE(made);
+    auto& m = **made;
+    for (unsigned address = 0x8000U; address <= 0xFFFFU; ++address)
+        for (Byte data : {0U, 0xFFU}) {
+            m.write_prg(static_cast<Address>(address), data);
+            const unsigned outer = (address & 0x4000U) != 0U ? 64U : 0U;
+            const unsigned inner = (address >> 6U) & 63U;
+            const bool narrow = (address & 0x1000U) != 0U;
+            const unsigned low = outer + (narrow ? inner : inner & 62U);
+            const unsigned high = outer + (narrow ? inner : inner | 1U);
+            for (Address probe : {0x8000U, 0x9FFFU, 0xBFFFU, 0xC000U, 0xDFFFU, 0xFFFFU})
+                REQUIRE(m.read_prg(probe) == (probe < 0xC000U ? low : high));
+            for (Address probe : {0U, 0x3FFU, 0x1000U, 0x1FFFU}) {
+                const auto expected = static_cast<Byte>(outer + (address & 63U));
+                m.write_chr(probe, static_cast<Byte>(expected ^ 255U));
+                REQUIRE(m.read_chr(probe) == expected);
+            }
+            REQUIRE(m.mirror_mode() ==
+                    ((address & 0x2000U) != 0U ? MirrorMode::Horizontal : MirrorMode::Vertical));
+        }
+}
+
+TEST_CASE("Mapper 225 nibble RAM mirrors preserve the undriven CPU bus bits",
+          "[mappers][mapper225][bus]") {
+    auto c = cartridge(225U);
+    MemoryBus bus;
+    bus.connect_cartridge(&c);
+    for (unsigned address = 0x4020U; address < 0x8000U; ++address) {
+        for (unsigned slot = 0U; slot < 4U; ++slot)
+            bus.write(static_cast<Address>(0x5800U + slot), static_cast<Byte>(slot));
+        bus.write(static_cast<Address>(address), 0xBAU);
+        for (unsigned slot = 0U; slot < 4U; ++slot) {
+            bus.write(0U, 0x50U);
+            const bool written = address >= 0x5800U && address < 0x6000U && (address & 3U) == slot;
+            REQUIRE(bus.read(static_cast<Address>(0x5800U + slot)) ==
+                    (0x50U | (written ? 10U : slot)));
+        }
+    }
+    for (unsigned data = 0U; data < 256U; ++data)
+        for (unsigned slot = 0U; slot < 4U; ++slot) {
+            bus.write(static_cast<Address>(0x5800U + slot), static_cast<Byte>(data));
+            for (unsigned alias : {0x5800U, 0x5ABCU, 0x5FFCU}) {
+                bus.write(0U, static_cast<Byte>(data ^ 0xF0U));
+                REQUIRE(bus.read(static_cast<Address>(alias + slot)) ==
+                        ((data ^ 0xF0U) & 0xF0U) + (data & 15U));
+            }
+        }
+}
+
+TEST_CASE("Mapper 255 is an apparent duplicate and requires explicit unsupported ID errors",
+          "[mappers][mapper225][mapper255]") {
+    register_builtin_mappers();
+    for (bool legacy : {false, true})
+        for (bool vertical : {false, true}) {
+            auto bytes = mapperbus::tests::make_mapper225_rom(legacy, vertical);
+            bytes[6] |= 0xE0U;
+            bytes[7] |= 0x10U;
+            auto result = Cartridge::from_data(bytes);
+            REQUIRE_FALSE(result);
+            REQUIRE(result.error() == "Unsupported mapper: 255");
+            for (bool battery : {false, true}) {
+                auto h = board_header(255U);
+                h.is_nes2 = !legacy;
+                h.has_battery = battery;
+                auto unsupported = MapperRegistry::instance().create(
+                    h, bank_rom(32768U, 16384U), bank_rom(8192U, 8192U));
+                REQUIRE_FALSE(unsupported);
+                REQUIRE(unsupported.error() == "Unsupported mapper: 255");
+            }
+        }
+}
+
+TEST_CASE("Mapper 225 original CPU firmware switches both PRG halves from console RAM",
+          "[mappers][mapper225]") {
+    register_builtin_mappers();
+    for (bool legacy : {false, true})
+        for (bool vertical : {false, true}) {
+            auto c = Cartridge::from_data(mapperbus::tests::make_mapper225_rom(legacy, vertical));
+            REQUIRE(c);
+            Emulator e;
+            REQUIRE(e.load_cartridge(std::move(*c), ""));
+            e.power_on();
+            e.step_frame();
+            INFO("pc=" << e.cpu().pc());
+            REQUIRE(e.read_cpu(0x12U) == 0xD5U);
+            const auto saved = e.save_state();
+            e.step_frame();
+            const auto expected = e.save_state();
+            REQUIRE(e.load_state(saved));
+            e.step_frame();
+            REQUIRE(e.save_state() == expected);
+            e.reset();
+            e.step_frame();
+            REQUIRE(e.read_cpu(0x12U) == 0xD5U);
+            e.power_on();
+            e.step_frame();
+            REQUIRE(e.read_cpu(0x12U) == 0xD5U);
+        }
 }
 
 TEST_CASE("Multicart outer address lines reach distinct banks", "[mappers][multicart]") {
