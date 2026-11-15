@@ -4,7 +4,7 @@ This ledger tracks the requested implementation of every documented NES/Famicom
 cartridge mapper, including bootlegs and homebrew. **The full target is not yet
 complete.** Updated 2026-11-15 against the working-tree registry.
 
-There are **161 registered cartridge IDs**: the original 14, 53 added in the first
+There are **162 registered cartridge IDs**: the original 14, 53 added in the first
 batch, and Irem 32/65/77, Sunsoft 67/68, Taito 33/48/80/207/82/552, Jaleco 18/72/92/101,
 Namco 210, MMC3 variants 118/119, RAMBO-1 64/158, Bandai 16/153/159, and Datach
 157, UNROM 512 30, GTROM/direct MMC1 111, and J.Y. Company
@@ -14,7 +14,7 @@ IDs, Sachen MMC3 clones 262/512/513, Rex Soft's 263, Nitra 250, mappers
 TNROM640 198, Waixing FS309 199, multicarts 202/205, Gouder/JJ-01 208,
 Sugar Softec 215, Single Chip 218, Kasheng A9461 219, NTDEC N625092 221,
 address-latched multicarts/RPGs 227, Active Enterprises 228, reset-driven 22-in-1 230 and
-profiled 42 Games 233, Maxi 15 234, Golden Game 235, Realtec 236, Teletubbies 237, Contra Fighter 238, BxROM/WRAM 241, 43272/ET-113 242, C&E Decathlon 244, Waixing F003 245, G0151-1 246 and Waixing VRC4 252/253
+profiled 42 Games 233, Maxi 15 234, Golden Game 235, Realtec 236, Teletubbies 237, Contra Fighter 238, BxROM/WRAM 241, 43272/ET-113 242, C&E Decathlon 244, Waixing F003 245, G0151-1 246, Waixing VRC4 252/253 and Pikachu Y2K 254
 detailed below.
 FDS remains a separate subsystem, conventionally numbered 20. Registration and
 synthetic tests do not certify every commercial game, revision, peripheral, or
@@ -24,6 +24,7 @@ unusual ROM geometry.
 
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
+| Pikachu Y2K (follow-up) | 254 | MMC3 PRG/CHR/CIRAM/IRQs, masked WRAM reads until bank-select unlock, raw RAM persistence, reset policy and atomic snapshots. |
 | Waixing VRC4 fixed/relocated CHR (follow-up) | 253 | Default CHR4/5 RAM and explicit f009s PPU-write relocation, shared 2 KiB RAM, VRC4e banking/CIRAM/IRQ and profile/geometry-bound atomic snapshots. |
 | Waixing VRC4 mixed CHR (follow-up) | 252 | Exact VRC4e A2/A3 decoding, PRG swap, four CIRAM arrangements, WRAM gate, two writable CHR pages and CPU-driven IRQs with atomic snapshots. |
 | G0151-1 / Feng Shen Bang (follow-up) | 246 | Independent 8 KiB PRG / 2 KiB CHR banks, narrow GAL register decode, transient A17 vector-read override, fixed H/V, 2 KiB battery RAM and atomic snapshots. |
@@ -4469,6 +4470,84 @@ passed. Isolated strict-consumer standards validation retained zero errors,
 72 warnings and three infos across 193 documents. Physical startup, undocumented
 GAL commands, clone wiring/delays and commercial titles remain unverified.
 
+## Mapper-254 follow-up: Pikachu Y2K WRAM protection
+
+The original implementation extends `Mmc3` using
+[NESdev mapper 254 revision 24273](https://www.nesdev.org/w/index.php?oldid=24273).
+While protection is armed, enabled $6000–$7FFF reads return raw WRAM XOR the
+full byte last written to $A001–$BFFF odd. Any $8000–$9FFE even write unlocks
+raw reads until console reset. These overlays run in parallel with ordinary
+MMC3 registers: bank select/mode still change, and $A001 still controls WRAM
+enable and write protection. WRAM writes always store raw bytes subject to
+those gates. Disabled RAM leaves CPU open bus untouched; the XOR mask never
+transforms an undriven bus. Low WRAM writes cannot unlock protection. Later
+$A001 writes do not rearm it. PRG uses conventional switchable 8 KiB banks,
+CHR uses paired/inverted MMC3 ROM banks, and $A000 controls H/V CIRAM.
+
+This is a published compatibility model, not verified protection circuitry.
+The wiki explicitly leaves original hardware and reset detection unknown.
+[MesenCE at ffde0fc](https://github.com/nesdev-org/MesenCE/blob/ffde0fc646b070ef6c221b2766fbbee006396486/Core/NES/Mappers/Mmc3Variants/MMC3_254.h)
+uses the XOR/unlock model but only traps literal $8000/$A001 and does not
+explicitly rearm protection on reset. MapperBus follows the wiki's full
+MMC3 register ranges. In contrast,
+[NintendulatorNRS-DBG at b685625](https://github.com/gmestanley/NintendulatorNRS-DBG/blob/b685625310ec026afa844340d94503f9767b72df/src-mappers/src/iNES/MMC3-based/mapper254.cpp)
+XORs $80, clears protection on odd-valued low WRAM writes, resets it armed,
+and uses a different WRAM policy. These incompatible models are recorded as
+uncertainty rather than combined into speculative board profiles. Code and
+fixtures are original; reference emulator code is not incorporated.
+
+Soft reset and cold power restore MMC3 register/IRQ/header-mirror defaults,
+rearm protection and clear the XOR mask to zero. Soft reset retains WRAM;
+cold power clears volatile WRAM while preserving imported battery bytes.
+These reset defaults are explicit compatibility policy. The existing MMC3
+rendered-scanline/dot-260 IRQ approximation, including repeating zero latches,
+is retained. Filtered A12 timing, clone IRQ wiring and electrical reset
+remain unverified; this change does not alter PPU timing.
+
+The accepted population is 128 KiB PRG-ROM, 128 KiB CHR-ROM and 8 KiB WRAM.
+[MAME metadata at 484b993](https://github.com/mamedev/mame/blob/484b993578e6b7155e5a039c4e4962a5d1ad78e8/hash/nes.xml)
+records `pikay2k` / BTL-PIKACHUY2K with those sizes, but labels its decrypted
+ROMs bad dumps. Metadata is not physical-board certification. Optional battery
+persistence is a loader policy, not evidence of another population. Native
+NES 2.0 requires submapper zero, exactly 8 KiB PRG RAM or NVRAM according to
+the battery flag, no CHR RAM/NVRAM and H/V startup. Legacy headers infer the
+physical 8 KiB WRAM even without a battery. Other geometries, four-screen
+headers and invented profiles reject. There is no ROM decryption, hash-based
+repair, expansion audio or speculative alternate protection mode.
+
+The 8,211-byte mapper state contains raw WRAM, the existing 15-byte MMC3
+register/IRQ/RAM state, a battery/startup-mirror tag, a validated unlock byte
+and full XOR mask. It excludes unused CHR backing. Existing MMC3 storage is
+reused; no new ROM-sized allocations are introduced. A bounded state backup
+makes malformed/truncated imports atomic without cloning either ROM. Valid
+imports restore derived banks, protection and partial IRQ state. Other mapper
+payloads, machine version 20 and the 4 MiB ceiling remain unchanged. Battery
+files contain exactly the raw 8 KiB WRAM, never XOR-transformed read values.
+
+`mapper254` covers all raw byte/mask pairs, every CPU write address, alias
+forwarding, every PRG data byte, patterned PRG cells, every CHR data byte in
+both inversions, ROM write protection, WRAM gates/open bus, reset, IRQ replay,
+malformed-state rollback and battery/mirror identity rejection. Eight original
+CPU firmware images exercise both header formats, battery options and H/V
+startup, PPUDATA, CIRAM, actual IRQ delivery, rearmed reset and deterministic
+machine replay. `rom-source-mapper254` covers raw/ZIP/7z, session reset/power,
+prepare/adopt, raw save contents/reload, capped imports, failed-load rollback
+and immutable input ROMs. `cli-mapper254` runs 16 loading combinations and
+25 rejected inputs; eight raw battery signatures prove firmware completion.
+C++ asserts completion for volatile boards too. Dedicated targets preserve
+existing timeout limits.
+
+Validation on 2026-11-15 passed all 111 regular Meson targets with GPU checks
+required and 36 focused ASan+UBSan targets with four workers (leak detection
+disabled on macOS). Both builds passed 5,539,194 mapper-254 assertions across
+11 cases and 464 loading assertions. Shared mapper/multicart cases remain
+465/51; shared loading/multicart cases remain 38/5. Mapper 252/253 regression
+targets also passed. The full SDL3/NodalKit build, formatting, scoped clang-tidy,
+whitespace and exact 162-ID registry/ledger comparison passed. Isolated
+strict-consumer standards validation retained zero errors, 72 warnings and
+three infos across 193 documents. Physical protection/reset/IRQ behavior and
+commercial-title compatibility remain unverified.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -4738,7 +4817,7 @@ or another registered cartridge ID.
 | 251 | Obsolete Nestopia assignment duplicating mapper 45 | Obsolete; not registered | [r5898](https://www.nesdev.org/w/index.php?oldid=5898) |
 | 252 | Waixing VRC4e / Sangokushi mixed CHR | New implementation: KonamiVrc | [r5906](https://www.nesdev.org/w/index.php?oldid=5906) |
 | 253 | Waixing VRC4 CHR4/5 / F009S relocation profile | New implementation: KonamiVrc | [r5910](https://www.nesdev.org/w/index.php?oldid=5910) |
-| 254 | Board-specific specification | Not registered | [r24273](https://www.nesdev.org/w/index.php?oldid=24273) |
+| 254 | Pikachu Y2K WRAM XOR protection | New implementation: Mmc3 | [r24273](https://www.nesdev.org/w/index.php?oldid=24273) |
 | 255 | Board-specific specification | Not registered | [r20429](https://www.nesdev.org/w/index.php?oldid=20429) |
 | 256 | OneBus | Not registered | [r23934](https://www.nesdev.org/w/index.php?oldid=23934) |
 | 257 | Dongda / Hongda educational boards | Not registered | [r23118](https://www.nesdev.org/w/index.php?oldid=23118) |
