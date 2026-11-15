@@ -25,6 +25,18 @@ class Mapper {
     virtual void observe_cpu_read(Address /*addr*/, Byte /*data*/) {}
     /// CPU write strobe, including console RAM/I/O and OAM DMA puts.
     virtual void observe_cpu_write(Address /*addr*/, Byte /*data*/) {}
+    /// Optional CPU $2000-$3FFF register decode, before ordinary PPU mirroring.
+    /// The raw CPU address and current CPU open bus are preserved. Return nullopt
+    /// to fall through to the PPU; a returned byte must include any floating bits.
+    /// This is separate from PPU pattern/nametable accesses and pin observers.
+    virtual std::optional<Byte> read_ppu_register(Address /*addr*/, Byte /*open_bus*/) {
+        return std::nullopt;
+    }
+    /// Return true only when the device consumes the write. A consumed access
+    /// must not change the ordinary PPU's I/O latch, address, status or memory.
+    virtual bool write_ppu_register(Address /*addr*/, Byte /*value*/) {
+        return false;
+    }
     virtual bool maps_prg(Address addr) const {
         return addr >= 0x8000;
     }

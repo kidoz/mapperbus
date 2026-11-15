@@ -421,6 +421,10 @@ Byte MemoryBus::read_ram(Address addr) {
 }
 
 Byte MemoryBus::read_ppu(Address addr) {
+    if (cartridge_ != nullptr) {
+        if (const auto value = cartridge_->read_ppu_register(addr, open_bus()))
+            return *value;
+    }
     return ppu_ ? ppu_->read_register(addr & 0x0007) : 0;
 }
 
@@ -474,6 +478,8 @@ void MemoryBus::write_ram(Address addr, Byte value) {
 }
 
 void MemoryBus::write_ppu(Address addr, Byte value) {
+    if (cartridge_ != nullptr && cartridge_->write_ppu_register(addr, value))
+        return;
     if (ppu_) {
         ppu_->write_register(addr & 0x0007, value);
     }

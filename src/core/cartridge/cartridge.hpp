@@ -83,6 +83,12 @@ class Cartridge {
     [[nodiscard]] Byte read_prg(Address addr);
     void write_prg(Address addr, Byte value);
     void write_prg_cpu(Address addr, Byte value, bool consecutive);
+    [[nodiscard]] std::optional<Byte> read_ppu_register(Address addr, Byte open_bus) {
+        return mapper_->read_ppu_register(addr, open_bus);
+    }
+    bool write_ppu_register(Address addr, Byte value) {
+        return mapper_->write_ppu_register(addr, value);
+    }
     [[nodiscard]] bool maps_prg(Address addr) const;
     [[nodiscard]] Byte prg_read_mask(Address addr) const {
         return mapper_->prg_read_mask(addr);

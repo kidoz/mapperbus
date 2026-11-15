@@ -1,12 +1,17 @@
+#include <algorithm>
+#include <array>
 #include <catch2/catch_test_macros.hpp>
 #include <cstring>
+#include <memory>
 #include <vector>
 
 #include "core/apu/apu.hpp"
 #include "core/bus/memory_bus.hpp"
 #include "core/cartridge/cartridge.hpp"
+#include "core/emulator.hpp"
 #include "core/input/controller.hpp"
 #include "core/mappers/mapper_registry.hpp"
+#include "core/mappers/nrom.hpp"
 #include "core/ppu/ppu.hpp"
 #include "core/state/state.hpp"
 
@@ -914,5 +919,239 @@ TEST_CASE("OAM DMA activates APU registers only through the halted CPU address",
         CHECK(machine.apu.irq_pending() == (halted != 0x4000));
         machine.bus.write(0x2003, 0x35);
         CHECK(machine.bus.read(0x2004) == (halted == 0x4000 ? 0 : 0x50));
+    }
+}
+
+namespace {
+struct NativePpuProbe {
+    std::array<Byte, 16> values{};
+    Byte open_bus_mask = 0xFFU;
+    uint16_t read_claims = 0xFFFFU;
+    uint16_t write_claims = 0xFFFFU;
+    Address read_address = 0U;
+    Address write_address = 0U;
+    Address observed_read = 0U;
+    Address observed_write = 0U;
+    Byte observed_value = 0U;
+    unsigned native_reads = 0U;
+};
+// A synthetic test device, not a OneBus implementation. Decode only the exact
+// CPU aperture and drive its low nibble to exercise CPU open-bus forwarding.
+class NativePpuMapper final : public Nrom {
+  public:
+    NativePpuMapper(const INesHeader& h,
+                    std::vector<Byte> prg,
+                    std::vector<Byte> chr,
+                    std::shared_ptr<NativePpuProbe> probe)
+        : Nrom(h, std::move(prg), std::move(chr)), probe_(std::move(probe)) {}
+    std::optional<Byte> read_ppu_register(Address addr, Byte open_bus) override {
+        probe_->read_address = addr;
+        if (addr < 0x2010U || addr > 0x201FU || (probe_->read_claims & (1U << (addr & 15U))) == 0U)
+            return std::nullopt;
+        ++probe_->native_reads;
+        return static_cast<Byte>((open_bus & 0xF0U) | (probe_->values[addr & 15U] & 15U));
+    }
+    bool write_ppu_register(Address addr, Byte value) override {
+        probe_->write_address = addr;
+        if (addr < 0x2010U || addr > 0x201FU || (probe_->write_claims & (1U << (addr & 15U))) == 0U)
+            return false;
+        probe_->values[addr & 15U] = value;
+        return true;
+    }
+    Byte cpu_open_bus_mask() const override {
+        return probe_->open_bus_mask;
+    }
+    void observe_cpu_read(Address addr, Byte value) override {
+        probe_->observed_read = addr;
+        probe_->observed_value = value;
+    }
+    void observe_cpu_write(Address addr, Byte) override {
+        probe_->observed_write = addr;
+    }
+
+  private:
+    std::shared_ptr<NativePpuProbe> probe_;
+};
+std::vector<Byte> native_ppu_image() {
+    std::vector<Byte> image(16U + 16384U + 8192U);
+    image[0] = 'N';
+    image[1] = 'E';
+    image[2] = 'S';
+    image[3] = 0x1AU;
+    image[4] = 1U;
+    image[5] = 1U;
+    image[7] = 8U;
+    for (unsigned v = 16U + 16384U - 6U; v < 16U + 16384U; v += 2U)
+        image[v + 1U] = 0x80U;
+    return image;
+}
+Cartridge native_ppu_cartridge(const std::shared_ptr<NativePpuProbe>& probe,
+                               const std::vector<Byte>& image = native_ppu_image()) {
+    register_builtin_mappers();
+    // Override a real factory only during construction; restore it before any
+    // assertion so this fixture cannot add a fake registered mapper ID.
+    MapperRegistry::instance().register_mapper(
+        0U, [probe](const INesHeader& h, std::vector<Byte> prg, std::vector<Byte> chr) {
+            return std::make_unique<NativePpuMapper>(h, std::move(prg), std::move(chr), probe);
+        });
+    auto result = Cartridge::from_data(image);
+    register_builtin_mappers();
+    REQUIRE(result);
+    return std::move(*result);
+}
+std::vector<Byte> ppu_state(const Ppu& ppu) {
+    StateWriter w;
+    ppu.save_state(w);
+    return w.take();
+}
+} // namespace
+
+TEST_CASE("Native PPU register hooks receive raw addresses and CPU open bus before mirroring",
+          "[bus][native-ppu]") {
+    for (bool timed : {false, true}) {
+        auto probe = std::make_shared<NativePpuProbe>();
+        auto c = native_ppu_cartridge(probe);
+        MemoryBus bus;
+        bus.connect_cartridge(&c); // Claimed registers also work without a PPU attached.
+        for (unsigned address = 0x2000U; address < 0x4000U; ++address) {
+            const auto addr = static_cast<Address>(address);
+            const auto value = static_cast<Byte>(address ^ (address >> 8U));
+            if (timed)
+                bus.write_cpu(addr, value);
+            else
+                bus.write(addr, value);
+            REQUIRE(probe->write_address == addr);
+            REQUIRE(probe->observed_write == addr);
+            bus.write(0U, 0xB0U);
+            const auto result = timed ? bus.read_cpu(addr) : bus.read(addr);
+            const bool claimed = address >= 0x2010U && address <= 0x201FU;
+            REQUIRE(result == (claimed ? 0xB0U | (value & 15U) : 0U));
+            REQUIRE(probe->read_address == addr);
+            REQUIRE(probe->observed_read == addr);
+            REQUIRE(probe->observed_value == result);
+            REQUIRE(bus.open_bus() == result);
+        }
+        REQUIRE(probe->native_reads == 16U);
+    }
+}
+
+TEST_CASE("Claimed native reads and writes leave every ordinary PPU register side effect untouched",
+          "[bus][native-ppu]") {
+    auto probe = std::make_shared<NativePpuProbe>();
+    auto c = native_ppu_cartridge(probe);
+    MemoryBus bus;
+    Ppu ppu;
+    ppu.reset();
+    ppu.connect_cartridge(&c);
+    bus.connect_ppu(&ppu);
+    bus.connect_cartridge(&c);
+    bus.write(0x2000U, 0x84U);
+    bus.write(0x2003U, 0x53U);
+    bus.write(0x2005U, 0x19U); // Keep the shared scroll/address latch half-written.
+    ppu.step_dots(241U * 341U + 2U);
+    REQUIRE(ppu.nmi_line());
+    const auto before = ppu_state(ppu);
+    for (unsigned addr = 0x2010U; addr <= 0x201FU; ++addr) {
+        bus.write(static_cast<Address>(addr), static_cast<Byte>(addr));
+        bus.write(0U, 0xA0U);
+        REQUIRE(bus.read(static_cast<Address>(addr)) == (0xA0U | (addr & 15U)));
+        REQUIRE(ppu_state(ppu) == before);
+    }
+    probe->values[0] = 0U;
+    bus.write(0U, 0U);
+    REQUIRE(bus.read(0x2010U) == 0U); // Zero is a consumed read, not a fallthrough marker.
+    REQUIRE(ppu_state(ppu) == before);
+    REQUIRE(ppu.nmi_line());
+    REQUIRE(ppu.write_latch());
+    REQUIRE((bus.read(0x2002U) & 0x80U) != 0U); // Only the real status read clears vblank/w.
+    REQUIRE_FALSE(ppu.nmi_line());
+    REQUIRE_FALSE(ppu.write_latch());
+}
+
+TEST_CASE("Native register reads and writes can independently decline normal PPU aliases",
+          "[bus][native-ppu]") {
+    auto probe = std::make_shared<NativePpuProbe>();
+    probe->read_claims = 2U;
+    probe->write_claims = 1U;
+    probe->values[1] = 7U;
+    auto c = native_ppu_cartridge(probe);
+    MemoryBus bus;
+    Ppu ppu;
+    ppu.reset();
+    bus.connect_ppu(&ppu);
+    bus.connect_cartridge(&c);
+    bus.write(0x2000U, 0x94U);
+    bus.write(0x2010U, 0x2BU); // Write consumed; read declines to the PPU I/O latch.
+    REQUIRE(ppu.ppuctrl() == 0x94U);
+    REQUIRE(bus.read(0x2010U) == 0x94U);
+    bus.write(0x2011U, 0xA5U); // Write declines to PPUMASK; read consumed by device.
+    REQUIRE(ppu.ppumask() == 0xA5U);
+    bus.write(0U, 0xD0U);
+    REQUIRE(bus.read(0x2011U) == 0xD7U);
+    REQUIRE(bus.read(0x2000U) == 0xA5U); // Native read did not overwrite PPU I/O latch.
+    probe->open_bus_mask = 0x7FU;
+    bus.write(0U, 0xF0U);
+    REQUIRE(bus.read(0x2011U) == 0x77U); // The hook receives the cartridge-masked CPU bus.
+    bus.write(0x3010U, 0x1CU);           // Raw decode must not invent mirrors of native registers.
+    REQUIRE(ppu.ppuctrl() == 0x1CU);
+    REQUIRE(probe->values[0] == 0x2BU);
+}
+
+TEST_CASE("Ordinary cartridge PPU mirrors retain existing read and write behavior",
+          "[bus][native-ppu]") {
+    register_builtin_mappers();
+    auto result = Cartridge::from_data(native_ppu_image());
+    REQUIRE(result);
+    MemoryBus bus;
+    Ppu ppu;
+    ppu.reset();
+    bus.connect_cartridge(&*result);
+    bus.connect_ppu(&ppu);
+    for (unsigned addr = 0x2000U; addr < 0x4000U; addr += 8U) {
+        const auto value = static_cast<Byte>(addr >> 3U);
+        bus.write(static_cast<Address>(addr), value);
+        REQUIRE(ppu.ppuctrl() == value);
+        REQUIRE(bus.read(static_cast<Address>(addr)) == value);
+    }
+    bus.write(0x3FF6U, 0x20U);
+    bus.write(0x3FF6U, 0U);
+    bus.write(0x3FF7U, 0x5AU);
+    REQUIRE(ppu.vram()[0] == 0x5AU);
+    bus.connect_cartridge(nullptr);
+    bus.write(0x2010U, 0xA7U);
+    REQUIRE(ppu.ppuctrl() == 0xA7U);
+    REQUIRE(bus.read(0x2010U) == 0xA7U);
+}
+
+TEST_CASE("CPU instructions and OAM DMA use the native PPU register aperture",
+          "[bus][native-ppu][dma]") {
+    auto probe = std::make_shared<NativePpuProbe>();
+    auto image = native_ppu_image();
+    const std::array<Byte, 25> program{
+        0x78U, 0xA9U, 0xA7U, 0x8DU, 0x16U, 0x20U, 0xADU, 0x16U, 0x20U, 0x29U, 0x0FU, 0xC9U, 7U,
+        0xD0U, 0xFEU, 0xA9U, 0xD6U, 0x85U, 0x12U, 0xE6U, 0x13U, 0x4CU, 0x13U, 0x80U, 0xEAU};
+    std::ranges::copy(program, image.begin() + 16);
+    auto c = native_ppu_cartridge(probe, image);
+    Emulator machine;
+    REQUIRE(machine.load_cartridge(std::move(c), ""));
+    machine.power_on();
+    machine.step_frame();
+    REQUIRE(machine.read_cpu(0x12U) == 0xD6U);
+    REQUIRE(probe->values[6] == 0xA7U);
+    auto dma_probe = std::make_shared<NativePpuProbe>();
+    for (unsigned i = 0U; i < 16U; ++i)
+        dma_probe->values[i] = static_cast<Byte>(i);
+    auto dma_cart = native_ppu_cartridge(dma_probe);
+    Ppu ppu;
+    ppu.reset();
+    MemoryBus bus;
+    bus.connect_ppu(&ppu);
+    bus.connect_cartridge(&dma_cart);
+    REQUIRE(bus.run_oam_dma(0x20U, 0x0200U, false) >= 513U);
+    REQUIRE(dma_probe->native_reads == 16U);
+    for (unsigned i = 0U; i < 16U; ++i) {
+        bus.write(0x2003U, static_cast<Byte>(0x10U + i));
+        const unsigned mask = (i & 3U) == 2U ? 3U : 15U;
+        REQUIRE((bus.read(0x2004U) & mask) == (i & mask));
     }
 }
