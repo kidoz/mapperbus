@@ -4607,6 +4607,91 @@ formatting, scoped clang-tidy, whitespace and exact 162-ID registry/ledger
 comparison passed. Isolated strict-consumer standards validation retained
 zero errors, 72 warnings and three infos across 193 documents.
 
+## Mapper-256 first step: native PPU register routing
+
+Mapper 256 remains **unregistered**. The registry still contains 162 cartridge
+IDs; this step adds a prerequisite for OneBus support, not a working OneBus
+mapper or VTxx console. Unsupported images continue to fail explicitly.
+
+[NESdev mapper 256 revision 23934](https://www.nesdev.org/w/index.php?oldid=23934)
+requires both native and MMC3-compatible banking, mirroring and IRQ registers.
+The [native register reference r23930](https://www.nesdev.org/w/index.php?oldid=23930)
+places graphics controls and CHR selectors at CPU $2010–$201F. Previously,
+MemoryBus always reduced CPU $2000–$3FFF accesses to the low three bits before
+calling the PPU. For example, $2012 reads became PPUSTATUS reads and $2016
+writes became PPUADDR writes. A mapper could observe these accesses but could
+not prevent their ordinary PPU side effects.
+
+The new default-declining `Mapper::read_ppu_register` and
+`write_ppu_register` hooks are forwarded by Cartridge and called by MemoryBus
+before PPU-register mirroring. They receive the full CPU address. Reads also
+receive the cartridge-masked CPU open-bus value; a device returns a complete
+byte, including its chosen floating bits, or `nullopt` to decline. A returned
+zero is still a consumed read. Writes return true when consumed. Read and
+write claims are independent. A consumed access does not touch the ordinary
+PPU I/O latch, status, OAM, address/scroll latch or VRAM. Declined accesses
+retain the existing eight-register mirrors. The hook applies only to the CPU
+PPU-register window and does not replace pattern/nametable accesses, pin
+observations, CPU opcode fetches or the expansion-register decoder.
+
+All existing mapper implementations decline by default. No guessed native
+register mirrors or OneBus behavior is installed. CPU access observers keep
+their original ordering; timed CPU accesses and OAM DMA use the same routing.
+The new interface has no state or backing storage. Mapper payloads, machine
+version 20, 4 MiB state ceiling, 16 MiB ROM-input cap and PPU dot timing remain
+unchanged. This is an integration change, not a performance improvement claim.
+
+Five `[native-ppu]` cases in `test-bus` use a synthetic device that temporarily
+replaces the NROM factory during fixture construction, then restores builtin
+factories before assertions. It is not registered as mapper 256 and adds no
+fake permanent mapper ID. Tests inspect every CPU address in $2000–$3FFF
+through timed and untimed paths, partial bus drivers and cartridge pull-downs,
+zero-valued reads, independent read/write claims, exact-address selection,
+ordinary NROM/no-cartridge fallback and PPU-state preservation during vblank.
+Original CPU firmware verifies native register accesses; OAM DMA verifies all
+sixteen selected native reads without touching the CPU instruction decoder.
+The pre-change run failed four of these five cases, reproducing the aliasing
+problem; the ordinary mirroring case already passed.
+
+### Remaining OneBus integration
+
+The next implementation layer is native/MMC3 PRG and CHR banking plus IRQs,
+with a bounded atomic state contract. Sources are
+[PRG banking r12704](https://www.nesdev.org/w/index.php?oldid=12704),
+[CHR banking r12696](https://www.nesdev.org/w/index.php?oldid=12696),
+[MMC3 forwarding r23929](https://www.nesdev.org/w/index.php?oldid=23929) and
+[VTxx overview r24587](https://www.nesdev.org/w/index.php?oldid=24587).
+A OneBus image shares PRG/CHR storage; converted WXN images may use separate
+spaces. Preserve that distinction without copying a shared ROM into another
+CHR buffer. The native PRG middle/outer masks, selectable third bank and
+COMR6 pair swapping require their own address calculation. Native $4105 and
+MMC3 register selection interact; forwarding can be disabled. Do not assume
+that an unchanged Mmc3 instance implements these rules.
+
+IRQ integration must distinguish A12 and HSYNC clock sources. Further work
+includes native CIRAM-as-CHR mode, graphics address extension, enhanced
+palette/4bpp modes, extended sound/DMA and console capability metadata.
+Submappers 0–5 describe register permutations; 11–15 add opcode-only scrambling
+and control ports. Those require a distinct instruction-fetch seam rather
+than transforming operand/data reads. VT369's extra CPU and embedded 4 KiB
+misc ROM are separate machine support. Larger OneBus populations also require
+an explicit allocation-cap decision: the documented address space reaches
+32 MiB while the current input cap is 16 MiB. These items are not implemented
+or inferred from this register-routing prerequisite. Keep 256 unregistered
+until the supported hardware profile and its limitations are explicit and
+validated; do not advance the registry count or claim game compatibility from
+these routing tests.
+
+Validation on 2026-11-15 passed all 112 regular Meson targets with GPU checks
+required and nine focused ASan+UBSan targets (`bus`, `ppu`, `mapper-timing`,
+`save-state`, `mappers`, `rom-source`, `fds`, `cpu`, `cpu-accuracy`) with four
+workers and leak detection disabled on macOS. Both builds passed 141,934
+assertions across 34 bus cases, including the five new routing cases. The
+full SDL3/NodalKit build, formatting, scoped clang-tidy, whitespace and exact
+162-ID registry/ledger comparison passed. Isolated strict-consumer standards
+validation retained zero errors, 72 warnings and three infos across 193
+documents. No OneBus title or enhanced-console fidelity is claimed.
+
 ## Every documented registry slot
 
 This inventory contains **533 existing article links** from
@@ -4878,7 +4963,7 @@ or another registered cartridge ID.
 | 253 | Waixing VRC4 CHR4/5 / F009S relocation profile | New implementation: KonamiVrc | [r5910](https://www.nesdev.org/w/index.php?oldid=5910) |
 | 254 | Pikachu Y2K WRAM XOR protection | New implementation: Mmc3 | [r24273](https://www.nesdev.org/w/index.php?oldid=24273) |
 | 255 | 110-in-1 / apparent duplicate of 225 | Apparent duplicate; not registered | [r20429](https://www.nesdev.org/w/index.php?oldid=20429) |
-| 256 | OneBus | Not registered | [r23934](https://www.nesdev.org/w/index.php?oldid=23934) |
+| 256 | OneBus / VTxx native console registers | Not registered: native PPU routing prerequisite implemented | [r23934](https://www.nesdev.org/w/index.php?oldid=23934) |
 | 257 | Dongda / Hongda educational boards | Not registered | [r23118](https://www.nesdev.org/w/index.php?oldid=23118) |
 | 258 | Board-specific specification | Not registered | [r7627](https://www.nesdev.org/w/index.php?oldid=7627) |
 | 259 | Board-specific specification | Not registered | [r7628](https://www.nesdev.org/w/index.php?oldid=7628) |

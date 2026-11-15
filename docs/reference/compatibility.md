@@ -98,6 +98,9 @@ synthetic banking, IRQ, CPU/PPU integration and save-state coverage; this does
 not establish commercial-title compatibility for every new board.
 
 Unsupported IDs fail cartridge creation with an `Unsupported mapper` error.
+Mapper 256 (OneBus/VTxx) remains unregistered. Native PPU-register routing is
+available as a tested prerequisite; banking, IRQ and enhanced-console support
+remain to be implemented. See the [OneBus integration status](mapper-implementation.md#mapper-256-first-step-native-ppu-register-routing).
 Obsolete mapper 248 remains unsupported; its documented cartridge behavior is
 covered under mapper 115, without automatic header rewriting.
 Apparent duplicate mapper 255 remains unregistered; its address-latched banking
