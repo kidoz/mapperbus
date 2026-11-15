@@ -85,6 +85,20 @@ namespace {
         return RealtecMulticart::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 235U)
         return GoldenGame::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 254U) {
+        if (header.is_nes2 && header.submapper != 0U)
+            return std::unexpected("Mapper 254 supports submapper 0");
+        if (prg_size != 131072U || chr_size != 131072U)
+            return std::unexpected("Mapper 254 requires 128 KiB PRG and 128 KiB CHR ROM");
+        if (header.chr_ram_size != 0U || header.chr_nvram_size != 0U ||
+            (header.is_nes2 && (header.prg_ram_size != (header.has_battery ? 0U : 8192U) ||
+                                header.prg_nvram_size != (header.has_battery ? 8192U : 0U))))
+            return std::unexpected("Mapper 254 requires 8 KiB WRAM and no CHR RAM");
+        if (header.mirror_mode != MirrorMode::Horizontal &&
+            header.mirror_mode != MirrorMode::Vertical)
+            return std::unexpected("Mapper 254 supports H/V startup mirroring");
+        return {};
+    }
     if (header.mapper_number == 253U) {
         if (header.is_nes2 && header.submapper != 0U)
             return std::unexpected("Mapper 253 supports submapper 0");
@@ -865,6 +879,7 @@ void register_builtin_mappers() {
     registry.register_mapper(250, make_factory<Mmc3>());
     registry.register_mapper(252, make_factory<KonamiVrc>());
     registry.register_mapper(253, make_factory<KonamiVrc>());
+    registry.register_mapper(254, make_factory<Mmc3>());
     registry.register_mapper(262, make_factory<Mmc3>());
     registry.register_mapper(263, make_factory<Mmc3>());
     registry.register_mapper(512, make_factory<Mmc3>());

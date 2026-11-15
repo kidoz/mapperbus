@@ -68,6 +68,8 @@ Byte gouder_mask(Byte index) {
 // F003 / 245: NESdev r5871. Force CHR-selector A12 low, route CHR A11 to
 // PRG A19 on every CPU slot, while pattern RAM uses raw PPU pins. The existing
 // scanline IRQ model is retained as compatibility policy; clone IRQ wiring is unresolved.
+// Pikachu Y2K / 254: NESdev r24273. Use the wiki's MMC3-alias XOR/unlock
+// model; original hardware and reset detection remain unverified.
 // Kasheng A9461 / 219: NESdev r21696's compatibility specification. Independent
 // mode register files and reset defaults are policies pending hardware verification.
 Mmc3::Mmc3(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte> chr_rom)
@@ -79,12 +81,12 @@ Mmc3::Mmc3(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte
                       header.mapper_number == 205U || header.mapper_number == 208U ||
                       header.mapper_number == 215U || header.mapper_number == 219U ||
                       header.mapper_number == 238U || header.mapper_number == 245U ||
-                      header.mapper_number == 114U || header.mapper_number == 115U ||
-                      header.mapper_number == 123U || header.mapper_number == 249U ||
-                      header.mapper_number == 250U || header.mapper_number == 262U ||
-                      header.mapper_number == 263U || header.mapper_number == 118U ||
-                      header.mapper_number == 119U || header.mapper_number == 512U ||
-                      header.mapper_number == 513U
+                      header.mapper_number == 254U || header.mapper_number == 114U ||
+                      header.mapper_number == 115U || header.mapper_number == 123U ||
+                      header.mapper_number == 249U || header.mapper_number == 250U ||
+                      header.mapper_number == 262U || header.mapper_number == 263U ||
+                      header.mapper_number == 118U || header.mapper_number == 119U ||
+                      header.mapper_number == 512U || header.mapper_number == 513U
                   ? header.mapper_number
                   : 4U),
       scramble_profile_(mapper_ == 114U && header.is_nes2 ? header.submapper : 0U),
@@ -143,6 +145,9 @@ Mmc3::Mmc3(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte
                 (header.nametable_bits & 1U) != 0U ? MirrorMode::Vertical : MirrorMode::Horizontal;
             mirror_mode_ = initial_mirror_;
         }
+    } else if (mapper_ == 254U) {
+        prg_ram_size_ = 8192U;
+        nvram_size_ = header.has_battery ? 8192U : 0U;
     } else if (mapper_ != 4U) {
         prg_ram_size_ = mapper_ == 119U      ? 0U
                         : header.is_nes2     ? header.prg_ram_size + header.prg_nvram_size
@@ -163,9 +168,13 @@ void Mmc3::power_on() {
     reset();
     if (mapper_ == 245U)
         chr_ram_.fill(0U);
+    if (mapper_ == 254U && nvram_size_ == 0U)
+        prg_ram_.fill(0U);
 }
 
 void Mmc3::reset() {
+    pikachu_xor_ = 0U;
+    pikachu_unlocked_ = false;
     mapper197_prg_ = 0U;
     mrcm_prg_ = mapper_ == 196U && mrcm_profile_ == 3U ? 0x80U : 0U;
     fs303_chr_mode_ = 0x80U;
@@ -376,8 +385,9 @@ Byte Mmc3::read_prg(Address addr) {
         if (!prg_ram_enabled_ || prg_ram_size_ == 0U) {
             return 0;
         }
-        return mapper_ == 199U ? fs309_nvram_[addr & 0x7FFFU]
-                               : prg_ram_[(addr - 0x6000) % prg_ram_size_];
+        const auto raw = mapper_ == 199U ? fs309_nvram_[addr & 0x7FFFU]
+                                         : prg_ram_[(addr - 0x6000) % prg_ram_size_];
+        return mapper_ == 254U && !pikachu_unlocked_ ? static_cast<Byte>(raw ^ pikachu_xor_) : raw;
     }
     if (addr < 0x8000)
         return 0;
@@ -421,6 +431,13 @@ Byte Mmc3::read_prg(Address addr) {
 }
 
 void Mmc3::write_prg(Address addr, Byte value) {
+    if (mapper_ == 254U) {
+        // Protection overlays the normal MMC3 decoders; both effects occur.
+        if ((addr & 0xE001U) == 0x8000U)
+            pikachu_unlocked_ = true;
+        else if ((addr & 0xE001U) == 0xA001U)
+            pikachu_xor_ = value;
+    }
     if (mapper_ == 238U && maps_expansion(addr)) {
         write_expansion(addr, value);
         return;
@@ -993,10 +1010,17 @@ uint16_t Mmc3::f003_state_tag() const {
                                  (initial_mirror_ == MirrorMode::Vertical ? 8U : 0U));
 }
 
+uint16_t Mmc3::pikachu_state_tag() const {
+    return static_cast<uint16_t>(0xFE00U | (initial_mirror_ == MirrorMode::Vertical ? 1U : 0U) |
+                                 (nvram_size_ != 0U ? 2U : 0U));
+}
+
 // New board payloads serialize registers, never derived offsets or immutable
 // IRQ profiles. Keep mapper 4's historical payload in mapper_state.cpp intact.
 void Mmc3::save_variant_state(StateWriter& writer) const {
-    if (mapper_ == 199U) {
+    if (mapper_ == 254U) {
+        writer.write_array(prg_ram_);
+    } else if (mapper_ == 199U) {
         writer.write_bytes(fs309_nvram_);
         writer.write_array(chr_ram_);
     } else if (mapper_ == 513U) {
@@ -1093,6 +1117,11 @@ void Mmc3::save_variant_state(StateWriter& writer) const {
         writer.write(f003_state_tag());
         writer.write(ppu_chr_slot_);
     }
+    if (mapper_ == 254U) {
+        writer.write(pikachu_state_tag());
+        writer.write<Byte>(pikachu_unlocked_ ? 1U : 0U);
+        writer.write(pikachu_xor_);
+    }
     if (mapper_ == 262U) {
         writer.write_bytes(nametable_ram_);
         writer.write(board_mode_);
@@ -1101,11 +1130,11 @@ void Mmc3::save_variant_state(StateWriter& writer) const {
 }
 
 void Mmc3::load_variant_state(StateReader& reader) {
-    if (mapper_ != 238U && mapper_ != 245U) {
+    if (mapper_ != 238U && mapper_ != 245U && mapper_ != 254U) {
         load_variant_state_impl(reader);
         return;
     }
-    // Bounded payload backup: no ROM copy. 238 is 18 bytes; 245 includes 16 KiB RAM.
+    // Bounded payload backup, never a ROM copy. 238/245/254 have fixed-size payloads.
     StateWriter backup;
     save_variant_state(backup);
     load_variant_state_impl(reader);
@@ -1116,7 +1145,9 @@ void Mmc3::load_variant_state(StateReader& reader) {
 }
 
 void Mmc3::load_variant_state_impl(StateReader& reader) {
-    if (mapper_ == 199U) {
+    if (mapper_ == 254U) {
+        reader.read_array(prg_ram_);
+    } else if (mapper_ == 199U) {
         reader.read_bytes(fs309_nvram_, 0x8000U);
         if (fs309_nvram_.size() != 0x8000U) {
             fs309_nvram_.resize(0x8000U);
@@ -1218,6 +1249,10 @@ void Mmc3::load_variant_state_impl(StateReader& reader) {
     const auto f003_tag = mapper_ == 245U ? reader.read<uint16_t>() : 0U;
     if (mapper_ == 245U)
         reader.read(ppu_chr_slot_);
+    const auto pikachu_tag = mapper_ == 254U ? reader.read<uint16_t>() : 0U;
+    const auto pikachu_unlock = mapper_ == 254U ? reader.read<Byte>() : Byte{0U};
+    if (mapper_ == 254U)
+        reader.read(pikachu_xor_);
     if (mapper_ == 262U) {
         reader.read_bytes(nametable_ram_, 0x1000U);
         if (nametable_ram_.size() != 0x1000U) {
@@ -1245,6 +1280,7 @@ void Mmc3::load_variant_state_impl(StateReader& reader) {
              return bank <= 127U;
          }));
     if (!reader.ok() || mixed_chr_tag != mixed_chr_state_tag() || bank_select_ > 7U ||
+        (mapper_ == 254U && (pikachu_tag != pikachu_state_tag() || pikachu_unlock > 1U)) ||
         (mapper_ == 245U && (f003_tag != f003_state_tag() || ppu_chr_slot_ > 3U)) || !valid_a9461 ||
         (mapper_ == 238U &&
          (contra_tag != 0xEE00U || contra_protection_ > 3U || contra_protection_ == 1U)) ||
@@ -1292,6 +1328,8 @@ void Mmc3::load_variant_state_impl(StateReader& reader) {
         reader.fail();
         return;
     }
+    if (mapper_ == 254U)
+        pikachu_unlocked_ = pikachu_unlock != 0U;
     prg_mode_ = (mode & 0x40U) != 0U;
     if (mapper_ == 219U)
         a9461_extended_ = a9461_mode != 0U;

@@ -33,6 +33,7 @@
 #include "../support/mapper246_rom.hpp"
 #include "../support/mapper252_rom.hpp"
 #include "../support/mapper253_rom.hpp"
+#include "../support/mapper254_rom.hpp"
 #include "../support/rom_archive.hpp"
 #include "app/async_fds_bios_validation.hpp"
 #include "app/async_rom_loader.hpp"
@@ -3050,5 +3051,113 @@ TEST_CASE("Waixing 253 loading preserves fixed and relocated CHR decoder profile
                     }
                 }
 }
+TEST_CASE("Pikachu 254 loading preserves protected raw WRAM across archives and sessions",
+          "[rom-source][mapper254]") {
+    core::register_builtin_mappers();
+    ArchiveFixture fixture;
+    TestDataHome data_home(fixture.root / "data");
+    for (bool legacy : {false, true})
+        for (bool battery : {false, true})
+            for (bool vertical : {false, true}) {
+                const auto stem =
+                    std::to_string(legacy) + std::to_string(battery) + std::to_string(vertical);
+                const auto raw = fixture.root / (stem + ".nes"),
+                           archive = fixture.root / (stem + ".zip"),
+                           save = fixture.root / (stem + ".sav"),
+                           storage = fixture.root / (stem + "-storage");
+                const auto bytes = tests::make_mapper254_rom(legacy, battery, vertical);
+                REQUIRE(core::write_binary_file_atomic(raw.string(), bytes, "Pikachu Y2K fixture"));
+                write_archive(archive, {{"pikachu.nes", bytes}});
+                EmulationSession session(std::make_unique<platform::NullVideo>(),
+                                         std::make_unique<platform::NullAudio>(),
+                                         std::make_unique<platform::NullInput>());
+                REQUIRE(session.open_rom(raw.string()));
+                session.emulator().step_frame();
+                REQUIRE(session.emulator().read_cpu(0x12U) == 0xC7U);
+                REQUIRE(session.emulator().read_cpu(0x14U) == 0U);
+                REQUIRE(session.emulator().read_cpu(0x15U) == 0x80U);
+                session.reset();
+                session.emulator().step_frame();
+                REQUIRE(session.emulator().read_cpu(0x12U) == 0xC7U);
+                REQUIRE(session.emulator().read_cpu(0x14U) == 0xA7U);
+                REQUIRE(session.emulator().read_cpu(0x15U) == 0x27U);
+                session.power_cycle();
+                session.emulator().step_frame();
+                REQUIRE(session.emulator().read_cpu(0x12U) == 0xC7U);
+                REQUIRE(session.emulator().read_cpu(0x14U) == (battery ? 0xA7U : 0U));
+                REQUIRE(session.emulator().read_cpu(0x15U) == (battery ? 0x27U : 0x80U));
+                session.close_rom();
+                REQUIRE(std::filesystem::exists(save) == battery);
+                if (battery) {
+                    auto persisted =
+                        core::read_binary_file_capped(save.string(), 8192U, "Pikachu save");
+                    REQUIRE(persisted);
+                    REQUIRE(persisted->size() == 8192U);
+                    REQUIRE(persisted->front() == 0xA7U);
+                    REQUIRE(persisted->back() == 0x91U);
+                }
+                REQUIRE(session.open_rom(raw.string()));
+                session.emulator().step_frame();
+                REQUIRE(session.emulator().read_cpu(0x14U) == (battery ? 0xA7U : 0U));
+                REQUIRE(session.emulator().read_cpu(0x15U) == (battery ? 0x27U : 0x80U));
+                RomLoadRequest request;
+                request.path = archive.string();
+                request.member = "pikachu.nes";
+                request.persistence_directory = storage;
+                auto prepared = prepare_rom(request);
+                REQUIRE(prepared);
+                prepared->emulator->step_frame();
+                REQUIRE(prepared->emulator->read_cpu(0x12U) == 0xC7U);
+                const auto staged = prepared->emulator->save_state();
+                REQUIRE(session.emulator().flush_persistent_data());
+                session.adopt_rom(std::move(*prepared));
+                REQUIRE(session.emulator().save_state() == staged);
+                session.close_rom();
+                const auto archive_save =
+                    storage / "battery" / (core::sha256_hex(core::rom_sha256(bytes)) + ".sav");
+                REQUIRE(std::filesystem::exists(archive_save) == battery);
+                for (bool seven_zip : {false, true}) {
+                    const auto path = fixture.root / (stem + (seven_zip ? ".7z" : ".zip"));
+                    if (seven_zip)
+                        write_archive(path, {{"pikachu.nes", bytes}}, true);
+                    core::Emulator loaded;
+                    REQUIRE(load_rom_source(
+                        loaded, path.string(), "pikachu.nes", {}, storage, {}, {}, {}));
+                    loaded.power_on();
+                    loaded.step_frame();
+                    REQUIRE(loaded.read_cpu(0x12U) == 0xC7U);
+                    REQUIRE(loaded.read_cpu(0x14U) == (battery ? 0xA7U : 0U));
+                    REQUIRE(loaded.read_cpu(0x15U) == (battery ? 0x27U : 0x80U));
+                    const auto before = loaded.save_state();
+                    REQUIRE_FALSE(load_rom_source(
+                        loaded, path.string(), "pikachu.nes", {}, storage, {}, {}, {}, "unknown"));
+                    REQUIRE(loaded.save_state() == before);
+                    auto invalid = bytes;
+                    invalid[6] |= 8U;
+                    const auto bad = fixture.root / "bad.nes";
+                    REQUIRE(core::write_binary_file_atomic(
+                        bad.string(), invalid, "invalid Pikachu Y2K"));
+                    REQUIRE_FALSE(load_rom_source(loaded, bad.string(), {}, {}, storage));
+                    REQUIRE(loaded.save_state() == before);
+                }
+                REQUIRE(core::read_binary_file_capped(raw.string(), bytes.size(), "ROM") ==
+                        core::Result<std::vector<Byte>>(bytes));
+                if (battery) {
+                    core::Emulator running;
+                    REQUIRE(load_rom_source(running, raw.string(), {}, {}, {}, {}, {}, {}));
+                    running.power_on();
+                    running.step_frame();
+                    const auto before = running.save_state();
+                    REQUIRE(core::write_binary_file_atomic(save.string(),
+                                                           std::vector<core::Byte>(8193U),
+                                                           "oversized Pikachu Y2K save"));
+                    // Startup imports are best effort; explicit imports report the size
+                    // failure.
+                    REQUIRE_FALSE(running.load_battery_ram(save.string()));
+                    REQUIRE(running.save_state() == before);
+                }
+            }
+}
+
 } // namespace
 } // namespace mapperbus::app
