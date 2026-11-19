@@ -5262,7 +5262,7 @@ or another registered cartridge ID.
 | 438 | Board-specific specification | Registered: Mapper438 | [r19303](https://www.nesdev.org/w/index.php?oldid=19303) |
 | 439 | Board-specific specification | Registered: Mapper439 | [r21163](https://www.nesdev.org/w/index.php?oldid=21163) |
 | 440 | Board-specific specification | Not registered | [r19242](https://www.nesdev.org/w/index.php?oldid=19242) |
-| 441 | Board-specific specification | Not registered | [r19277](https://www.nesdev.org/w/index.php?oldid=19277) |
+| 441 | Board-specific specification | Registered: Mapper441 | [r19277](https://www.nesdev.org/w/index.php?oldid=19277) |
 | 442 | Board-specific specification | Not registered | [r19244](https://www.nesdev.org/w/index.php?oldid=19244) |
 | 443 | Board-specific specification | Not registered | [r8065](https://www.nesdev.org/w/index.php?oldid=8065) |
 | 444 | Board-specific specification | Not registered | [r22463](https://www.nesdev.org/w/index.php?oldid=22463) |
