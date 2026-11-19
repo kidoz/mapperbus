@@ -21,7 +21,12 @@ int main(int argc, char* argv[]) {
     uint32_t barcode_cycles = 1000U;
     int barcode_frame = 0;
     bool barcode_timing = false;
-    const auto configuration = mapperbus::app::load_mapperbus_configuration();
+    auto loaded_configuration = mapperbus::app::read_mapperbus_configuration();
+    if (!loaded_configuration) {
+        mapperbus::core::logger::error("{}", loaded_configuration.error());
+        return EXIT_FAILURE;
+    }
+    const auto& configuration = *loaded_configuration;
     auto bios = configuration.fds_bios_path;
     mapperbus::app::ControllerHardwareOverrides controller_overrides;
     std::optional<mapperbus::core::Region> region_override;
@@ -188,7 +193,7 @@ int main(int argc, char* argv[]) {
         }
         emulator.step_frame();
     }
-    if (auto saved = emulator.flush_persistent_data(); !saved) {
+    if (auto saved = emulator.unload_cartridge(); !saved) {
         mapperbus::core::logger::error("{}", saved.error());
         return EXIT_FAILURE;
     }

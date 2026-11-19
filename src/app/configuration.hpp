@@ -199,6 +199,22 @@ void clear_recent_roms(MapperBusConfiguration& configuration);
     return controller_button_name(platform::input_action(button));
 }
 [[nodiscard]] std::filesystem::path mapperbus_configuration_path();
+struct ConfigurationLoadRequest {
+    std::filesystem::path primary;
+    std::filesystem::path legacy;
+};
+
+struct LoadedConfiguration {
+    MapperBusConfiguration configuration;
+    bool missing = false;
+    bool legacy = false;
+};
+
+inline constexpr std::size_t kMaxConfigurationBytes = 16 * 1024 * 1024;
+[[nodiscard]] core::Result<LoadedConfiguration> read_startup_configuration(
+    const ConfigurationLoadRequest& request);
+
+[[nodiscard]] core::Result<MapperBusConfiguration> read_mapperbus_configuration();
 [[nodiscard]] MapperBusConfiguration load_mapperbus_configuration();
 /// Memory-only parser with the same tolerant defaults as the file loader.
 [[nodiscard]] MapperBusConfiguration parse_mapperbus_configuration(std::string_view text);

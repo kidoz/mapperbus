@@ -36,7 +36,7 @@ class SessionActions {
     explicit SessionActions(EmulationSession& session);
 
     core::Result<void> open_rom(const std::string& rom_path, std::string_view member = {});
-    void close_rom();
+    core::Result<void> close_rom();
     void pause();
     void resume();
     void toggle_pause();

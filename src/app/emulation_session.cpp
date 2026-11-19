@@ -208,16 +208,15 @@ core::Result<void> EmulationSession::retry_disk_save() {
     return request_disk_save();
 }
 
-void EmulationSession::close_rom() {
-    if (!rom_loaded_) {
-        return;
-    }
-
-    if (auto saved = flush_disk_changes(); !saved) {
-        core::logger::error("{}", saved.error());
-        return;
-    }
-    emulator_->unload_cartridge();
+core::Result<void> EmulationSession::close_rom() {
+    if (!rom_loaded_)
+        return {};
+    auto fence = disk_saver_.begin_handoff();
+    fence();
+    auto saved = emulator_->unload_cartridge();
+    finish_background_persistence(saved);
+    if (!saved)
+        return saved;
     suspend_live_microphone();
     emulator_->set_microphone_active(false);
     turbo_input_.reset();
@@ -230,6 +229,7 @@ void EmulationSession::close_rom() {
     current_rom_member_.clear();
     state_directory_.clear();
     reset_audio_fill_ratio_history();
+    return {};
 }
 
 TickResult EmulationSession::tick() {

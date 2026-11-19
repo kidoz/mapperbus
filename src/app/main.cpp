@@ -167,7 +167,12 @@ int main(int argc, char* argv[]) {
     std::string fds_bios;
     std::string dcs_option;
     mapperbus::app::CartridgeLaunchOptions cartridge_options;
-    auto mapperbus_config = mapperbus::app::load_mapperbus_configuration();
+    auto loaded_configuration = mapperbus::app::read_mapperbus_configuration();
+    if (!loaded_configuration) {
+        mapperbus::core::logger::error("{}", loaded_configuration.error());
+        return EXIT_FAILURE;
+    }
+    auto& mapperbus_config = *loaded_configuration;
     auto microphone_settings = mapperbus_config.microphone;
     mapperbus::app::ControllerHardwareOverrides controller_overrides;
     auto state_storage = mapperbus_config.save_states;
@@ -599,7 +604,7 @@ int main(int argc, char* argv[]) {
         }
     });
     remember_gamepads();
-    if (auto saved = app.session().flush_disk_changes(); !saved) {
+    if (auto saved = app.session().close_rom(); !saved) {
         mapperbus::core::logger::error("{}", saved.error());
         return EXIT_FAILURE;
     }

@@ -8,8 +8,8 @@ core::Result<void> SessionActions::open_rom(const std::string& rom_path, std::st
     return session_.open_rom(rom_path, member);
 }
 
-void SessionActions::close_rom() {
-    session_.close_rom();
+core::Result<void> SessionActions::close_rom() {
+    return session_.close_rom();
 }
 
 void SessionActions::pause() {

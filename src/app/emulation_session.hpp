@@ -54,7 +54,7 @@ class EmulationSession {
     [[nodiscard]] std::shared_ptr<core::Emulator> emulator_handle() const {
         return emulator_;
     }
-    void close_rom();
+    core::Result<void> close_rom();
     [[nodiscard]] core::Result<void> flush_disk_changes();
     /// GUI opts in; synchronous consumers retain their existing save semantics.
     void enable_background_disk_saves() {

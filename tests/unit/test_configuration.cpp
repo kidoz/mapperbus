@@ -1230,6 +1230,27 @@ TEST_CASE("Configuration workers can outlive their owner without accessing live 
     CHECK(load_mapperbus_configuration_from_file(fixture.path).frontend.audio_volume_percent == 35);
 }
 
+TEST_CASE("Atomic saves own their temporary file and preserve the destination on error",
+          "[configuration][storage]") {
+    ConfigurationFixture fixture;
+    const auto sibling = fixture.path.string() + ".tmp";
+    std::filesystem::create_directories(fixture.path.parent_path());
+    REQUIRE((std::ofstream(sibling) << "existing").good());
+    REQUIRE(save_mapperbus_configuration_to_file({}, fixture.path));
+    std::string contents;
+    std::ifstream(sibling) >> contents;
+    CHECK(contents == "existing");
+    const auto saved = core::read_binary_file_capped(fixture.path.string(), 100000, "config");
+    REQUIRE(saved);
+    CHECK_FALSE(core::write_file_atomic(fixture.path, "test file", [](std::ostream& out) {
+        out << "partial";
+        out.setstate(std::ios::badbit);
+    }));
+    const auto retained = core::read_binary_file_capped(fixture.path.string(), 100000, "config");
+    REQUIRE(retained);
+    CHECK(*retained == *saved);
+}
+
 TEST_CASE("Default background settings failures retain existing configuration bytes",
           "[app][configuration][async]") {
     ConfigurationFixture fixture;
@@ -1237,15 +1258,18 @@ TEST_CASE("Default background settings failures retain existing configuration by
     REQUIRE(save_mapperbus_configuration_to_file(config, fixture.path));
     const auto original = core::read_binary_file_capped(fixture.path.string(), 100000, "config");
     REQUIRE(original);
-    std::filesystem::create_directory(fixture.path.string() + ".tmp");
+    const auto backup = fixture.path.parent_path() / "previous.conf";
+    std::filesystem::rename(fixture.path, backup);
+    std::filesystem::create_directory(fixture.path);
     AsyncConfigurationSave saving(fixture.path);
     config.frontend.audio_volume_percent = 25;
     (void)saving.submit(config);
     REQUIRE_FALSE(wait_configuration(saving).result);
-    auto retained = core::read_binary_file_capped(fixture.path.string(), 100000, "config");
+    auto retained = core::read_binary_file_capped(backup.string(), 100000, "config");
     REQUIRE(retained);
     CHECK(*retained == *original);
-    std::filesystem::remove(fixture.path.string() + ".tmp");
+    std::filesystem::remove(fixture.path);
+    std::filesystem::rename(backup, fixture.path);
     saving.retry();
     REQUIRE(wait_configuration(saving).result);
     CHECK(load_mapperbus_configuration_from_file(fixture.path).frontend.audio_volume_percent == 25);

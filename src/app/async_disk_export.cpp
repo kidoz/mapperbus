@@ -1,27 +1,11 @@
 #include "app/async_disk_export.hpp"
 
-#include <chrono>
 #include <filesystem>
-#include <fstream>
 #include <utility>
 
-namespace mapperbus::app {
-namespace {
-struct ExportTemporary {
-    std::filesystem::path path;
-    std::ofstream file;
-    ~ExportTemporary() {
-        if (file.is_open())
-            file.close();
-        if (owned) {
-            std::error_code error;
-            std::filesystem::remove(path, error);
-        }
-    }
-    bool owned = false;
-};
-} // namespace
+#include "core/binary_file.hpp"
 
+namespace mapperbus::app {
 core::Result<void> write_disk_export(const DiskExportRequest& request) {
     const std::filesystem::path destination(request.path);
     const std::filesystem::path source(request.source_path);
@@ -44,39 +28,7 @@ core::Result<void> write_disk_export(const DiskExportRequest& request) {
             return std::unexpected("Cannot check the export destination: " + request.path);
     }
 
-    // Never truncate a pre-existing temporary file, symlink, or hard link. A
-    // unique, exclusively created sibling also isolates export from other saves.
-    ExportTemporary temporary;
-    for (int attempt = 0; attempt < 8; ++attempt) {
-        temporary.path =
-            destination.parent_path() /
-            (destination.filename().string() + ".export-" +
-             std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + "-" +
-             std::to_string(attempt) + ".tmp");
-        temporary.file.open(temporary.path, std::ios::binary | std::ios::noreplace);
-        if (temporary.file) {
-            temporary.owned = true;
-            break;
-        }
-        temporary.file.clear();
-    }
-    if (!temporary.owned)
-        return std::unexpected("Failed to open FDS export for writing: " + request.path);
-    const auto fail = [&](const std::string& action) -> core::Result<void> {
-        return std::unexpected("Failed to " + action + " FDS export: " + request.path);
-    };
-    if (!request.data.empty())
-        temporary.file.write(reinterpret_cast<const char*>(request.data.data()),
-                             static_cast<std::streamsize>(request.data.size()));
-    const bool written = temporary.file.good();
-    temporary.file.close();
-    if (!written || !temporary.file)
-        return fail("write");
-    std::filesystem::rename(temporary.path, destination, error);
-    if (error)
-        return fail("replace");
-    temporary.owned = false;
-    return {};
+    return core::write_binary_file_atomic(request.path, request.data, "FDS export");
 }
 
 AsyncDiskExport::AsyncDiskExport(Write write) : write_(std::move(write)) {}

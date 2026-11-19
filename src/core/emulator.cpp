@@ -173,17 +173,18 @@ Result<void> Emulator::load_cartridge(Cartridge cartridge,
     // Persist outgoing media before committing its replacement.
     if (auto saved = flush_persistent_data(); !saved)
         return saved;
-    if (cartridge.has_flash_storage() && !battery_path.empty()) {
-        std::error_code ec;
-        const bool exists = std::filesystem::exists(battery_path, ec);
-        if (ec)
-            return std::unexpected("Cannot access flash save: " + ec.message());
-        if (exists) {
+    if (cartridge.has_battery() && !battery_path.empty()) {
+        const std::string label = cartridge.has_flash_storage() ? "flash save" : "battery save";
+        std::error_code error;
+        const auto status = std::filesystem::symlink_status(battery_path, error);
+        if (error && error != std::errc::no_such_file_or_directory)
+            return std::unexpected("Cannot access " + label + ": " + error.message());
+        if (std::filesystem::exists(status)) {
             auto data =
-                read_binary_file_capped(battery_path, cartridge.battery_ram().size(), "flash save");
+                read_binary_file_capped(battery_path, cartridge.battery_ram().size(), label);
             if (!data)
                 return std::unexpected(data.error());
-            if (data->size() != cartridge.battery_ram().size())
+            if (cartridge.has_flash_storage() && data->size() != cartridge.battery_ram().size())
                 return std::unexpected(
                     "Flash save size does not match this cartridge's persistent storage");
             cartridge.set_battery_ram(*data);
@@ -219,20 +220,6 @@ Result<void> Emulator::load_cartridge(Cartridge cartridge,
 
     battery_save_path_ = battery_path;
 
-    // Auto-load the configured .sav for battery-backed carts (best effort).
-    if (cartridge_->has_battery() && !cartridge_->has_flash_storage() &&
-        !battery_save_path_.empty()) {
-        const std::string& sav = battery_save_path_;
-        if (std::filesystem::exists(sav)) {
-            auto loaded = load_battery_ram(sav);
-            if (!loaded) {
-                logger::warn("Failed to load battery save: {}", loaded.error());
-            } else {
-                logger::info("Loaded battery save: {}", sav);
-            }
-        }
-    }
-
     return {};
 }
 
@@ -242,9 +229,14 @@ Result<void> Emulator::load_disk(const std::string& path) {
     if (!data) {
         return std::unexpected(data.error());
     }
-    if (!fds_.load_disk(*data)) {
+    Fds candidate;
+    if (!candidate.load_disk(*data)) {
         return std::unexpected("Invalid FDS disk image (not a whole number of sides): " + path);
     }
+    if (auto saved = flush_disk_changes(); !saved)
+        return saved;
+    fds_ = std::move(candidate);
+    disk_changes_path_.clear(); // Direct mounts are read-only and have no overlay.
     disk_hash_ = rom_sha256(*data);
     logger::info("Mounted FDS disk: {} ({} side(s))", path, fds_.side_count());
     return {};
@@ -386,12 +378,10 @@ Result<void> Emulator::scan_barcode(std::string_view digits, uint32_t module_cyc
     return cartridge_->scan_barcode(digits, module_cycles);
 }
 
-void Emulator::unload_cartridge() {
+Result<void> Emulator::unload_cartridge() {
+    if (auto saved = flush_persistent_data(); !saved)
+        return saved;
     retain_shared_nvram();
-    // Persist battery-backed RAM before tearing the cartridge down.
-    flush_battery_ram();
-    if (auto saved = flush_disk_changes(); !saved)
-        logger::error("{}", saved.error());
     fds_.unload();
     disk_hash_ = {};
     disk_changes_path_.clear();
@@ -411,6 +401,7 @@ void Emulator::unload_cartridge() {
     apu_.reset();
     fds_.reset();
     cpu_.reset();
+    return {};
 }
 
 void Emulator::reset() {

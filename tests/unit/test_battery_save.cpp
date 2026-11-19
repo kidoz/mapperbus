@@ -263,3 +263,27 @@ TEST_CASE("Battery loads are capped and saves replace atomically", "[battery]") 
     std::filesystem::remove(sav);
     std::filesystem::remove(rom);
 }
+
+TEST_CASE("Rejected battery imports preserve progress and the running cartridge", "[battery]") {
+    register_builtin_mappers();
+    const auto current = write_counter_rom("battery-import-current", false);
+    const auto incoming = write_counter_rom("battery-import-incoming");
+    auto save = incoming;
+    save.replace_extension(".sav");
+    const std::vector<char> original(0x2001, 'A');
+    std::ofstream(save, std::ios::binary).write(original.data(), original.size());
+    {
+        Emulator emulator;
+        REQUIRE(emulator.load_cartridge(current.string()));
+        const auto identity = emulator.content_hash();
+        CHECK_FALSE(emulator.load_cartridge(incoming.string()));
+        CHECK(emulator.content_hash() == identity);
+        REQUIRE(emulator.flush_persistent_data());
+    }
+    std::ifstream file(save, std::ios::binary);
+    REQUIRE(std::vector<char>(std::istreambuf_iterator<char>(file), {}) == original);
+    file.close();
+    std::filesystem::remove(save);
+    std::filesystem::remove(current);
+    std::filesystem::remove(incoming);
+}

@@ -62,6 +62,25 @@ struct StateFixture {
     }
 };
 
+TEST_CASE("Checked shutdown keeps a battery cartridge open when progress cannot be saved",
+          "[app][storage][battery]") {
+    StateFixture fixture;
+    const auto rom = tests::build_ines_rom(
+        fixture.root.filename().string(), 0, 1, 1, {}, core::MirrorMode::Vertical, true);
+    std::filesystem::copy_file(rom, fixture.rom, std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::remove(rom);
+    REQUIRE(fixture.session.open_rom(fixture.rom.string()));
+    auto save = fixture.rom;
+    save.replace_extension(".sav");
+    std::filesystem::create_directory(save);
+    CHECK_FALSE(fixture.session.close_rom());
+    CHECK(fixture.session.has_cartridge());
+    std::filesystem::remove(save);
+    REQUIRE(fixture.session.close_rom());
+    CHECK_FALSE(fixture.session.has_cartridge());
+    CHECK(std::filesystem::file_size(save) == 8192);
+}
+
 TEST_CASE("Central states survive ROM moves and selected slots follow content",
           "[app][state][storage]") {
     StateFixture fixture;
@@ -452,10 +471,9 @@ TEST_CASE("Failed async state writes retain both the prior slot and paused game"
     const auto before = fixture.session.emulator().save_state();
     const auto path = fixture.session.state_path_for_slot(2);
     REQUIRE(fixture.session.save_state(2));
-    // Prevent opening the temporary output without modifying the existing slot.
-    std::filesystem::create_directory(path + ".tmp");
+    // The existing slot is a regular file, so its child cannot be opened.
     AsyncStateIO io;
-    REQUIRE(io.save(fixture.session.emulator_handle(), path));
+    REQUIRE(io.save(fixture.session.emulator_handle(), path + "/blocked"));
     CHECK_FALSE(wait_for_state(io));
     CHECK(fixture.session.emulator().save_state() == before);
     CHECK(fixture.session.paused());
@@ -877,10 +895,11 @@ TEST_CASE("Failed background disk writes retain dirty data and explicit Retry us
     const auto old =
         core::read_binary_file_capped(path.string(), 2 * core::Fds::kMaxDiskImageBytes, "old save");
     REQUIRE(old);
-    std::filesystem::create_directory(path.string() + ".tmp");
     change_fds_payload(machine.fds(), 43);
+    auto blocked = *machine.disk_save_snapshot();
+    blocked.path = (path / "blocked").string();
     AsyncDiskSave saver;
-    REQUIRE(saver.submit(*machine.disk_save_snapshot()));
+    REQUIRE(saver.submit(std::move(blocked)));
     auto failed = wait_disk(saver);
     REQUIRE(failed);
     REQUIRE_FALSE(*failed);
@@ -890,7 +909,6 @@ TEST_CASE("Failed background disk writes retain dirty data and explicit Retry us
     auto retained = core::read_binary_file_capped(path.string(), old->size(), "old save");
     REQUIRE(retained);
     CHECK(*retained == *old);
-    std::filesystem::remove(path.string() + ".tmp");
     change_fds_payload(machine.fds(), 44);
     saver.clear_error();
     REQUIRE(saver.submit(*machine.disk_save_snapshot()));
@@ -990,9 +1008,10 @@ TEST_CASE("The GUI session keeps advancing while an FDS autosave is blocked",
     CHECK(restored.fds().disk_image()[75] == 43);
     // A later state-file failure must not be reported as a failed disk flush.
     change_fds_payload(session.emulator().fds(), 44);
-    std::filesystem::create_directory(snapshot.string() + ".tmp");
+    const auto blocked = fixture.root / "blocked";
+    std::filesystem::create_directory(blocked);
     auto second_fence = session.begin_background_persistence();
-    REQUIRE(states.save(session.emulator_handle(), snapshot.string(), std::move(second_fence)));
+    REQUIRE(states.save(session.emulator_handle(), blocked.string(), std::move(second_fence)));
     auto failed_state = wait_for_state(states);
     REQUIRE_FALSE(failed_state);
     session.finish_background_persistence(std::unexpected(failed_state.error()));

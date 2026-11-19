@@ -63,6 +63,29 @@ void write_payload_byte(Fds& drive, Byte value) {
 }
 } // namespace
 
+TEST_CASE("Direct disk replacement flushes the old overlay and detaches its path", "[fds][save]") {
+    Fixture fixture;
+    const auto overlay = fixture.root / "old.fds-save";
+    const auto next = fixture.root / "next.fds";
+    const auto bios = mapperbus::tests::make_fds_bios();
+    const auto disk = mapperbus::tests::make_fds_image();
+    REQUIRE(write_binary_file_atomic(next.string(), disk, "test disk"));
+    Emulator machine;
+    REQUIRE(machine.load_fds(bios, disk, overlay.string()));
+    write_payload_byte(machine.fds(), 42);
+    std::filesystem::create_directory(overlay);
+    REQUIRE_FALSE(machine.load_disk(next.string()));
+    REQUIRE(machine.fds().dirty());
+    std::filesystem::remove(overlay);
+    REQUIRE(machine.load_disk(next.string()));
+    machine.fds().set_write_protected(false);
+    write_payload_byte(machine.fds(), 43);
+    REQUIRE_FALSE(machine.disk_save_snapshot());
+    Emulator restored;
+    REQUIRE(restored.load_fds(bios, disk, overlay.string()));
+    CHECK(restored.fds().disk_image()[75] == 42);
+}
+
 TEST_CASE("FDS BIOS boots through the bus and reads disk data into adapter RAM", "[fds][system]") {
     Emulator emulator;
     REQUIRE(

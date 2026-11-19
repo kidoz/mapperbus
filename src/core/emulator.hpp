@@ -41,7 +41,7 @@ class Emulator {
     /// Module duration describes deterministic swipe speed in M2 cycles.
     [[nodiscard]] Result<void> scan_barcode(std::string_view digits,
                                             uint32_t module_cycles = 1000U);
-    void unload_cartridge();
+    Result<void> unload_cartridge();
     /// Persists cartridge battery bytes and shared device NVRAM to their
     /// separate configured files. Called on switches, unload and teardown.
     /// Reports failures through the logger; flush_persistent_data returns them.

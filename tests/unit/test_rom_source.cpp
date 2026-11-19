@@ -892,8 +892,8 @@ TEST_CASE("Outgoing persistence failure leaves the paused machine available",
     REQUIRE(cartridge);
     // A directory cannot be replaced by a battery file on any supported OS.
     const auto blocked = fixture.root / "blocked.sav";
-    std::filesystem::create_directory(blocked);
     REQUIRE(current->load_cartridge(std::move(*cartridge), blocked.string()));
+    std::filesystem::create_directory(blocked);
     current->reset();
     current->step_frame();
     const auto before = current->save_state();

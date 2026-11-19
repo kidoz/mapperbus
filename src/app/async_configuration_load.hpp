@@ -9,21 +9,6 @@
 
 namespace mapperbus::app {
 
-struct ConfigurationLoadRequest {
-    std::filesystem::path primary;
-    std::filesystem::path legacy;
-};
-
-struct LoadedConfiguration {
-    MapperBusConfiguration configuration;
-    bool missing = false;
-    bool legacy = false;
-};
-
-inline constexpr std::size_t kMaxConfigurationBytes = 16 * 1024 * 1024;
-[[nodiscard]] core::Result<LoadedConfiguration> read_startup_configuration(
-    const ConfigurationLoadRequest& request);
-
 /// Cancellable startup reads own only request paths and result values.
 class AsyncConfigurationLoad {
   public:

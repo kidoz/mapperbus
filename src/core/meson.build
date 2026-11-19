@@ -1,5 +1,6 @@
 core_sources = files(
     'logger.cpp',
+    'binary_file.cpp',
     'emulator.cpp',
     'cpu/cpu.cpp',
     'ppu/ppu.cpp',

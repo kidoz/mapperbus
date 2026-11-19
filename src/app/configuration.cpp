@@ -5,13 +5,13 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
-#include <fstream>
 #include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
 #include <system_error>
 
+#include "core/binary_file.hpp"
 #include "core/emulator.hpp"
 #include "core/logger.hpp"
 
@@ -842,17 +842,56 @@ std::filesystem::path mapperbus_configuration_path() {
     return configuration_directory() / "mapperbus.conf";
 }
 
-MapperBusConfiguration load_mapperbus_configuration() {
-    auto configuration = load_mapperbus_configuration_from_file(mapperbus_configuration_path());
+namespace {
+core::Result<bool> settings_present(const std::filesystem::path& path) {
+    std::error_code error;
+    const auto status = std::filesystem::symlink_status(path, error);
+    if (error == std::errc::no_such_file_or_directory)
+        return false;
+    if (error)
+        return std::unexpected("Cannot check settings file: " + path.string() + ": " +
+                               error.message());
+    return std::filesystem::exists(status);
+}
+} // namespace
 
-    const auto legacy_path = configuration_directory() / "config.ini";
-    if (configuration.version == kMapperBusConfigurationVersion &&
-        !std::filesystem::exists(mapperbus_configuration_path()) &&
-        std::filesystem::exists(legacy_path)) {
-        configuration = load_mapperbus_configuration_from_file(legacy_path);
+core::Result<LoadedConfiguration> read_startup_configuration(
+    const ConfigurationLoadRequest& request) {
+    if (request.primary.empty())
+        return std::unexpected("No settings file path was provided");
+    auto path = request.primary;
+    auto primary_exists = settings_present(path);
+    if (!primary_exists)
+        return std::unexpected(primary_exists.error());
+    bool legacy = false;
+    if (!*primary_exists) {
+        auto legacy_exists =
+            request.legacy.empty() ? core::Result<bool>(false) : settings_present(request.legacy);
+        if (!legacy_exists)
+            return std::unexpected(legacy_exists.error());
+        if (!*legacy_exists)
+            return LoadedConfiguration{.configuration = {}, .missing = true};
+        path = request.legacy;
+        legacy = true;
     }
+    auto data =
+        core::read_binary_file_capped(path.string(), kMaxConfigurationBytes, "settings file");
+    if (!data)
+        return std::unexpected(data.error());
+    const std::string text(data->begin(), data->end());
+    return LoadedConfiguration{parse_mapperbus_configuration(text), false, legacy};
+}
 
-    return configuration;
+core::Result<MapperBusConfiguration> read_mapperbus_configuration() {
+    const auto path = mapperbus_configuration_path();
+    auto result = read_startup_configuration({path, path.parent_path() / "config.ini"});
+    if (!result)
+        return std::unexpected(result.error());
+    return std::move(result->configuration);
+}
+
+MapperBusConfiguration load_mapperbus_configuration() {
+    return read_mapperbus_configuration().value_or(MapperBusConfiguration{});
 }
 
 namespace {
@@ -977,10 +1016,8 @@ MapperBusConfiguration parse_configuration(std::istream& file) {
 } // namespace
 
 MapperBusConfiguration load_mapperbus_configuration_from_file(const std::filesystem::path& path) {
-    std::ifstream file(path);
-    if (!file)
-        return {};
-    return parse_configuration(file);
+    auto loaded = read_startup_configuration({path, {}});
+    return loaded ? std::move(loaded->configuration) : MapperBusConfiguration{};
 }
 
 MapperBusConfiguration parse_mapperbus_configuration(std::string_view text) {
@@ -992,22 +1029,8 @@ core::Result<void> save_mapperbus_configuration(const MapperBusConfiguration& co
     return save_mapperbus_configuration_to_file(configuration, mapperbus_configuration_path());
 }
 
-core::Result<void> save_mapperbus_configuration_to_file(const MapperBusConfiguration& configuration,
-                                                        const std::filesystem::path& path) {
-    std::error_code error;
-    if (!path.parent_path().empty()) {
-        std::filesystem::create_directories(path.parent_path(), error);
-        if (error) {
-            return std::unexpected("failed to create configuration directory: " + error.message());
-        }
-    }
-
-    const auto temp_path = path.parent_path() / (path.filename().string() + ".tmp");
-    std::ofstream file(temp_path, std::ios::trunc);
-    if (!file) {
-        return std::unexpected("failed to open configuration file for writing");
-    }
-
+namespace {
+void write_configuration(std::ostream& file, const MapperBusConfiguration& configuration) {
     file << "# MapperBus universal configuration\n";
     file << "# Format: mapperbus.conf v" << kMapperBusConfigurationVersion << "\n\n";
     file << "[mapperbus]\n";
@@ -1151,24 +1174,22 @@ core::Result<void> save_mapperbus_configuration_to_file(const MapperBusConfigura
         }
         file << '\n';
     }
+}
+} // namespace
 
-    if (!file) {
-        return std::unexpected("failed to write configuration file");
+core::Result<void> save_mapperbus_configuration_to_file(const MapperBusConfiguration& configuration,
+                                                        const std::filesystem::path& path) {
+    std::error_code error;
+    if (!path.parent_path().empty()) {
+        std::filesystem::create_directories(path.parent_path(), error);
+        if (error) {
+            return std::unexpected("failed to create configuration directory: " + error.message());
+        }
     }
 
-    file.close();
-    if (!file) {
-        return std::unexpected("failed to close configuration file");
-    }
-
-    std::filesystem::rename(temp_path, path, error);
-    if (error) {
-        std::error_code cleanup_error;
-        std::filesystem::remove(temp_path, cleanup_error);
-        return std::unexpected("failed to replace configuration file: " + error.message());
-    }
-
-    return {};
+    return core::write_file_atomic(path, "configuration file", [&](std::ostream& file) {
+        write_configuration(file, configuration);
+    });
 }
 
 platform::GamepadAssignments gamepad_assignments_for_game(
