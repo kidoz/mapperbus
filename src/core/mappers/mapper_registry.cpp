@@ -302,6 +302,7 @@
 #include "core/mappers/realtec_multicart.hpp"
 #include "core/mappers/ret_cufrom.hpp"
 #include "core/mappers/sachen.hpp"
+#include "core/mappers/shanghai158b.hpp"
 #include "core/mappers/single_chip.hpp"
 #include "core/mappers/sl1632.hpp"
 #include "core/mappers/somari_p_116.hpp"
@@ -885,6 +886,8 @@ namespace {
         header.mapper_number == 459U || header.mapper_number == 462U ||
         header.mapper_number == 541U)
         return MulticartLatches::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 258U)
+        return Shanghai158B::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 329U)
         return TransformerKeyboard::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 440U || header.mapper_number == 442U)
@@ -1989,6 +1992,7 @@ void register_builtin_mappers() {
     registry.register_mapper(224, make_factory<Kt008>());
     registry.register_mapper(256, make_factory<OneBus>());
     registry.register_mapper(257, make_factory<Mapper257>());
+    registry.register_mapper(258, make_factory<Shanghai158B>());
     registry.register_mapper(260, make_factory<HpMulticart260>());
     registry.register_mapper(266, make_factory<CityFighter266>());
     registry.register_mapper(267, make_factory<Mapper267>());

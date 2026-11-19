@@ -53,6 +53,23 @@ TEST_CASE("Asder PC-95 returns active-low key rows through the cartridge port",
     CHECK(cart->read_expansion(0x4906) == 0xAA);
 }
 
+TEST_CASE("158B protects its lookup port while switching MMC3 and NROM banks",
+          "[mapper258][cartridge]") {
+    register_builtin_mappers();
+    auto cart = Cartridge::from_data(image(258, 8, 8));
+    REQUIRE(cart);
+    CHECK(cart->read_expansion(0x5006) == 15);
+    CHECK(cart->expansion_read_mask(0x5F06) == 15);
+    cart->write_expansion(0x5FFA, 1);
+    CHECK(cart->read_expansion(0x5006) == 3);
+    CHECK(cart->read_expansion(0x5005) == 0);
+    cart->write_expansion(0x5000, 0x83);
+    CHECK(cart->read_prg(0x8000) == 3);
+    CHECK(cart->read_prg(0xFFFF) == 3);
+    cart->write_expansion(0x5000, 0xA3);
+    CHECK(cart->read_prg(0x8000) == 2);
+    CHECK(cart->read_prg(0xFFFF) == 3);
+}
 TEST_CASE("Computer keyboards multiplex serial keys onto D1 and D6 alongside port two",
           "[mapper371][mapper440][mapper442][cartridge]") {
     register_builtin_mappers();

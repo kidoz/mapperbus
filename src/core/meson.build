@@ -335,6 +335,7 @@ core_sources = files(
     'mappers/nesticle_mmc3.cpp',
     'mappers/multicart51_53.cpp',
     'mappers/multicart_latches.cpp',
+    'mappers/shanghai158b.cpp',
     'mappers/transformer_keyboard.cpp',
     'fds/fds.cpp',
     'fds/fds_mapper.cpp',
