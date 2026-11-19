@@ -107,6 +107,7 @@
 #include "core/mappers/taito_x1017.hpp"
 #include "core/mappers/teletubbies.hpp"
 #include "core/mappers/txc.hpp"
+#include "core/mappers/txc189.hpp"
 #include "core/mappers/uxrom.hpp"
 #include "core/mappers/vrc6.hpp"
 #include "core/mappers/vrc7.hpp"
@@ -173,6 +174,8 @@ namespace {
         return Ntdec174::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 183U)
         return Mapper183::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 189U)
+        return Txc189::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 12U)
         return Mapper012::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 14U)
@@ -1157,6 +1160,7 @@ void register_builtin_mappers() {
         registry.register_mapper(id, make_factory<Mapper166>());
     registry.register_mapper(174, make_factory<Ntdec174>());
     registry.register_mapper(183, make_factory<Mapper183>());
+    registry.register_mapper(189, make_factory<Txc189>());
     registry.register_mapper(12, make_factory<Mapper012>());
     registry.register_mapper(14, make_factory<Sl1632>());
     registry.register_mapper(15, make_factory<Mapper015>());
