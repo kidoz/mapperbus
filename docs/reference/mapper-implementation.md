@@ -5007,7 +5007,7 @@ some historical aliases share a factory with another ID.
 | 179 | Xinghe Zhanshi | Registered: Xinghe Zhanshi on mapper 176 | [r5374](https://www.nesdev.org/w/index.php?oldid=5374) |
 | 180 | UxROM fixed-low-window variant | New implementation: DiscreteMapper | [r19264](https://www.nesdev.org/w/index.php?oldid=19264) |
 | 181 | Seicross V2 | Registered: Seicross V2 on mapper 185.4 | [r24634](https://www.nesdev.org/w/index.php?oldid=24634) |
-| 182 | Historical duplicate of 114 | Duplicate; not registered | [r4858](https://www.nesdev.org/w/index.php?oldid=4858) |
+| 182 | YH-001 / NT-994 | Registered: Yh001 | [r4858](https://www.nesdev.org/w/index.php?oldid=4858) |
 | 183 | Board-specific specification | Registered: Mapper183 | [r24192](https://www.nesdev.org/w/index.php?oldid=24192) |
 | 184 | Sunsoft CHR banking | New implementation: DiscreteMapper | [r23872](https://www.nesdev.org/w/index.php?oldid=23872) |
 | 185 | CNROM CHR-disable protection | Registered: Cnrom185 | [r24346](https://www.nesdev.org/w/index.php?oldid=24346) |
