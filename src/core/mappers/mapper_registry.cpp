@@ -901,6 +901,8 @@ namespace {
         return Mapper043::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 329U)
         return TransformerKeyboard::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 352U)
+        return Multicart060::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 420U)
         return Mmc3::validate_a971210(header, prg_size, chr_size);
     if (header.mapper_number == 440U || header.mapper_number == 442U)
@@ -2084,6 +2086,7 @@ void register_builtin_mappers() {
     registry.register_mapper(349, make_factory<Mapper349>());
     registry.register_mapper(350, make_factory<Mapper350>());
     registry.register_mapper(351, make_factory<Mapper351>());
+    registry.register_mapper(352, make_factory<Multicart060>());
     registry.register_mapper(353, make_factory<Mapper353>());
     registry.register_mapper(354, make_factory<Mapper354>());
     registry.register_mapper(

@@ -48,6 +48,41 @@ TEST_CASE("Mapper 297 registry routes the expansion mode bit to both ROM chips",
     CHECK(cart->mirror_mode() == MirrorMode::Vertical);
 }
 
+TEST_CASE("Mapper 352 reset clocks whole PRG/CHR games together and retains header CIRAM",
+          "[mapper352][cartridge]") {
+    register_builtin_mappers();
+    auto rom = image(352, 8, 4);
+    for (Byte sub : {0U, 1U}) {
+        rom[8] = static_cast<Byte>((sub << 4U) | 1U);
+        for (Byte mirror : {0U, 1U}) {
+            rom[6] = static_cast<Byte>((rom[6] & 0xFEU) | mirror);
+            auto cart = Cartridge::from_data(rom);
+            REQUIRE(cart);
+            for (unsigned i = 0; i < 8; ++i) {
+                CAPTURE(i);
+                CHECK(cart->read_prg(0x8000) == (i & 3U) * 2);
+                CHECK(cart->read_prg(0xFFFF) == (i & 3U) * 2 + 1);
+                CHECK(cart->read_chr(0x1FFF) == (i & 3U));
+                CHECK(cart->mirror_mode() ==
+                      ((sub ? mirror : (i & 1U)) ? MirrorMode::Vertical : MirrorMode::Horizontal));
+                cart->reset();
+            }
+            cart->reset();
+            StateWriter writer;
+            cart->save_state(writer);
+            auto saved = writer.take();
+            cart->power_on();
+            REQUIRE(cart->read_prg(0x8000) == 0);
+            StateReader reader(saved);
+            cart->load_state(reader);
+            REQUIRE(reader.ok());
+            CHECK(cart->read_prg(0x8000) == 2);
+        }
+    }
+    rom[5] = 2;
+    REQUIRE_FALSE(Cartridge::from_data(rom));
+}
+
 TEST_CASE("KS-7017 stages each PRG selector and clocks its one-shot IRQ",
           "[mapper303][cartridge]") {
     register_builtin_mappers();

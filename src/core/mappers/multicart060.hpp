@@ -7,7 +7,7 @@
 
 namespace mapperbus::core {
 
-/// Reset-selected four-game NROM-128 multicart.
+/// Reset-selected NROM-128 (60) and NROM-256 (352) multicarts.
 class Multicart060 final : public Mapper {
   public:
     Multicart060(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte> chr_rom);
@@ -28,7 +28,9 @@ class Multicart060 final : public Mapper {
     std::vector<Byte> prg_rom_;
     std::vector<Byte> chr_rom_;
     MirrorMode mirror_mode_;
-    Byte game_ = 0U;
+    bool alternating_mirror_;
+    std::size_t prg_page_size_;
+    std::uint16_t game_ = 0U;
 };
 
 } // namespace mapperbus::core
