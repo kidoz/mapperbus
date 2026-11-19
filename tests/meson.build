@@ -436,6 +436,7 @@ test('mapper254', test_mapper254, timeout : mapper_test_timeout)
 foreach mapper_id : [
     '006',
     '012',
+    '014',
 ]
     test_mapper = executable('test-mapper' + mapper_id,
         'unit/test_mapper' + mapper_id + '.cpp',
