@@ -19,6 +19,7 @@ image. Mapper 355 requires one 1 KiB PIC firmware image. Mapper 413 requires one
 
 | Board or family | Supported profile and limits |
 |---|---|
+| Vs. Unisystem (75, 99, 151) | Standard single cabinet, shared RAM, RGB PPU, coin, service and DIP inputs. VRC1 cartridges retain four-screen mirroring. Legacy VRC1 images select the Gradius or The Goonies PPU and harness by matching both ROM sockets. DualSystem, light guns and protected cabinet profiles need separate support. |
 | Identified historical ROMs | 39 supports the English and Arabic Study & Game multicarts. The separate Subor keyboard is outside this cartridge profile. 54 distinguishes two Novel Diamond circuits. 181 uses the Seicross V2 CHR enable pins. 220 recognizes KS-7057 Gyruss and Boogerman II. |
 
 | Implementation | New IDs | Observable behavior covered |
@@ -4896,7 +4897,7 @@ some historical aliases share a factory with another ID.
 | 072 | Jaleco JF-17 | New implementation: JalecoDiscrete (external speech unsupported) | [r24541](https://www.nesdev.org/w/index.php?oldid=24541) |
 | 073 | VRC3 | New implementation: KonamiVrc | [r21300](https://www.nesdev.org/w/index.php?oldid=21300) |
 | 074 | Waixing 43-393/43-406/860908C mixed CHR | New implementation: Mmc3 | [r24258](https://www.nesdev.org/w/index.php?oldid=24258) |
-| 075 | VRC1 | New implementation: KonamiVrc | [r12313](https://www.nesdev.org/w/index.php?oldid=12313) |
+| 075 | Konami VRC1 and Vs. VRC1 | Registered: KonamiVrc / VsSystem | [r12313](https://www.nesdev.org/w/index.php?oldid=12313) |
 | 076 | Namco 109 variant | New implementation: Namco108 | [r21294](https://www.nesdev.org/w/index.php?oldid=21294) |
 | 077 | Irem Napoleon Senki / LROG017 | New implementation: IremLrog017 | [r24538](https://www.nesdev.org/w/index.php?oldid=24538) |
 | 078 | Holy Diver / Cosmo Carrier | New implementation: DiscreteMapper | [r21584](https://www.nesdev.org/w/index.php?oldid=21584) |
@@ -4920,7 +4921,7 @@ some historical aliases share a factory with another ID.
 | 096 | Oeka Kids | Registered: OekaKids | [r24545](https://www.nesdev.org/w/index.php?oldid=24545) |
 | 097 | Irem TAM-S1 | New implementation: DiscreteMapper | [r22478](https://www.nesdev.org/w/index.php?oldid=22478) |
 | 098 | Reserved | Not registered | [r22148](https://www.nesdev.org/w/index.php?oldid=22148) |
-| 099 | Vs. System board | Not registered | [r23485](https://www.nesdev.org/w/index.php?oldid=23485) |
+| 099 | Vs. Unisystem | Registered: VsSystem | [r23485](https://www.nesdev.org/w/index.php?oldid=23485) |
 | 100 | Emulator tool use | Not registered | [r23979](https://www.nesdev.org/w/index.php?oldid=23979) |
 | 101 | JF-10 legacy dump ordering | New implementation: JalecoDiscrete | [r21360](https://www.nesdev.org/w/index.php?oldid=21360) |
 | 102 | Drip Game | Registered: Historical ID for mapper 284 | [r4801](https://www.nesdev.org/w/index.php?oldid=4801) |
@@ -4972,7 +4973,7 @@ some historical aliases share a factory with another ID.
 | 148 | Board-specific specification | New implementation: DiscreteMapper | [r24534](https://www.nesdev.org/w/index.php?oldid=24534) |
 | 149 | Board-specific specification | New implementation: DiscreteMapper | [r24529](https://www.nesdev.org/w/index.php?oldid=24529) |
 | 150 | Sachen board | New implementation: Sachen | [r5081](https://www.nesdev.org/w/index.php?oldid=5081) |
-| 151 | Vs. VRC1 duplicate | Not registered | [r21586](https://www.nesdev.org/w/index.php?oldid=21586) |
+| 151 | Vs. VRC1 | Registered: VsSystem | [r21586](https://www.nesdev.org/w/index.php?oldid=21586) |
 | 152 | Bandai discrete mirroring variant | New implementation: DiscreteMapper | [r21304](https://www.nesdev.org/w/index.php?oldid=21304) |
 | 153 | Bandai FCG + WRAM | New implementation: BandaiFcg | [r5112](https://www.nesdev.org/w/index.php?oldid=5112) |
 | 154 | Namcot-3453 | New implementation: Namco108 | [r23278](https://www.nesdev.org/w/index.php?oldid=23278) |

@@ -101,6 +101,9 @@ indices 2/3, and unbound keys. Attach them separately with
 
 Source: [Gamepad configuration](../../src/platform/input/gamepad_config.hpp).
 
+For a standard Vs. Unisystem cabinet, the microphone binding (default M)
+inserts a coin. Start and Select operate the cabinet buttons.
+
 ### Default keyboard bindings
 
 | NES button | Key |
