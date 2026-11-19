@@ -1593,12 +1593,23 @@ std::shared_ptr<MapperRegistry> MapperRegistry::retain() {
 }
 
 void MapperRegistry::register_mapper(uint16_t mapper_number, MapperFactory factory) {
+    register_mapper(mapper_number,
+                    [factory = std::move(factory)](const INesHeader& h,
+                                                   std::vector<Byte> prg,
+                                                   std::vector<Byte> chr,
+                                                   std::span<const Byte>) {
+                        return factory(h, std::move(prg), std::move(chr));
+                    });
+}
+
+void MapperRegistry::register_mapper(uint16_t mapper_number, MapperMediaFactory factory) {
     factories_[mapper_number] = std::move(factory);
 }
 
 Result<std::unique_ptr<Mapper>> MapperRegistry::create(const INesHeader& header,
                                                        std::vector<Byte> prg_rom,
-                                                       std::vector<Byte> chr_rom) const {
+                                                       std::vector<Byte> chr_rom,
+                                                       std::span<const Byte> misc_rom) const {
     auto it = factories_.find(header.mapper_number);
     if (it == factories_.end()) {
         return std::unexpected("Unsupported mapper: " + std::to_string(header.mapper_number));
@@ -1606,7 +1617,7 @@ Result<std::unique_ptr<Mapper>> MapperRegistry::create(const INesHeader& header,
     if (auto valid = validate_geometry(header, prg_rom.size(), chr_rom.size()); !valid) {
         return std::unexpected(valid.error());
     }
-    return it->second(header, std::move(prg_rom), std::move(chr_rom));
+    return it->second(header, std::move(prg_rom), std::move(chr_rom), misc_rom);
 }
 
 namespace {
@@ -1873,6 +1884,19 @@ void register_builtin_mappers() {
     registry.register_mapper(351, make_factory<Mapper351>());
     registry.register_mapper(353, make_factory<Mapper353>());
     registry.register_mapper(354, make_factory<Mapper354>());
+    registry.register_mapper(
+        355,
+        [](const INesHeader& h,
+           std::vector<Byte> prg,
+           std::vector<Byte> chr,
+           std::span<const Byte> firmware) -> Result<std::unique_ptr<Mapper>> {
+            if (h.misc_rom_count != 1U)
+                return std::unexpected("Mapper 355 requires one PIC firmware ROM");
+            auto words = Mapper355::decode_pic_rom(firmware);
+            if (!words)
+                return std::unexpected(words.error());
+            return std::make_unique<Mapper355>(h, std::move(prg), std::move(chr), *words);
+        });
     registry.register_mapper(356, make_factory<Mapper356>());
     registry.register_mapper(357, make_factory<Mapper357>());
     registry.register_mapper(359, make_factory<Mapper359>());

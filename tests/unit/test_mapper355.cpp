@@ -7,7 +7,9 @@
 #include <span>
 #include <vector>
 
+#include "core/cartridge/cartridge.hpp"
 #include "core/mappers/mapper355.hpp"
+#include "core/mappers/mapper_registry.hpp"
 #include "core/state/state.hpp"
 
 using namespace mapperbus::core;
@@ -625,3 +627,38 @@ TEST_CASE("Mapper 355 rejects malformed and incompatible states atomically", "[m
 }
 
 } // namespace
+
+TEST_CASE("NES 2.0 mapper 355 runs the declared trailing PIC ROM", "[mapper355][cartridge]") {
+    register_builtin_mappers();
+    std::vector<Byte> image(16U + kPrgSize + 1024U);
+    image[0] = 'N';
+    image[1] = 'E';
+    image[2] = 'S';
+    image[3] = 0x1AU;
+    image[4] = 2U;
+    image[6] = 0x31U;
+    image[7] = 0x68U;
+    image[8] = 1U;
+    image[11] = 7U;
+    image[14] = 1U;
+    const auto pic = quiet_program();
+    for (std::size_t i = 0U; i < pic.size(); ++i) {
+        image[16U + kPrgSize + 2U * i] = static_cast<Byte>(pic[i]);
+        image[17U + kPrgSize + 2U * i] = static_cast<Byte>(pic[i] >> 8U);
+    }
+    auto cart = Cartridge::from_data(image);
+    REQUIRE(cart);
+    REQUIRE_FALSE(cart->irq_pending());
+    for (unsigned i = 0U; i < 8U; ++i)
+        cart->clock_cpu();
+    REQUIRE(cart->irq_pending());
+    for (Byte count : {0U, 2U, 3U}) {
+        image[14] = count;
+        REQUIRE_FALSE(Cartridge::from_data(image));
+    }
+    image[14] = 1U;
+    image.back() = 0xF0U;
+    REQUIRE_FALSE(Cartridge::from_data(image));
+    image.pop_back();
+    REQUIRE_FALSE(Cartridge::from_data(image));
+}

@@ -89,6 +89,9 @@ Result<Cartridge> Cartridge::from_data_impl(std::span<const Byte> rom_data,
         return std::unexpected("ROM data is smaller than declared in header");
     }
 
+    const auto misc_rom = header.misc_rom_count != 0U ? rom_data.subspan(chr_offset + chr_size)
+                                                      : std::span<const Byte>{};
+
     // Reuse only an exact-size owned PRG-only image. Padded/mixed images and
     // borrowed spans keep independent payload buffers instead of retaining
     // unused capacity. Hash the original bytes before erasing the header/trainer.
@@ -111,7 +114,7 @@ Result<Cartridge> Cartridge::from_data_impl(std::span<const Byte> rom_data,
     }
 
     auto mapper_result =
-        MapperRegistry::instance().create(header, std::move(prg_rom), std::move(chr_rom));
+        MapperRegistry::instance().create(header, std::move(prg_rom), std::move(chr_rom), misc_rom);
     if (!mapper_result) {
         return std::unexpected(mapper_result.error());
     }

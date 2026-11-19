@@ -27,6 +27,10 @@ struct INesHeader {
     std::size_t prg_nvram_size = 0;
     std::size_t chr_ram_size = 0;
     std::size_t chr_nvram_size = 0;
+    Byte misc_rom_count = 0U;
+    Byte vs_hardware = 0U;      // NES 2.0 byte 13 for Vs. System (hardware + PPU).
+    Byte expansion_device = 0U; // NES 2.0 byte 15.
+    Byte console_type = 0U;     // Flags 7 D0-D1, or the NES 2.0 extended console ID.
 };
 
 Result<INesHeader> parse_ines_header(std::span<const Byte> rom_data);

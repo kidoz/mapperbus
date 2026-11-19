@@ -71,11 +71,18 @@ Result<INesHeader> parse_ines_header(std::span<const Byte> rom_data) {
 
     // NES 2.0 detection
     header.is_nes2 = ((flags7 & 0x0C) == 0x08);
+    header.console_type = flags7 & 3U;
     header.submapper = 0;
     if (header.is_nes2) {
         header.mapper_number =
             static_cast<uint16_t>(header.mapper_number | ((rom_data[8] & 0x0F) << 8));
         header.submapper = static_cast<uint8_t>(rom_data[8] >> 4);
+        header.expansion_device = rom_data[15] & 0x3FU;
+        if (header.console_type == 3U)
+            header.console_type = rom_data[13] & 15U;
+        if (header.console_type == 1U)
+            header.vs_hardware = rom_data[13];
+        header.misc_rom_count = rom_data[14] & 3U;
     }
 
     const auto prg_size = decode_rom_size(rom_data[4], rom_data[9] & 0x0F, 16384, header.is_nes2);
