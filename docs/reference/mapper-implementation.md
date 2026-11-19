@@ -4858,7 +4858,7 @@ or another registered cartridge ID.
 | 039 | Board-specific specification | Not registered | [r4217](https://www.nesdev.org/w/index.php?oldid=4217) |
 | 040 | Board-specific specification | Registered: Ntdec2722 | [r19687](https://www.nesdev.org/w/index.php?oldid=19687) |
 | 041 | Board-specific specification | Registered: Caltron041 | [r24572](https://www.nesdev.org/w/index.php?oldid=24572) |
-| 042 | Board-specific specification | Not registered | [r4239](https://www.nesdev.org/w/index.php?oldid=4239) |
+| 042 | Board-specific specification | Registered: Mapper042 | [r4239](https://www.nesdev.org/w/index.php?oldid=4239) |
 | 043 | Board-specific specification | Not registered | [r4258](https://www.nesdev.org/w/index.php?oldid=4258) |
 | 044 | Board-specific specification | Not registered | [r4263](https://www.nesdev.org/w/index.php?oldid=4263) |
 | 045 | Board-specific specification | Not registered | [r22818](https://www.nesdev.org/w/index.php?oldid=22818) |
