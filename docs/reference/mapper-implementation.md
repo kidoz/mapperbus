@@ -4963,7 +4963,7 @@ or another registered cartridge ID.
 | 141 | Sachen 8259 | New implementation: Sachen | [r23709](https://www.nesdev.org/w/index.php?oldid=23709) |
 | 142 | Board-specific specification | Registered: KaiserKs202 | [r5032](https://www.nesdev.org/w/index.php?oldid=5032) |
 | 143 | Sachen board | New implementation: Sachen | [r5034](https://www.nesdev.org/w/index.php?oldid=5034) |
-| 144 | Board-specific specification | Not registered | [r19702](https://www.nesdev.org/w/index.php?oldid=19702) |
+| 144 | Board-specific specification | Registered: Mapper144 | [r19702](https://www.nesdev.org/w/index.php?oldid=19702) |
 | 145 | Board-specific specification | New implementation: DiscreteMapper | [r5039](https://www.nesdev.org/w/index.php?oldid=5039) |
 | 146 | Sachen board | New implementation: Sachen | [r22985](https://www.nesdev.org/w/index.php?oldid=22985) |
 | 147 | TXC/JV001 protection board | New implementation: Txc | [r5057](https://www.nesdev.org/w/index.php?oldid=5057) |
