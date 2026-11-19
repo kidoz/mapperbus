@@ -111,6 +111,7 @@ core_sources = files(
     'mappers/mapper128.cpp',
     'mappers/mmc1a.cpp',
     'mappers/mapper144.cpp',
+    'mappers/mapper156_daou.cpp',
     'mappers/vs_system.cpp',
     'fds/fds.cpp',
     'fds/fds_mapper.cpp',
