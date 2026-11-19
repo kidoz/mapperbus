@@ -5324,7 +5324,7 @@ some historical aliases share a factory with another ID.
 | 530 | Board-specific specification | Registered: Mapper530 | [r8130](https://www.nesdev.org/w/index.php?oldid=8130) |
 | 531 | LittleCom PC-95 | Registered: Mmc3 | [r8131](https://www.nesdev.org/w/index.php?oldid=8131) |
 | 532 | CHINA_ER_SAN2 | Registered: San2 | [r8133](https://www.nesdev.org/w/index.php?oldid=8133) |
-| 533 | Board-specific specification | Not registered | [r8137](https://www.nesdev.org/w/index.php?oldid=8137) |
+| 533 | Sachen 3014 | Registered: Sachen | [r8137](https://www.nesdev.org/w/index.php?oldid=8137) |
 | 534 | Board-specific specification | Not registered | [r22468](https://www.nesdev.org/w/index.php?oldid=22468) |
 | 535 | Board-specific specification | Not registered | [r8147](https://www.nesdev.org/w/index.php?oldid=8147) |
 | 536 | Board-specific specification | Not registered | [r23952](https://www.nesdev.org/w/index.php?oldid=23952) |
