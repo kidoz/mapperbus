@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <catch2/catch_test_macros.hpp>
 #include <vector>
 
@@ -6,6 +7,7 @@
 #include "core/cartridge/cartridge.hpp"
 #include "core/cartridge/ines_header.hpp"
 #include "core/cpu/cpu.hpp"
+#include "core/emulator.hpp"
 #include "core/mappers/axrom.hpp"
 #include "core/mappers/cnrom.hpp"
 #include "core/mappers/color_dreams.hpp"
@@ -453,6 +455,78 @@ TEST_CASE("MMC3 PRG RAM", "[mmc3]") {
     mapper.write_prg(0xA001, 0x00);
     REQUIRE_FALSE(mapper.maps_prg(0x7000));
     REQUIRE(mapper.maps_prg(0x8000));
+}
+
+TEST_CASE("iNES trainers execute after cold power on mapper WRAM", "[cartridge][trainer]") {
+    register_builtin_mappers();
+    constexpr std::size_t trainer_offset = 16U;
+    constexpr std::size_t prg_offset = trainer_offset + 512U;
+    constexpr std::array<Byte, 5> trainer_program = {0xA9U, 0x5AU, 0x85U, 0x02U, 0x60U};
+    constexpr std::array<Byte, 6> reset_program = {0x20U, 0x00U, 0x70U, 0x4CU, 0x05U, 0xC0U};
+
+    for (const unsigned mapper : {4U, 55U, 241U}) {
+        CAPTURE(mapper);
+        const bool malee2 = mapper == 55U;
+        const Byte prg_banks = malee2 ? 3U : 2U;
+        const Byte chr_banks = malee2 ? 1U : 0U;
+        std::vector<Byte> image(prg_offset + prg_banks * 16384U + chr_banks * 8192U, 0xEAU);
+        std::fill_n(image.begin(), trainer_offset, 0U);
+        image[0] = 'N';
+        image[1] = 'E';
+        image[2] = 'S';
+        image[3] = 0x1AU;
+        image[4] = prg_banks;
+        image[5] = chr_banks;
+        image[6] = static_cast<Byte>(((mapper & 0x0FU) << 4U) | 0x04U);
+        image[7] = static_cast<Byte>(mapper & 0xF0U);
+
+        std::ranges::copy(trainer_program, image.begin() + trainer_offset);
+        image[prg_offset - 1U] = 0xA5U;
+        std::ranges::copy(reset_program, image.begin() + prg_offset + 0x4000U);
+        constexpr auto reset_vector = prg_offset + 0x7FFCU;
+        image[reset_vector] = 0x00U;
+        image[reset_vector + 1U] = 0xC0U;
+
+        auto result = Cartridge::from_data(image);
+        REQUIRE(result);
+        REQUIRE(result->read_prg(0x7000U) == trainer_program[0]);
+        REQUIRE(result->read_prg(0x71FFU) == 0xA5U);
+        result->write_prg(0x71FFU, 0x55U);
+        result->reset();
+        REQUIRE(result->read_prg(0x71FFU) == 0x55U);
+
+        Emulator emulator;
+        REQUIRE(emulator.load_cartridge(std::move(*result), {}));
+        emulator.power_on();
+        CHECK(emulator.read_cpu(0x71FFU) == 0xA5U);
+        for (unsigned instruction = 0U; instruction < 16U; ++instruction)
+            emulator.step_instruction();
+        REQUIRE_FALSE(emulator.cpu().jammed());
+        REQUIRE(emulator.read_cpu(0x0002U) == 0x5AU);
+    }
+}
+
+TEST_CASE("Cold power preserves imported battery RAM on a trained cartridge",
+          "[cartridge][trainer]") {
+    register_builtin_mappers();
+    // Mapper 241 with battery WRAM, a trainer, and 32 KiB PRG ROM.
+    std::vector<Byte> image(16U + 512U + 32768U, 0U);
+    image[0] = 'N';
+    image[1] = 'E';
+    image[2] = 'S';
+    image[3] = 0x1AU;
+    image[4] = 2U;
+    image[6] = 0x16U;
+    image[7] = 0xF0U;
+    image[16] = 0xA5U;
+    auto cartridge = Cartridge::from_data(image);
+    REQUIRE(cartridge);
+    REQUIRE(cartridge->read_prg(0x7000U) == 0xA5U);
+    std::array<Byte, 8192> saved{};
+    saved[0x1000U] = 0x5AU;
+    cartridge->set_battery_ram(saved);
+    cartridge->power_on();
+    CHECK(cartridge->read_prg(0x7000U) == 0x5AU);
 }
 
 // === Sunsoft 5B audio ===
