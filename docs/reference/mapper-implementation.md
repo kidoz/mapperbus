@@ -5360,7 +5360,7 @@ some historical aliases share a factory with another ID.
 | 561 | Bung Super Game Doctor | Registered: GameDoctor | [r18925](https://www.nesdev.org/w/index.php?oldid=18925) |
 | 562 | Venus Turbo Game Doctor | Registered: GameDoctor | [r19971](https://www.nesdev.org/w/index.php?oldid=19971) |
 | 594 | Rinco Talkman | Registered: Mapper594 | [r22961](https://www.nesdev.org/w/index.php?oldid=22961) |
-| 595 | NES-4MROM-512 | Not registered | [r22979](https://www.nesdev.org/w/index.php?oldid=22979) |
+| 595 | NES-4MROM-512 | Registered: Mapper595 | [r22979](https://www.nesdev.org/w/index.php?oldid=22979) |
 | 600 | ABL UM6578 extended banking | Not registered | [r23398](https://www.nesdev.org/w/index.php?oldid=23398) |
 | 601 | dreamGEAR / Senario UM6578 | Not registered | [r23369](https://www.nesdev.org/w/index.php?oldid=23369) |
 | 602 | Subor SB-2000 UM6576 | Not registered | [r23370](https://www.nesdev.org/w/index.php?oldid=23370) |
