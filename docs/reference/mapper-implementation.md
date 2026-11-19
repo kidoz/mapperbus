@@ -1,24 +1,14 @@
 # Mapper implementation coverage
 
-This ledger tracks the requested implementation of every documented NES/Famicom
-cartridge mapper, including bootlegs and homebrew. **The full target is not yet
-complete.** Updated 2026-11-15 against the working-tree registry.
+This ledger tracks NES/Famicom cartridge mapper support, including bootlegs and
+homebrew. The built-in registry has **411 cartridge IDs** as of 2026-11-19.
+The inventory below identifies the factory for each registered ID and records
+separate FDS support under ID 020.
 
-There are **162 registered cartridge IDs**: the original 14, 53 added in the first
-batch, and Irem 32/65/77, Sunsoft 67/68, Taito 33/48/80/207/82/552, Jaleco 18/72/92/101,
-Namco 210, MMC3 variants 118/119, RAMBO-1 64/158, Bandai 16/153/159, and Datach
-157, UNROM 512 30, GTROM/direct MMC1 111, and J.Y. Company
-35/90/209/211/281/282/295/358/386/387/388/397, plus the sixteen Sachen/TXC
-IDs, Sachen MMC3 clones 262/512/513, Rex Soft's 263, Nitra 250, mappers
-114/115/123, T9552 249 / 4:5, mixed CHR 74/192/194/195, MRCM 196, mapper 197,
-TNROM640 198, Waixing FS309 199, multicarts 202/205, Gouder/JJ-01 208,
-Sugar Softec 215, Single Chip 218, Kasheng A9461 219, NTDEC N625092 221,
-address-latched multicarts/RPGs 227, Active Enterprises 228, reset-driven 22-in-1 230 and
-profiled 42 Games 233, Maxi 15 234, Golden Game 235, Realtec 236, Teletubbies 237, Contra Fighter 238, BxROM/WRAM 241, 43272/ET-113 242, C&E Decathlon 244, Waixing F003 245, G0151-1 246, Waixing VRC4 252/253 and Pikachu Y2K 254
-detailed below.
-FDS remains a separate subsystem, conventionally numbered 20. Registration and
-synthetic tests do not certify every commercial game, revision, peripheral, or
-unusual ROM geometry.
+Registration identifies a loadable board model. Cartridge geometry, submapper,
+and peripheral support still vary by implementation. In particular, mappers
+515 and 517 model the cartridge microphone ADCs in component tests and currently
+receive the default silent sample during ordinary play.
 
 ## Implemented in this batch
 
@@ -1171,7 +1161,7 @@ No commercial-title or physical-cartridge compatibility certification is claimed
 
 ## J.Y. Company follow-up: physical strobes and shared ASIC
 
-Mappers 35, 90, 209 and 211 use the original `JyCompany` implementation of
+Mappers 35, 90, 160, 209 and 211 use the original `JyCompany` implementation of
 [NESdev ASIC revision 24184](https://www.nesdev.org/w/index.php?oldid=24184).
 [Mapper 160](https://www.nesdev.org/wiki/INES_Mapper_160) is registered as an
 obsolete mapper-90 alias; no separate SA009 circuit is inferred from historical
@@ -4818,11 +4808,9 @@ count of physical cartridge designs. The other 235 grid slots had no article in
 that survey; no hardware or assignment status is inferred for them. IDs beyond
 the inspected 0–767 grid are not classified here.
 
-“New implementation” means the tested behavior described above. “Not registered”
-is an explicit remaining classification/implementation item, not a silent NROM
-fallback. The registry rejects unsupported IDs.
-Historical/obsolete duplicates are classified separately; they do not imply another PCB
-or another registered cartridge ID.
+The status column records built-in factory availability. The registry rejects
+unregistered IDs. Some unregistered IDs have component implementations, and
+some historical aliases share a factory with another ID.
 
 | ID | Specification identification | Implementation status | Source revision |
 |---:|---|---|---|
