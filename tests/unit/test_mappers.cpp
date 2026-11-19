@@ -529,6 +529,60 @@ TEST_CASE("Cold power preserves imported battery RAM on a trained cartridge",
     CHECK(cartridge->read_prg(0x7000U) == 0x5AU);
 }
 
+TEST_CASE("Mappers 514 through 530 load through the NES 2.0 cartridge registry", "[cartridge]") {
+    register_builtin_mappers();
+    struct Geometry {
+        Byte prg_banks;
+        Byte chr_banks;
+        Byte prg_ram;
+        Byte chr_ram;
+    };
+    constexpr std::array<Geometry, 17> geometry{{
+        {8U, 0U, 7U, 7U},    // 514
+        {96U, 0U, 0U, 7U},   // 515
+        {32U, 64U, 0U, 0U},  // 516
+        {8U, 0U, 0U, 7U},    // 517
+        {128U, 0U, 7U, 7U},  // 518
+        {8U, 4U, 0U, 0U},    // 519
+        {32U, 0U, 0U, 7U},   // 520
+        {12U, 0U, 0U, 7U},   // 521
+        {8U, 0U, 7U, 7U},    // 522
+        {128U, 32U, 0U, 0U}, // 523
+        {16U, 32U, 0U, 0U},  // 524
+        {8U, 32U, 0U, 0U},   // 525
+        {128U, 32U, 0U, 0U}, // 526
+        {16U, 32U, 0U, 0U},  // 527
+        {24U, 32U, 7U, 0U},  // 528
+        {32U, 64U, 0U, 0U},  // 529
+        {16U, 64U, 0U, 0U},  // 530
+    }};
+    for (std::size_t i = 0; i < geometry.size(); ++i) {
+        const auto mapper = 514U + i;
+        CAPTURE(mapper);
+        const auto layout = geometry[i];
+        std::vector<Byte> image(16U + layout.prg_banks * 16384U + layout.chr_banks * 8192U);
+        image[0] = 'N';
+        image[1] = 'E';
+        image[2] = 'S';
+        image[3] = 0x1AU;
+        image[4] = layout.prg_banks;
+        image[5] = layout.chr_banks;
+        image[6] = static_cast<Byte>(((mapper & 0x0FU) << 4U) | 0x01U);
+        image[7] = static_cast<Byte>((mapper & 0xF0U) | 0x08U);
+        image[8] = static_cast<Byte>(mapper >> 8U);
+        image[10] = layout.prg_ram;
+        image[11] = layout.chr_ram;
+
+        auto cartridge = Cartridge::from_data(image);
+        INFO((cartridge ? "" : cartridge.error()));
+        REQUIRE(cartridge);
+        CHECK(cartridge->header().mapper_number == mapper);
+
+        image[8] |= 0xF0U;
+        CHECK_FALSE(Cartridge::from_data(image));
+    }
+}
+
 // === Sunsoft 5B audio ===
 
 TEST_CASE("Sunsoft 5B noise generator produces output", "[sunsoft5b][audio]") {
