@@ -135,6 +135,7 @@ core_sources = files(
     'mappers/city_fighter266.cpp',
     'mappers/mapper267.cpp',
     'mappers/mapper268_coolboy.cpp',
+    'mappers/mapper269.cpp',
     'mappers/vs_system.cpp',
     'mappers/mapper222_ctc31.cpp',
     'fds/fds.cpp',
