@@ -53,6 +53,78 @@ TEST_CASE("Asder PC-95 returns active-low key rows through the cartridge port",
     CHECK(cart->read_expansion(0x4906) == 0xAA);
 }
 
+TEST_CASE("09-078 locks the NROM/UNROM selection until reset", "[mapper277][cartridge]") {
+    register_builtin_mappers();
+    auto cart = Cartridge::from_data(image(277, 16, 0, 0, 7));
+    REQUIRE(cart);
+    CHECK(cart->read_prg(0x8000) == 8);
+    CHECK(cart->read_prg(0xFFFF) == 9);
+    cart->write_prg(0x8000, 0x13);
+    CHECK(cart->read_prg(0x8000) == 3);
+    CHECK(cart->read_prg(0xFFFF) == 7);
+    CHECK(cart->mirror_mode() == MirrorMode::Horizontal);
+    cart->write_prg(0xFFE0, 0x2B);
+    cart->write_prg(0x8000, 0);
+    CHECK(cart->read_prg(0x8000) == 11);
+    CHECK(cart->read_prg(0xFFFF) == 11);
+    cart->reset();
+    CHECK(cart->read_prg(0xFFFF) == 9);
+}
+TEST_CASE("K-3017 resets to the extra chip and distinguishes its two bank wirings",
+          "[mapper280][cartridge]") {
+    register_builtin_mappers();
+    auto rom = image(280, 40, 0, 0, 7);
+    for (Byte sub : {0U, 1U}) {
+        rom[8] = static_cast<Byte>(1U | sub << 4);
+        auto cart = Cartridge::from_data(rom);
+        REQUIRE(cart);
+        cart->write_chr(1, 5);
+        cart->write_prg(0x808B, 0xFF);
+        CHECK(cart->read_prg(0x8000) == 2);
+        CHECK(cart->read_prg(0xFFFF) == 3);
+        cart->write_chr(1, 6);
+        CHECK(cart->read_chr(1) == 5);
+        cart->reset();
+        CHECK(cart->read_prg(0x8000) == 32);
+        CHECK(cart->read_prg(0xFFFF) == 39);
+        // D0..2 at $C00C are 111 from fixed bank 39, so the conflict passes 5.
+        cart->write_prg(0xC00C, 5);
+        CHECK(cart->read_prg(0x8000) == (sub ? 35 : 37));
+        cart->write_chr(1, 6);
+        CHECK(cart->read_chr(1) == 6);
+        cart->reset();
+        CHECK(cart->read_prg(0x8000) == 0);
+    }
+}
+TEST_CASE("Sheng Tian data latch selects either a mirrored page or an entire PRG pair",
+          "[mapper343][cartridge]") {
+    register_builtin_mappers();
+    for (Byte sub : {0U, 1U}) {
+        auto rom = image(343, sub ? 64 : 8, 0, 0, 7);
+        rom[8] = static_cast<Byte>(1U | sub << 4);
+        auto cart = Cartridge::from_data(rom);
+        REQUIRE(cart);
+        CHECK(cart->read_prg(0xFFFF) == (sub ? 63 : 7));
+        cart->write_prg(0x8000, 2);
+        CHECK(cart->read_prg(0x8000) == (sub ? 4 : 2));
+        CHECK(cart->read_prg(0xFFFF) == (sub ? 5 : 2));
+        cart->reset();
+        CHECK(cart->read_prg(0xFFFF) == (sub ? 5 : 2));
+    }
+}
+TEST_CASE("Croaky Karaoke expansion registers control PRG page size and mirroring",
+          "[mapper476][cartridge]") {
+    register_builtin_mappers();
+    auto cart = Cartridge::from_data(image(476, 32, 0, 0, 7));
+    REQUIRE(cart);
+    cart->write_expansion(0x54FF, 3);
+    CHECK(cart->read_prg(0xFFFF) == 3);
+    cart->write_expansion(0x5EFF, 5);
+    CHECK(cart->read_prg(0x8000) == 6);
+    CHECK(cart->read_prg(0xFFFF) == 7);
+    CHECK(cart->mirror_mode() == MirrorMode::Horizontal);
+}
+
 TEST_CASE("158B protects its lookup port while switching MMC3 and NROM banks",
           "[mapper258][cartridge]") {
     register_builtin_mappers();
@@ -167,6 +239,37 @@ TEST_CASE("Golden Key latches pattern pins at rising A13 and decodes PRG A18",
     c->reset();
     CHECK(c->read_prg(0x6123) == 0x78);
     CHECK(c->read_prg(0x8000) == 0);
+}
+TEST_CASE("8157 decodes its inverted upper window and menu pad", "[mapper301][cartridge]") {
+    register_builtin_mappers();
+    auto rom = image(301, 32, 0, 0, 7);
+    rom[16 + 1] = 0x75;
+    auto c = Cartridge::from_data(rom);
+    REQUIRE(c);
+    c->write_prg(0x82B6, 0);
+    CHECK(c->mirror_mode() == MirrorMode::Horizontal);
+    CHECK(c->read_prg(0x8000) == 13);
+    CHECK(c->read_prg(0xC000) == 15);
+    c->write_prg(0x80B4, 0);
+    CHECK(c->read_prg(0xC000) == 8);
+    c->write_prg(0x8100, 0);
+    REQUIRE(c->configure_board_jumpers(1));
+    CHECK(c->read_prg(0x8000) == 0x75);
+}
+TEST_CASE("5069 locks its outer PRG and mirroring while retaining an inner register",
+          "[mapper363][cartridge]") {
+    register_builtin_mappers();
+    auto c = Cartridge::from_data(image(363, 64, 0, 0, 7));
+    REQUIRE(c);
+    c->write_prg(0x8035, 6);
+    CHECK(c->read_prg(0x8000) == 46);
+    CHECK(c->read_prg(0xFFFF) == 47);
+    CHECK(c->mirror_mode() == MirrorMode::Horizontal);
+    c->write_prg(0x8012, 3);
+    CHECK(c->read_prg(0x8000) == 43);
+    c->reset();
+    CHECK(c->read_prg(0x8000) == 0);
+    CHECK(c->mirror_mode() == MirrorMode::Vertical);
 }
 TEST_CASE("Keyboard Transformer latches make and break codes and acknowledges read IRQs",
           "[mapper329][cartridge]") {

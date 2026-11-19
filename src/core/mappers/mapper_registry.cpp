@@ -10,6 +10,7 @@
 #include "core/mappers/bxrom_wram.hpp"
 #include "core/mappers/caltron_041.hpp"
 #include "core/mappers/cartridge_story_274.hpp"
+#include "core/mappers/chr_ram_multicarts.hpp"
 #include "core/mappers/city_fighter266.hpp"
 #include "core/mappers/cnrom.hpp"
 #include "core/mappers/cnrom185.hpp"
@@ -532,8 +533,8 @@ namespace {
         return Mapper299::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 300U)
         return Mapper300::validate_geometry(header, prg_size, chr_size);
-    if (header.mapper_number == 301U)
-        return Mapper301::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 301U || header.mapper_number == 363U)
+        return ChrRamMulticarts::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 302U)
         return KaiserKs7057::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 304U)
@@ -890,6 +891,9 @@ namespace {
         return Shanghai158B::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 259U)
         return Mmc3::validate_f15(header, prg_size, chr_size);
+    if (header.mapper_number == 277U || header.mapper_number == 280U ||
+        header.mapper_number == 343U || header.mapper_number == 476U)
+        return ChrRamMulticarts::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 329U)
         return TransformerKeyboard::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 420U)
@@ -1957,6 +1961,8 @@ void register_builtin_mappers() {
     registry.register_mapper(191, make_factory<Mapper191>());
     registry.register_mapper(261, make_factory<Ntdec2746>());
     registry.register_mapper(274, make_factory<CartridgeStory274>());
+    registry.register_mapper(277, make_factory<ChrRamMulticarts>());
+    registry.register_mapper(280, make_factory<ChrRamMulticarts>());
     registry.register_mapper(283, make_factory<BlockFamily283>());
     registry.register_mapper(12, make_factory<Mapper012>());
     registry.register_mapper(14, make_factory<Sl1632>());
@@ -2024,6 +2030,7 @@ void register_builtin_mappers() {
     registry.register_mapper(298, make_factory<UnlTf1201>());
     registry.register_mapper(299, make_factory<Mapper299>());
     registry.register_mapper(300, make_factory<Mapper300>());
+    registry.register_mapper(301, make_factory<ChrRamMulticarts>());
     registry.register_mapper(302, make_factory<KaiserKs7057>());
     registry.register_mapper(304, make_factory<Mapper304>());
     registry.register_mapper(305, make_factory<Mapper305>());
@@ -2059,6 +2066,7 @@ void register_builtin_mappers() {
     registry.register_mapper(339, make_factory<Mapper339>());
     registry.register_mapper(340, make_factory<Mapper340>());
     registry.register_mapper(341, make_factory<Mapper341>());
+    registry.register_mapper(343, make_factory<ChrRamMulticarts>());
     registry.register_mapper(344, make_factory<Mapper344>());
     registry.register_mapper(345, make_factory<Mapper345>());
     registry.register_mapper(346, make_factory<Mapper346>());
@@ -2088,6 +2096,7 @@ void register_builtin_mappers() {
     registry.register_mapper(360, make_factory<Mapper360>());
     registry.register_mapper(361, make_factory<Mapper361>());
     registry.register_mapper(362, make_factory<Mapper362>());
+    registry.register_mapper(363, make_factory<ChrRamMulticarts>());
     registry.register_mapper(364, make_factory<Mapper364>());
     registry.register_mapper(365, make_factory<Mapper365>());
     registry.register_mapper(366, make_factory<Mapper366>());
@@ -2178,6 +2187,7 @@ void register_builtin_mappers() {
     registry.register_mapper(472, make_factory<Mapper472>());
     registry.register_mapper(473, make_factory<Mapper473>());
     registry.register_mapper(474, make_factory<Mapper474>());
+    registry.register_mapper(476, make_factory<ChrRamMulticarts>());
     registry.register_mapper(481, make_factory<Mapper481>());
     registry.register_mapper(487, make_factory<Mapper487>());
     registry.register_mapper(493, make_factory<Mapper493>());
