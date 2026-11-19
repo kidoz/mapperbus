@@ -188,6 +188,7 @@
 #include "core/mappers/mapper404.hpp"
 #include "core/mappers/mapper405.hpp"
 #include "core/mappers/mapper406.hpp"
+#include "core/mappers/mapper407.hpp"
 #include "core/mappers/maxi15.hpp"
 #include "core/mappers/mmc1.hpp"
 #include "core/mappers/mmc1a.hpp"
@@ -620,6 +621,8 @@ namespace {
         return Mapper405::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 406U)
         return Mapper406::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 407U)
+        return Mapper407::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 30U || header.mapper_number == 111U)
         return FlashBoards::validate_geometry(header, prg_size, chr_size);
     if (JyCompany::supports_mapper(header.mapper_number))
