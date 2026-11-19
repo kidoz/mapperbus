@@ -5264,7 +5264,7 @@ or another registered cartridge ID.
 | 440 | Board-specific specification | Not registered | [r19242](https://www.nesdev.org/w/index.php?oldid=19242) |
 | 441 | Board-specific specification | Registered: Mapper441 | [r19277](https://www.nesdev.org/w/index.php?oldid=19277) |
 | 442 | Board-specific specification | Not registered | [r19244](https://www.nesdev.org/w/index.php?oldid=19244) |
-| 443 | Board-specific specification | Not registered | [r8065](https://www.nesdev.org/w/index.php?oldid=8065) |
+| 443 | Board-specific specification | Registered: Mapper443 | [r8065](https://www.nesdev.org/w/index.php?oldid=8065) |
 | 444 | Board-specific specification | Not registered | [r22463](https://www.nesdev.org/w/index.php?oldid=22463) |
 | 445 | Board-specific specification | Not registered | [r19271](https://www.nesdev.org/w/index.php?oldid=19271) |
 | 446 | Mindkids SMD172B FPGA | Not registered | [r22849](https://www.nesdev.org/w/index.php?oldid=22849) |
