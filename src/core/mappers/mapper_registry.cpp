@@ -69,6 +69,7 @@
 #include "core/mappers/mapper187.hpp"
 #include "core/mappers/mapper190.hpp"
 #include "core/mappers/mapper191.hpp"
+#include "core/mappers/mapper222_ctc31.hpp"
 #include "core/mappers/maxi15.hpp"
 #include "core/mappers/mmc1.hpp"
 #include "core/mappers/mmc1a.hpp"
@@ -254,6 +255,8 @@ namespace {
         return KaraokeStudio188::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 99U)
         return VsSystem::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 222U)
+        return Ctc31::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 30U || header.mapper_number == 111U)
         return FlashBoards::validate_geometry(header, prg_size, chr_size);
     if (JyCompany::supports_mapper(header.mapper_number))
