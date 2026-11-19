@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <functional>
+#include <optional>
 #include <stop_token>
 #include <string>
 #include <string_view>
@@ -30,6 +31,11 @@ struct RomReadControl {
 };
 inline constexpr std::string_view kRomLoadCancelled = "Opening ROM cancelled";
 
+struct CartridgeLaunchOptions {
+    std::string game_doctor_bios_path = {};
+    std::optional<core::Byte> vs_dips = std::nullopt;
+};
+
 [[nodiscard]] bool is_rom_archive(const std::filesystem::path& path);
 using FdsBiosRead = std::function<core::Result<std::vector<core::Byte>>(const std::string&)>;
 /// Reads a regular file capped at 8 KiB and requires exactly 8192 bytes.
@@ -57,6 +63,6 @@ using FdsBiosRead = std::function<core::Result<std::vector<core::Byte>>(const st
     const std::string& dcs_option_path = {},
     const std::string& datach_save_path = {},
     std::string_view board_profile = {},
-    const std::string& game_doctor_bios_path = {});
+    const CartridgeLaunchOptions& cartridge_options = {});
 
 } // namespace mapperbus::app

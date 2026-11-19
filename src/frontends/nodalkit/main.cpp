@@ -23,6 +23,7 @@
 int main(int argc, char** argv) try {
     std::string_view rom_path;
     std::string_view dcs_option_path;
+    mapperbus::app::CartridgeLaunchOptions cartridge_options;
     for (int i = 1; i < argc; ++i) {
         const std::string_view argument(argv[i]);
         if (argument == "--dcs-option" && i + 1 < argc && !std::string_view(argv[i + 1]).empty() &&
@@ -60,7 +61,7 @@ int main(int argc, char** argv) try {
 
     mapperbus::frontend::MapperBusGuiController controller(app, window);
     if (!rom_path.empty()) {
-        controller.open_initial_rom(rom_path, dcs_option_path);
+        controller.open_initial_rom(rom_path, dcs_option_path, std::move(cartridge_options));
     }
 
     window.present();

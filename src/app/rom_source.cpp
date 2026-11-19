@@ -278,7 +278,7 @@ core::Result<std::string> load_rom_source(core::Emulator& emulator,
                                           const std::string& dcs_option_path,
                                           const std::string& datach_save_path,
                                           std::string_view board_profile,
-                                          const std::string& game_doctor_bios_path) {
+                                          const CartridgeLaunchOptions& cartridge_options) {
     if (control.stop.stop_requested())
         return cancelled_error();
     const auto storage =
@@ -307,6 +307,7 @@ core::Result<std::string> load_rom_source(core::Emulator& emulator,
             return std::unexpected(read.error());
         option = std::move(*read);
     }
+    const auto& [game_doctor_bios_path, vs_dips] = cartridge_options;
     const auto configure_cartridge = [&](core::Cartridge& cartridge) -> core::Result<void> {
         if (!game_doctor_bios_path.empty()) {
             auto bios = core::read_binary_file_capped(

@@ -15,7 +15,7 @@ int main(int argc, char* argv[]) {
     std::string member;
     std::string dcs_option;
     std::string board_profile;
-    std::string game_doctor_bios;
+    mapperbus::app::CartridgeLaunchOptions cartridge_options;
     std::string datach_save;
     std::string barcode;
     uint32_t barcode_cycles = 1000U;
@@ -157,7 +157,7 @@ int main(int argc, char* argv[]) {
                                                   dcs_option,
                                                   datach_save,
                                                   board_profile,
-                                                  game_doctor_bios);
+                                                  cartridge_options);
     if (!result) {
         mapperbus::core::logger::error("{}", result.error());
         return EXIT_FAILURE;

@@ -10,6 +10,7 @@
 
 #include "app/async_disk_save.hpp"
 #include "app/live_microphone.hpp"
+#include "app/rom_source.hpp"
 #include "app/state_storage.hpp"
 #include "app/turbo_input.hpp"
 #include "core/apu/audio_settings.hpp"
@@ -44,7 +45,8 @@ class EmulationSession {
     core::Result<void> open_rom(const std::string& rom_path,
                                 std::string_view member = {},
                                 const std::string& dcs_option_path = {},
-                                std::string_view board_profile = {});
+                                std::string_view board_profile = {},
+                                const CartridgeLaunchOptions& cartridge_options = {});
     core::Result<void> load_rom(const std::string& rom_path);
     /// Adopt media prepared off-thread after the paused outgoing machine has been saved.
     void adopt_rom(PreparedRom media);

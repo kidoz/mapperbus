@@ -27,6 +27,7 @@ struct RomLoadRequest {
     std::function<void(std::string)> on_fds_bios_error = {};
     std::string dcs_option_path = {};
     std::string board_profile = {};
+    CartridgeLaunchOptions cartridge_options = {};
 };
 
 struct PreparedRom {

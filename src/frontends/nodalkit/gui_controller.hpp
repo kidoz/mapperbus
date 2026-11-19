@@ -74,7 +74,9 @@ class MapperBusGuiController {
         app::AsyncRomLoader::CancellablePrepare rom_prepare = app::prepare_rom,
         app::FdsBiosRead bios_read = app::read_fds_bios);
 
-    void open_initial_rom(std::string_view rom_path, std::string_view dcs_option_path = {});
+    void open_initial_rom(std::string_view rom_path,
+                          std::string_view dcs_option_path = {},
+                          app::CartridgeLaunchOptions cartridge_options = {});
 
     enum class PreviewScaleOption {
         PixelPerfect,
@@ -128,7 +130,8 @@ class MapperBusGuiController {
     void browse_for_rom(bool recovering = false);
     void attempt_open(std::string rom_path,
                       std::string member = {},
-                      std::string dcs_option_path = {});
+                      std::string dcs_option_path = {},
+                      app::CartridgeLaunchOptions cartridge_options = {});
     void start_rom_read();
     void poll_rom_load();
     void present_rom_loading(bool saving);
@@ -248,6 +251,7 @@ class MapperBusGuiController {
         std::string path;
         std::string member;
         std::string dcs_option_path;
+        app::CartridgeLaunchOptions cartridge_options;
     };
     std::optional<InitialRomRequest> initial_rom_request_;
     app::AsyncConfigurationSave configuration_saver_;
@@ -282,6 +286,7 @@ class MapperBusGuiController {
         std::string path;
         std::string member;
         std::string dcs_option_path;
+        app::CartridgeLaunchOptions cartridge_options;
         std::string error;
         std::string chooser_error;
         bool choosing_file = false;

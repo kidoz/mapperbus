@@ -15,13 +15,14 @@ App::~App() = default;
 
 core::Result<void> App::initialize(const std::string& rom_path,
                                    std::string_view member,
-                                   const std::string& dcs_option_path) {
+                                   const std::string& dcs_option_path,
+                                   const CartridgeLaunchOptions& cartridge_options) {
     auto result = session_.initialize();
     if (!result) {
         return result;
     }
 
-    return session_.open_rom(rom_path, member, dcs_option_path);
+    return session_.open_rom(rom_path, member, dcs_option_path, {}, cartridge_options);
 }
 
 void App::run(const std::function<void(EmulationSession&)>& after_tick) {

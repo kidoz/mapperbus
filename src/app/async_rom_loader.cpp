@@ -50,7 +50,8 @@ core::Result<PreparedRom> prepare_rom(const RomLoadRequest& request, std::stop_t
                                   control,
                                   request.dcs_option_path,
                                   {},
-                                  request.board_profile);
+                                  request.board_profile,
+                                  request.cartridge_options);
     if (!loaded)
         return std::unexpected(loaded.error());
     if (stop.stop_requested())

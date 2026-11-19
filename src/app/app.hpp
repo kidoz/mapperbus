@@ -17,7 +17,8 @@ class App {
 
     core::Result<void> initialize(const std::string& rom_path,
                                   std::string_view member = {},
-                                  const std::string& dcs_option_path = {});
+                                  const std::string& dcs_option_path = {},
+                                  const CartridgeLaunchOptions& cartridge_options = {});
     void run(const std::function<void(EmulationSession&)>& after_tick = {});
 
     core::Emulator& emulator() {

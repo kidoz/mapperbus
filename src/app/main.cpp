@@ -163,6 +163,7 @@ int main(int argc, char* argv[]) {
     std::string_view rom_member;
     std::string fds_bios;
     std::string dcs_option;
+    mapperbus::app::CartridgeLaunchOptions cartridge_options;
     auto mapperbus_config = mapperbus::app::load_mapperbus_configuration();
     auto microphone_settings = mapperbus_config.microphone;
     mapperbus::app::ControllerHardwareOverrides controller_overrides;
@@ -420,7 +421,7 @@ int main(int argc, char* argv[]) {
     app.session().set_fds_bios_path(fds_bios);
     app.session().set_microphone_backend(std::make_unique<mapperbus::frontend::Sdl3Microphone>());
     app.session().configure_live_microphone(microphone_settings);
-    auto result = app.initialize(rom_path, rom_member, dcs_option);
+    auto result = app.initialize(rom_path, rom_member, dcs_option, cartridge_options);
     if (!result) {
         mapperbus::core::logger::error("{}", result.error());
         return EXIT_FAILURE;

@@ -1290,7 +1290,8 @@ void MapperBusGuiController::finish_startup(app::LoadedConfiguration loaded, boo
     if (auto request = std::exchange(initial_rom_request_, {}))
         attempt_open(std::move(request->path),
                      std::move(request->member),
-                     std::move(request->dcs_option_path));
+                     std::move(request->dcs_option_path),
+                     std::move(request->cartridge_options));
 }
 
 bool MapperBusGuiController::configure_session() {
@@ -1349,9 +1350,11 @@ bool MapperBusGuiController::configure_session() {
 }
 
 void MapperBusGuiController::open_initial_rom(std::string_view rom_path,
-                                              std::string_view dcs_option_path) {
+                                              std::string_view dcs_option_path,
+                                              app::CartridgeLaunchOptions cartridge_options) {
     if (!rom_path.empty()) {
-        attempt_open(std::string(rom_path), {}, std::string(dcs_option_path));
+        attempt_open(
+            std::string(rom_path), {}, std::string(dcs_option_path), std::move(cartridge_options));
     }
 }
 
@@ -2009,14 +2012,17 @@ void MapperBusGuiController::browse_for_rom(bool recovering) {
 
 void MapperBusGuiController::attempt_open(std::string rom_path,
                                           std::string member,
-                                          std::string dcs_option_path) {
+                                          std::string dcs_option_path,
+                                          app::CartridgeLaunchOptions cartridge_options) {
     if (close_authorized_)
         return;
     if (!startup_ready_) {
         if (!rom_path.empty()) {
-            initial_rom_request_ = InitialRomRequest{.path = std::move(rom_path),
-                                                     .member = std::move(member),
-                                                     .dcs_option_path = std::move(dcs_option_path)};
+            initial_rom_request_ =
+                InitialRomRequest{.path = std::move(rom_path),
+                                  .member = std::move(member),
+                                  .dcs_option_path = std::move(dcs_option_path),
+                                  .cartridge_options = std::move(cartridge_options)};
             show_startup_view();
         }
         return;
@@ -2045,6 +2051,7 @@ void MapperBusGuiController::attempt_open(std::string rom_path,
         .state_storage = configuration_.save_states,
         .persistence_directory = {},
         .dcs_option_path = std::move(dcs_option_path),
+        .cartridge_options = std::move(cartridge_options),
     };
     if (session_->has_cartridge()) {
         // Save before reading replacement persistence, including reopening the same game.
@@ -2135,6 +2142,7 @@ void MapperBusGuiController::show_rom_load_error(std::string error,
         .path = loading_request_->path,
         .member = bios_member.value_or(loading_request_->member),
         .dcs_option_path = loading_request_->dcs_option_path,
+        .cartridge_options = loading_request_->cartridge_options,
         .error = std::move(error),
         .chooser_error = {},
         .needs_bios = bios_member.has_value(),
@@ -2186,7 +2194,10 @@ void MapperBusGuiController::present_rom_load_error() {
                         dismiss_rom_load_error();
                         if (response == nk::DialogResponse::Accept) {
                             // Recheck outgoing persistence and use current BIOS/settings.
-                            attempt_open(failure->path, failure->member, failure->dcs_option_path);
+                            attempt_open(failure->path,
+                                         failure->member,
+                                         failure->dcs_option_path,
+                                         failure->cartridge_options);
                         } else {
                             set_message(session_->has_cartridge() ? "Kept current game."
                                                                   : "Opening ROM cancelled.");
@@ -2277,7 +2288,10 @@ void MapperBusGuiController::poll_recovery_bios() {
                     if (failed_rom_load_ != failure || close_intent_ || close_authorized_)
                         return;
                     dismiss_rom_load_error();
-                    attempt_open(failure->path, failure->member, failure->dcs_option_path);
+                    attempt_open(failure->path,
+                                 failure->member,
+                                 failure->dcs_option_path,
+                                 failure->cartridge_options);
                 },
                 "mapperbus.bios-retry");
         },
