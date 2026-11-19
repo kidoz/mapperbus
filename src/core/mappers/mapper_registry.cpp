@@ -281,6 +281,7 @@
 #include "core/mappers/mapper554.hpp"
 #include "core/mappers/mapper555.hpp"
 #include "core/mappers/mapper556.hpp"
+#include "core/mappers/mapper560.hpp"
 #include "core/mappers/maxi15.hpp"
 #include "core/mappers/mmc1.hpp"
 #include "core/mappers/mmc1a.hpp"
@@ -968,6 +969,8 @@ namespace {
         return Namco108::validate_ntdec2718(header, prg_size, chr_size);
     if (header.mapper_number == 558U)
         return Fs304::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 560U)
+        return Mapper560::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 30U || header.mapper_number == 111U)
         return FlashBoards::validate_geometry(header, prg_size, chr_size);
     if (JyCompany::supports_mapper(header.mapper_number))
@@ -2318,6 +2321,7 @@ void register_builtin_mappers() {
     registry.register_mapper(556, make_factory<Mapper556>());
     registry.register_mapper(557, make_factory<Namco108>());
     registry.register_mapper(558, make_factory<Fs304>());
+    registry.register_mapper(560, make_factory<Mapper560>());
 }
 
 } // namespace mapperbus::core

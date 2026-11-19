@@ -431,6 +431,26 @@ TEST_CASE("NTDEC 2718 keeps CHR RAM fixed while N118 bank 5 changes CIRAM", "[ma
     CHECK(c.read_prg(0x7000) == 0xB7);
 }
 
+TEST_CASE("C/E BASIC maps tile shadows and toggles pattern and PRG modes in one write",
+          "[mapper560]") {
+    for (Byte sub : {0, 1}) {
+        auto c = cartridge(560, 64, 128, 1, 7, 0, sub);
+        CHECK(c.read_prg(0x8000) == 4);
+        CHECK_FALSE(c.write_nametable(0x2403, 0x82));
+        auto pair = c.background_pattern(0x2003, 0);
+        REQUIRE(pair);
+        CHECK((*pair)[0] == (sub ? 8 : 4));
+        CHECK((*pair)[1] == (sub ? 0 : 4));
+        c.observe_ppu_read(0x2003);
+        c.observe_ppu_read(0x23C0);
+        CHECK(c.read_chr(0) == (*pair)[0]);
+        c.write_prg(0xFFFF, 99);
+        CHECK(c.read_prg(0x8000) == 0);
+        CHECK(c.read_chr(8) == (sub ? 0 : 64));
+        snapshot(c);
+    }
+}
+
 TEST_CASE("03-101 selects discrete banks or MMC1 and gates WRAM and graphics writes",
           "[mapper546]") {
     auto c = cartridge(546, 512, 0, 2, 0x70, 7);
