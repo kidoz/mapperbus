@@ -661,6 +661,13 @@ test_mapper351 = executable('test-mapper351',
 )
 test('mapper351', test_mapper351, timeout : mapper_test_timeout * 3)
 
+# The exhaustive PRG and CHR banking matrices exceed the ordinary mapper budget.
+test_mapper432 = executable('test-mapper432',
+    'unit/test_mapper432.cpp',
+    dependencies : [mapperbus_core_dep, catch2_dep],
+)
+test('mapper432', test_mapper432, timeout : mapper_test_timeout * 2)
+
 test_one_bus = executable('test-one-bus',
     'unit/test_one_bus.cpp',
     dependencies : [mapperbus_core_dep, catch2_dep],
