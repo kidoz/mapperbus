@@ -24,6 +24,7 @@ image. Mapper 355 requires one 1 KiB PIC firmware image. Mapper 413 requires one
 | NESticle (100) | The Akira translation uses independent PRG/CHR banks, WRAM and a 512-byte trainer. The trainer can supply its reset entry point. |
 | Legacy variants | 178 supports submappers 0, 2 and 3. Submapper 1 requires an infrared receiver. 216 supports Magic Jewelry II. The Bonza payment reader is outside that profile. 222 implements the CTC-31 wiring. |
 | Educational keyboards | Desktop keyboard input drives the set-1 receiver on 329, the matrix on 365 and 531, and the serial keyboard ports on 371, 440 and 442. Mapper 531 reports the speech device idle. |
+| CF-028 (204) | Address-latched PRG, CHR and mirroring with configurable menu straps. The empty socket in a 56 KiB CHR population reads high. |
 
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
@@ -5029,7 +5030,7 @@ some historical aliases share a factory with another ID.
 | 201 | Board-specific specification | New implementation: DiscreteMapper | [r24516](https://www.nesdev.org/w/index.php?oldid=24516) |
 | 202 | 150-in-1 address-latched multicart; 32 KiB alignment compatibility policy | New implementation: DiscreteMapper | [r5551](https://www.nesdev.org/w/index.php?oldid=5551) |
 | 203 | Board-specific specification | New implementation: DiscreteMapper | [r5555](https://www.nesdev.org/w/index.php?oldid=5555) |
-| 204 | Multicart usage documented; register/hardware specification still needed | Not registered | [r5557](https://www.nesdev.org/w/index.php?oldid=5557) |
+| 204 | CF-028 multicarts | Registered: MulticartLatches | [r5557](https://www.nesdev.org/w/index.php?oldid=5557) |
 | 205 | JC-016-2 MMC3 block pins with selectable block-1-to-3 solder pad | New implementation: Mmc3 | [r5566](https://www.nesdev.org/w/index.php?oldid=5566) |
 | 206 | Namco 108/118 / DxROM | New implementation: Namco108 | [r23830](https://www.nesdev.org/w/index.php?oldid=23830) |
 | 207 | Taito X1-005 nametable variant | New implementation: TaitoX1005 | [r24116](https://www.nesdev.org/w/index.php?oldid=24116) |
@@ -5251,7 +5252,7 @@ some historical aliases share a factory with another ID.
 | 425 | Board-specific specification | Not registered | [r23380](https://www.nesdev.org/w/index.php?oldid=23380) |
 | 426 | Board-specific specification | Not registered | [r23381](https://www.nesdev.org/w/index.php?oldid=23381) |
 | 427 | Board-specific specification | Not registered | [r23382](https://www.nesdev.org/w/index.php?oldid=23382) |
-| 428 | Board-specific specification | Not registered | [r8060](https://www.nesdev.org/w/index.php?oldid=8060) |
+| 428 | KB-46 | Registered: MulticartLatches | [r8060](https://www.nesdev.org/w/index.php?oldid=8060) |
 | 429 | Board-specific specification | Registered: Mapper429 | [r23470](https://www.nesdev.org/w/index.php?oldid=23470) |
 | 430 | Board-specific specification | Registered: Mapper430 | [r18979](https://www.nesdev.org/w/index.php?oldid=18979) |
 | 431 | Board-specific specification | Registered: Mapper431 | [r23621](https://www.nesdev.org/w/index.php?oldid=23621) |
@@ -5282,10 +5283,10 @@ some historical aliases share a factory with another ID.
 | 456 | Board-specific specification | Registered: Mapper456 | [r21021](https://www.nesdev.org/w/index.php?oldid=21021) |
 | 457 | Board-specific specification | Registered: Mapper457 | [r21023](https://www.nesdev.org/w/index.php?oldid=21023) |
 | 458 | Board-specific specification | Registered: Mapper458 | [r21024](https://www.nesdev.org/w/index.php?oldid=21024) |
-| 459 | Board-specific specification | Not registered | [r22668](https://www.nesdev.org/w/index.php?oldid=22668) |
+| 459 | Kasheng VQ-168 | Registered: MulticartLatches | [r22668](https://www.nesdev.org/w/index.php?oldid=22668) |
 | 460 | Board-specific specification | Registered: Mapper460 | [r21050](https://www.nesdev.org/w/index.php?oldid=21050) |
 | 461 | Board-specific specification | Registered: Mapper461 | [r21169](https://www.nesdev.org/w/index.php?oldid=21169) |
-| 462 | Board-specific specification | Not registered | [r22669](https://www.nesdev.org/w/index.php?oldid=22669) |
+| 462 | 971107-00G | Registered: MulticartLatches | [r22669](https://www.nesdev.org/w/index.php?oldid=22669) |
 | 463 | Board-specific specification | Registered: Mapper463 | [r22670](https://www.nesdev.org/w/index.php?oldid=22670) |
 | 467 | Board-specific specification | Registered: Mapper467 | [r19326](https://www.nesdev.org/w/index.php?oldid=19326) |
 | 468 | Board-specific specification | Registered: Mapper468 | [r20144](https://www.nesdev.org/w/index.php?oldid=20144) |
@@ -5331,7 +5332,7 @@ some historical aliases share a factory with another ID.
 | 538 | Board-specific specification | Not registered | [r8156](https://www.nesdev.org/w/index.php?oldid=8156) |
 | 539 | Board-specific specification | Not registered | [r8157](https://www.nesdev.org/w/index.php?oldid=8157) |
 | 540 | Board-specific specification | Not registered | [r8158](https://www.nesdev.org/w/index.php?oldid=8158) |
-| 541 | Board-specific specification | Not registered | [r8159](https://www.nesdev.org/w/index.php?oldid=8159) |
+| 541 | LittleCom 160-in-1 | Registered: MulticartLatches | [r8159](https://www.nesdev.org/w/index.php?oldid=8159) |
 | 542 | Board-specific specification | Not registered | [r8160](https://www.nesdev.org/w/index.php?oldid=8160) |
 | 543 | Board-specific specification | Not registered | [r8162](https://www.nesdev.org/w/index.php?oldid=8162) |
 | 544 | Board-specific specification | Not registered | [r24263](https://www.nesdev.org/w/index.php?oldid=24263) |
