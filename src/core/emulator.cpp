@@ -427,9 +427,13 @@ void Emulator::reset_machine(bool cold_start) {
     apu_.reset();
     fds_.reset();
     if (cartridge_) {
-        if (cold_start)
+        if (cold_start) {
             cartridge_->power_on();
-        else
+            // These disk extracts start after the Game Doctor BIOS has inhibited the APU frame IRQ.
+            const auto mapper = cartridge_->header().mapper_number;
+            if (mapper == 561 || mapper == 562)
+                apu_.write_register(0x4017, 0x40);
+        } else
             cartridge_->reset();
     }
     cpu_.reset(cartridge_ ? cartridge_->trainer_entry() : std::nullopt);

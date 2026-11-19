@@ -15,6 +15,7 @@ int main(int argc, char* argv[]) {
     std::string member;
     std::string dcs_option;
     std::string board_profile;
+    std::string game_doctor_bios;
     std::string datach_save;
     std::string barcode;
     uint32_t barcode_cycles = 1000U;
@@ -28,11 +29,12 @@ int main(int argc, char* argv[]) {
     for (int index = 1; index < argc; ++index) {
         const std::string_view argument(argv[index]);
         if ((argument == "--entry" || argument == "--fds-bios" || argument == "--dcs-option" ||
-             argument == "--frames" || argument == "--region" || argument == "--barcode" ||
-             argument == "--barcode-frame" || argument == "--barcode-cycles" ||
-             argument == "--datach-save" || argument == "--board-profile" ||
-             argument == "--controller-timing" || argument == "--controller-wiring" ||
-             argument == "--controller-mode" || argument == "--expansion-controllers") &&
+             argument == "--game-doctor-bios" || argument == "--frames" || argument == "--region" ||
+             argument == "--barcode" || argument == "--barcode-frame" ||
+             argument == "--barcode-cycles" || argument == "--datach-save" ||
+             argument == "--board-profile" || argument == "--controller-timing" ||
+             argument == "--controller-wiring" || argument == "--controller-mode" ||
+             argument == "--expansion-controllers") &&
             index + 1 < argc) {
             const std::string_view value(argv[++index]);
             if (argument == "--entry")
@@ -65,12 +67,12 @@ int main(int argc, char* argv[]) {
                     barcode_frame = number;
                 else
                     barcode_cycles = static_cast<uint32_t>(number);
-            } else if (argument == "--dcs-option") {
+            } else if (argument == "--dcs-option" || argument == "--game-doctor-bios") {
                 if (value.empty() || value.starts_with("--")) {
-                    mapperbus::core::logger::error("--dcs-option requires a ROM path");
+                    mapperbus::core::logger::error("{} requires a ROM path", argument);
                     return EXIT_FAILURE;
                 }
-                dcs_option = value;
+                (argument == "--dcs-option" ? dcs_option : game_doctor_bios) = value;
             } else if (argument == "--region") {
                 region_override = mapperbus::app::parse_region_override(value);
                 if (!region_override) {
@@ -134,7 +136,8 @@ int main(int argc, char* argv[]) {
     if (path.empty()) {
         mapperbus::core::logger::error(
             "Usage: mapperbus-cli <rom-file|archive> [--entry NAME] "
-            "[--fds-bios PATH] [--dcs-option PATH] [--board-profile NAME] [--frames N] [--region "
+            "[--fds-bios PATH] [--game-doctor-bios PATH] [--dcs-option PATH] [--board-profile "
+            "NAME] [--frames N] [--region "
             "ntsc|pal|hybrid] "
             "[--controller-timing nes-av-famicom|rf-famicom] "
             "[--controller-wiring nes|rf-famicom] [--controller-mode "
@@ -145,8 +148,16 @@ int main(int argc, char* argv[]) {
     }
     mapperbus::core::register_builtin_mappers();
     mapperbus::core::Emulator emulator;
-    auto result = mapperbus::app::load_rom_source(
-        emulator, path, member, bios, {}, {}, dcs_option, datach_save, board_profile);
+    auto result = mapperbus::app::load_rom_source(emulator,
+                                                  path,
+                                                  member,
+                                                  bios,
+                                                  {},
+                                                  {},
+                                                  dcs_option,
+                                                  datach_save,
+                                                  board_profile,
+                                                  game_doctor_bios);
     if (!result) {
         mapperbus::core::logger::error("{}", result.error());
         return EXIT_FAILURE;

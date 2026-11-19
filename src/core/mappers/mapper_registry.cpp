@@ -29,6 +29,7 @@
 #include "core/mappers/fs304.hpp"
 #include "core/mappers/fs305.hpp"
 #include "core/mappers/g0151.hpp"
+#include "core/mappers/game_doctor.hpp"
 #include "core/mappers/golden_game.hpp"
 #include "core/mappers/hp_multicart260.hpp"
 #include "core/mappers/irem.hpp"
@@ -2322,6 +2323,8 @@ void register_builtin_mappers() {
     registry.register_mapper(557, make_factory<Namco108>());
     registry.register_mapper(558, make_factory<Fs304>());
     registry.register_mapper(560, make_factory<Mapper560>());
+    registry.register_mapper(561, GameDoctor::create);
+    registry.register_mapper(562, GameDoctor::create);
 }
 
 } // namespace mapperbus::core

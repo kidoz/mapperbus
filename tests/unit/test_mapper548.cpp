@@ -533,3 +533,112 @@ TEST_CASE("JY-215 switches to VRC4e, locks the game and restores a running VRC I
     c.write_prg(0xF00C, 0);
     CHECK_FALSE(c.irq_pending());
 }
+TEST_CASE("Game Doctor gameplay mode includes the startup trainer, mutable PRG and FDS data IRQ",
+          "[mapper561][mapper562]") {
+    const std::array<Byte, 8> trainer{0xA0, 0x67, 0xA0, 0x67, 0xA9, 0x25, 0x60, 0};
+    for (Word mapper : {561, 562}) {
+        auto c = cartridge(mapper, 256, 32, 1, 7, 0, 0, trainer);
+        CHECK(c.read_prg(0x67A0) == 0xA9);
+        CHECK(c.read_prg(0xFFFC) == 0);
+        CHECK(c.read_prg(0xFFFD) == 0x47);
+        CHECK(c.read_expansion(0x4700) == 0x20);
+        c.observe_cpu_read(0x4700, 0x20);
+        CHECK(c.read_expansion(0x4701) == 0xA0);
+        CHECK(c.read_expansion(0x4702) == 0x67);
+        c.observe_cpu_read(0x4705, 0xFF);
+        CHECK_FALSE(c.maps_expansion(0x4700));
+        CHECK(c.read_prg(0xFFFC) == 15);
+        c.write_prg(0x8000, 3);
+        CHECK(c.read_prg(0x8000) == 6);
+        c.write_expansion(0x42FC, 0);
+        CHECK(c.mirror_mode() == MirrorMode::SingleLower);
+        c.write_prg(0x8012, 99);
+        CHECK(c.read_prg(0x8012) == 99);
+        c.write_expansion(0x42FF, 0xC0);
+        c.write_prg(0x8000, 0xA3);
+        CHECK(c.read_prg(0x8000) == 3);
+        CHECK(c.read_prg(0xA000) == 10);
+        c.write_expansion(0x43FE, 0);
+        c.write_prg(0xA000, 0x1D);
+        CHECK(c.read_prg(0xA000) == 7);
+        CHECK(c.read_chr(0) == 8);
+        c.write_expansion(0x4025, 0x80);
+        for (int i = 0; i < 149; ++i)
+            c.clock_cpu();
+        CHECK_FALSE(c.irq_pending());
+        c.clock_cpu();
+        CHECK(c.irq_pending());
+        c.write_expansion(0x4024, 0);
+        CHECK_FALSE(c.irq_pending());
+        c.write_expansion(0x4025, 0);
+        if (mapper == 561) {
+            c.write_expansion(0x4100, 0xFE);
+            c.write_expansion(0x4101, 0xFF);
+        } else {
+            std::vector<Byte> bios(8192);
+            bios[0x801] = 0xD1;
+            CHECK_FALSE(c.configure_game_doctor_bios(std::span{bios}.first(8191)));
+            REQUIRE(c.configure_game_doctor_bios(bios));
+            CHECK(c.read_expansion(0x4801) == 0xD1);
+            CHECK(c.content_hash() != c.base_content_hash());
+            c.write_expansion(0x4411, 0xC3);
+            c.write_expansion(0x4403, 21);
+            c.observe_ppu_address(0x0FFF);
+            CHECK(c.read_expansion(0x4420) == 21);
+            CHECK(c.read_chr(0x0C00) == 21);
+            c.write_expansion(0x440C, 0x80);
+            c.write_expansion(0x440D, 2);
+        }
+        c.clock_cpu();
+        CHECK_FALSE(c.irq_pending());
+        snapshot(c);
+        c.clock_cpu();
+        CHECK(c.irq_pending());
+        c.power_on();
+        CHECK(c.read_prg(0xFFFD) == 0x47);
+        CHECK(c.read_prg(0x8000) == 0);
+    }
+}
+TEST_CASE("The console executes a Game Doctor trainer then fetches the game's reset vector",
+          "[mapper561][mapper562]") {
+    for (Word mapper : {561, 562}) {
+        std::vector<Byte> rom(16 + 131072U);
+        rom[0] = 'N';
+        rom[1] = 'E';
+        rom[2] = 'S';
+        rom[3] = 0x1A;
+        rom[4] = 8;
+        rom[6] = static_cast<Byte>(mapper << 4U);
+        rom[7] = (mapper & 0xF0U) | 8U;
+        rom[8] = mapper >> 8U;
+        rom[10] = 7;
+        rom[11] = 7;
+        rom[14] = 1;
+        rom[16 + 131072 - 4] = 0;
+        rom[16 + 131072 - 3] = 0x80;
+        const std::array<Byte, 10> game{0xAD, 0x34, 0x60, 0x8D, 0x35, 0x60, 0x4C, 0x06, 0x80, 0};
+        std::ranges::copy(game, rom.begin() + 16);
+        const std::array<Byte, 10> trainer{
+            0x00, 0x71, 0x00, 0x71, 0xA9, 0xAB, 0x8D, 0x34, 0x60, 0x60};
+        rom.insert(rom.end(), trainer.begin(), trainer.end());
+        register_builtin_mappers();
+        auto board = Cartridge::from_data(rom);
+        REQUIRE(board);
+        REQUIRE(board->configure_board_profile(mapper == 561 ? "sgd-4m" : "tgd-6m"));
+        CHECK_FALSE(board->configure_board_profile("unknown-doctor"));
+        Emulator emu;
+        REQUIRE(emu.load_cartridge(std::move(*board), {}));
+        emu.power_on();
+        CHECK(emu.cpu().pc() == 0x4700);
+        for (unsigned i = 0; i < 12; ++i)
+            emu.step_instruction();
+        CHECK(emu.read_cpu(0x6035) == 0xAB);
+        CHECK(emu.cpu().pc() == 0x8006);
+        emu.reset();
+        CHECK(emu.cpu().pc() == 0x8000);
+        rom[rom.size() - 10] = 0xFF;
+        rom[rom.size() - 9] = 0x7F;
+        CHECK_FALSE(Cartridge::from_data(rom));
+    }
+}
+} // namespace

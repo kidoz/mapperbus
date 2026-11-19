@@ -140,6 +140,9 @@ class Mapper {
     virtual void load_state_version(StateReader& reader, std::uint32_t /*version*/) {
         load_state(reader);
     }
+    virtual Result<void> configure_game_doctor_bios(std::span<const Byte> /*data*/) {
+        return std::unexpected("Turbo Game Doctor BIOS requires mapper 562");
+    }
     /// Configure immutable option media before installing the cartridge.
     virtual Result<void> configure_dcs_option_rom(std::span<const Byte> /*data*/) {
         return std::unexpected("DCS option ROM requires NES 2.0 mapper 68 submapper 1");

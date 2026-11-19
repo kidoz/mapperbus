@@ -336,6 +336,7 @@ core_sources = files(
     'mappers/fds_conversion_535.cpp',
     'mappers/mmc3_multicart_536_537.cpp',
     'mappers/fs305.cpp',
+    'mappers/game_doctor.cpp',
     'mappers/mapper127.cpp',
     'mappers/yh001.cpp',
     'mappers/nesticle_mmc3.cpp',

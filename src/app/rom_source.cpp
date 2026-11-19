@@ -277,7 +277,8 @@ core::Result<std::string> load_rom_source(core::Emulator& emulator,
                                           const RomReadControl& control,
                                           const std::string& dcs_option_path,
                                           const std::string& datach_save_path,
-                                          std::string_view board_profile) {
+                                          std::string_view board_profile,
+                                          const std::string& game_doctor_bios_path) {
     if (control.stop.stop_requested())
         return cancelled_error();
     const auto storage =
@@ -306,12 +307,27 @@ core::Result<std::string> load_rom_source(core::Emulator& emulator,
             return std::unexpected(read.error());
         option = std::move(*read);
     }
+    const auto configure_cartridge = [&](core::Cartridge& cartridge) -> core::Result<void> {
+        if (!game_doctor_bios_path.empty()) {
+            auto bios = core::read_binary_file_capped(
+                game_doctor_bios_path, 8192, "Turbo Game Doctor BIOS");
+            if (!bios)
+                return std::unexpected(bios.error());
+            if (auto configured = cartridge.configure_game_doctor_bios(*bios); !configured)
+                return configured;
+        }
+        if (!board_profile.empty())
+            return cartridge.configure_board_profile(board_profile);
+        return {};
+    };
     if (!is_rom_archive(path)) {
         if (!member.empty()) {
             return std::unexpected("A ROM member can only be selected in a .zip or .7z archive");
         }
         core::Result<void> loaded;
         if (lower_extension(path) == ".fds") {
+            if (!game_doctor_bios_path.empty())
+                return std::unexpected("Turbo Game Doctor BIOS requires mapper 562");
             if (!board_profile.empty())
                 return std::unexpected("Board profiles require a cartridge, not an FDS disk");
             if (!option.empty())
@@ -331,11 +347,8 @@ core::Result<std::string> load_rom_source(core::Emulator& emulator,
                 return cancelled_error();
             if (!cartridge)
                 return std::unexpected(cartridge.error());
-            if (!board_profile.empty()) {
-                if (auto configured = cartridge->configure_board_profile(board_profile);
-                    !configured)
-                    return std::unexpected(configured.error());
-            }
+            if (auto configured = configure_cartridge(*cartridge); !configured)
+                return std::unexpected(configured.error());
             auto shared = shared_path(*cartridge);
             if (!shared)
                 return std::unexpected(shared.error());
@@ -375,6 +388,8 @@ core::Result<std::string> load_rom_source(core::Emulator& emulator,
         return std::unexpected("ROM archive member not found: " + selected);
     }
     if (lower_extension(selected) == ".fds") {
+        if (!game_doctor_bios_path.empty())
+            return std::unexpected("Turbo Game Doctor BIOS requires mapper 562");
         if (!board_profile.empty())
             return std::unexpected("Board profiles require a cartridge, not an FDS disk");
         if (!option.empty())
@@ -394,10 +409,8 @@ core::Result<std::string> load_rom_source(core::Emulator& emulator,
     if (!cartridge) {
         return std::unexpected(cartridge.error());
     }
-    if (!board_profile.empty()) {
-        if (auto configured = cartridge->configure_board_profile(board_profile); !configured)
-            return std::unexpected(configured.error());
-    }
+    if (auto configured = configure_cartridge(*cartridge); !configured)
+        return std::unexpected(configured.error());
     const auto battery_path =
         storage / "battery" / (core::sha256_hex(cartridge->base_content_hash()) + ".sav");
     if (cartridge->has_battery()) {

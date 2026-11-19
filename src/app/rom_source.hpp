@@ -56,6 +56,7 @@ using FdsBiosRead = std::function<core::Result<std::vector<core::Byte>>(const st
     const RomReadControl& control = {},
     const std::string& dcs_option_path = {},
     const std::string& datach_save_path = {},
-    std::string_view board_profile = {});
+    std::string_view board_profile = {},
+    const std::string& game_doctor_bios_path = {});
 
 } // namespace mapperbus::app
