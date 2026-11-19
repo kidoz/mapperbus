@@ -26,6 +26,7 @@ unusual ROM geometry.
 |---|---|---|
 | Subor karaoke, Family Noraebang and UNROM microphone boards | 514–518 | CIRAM-selected or banked CHR RAM, AX5202P banking, microphone ADCs, K-663A audio and optional LPC speech. |
 | Discrete and FDS conversion boards | 519–522 | Address/data latches, VRC4e CHR RAM, DREAMTECH01 bank switching and restricted MMC3 banking. |
+| Jncota, VRC variants and multicarts | 523–530 | FS005 with shifted CHR pins, fixed-period and cycle IRQs, CHR-driven CIRAM, FME-7 banking and optional 93C56 persistence. |
 | Pikachu Y2K (follow-up) | 254 | MMC3 PRG/CHR/CIRAM/IRQs, masked WRAM reads until bank-select unlock, raw RAM persistence, reset policy and atomic snapshots. |
 | Waixing VRC4 fixed/relocated CHR (follow-up) | 253 | Default CHR4/5 RAM and explicit f009s PPU-write relocation, shared 2 KiB RAM, VRC4e banking/CIRAM/IRQ and profile/geometry-bound atomic snapshots. |
 | Waixing VRC4 mixed CHR (follow-up) | 252 | Exact VRC4e A2/A3 decoding, PRG swap, four CIRAM arrangements, WRAM gate, two writable CHR pages and CPU-driven IRQs with atomic snapshots. |
@@ -5320,7 +5321,7 @@ or another registered cartridge ID.
 | 527 | Board-specific specification | Registered: Mapper527 | [r8124](https://www.nesdev.org/w/index.php?oldid=8124) |
 | 528 | Board-specific specification | Registered: Mapper528 | [r8126](https://www.nesdev.org/w/index.php?oldid=8126) |
 | 529 | Board-specific specification | Registered: Mapper529 | [r19170](https://www.nesdev.org/w/index.php?oldid=19170) |
-| 530 | Board-specific specification | Not registered | [r8130](https://www.nesdev.org/w/index.php?oldid=8130) |
+| 530 | Board-specific specification | Registered: Mapper530 | [r8130](https://www.nesdev.org/w/index.php?oldid=8130) |
 | 531 | Board-specific specification | Not registered | [r8131](https://www.nesdev.org/w/index.php?oldid=8131) |
 | 532 | Board-specific specification | Not registered | [r8133](https://www.nesdev.org/w/index.php?oldid=8133) |
 | 533 | Board-specific specification | Not registered | [r8137](https://www.nesdev.org/w/index.php?oldid=8137) |
