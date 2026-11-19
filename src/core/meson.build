@@ -136,6 +136,7 @@ core_sources = files(
     'mappers/mapper267.cpp',
     'mappers/mapper268_coolboy.cpp',
     'mappers/mapper269.cpp',
+    'mappers/mapper271.cpp',
     'mappers/vs_system.cpp',
     'mappers/mapper222_ctc31.cpp',
     'mappers/mapper270.cpp',
