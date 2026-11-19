@@ -106,6 +106,7 @@ core_sources = files(
     'mappers/super_game_mega_type_iii.cpp',
     'mappers/mapper125_lh32.cpp',
     'mappers/mapper126.cpp',
+    'mappers/mapper128.cpp',
     'mappers/vs_system.cpp',
     'fds/fds.cpp',
     'fds/fds_mapper.cpp',
