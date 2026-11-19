@@ -533,6 +533,30 @@ TEST_CASE("JY-215 switches to VRC4e, locks the game and restores a running VRC I
     c.write_prg(0xF00C, 0);
     CHECK_FALSE(c.irq_pending());
 }
+TEST_CASE("Talkman bank override, half-full bit and MSM6585 playback survive state restore",
+          "[mapper594]") {
+    auto c = cartridge(594, 3072, 1024, 0, 0, 0);
+    c.write_prg(0x9000, 0xCE);
+    CHECK(c.read_prg(0x6000) == 0xCE);
+    c.write_prg(0xB000, 0x40);
+    CHECK(c.read_prg(0x6000) == 0xCE);
+    CHECK(c.read_prg(0x8000) == 192);
+    c.write_prg(0x9000, 1);
+    CHECK(c.read_prg(0x6000) == 193);
+    c.write_expansion(0x5001, 0xC0);
+    for (unsigned i = 0; i < 512; ++i)
+        c.write_expansion(0x5000, 0x71);
+    CHECK(c.read_expansion(0x5001) == 0);
+    CHECK(c.expansion_read_mask(0x5001) == 0x40);
+    for (unsigned i = 0; i < 56; ++i)
+        c.clock_audio();
+    CHECK(c.audio_output() > 0.0F);
+    CHECK(c.read_expansion(0x5001) == 0);
+    snapshot(c);
+    for (unsigned i = 0; i < 56; ++i)
+        c.clock_audio();
+    CHECK(c.read_expansion(0x5001) == 0x40);
+}
 TEST_CASE("Game Doctor gameplay mode includes the startup trainer, mutable PRG and FDS data IRQ",
           "[mapper561][mapper562]") {
     const std::array<Byte, 8> trainer{0xA0, 0x67, 0xA0, 0x67, 0xA9, 0x25, 0x60, 0};
