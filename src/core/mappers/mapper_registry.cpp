@@ -80,6 +80,7 @@
 #include "core/mappers/somari_p_116.hpp"
 #include "core/mappers/sunsoft34.hpp"
 #include "core/mappers/sunsoft5b.hpp"
+#include "core/mappers/super_game_mega_type_iii.hpp"
 #include "core/mappers/taito_tc.hpp"
 #include "core/mappers/taito_x1005.hpp"
 #include "core/mappers/taito_x1017.hpp"
@@ -177,6 +178,8 @@ namespace {
         return Mapper117::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 121U)
         return Mapper121::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 124U)
+        return SuperGameMegaTypeIII::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 99U)
         return VsSystem::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 30U || header.mapper_number == 111U)
@@ -1102,6 +1105,7 @@ void register_builtin_mappers() {
     registry.register_mapper(116, make_factory<SomariP116>());
     registry.register_mapper(117, make_factory<Mapper117>());
     registry.register_mapper(121, make_factory<Mapper121>());
+    registry.register_mapper(124, make_factory<SuperGameMegaTypeIII>());
 }
 
 } // namespace mapperbus::core
