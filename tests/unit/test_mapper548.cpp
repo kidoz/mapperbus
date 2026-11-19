@@ -261,6 +261,18 @@ TEST_CASE("JY820845C observes MMC1 writes during MHROM banking and locks its gam
     snapshot(c);
 }
 
+TEST_CASE("Sachen 3013 drives a constant lower PRG window", "[mapper553]") {
+    auto c = cartridge(553, 16, 8, 1, 0, 0);
+    CHECK_FALSE(c.maps_prg(0x7FFF));
+    CHECK(c.read_prg(0x8000) == 0x3A);
+    CHECK(c.read_prg(0xBFFF) == 0x3A);
+    CHECK(c.read_prg(0xC000) == 0);
+    CHECK(c.read_prg(0xFFFF) == 1);
+    c.write_chr(0x1FFF, 0x80);
+    CHECK(c.read_chr(0x1FFF) == 7);
+    snapshot(c);
+}
+
 TEST_CASE(
     "FS306 controls individual CIRAM quadrants, the third PRG slot and a shared CHR RAM window",
     "[mapper544]") {
