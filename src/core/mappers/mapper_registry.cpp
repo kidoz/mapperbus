@@ -21,6 +21,7 @@
 #include "core/mappers/jy_company.hpp"
 #include "core/mappers/konami_vrc.hpp"
 #include "core/mappers/mapper006.hpp"
+#include "core/mappers/mapper012.hpp"
 #include "core/mappers/maxi15.hpp"
 #include "core/mappers/mmc1.hpp"
 #include "core/mappers/mmc2.hpp"
@@ -62,6 +63,8 @@ namespace {
     }
     if (header.mapper_number == 6U || header.mapper_number == 8U)
         return FfeMagicCard::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 12U)
+        return Mapper012::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 30U || header.mapper_number == 111U)
         return FlashBoards::validate_geometry(header, prg_size, chr_size);
     if (JyCompany::supports_mapper(header.mapper_number))
@@ -946,6 +949,7 @@ void register_builtin_mappers() {
     }
     for (const uint16_t id : {6U, 8U})
         registry.register_mapper(id, make_factory<FfeMagicCard>());
+    registry.register_mapper(12, make_factory<Mapper012>());
 }
 
 } // namespace mapperbus::core
