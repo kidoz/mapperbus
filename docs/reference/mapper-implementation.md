@@ -5114,7 +5114,7 @@ or another registered cartridge ID.
 | 290 | Board-specific specification | Registered: Mapper290 | [r7743](https://www.nesdev.org/w/index.php?oldid=7743) |
 | 291 | Board-specific specification | Registered: Mapper291 | [r7746](https://www.nesdev.org/w/index.php?oldid=7746) |
 | 292 | Board-specific specification | Registered: Mapper292 | [r22336](https://www.nesdev.org/w/index.php?oldid=22336) |
-| 293 | Board-specific specification | Not registered | [r7751](https://www.nesdev.org/w/index.php?oldid=7751) |
+| 293 | Board-specific specification | Registered: Mapper293 | [r7751](https://www.nesdev.org/w/index.php?oldid=7751) |
 | 294 | Board-specific specification | Not registered | [r19317](https://www.nesdev.org/w/index.php?oldid=19317) |
 | 295 | J.Y. Company multicart | New implementation: JyCompany | [r23352](https://www.nesdev.org/w/index.php?oldid=23352) |
 | 296 | VT3x | Not registered | [r23820](https://www.nesdev.org/w/index.php?oldid=23820) |
