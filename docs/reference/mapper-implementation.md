@@ -115,6 +115,9 @@ All implementation code is original; no external emulator source was incorporate
   `$3000` mirrors and palette decoding remain distinct.
 - NES 2.0 header parsing retains volatile and nonvolatile PRG/CHR memory sizes.
   This does not imply that every existing mapper already uses those fields.
+- Standard iNES trainers seed the backing RAM at `$7000–$71FF` on boards
+  that expose this window to the cartridge loader. Cold power reseeds volatile
+  trainer RAM. Soft reset retains it, and imported battery RAM takes precedence.
 - New mapper state includes registers, latches, RAM and IRQ progress. The DCS
   follow-up advances machine snapshots to version 20 for its licensing counter;
   other mapper payloads remain unchanged. Older snapshots retain the existing
