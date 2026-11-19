@@ -4874,9 +4874,9 @@ some historical aliases share a factory with another ID.
 | 048 | Taito TC0690 | New implementation: TaitoTc | [r22585](https://www.nesdev.org/w/index.php?oldid=22585) |
 | 049 | Board-specific specification | Registered: Mapper049 | [r4300](https://www.nesdev.org/w/index.php?oldid=4300) |
 | 050 | Board-specific specification | Registered: N32Mapper050 | [r4310](https://www.nesdev.org/w/index.php?oldid=4310) |
-| 051 | Board-specific specification | Not registered | [r4311](https://www.nesdev.org/w/index.php?oldid=4311) |
+| 051 | Ball Games 11-in-1 | Registered: Multicart51_53 | [r4311](https://www.nesdev.org/w/index.php?oldid=4311) |
 | 052 | Board-specific specification | Registered: Realtec8213 | [r21408](https://www.nesdev.org/w/index.php?oldid=21408) |
-| 053 | Board-specific specification | Not registered | [r4320](https://www.nesdev.org/w/index.php?oldid=4320) |
+| 053 | Supervision 16-in-1 | Registered: Multicart51_53 | [r4320](https://www.nesdev.org/w/index.php?oldid=4320) |
 | 054 | Novel Diamond 9999999-in-1 | Registered: Identified ROMs on mapper 58 or 201 | [r4322](https://www.nesdev.org/w/index.php?oldid=4322) |
 | 055 | Board-specific specification | Registered: Mario1Malee2 | [r4324](https://www.nesdev.org/w/index.php?oldid=4324) |
 | 056 | Board-specific specification | Registered: Mapper056Ks202 | [r4330](https://www.nesdev.org/w/index.php?oldid=4330) |
