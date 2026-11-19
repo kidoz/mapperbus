@@ -84,6 +84,22 @@ TEST_CASE("Mapper 204 routes address pins to ROM, mirroring and menu straps", "[
     }
 }
 
+TEST_CASE("A971210 decodes both MMC3 and NROM outer banking", "[mapper420]") {
+    auto c = board(420, 32, 64);
+    c.write_prg(0x6000, 0x86);
+    c.write_prg(0x7FFF, 0x20);
+    CHECK(c.read_prg(0x8000) == 44);
+    CHECK(c.read_prg(0xE000) == 47);
+    c.write_prg(0x6000, 0x20);
+    c.write_prg(0x6003, 4);
+    c.write_prg(0x8000, 6);
+    c.write_prg(0x8001, 0x15);
+    CHECK(c.read_prg(0x8000) == 37);
+    CHECK(c.read_prg(0xE000) == 47);
+    c.write_prg(0x6001, 0x84);
+    CHECK(c.read_chr(0) == 192);
+    replay(c);
+}
 TEST_CASE("KB-46 menu jumpers and CNROM latch share the low register window", "[mapper428]") {
     auto c = board(428, 8, 8);
     REQUIRE(c.configure_board_jumpers(3));

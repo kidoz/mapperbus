@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "core/cartridge/ines_header.hpp"
+#include "core/input/subor_keyboard.hpp"
 #include "core/mappers/mapper.hpp"
 
 namespace mapperbus::core {
@@ -20,6 +21,15 @@ class Mmc3 : public Mapper {
   public:
     Mmc3(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte> chr_rom);
 
+    void set_keyboard_row(Byte row, Byte pressed_mask) override;
+    static Result<void> validate_a971210(const INesHeader& header,
+                                         std::size_t prg,
+                                         std::size_t chr);
+    static Result<void> validate_littlecom(const INesHeader& header,
+                                           std::size_t prg,
+                                           std::size_t chr);
+    static Result<void> validate_f15(const INesHeader&, std::size_t prg, std::size_t chr);
+    static Result<void> validate_st80(const INesHeader& header, std::size_t prg, std::size_t chr);
     Byte read_prg(Address addr) override;
     void write_prg(Address addr, Byte value) override;
     bool maps_prg(Address addr) const override;
@@ -55,6 +65,42 @@ class Mmc3 : public Mapper {
     std::span<const Byte> battery_ram() const override;
     void set_battery_ram(std::span<const Byte> data) override;
 
+  protected:
+    // Bank pins for daughterboards which replace the ordinary TxROM ROM wiring.
+    Byte chr_bank(Address addr) const;
+    void power_on_ax5202p();
+    Byte prg_bank_pins(Address addr) const;
+    bool wram_write_protected() const {
+        return prg_ram_write_protected_;
+    }
+    bool wram_write_enabled() const {
+        return prg_ram_enabled_ && !prg_ram_write_protected_;
+    }
+
+    Byte prg_register6() const {
+        return bank_registers_[6];
+    }
+    void set_prg_register6(Byte value) {
+        bank_registers_[6] = value;
+        update_prg_banks();
+    }
+
+    unsigned prg_bank(Address addr) const {
+        return prg_offsets_[(addr >> 13U) & 3U] >> 13U;
+    }
+    std::size_t physical_prg_size() const {
+        return prg_rom_.size();
+    }
+    std::size_t physical_chr_size() const {
+        return chr_rom_.size();
+    }
+    Byte physical_prg(std::size_t offset) const {
+        return prg_rom_[offset % prg_rom_.size()];
+    }
+    Byte physical_chr(std::size_t offset) const {
+        return chr_rom_[offset % chr_rom_.size()];
+    }
+
   private:
     void update_prg_banks();
     void update_chr_banks();
@@ -62,7 +108,6 @@ class Mmc3 : public Mapper {
     uint32_t sugar_address(uint32_t addr, bool chr) const;
     void write_gouder_bank(Byte value);
     void write_a9461_bank(Byte value);
-    Byte chr_bank(Address addr) const;
     std::optional<std::size_t> mixed_chr_ram_offset(Address addr) const;
     uint16_t mixed_chr_state_tag() const;
     uint16_t f003_state_tag() const;
@@ -87,6 +132,10 @@ class Mmc3 : public Mapper {
     // Immutable mapper-250 PCB wiring selected before cartridge installation.
     bool nitra_prg_mux_ = false;
     // Mapper 262: CHR outer pins/RAM select. Mapper 512: graphics mode. Mapper 205: block.
+    std::array<Byte, 3> a971210_outer_{}; // $6000, $6001, $6003.
+    std::array<Byte, 2> littlecom_prg_{0xE0, 0xE0};
+    SuborKeyboard keyboard_;
+    Byte keyboard_row_ = 0;
     Byte board_mode_ = 0U;
     Byte pikachu_xor_ = 0U;
     bool pikachu_unlocked_ = false;       // Mapper 254: one-way unlock until console reset.

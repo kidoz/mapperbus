@@ -74,7 +74,8 @@ Byte gouder_mask(Byte index) {
 // mode register files and reset defaults are policies pending hardware verification.
 Mmc3::Mmc3(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte> chr_rom)
     : prg_rom_(std::move(prg_rom)), chr_rom_(std::move(chr_rom)), use_chr_ram_(chr_rom_.empty()),
-      mapper_(header.mapper_number == 74U || header.mapper_number == 192U ||
+      mapper_(header.mapper_number == 74U || header.mapper_number == 100U ||
+                      header.mapper_number == 182U || header.mapper_number == 192U ||
                       header.mapper_number == 194U || header.mapper_number == 195U ||
                       header.mapper_number == 196U || header.mapper_number == 197U ||
                       header.mapper_number == 198U || header.mapper_number == 199U ||
@@ -84,9 +85,13 @@ Mmc3::Mmc3(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte
                       header.mapper_number == 254U || header.mapper_number == 114U ||
                       header.mapper_number == 115U || header.mapper_number == 123U ||
                       header.mapper_number == 249U || header.mapper_number == 250U ||
-                      header.mapper_number == 262U || header.mapper_number == 263U ||
-                      header.mapper_number == 118U || header.mapper_number == 119U ||
-                      header.mapper_number == 512U || header.mapper_number == 513U
+                      header.mapper_number == 259U || header.mapper_number == 262U ||
+                      header.mapper_number == 263U || header.mapper_number == 118U ||
+                      header.mapper_number == 119U || header.mapper_number == 555U ||
+                      header.mapper_number == 556U || header.mapper_number == 594U ||
+                      header.mapper_number == 420U || header.mapper_number == 531U ||
+                      header.mapper_number == 545U || header.mapper_number == 512U ||
+                      header.mapper_number == 513U
                   ? header.mapper_number
                   : 4U),
       scramble_profile_(mapper_ == 114U && header.is_nes2 ? header.submapper : 0U),
@@ -94,8 +99,8 @@ Mmc3::Mmc3(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte
       mrcm_profile_(mapper_ == 196U && header.is_nes2 ? header.submapper : 0U),
       mapper197_profile_(mapper_ == 197U && header.is_nes2 ? header.submapper : 0U),
       initial_mirror_(header.mirror_mode), mirror_mode_(header.mirror_mode),
-      irq_zero_latch_repeats_(
-          !(mapper_ == 114U || (mapper_ == 4U && header.is_nes2 && header.submapper == 4))) {
+      irq_zero_latch_repeats_(!(mapper_ == 100U || mapper_ == 114U || mapper_ == 182U ||
+                                (mapper_ == 4U && header.is_nes2 && header.submapper == 4))) {
     if (mapper_ == 74U || mapper_ == 192U || mapper_ == 194U)
         mixed_chr_ram_size_ = header.is_nes2    ? header.chr_ram_size
                               : mapper_ == 192U ? 0x1000U
@@ -122,9 +127,9 @@ Mmc3::Mmc3(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte
                         : header.has_battery ? 0x2000U
                                              : 0U;
         nvram_size_ = header.is_nes2 ? header.prg_nvram_size : prg_ram_size_;
-    } else if (mapper_ == 114U || mapper_ == 115U || mapper_ == 123U || mapper_ == 196U ||
-               mapper_ == 197U || mapper_ == 205U || mapper_ == 208U || mapper_ == 215U ||
-               mapper_ == 219U || mapper_ == 238U || mapper_ == 250U) {
+    } else if (mapper_ == 182U || mapper_ == 114U || mapper_ == 115U || mapper_ == 123U ||
+               mapper_ == 196U || mapper_ == 197U || mapper_ == 205U || mapper_ == 208U ||
+               mapper_ == 215U || mapper_ == 219U || mapper_ == 238U || mapper_ == 250U) {
         prg_ram_size_ = 0U;
         nvram_size_ = 0U;
     } else if (mapper_ == 262U) {
@@ -145,6 +150,9 @@ Mmc3::Mmc3(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte
                 (header.nametable_bits & 1U) != 0U ? MirrorMode::Vertical : MirrorMode::Horizontal;
             mirror_mode_ = initial_mirror_;
         }
+    } else if (mapper_ == 100U || mapper_ == 555U) {
+        prg_ram_size_ = 8192;
+        nvram_size_ = 0;
     } else if (mapper_ == 254U) {
         prg_ram_size_ = 8192U;
         nvram_size_ = header.has_battery ? 8192U : 0U;
@@ -162,7 +170,55 @@ Mmc3::Mmc3(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte
     reset();
 }
 
+Result<void> Mmc3::validate_f15(const INesHeader& h, std::size_t prg, std::size_t chr) {
+    if (!h.is_nes2 || h.mapper_number != 259 || h.submapper || prg != 262144 || chr != 262144 ||
+        h.has_trainer || h.has_battery || h.prg_ram_size || h.prg_nvram_size || h.chr_ram_size ||
+        h.chr_nvram_size ||
+        (h.mirror_mode != MirrorMode::Vertical && h.mirror_mode != MirrorMode::Horizontal))
+        return std::unexpected(
+            "F-15 requires 256 KiB each of PRG and CHR ROM and no cartridge RAM");
+    return {};
+}
+
+Result<void> Mmc3::validate_st80(const INesHeader& h, std::size_t prg, std::size_t chr) {
+    if (!h.is_nes2 || h.mapper_number != 545 || h.submapper || prg != 640 * 1024 ||
+        chr != 512 * 1024 || h.has_trainer || h.has_battery || h.prg_ram_size || h.prg_nvram_size ||
+        h.chr_ram_size || h.chr_nvram_size ||
+        (h.mirror_mode != MirrorMode::Vertical && h.mirror_mode != MirrorMode::Horizontal))
+        return std::unexpected("ST-80 requires 640 KiB of PRG ROM and 512 KiB of CHR ROM");
+    return {};
+}
+Result<void> Mmc3::validate_a971210(const INesHeader& h, std::size_t prg, std::size_t chr) {
+    if (!h.is_nes2 || h.submapper || h.has_trainer || h.has_battery || prg != 524288U ||
+        chr != 524288U || h.prg_ram_size || h.chr_ram_size || h.chr_nvram_size ||
+        h.prg_nvram_size ||
+        (h.mirror_mode != MirrorMode::Vertical && h.mirror_mode != MirrorMode::Horizontal))
+        return std::unexpected("A971210 requires two 512 KiB ROMs and no cartridge RAM");
+    return {};
+}
+Result<void> Mmc3::validate_littlecom(const INesHeader& h, std::size_t prg, std::size_t chr) {
+    if (!h.is_nes2 || h.submapper || h.has_trainer || h.has_battery || prg != 1048576U || chr ||
+        h.prg_ram_size != 8192U || h.chr_ram_size != 8192U || h.chr_nvram_size ||
+        h.prg_nvram_size ||
+        (h.mirror_mode != MirrorMode::Vertical && h.mirror_mode != MirrorMode::Horizontal))
+        return std::unexpected(
+            "LittleCom PC-95 requires 1 MiB PRG and 8 KiB each of WRAM and CHR RAM");
+    return {};
+}
+
+void Mmc3::set_keyboard_row(Byte row, Byte pressed_mask) {
+    if (mapper_ == 531U)
+        keyboard_.set_row(row, pressed_mask);
+}
+
 void Mmc3::power_on() {
+    if (mapper_ == 531U) {
+        chr_ram_.fill(0);
+        prg_ram_.fill(0);
+        keyboard_ = {};
+        littlecom_prg_.fill(0xE0U);
+        keyboard_row_ = 0;
+    }
     if (mapper_ == 238U)
         contra_protection_ = 0U;
     reset();
@@ -172,7 +228,26 @@ void Mmc3::power_on() {
         prg_ram_.fill(0U);
 }
 
+void Mmc3::power_on_ax5202p() {
+    Mmc3::reset();
+    bank_registers_ = {0, 2, 4, 5, 6, 7, 0, 1};
+    prg_ram_enabled_ = mapper_ == 100U;
+    if (mapper_ == 100U)
+        prg_ram_.fill(0);
+    chr_ram_.fill(0);
+    mirror_mode_ = MirrorMode::Vertical;
+    update_prg_banks();
+    update_chr_banks();
+}
+
+Byte Mmc3::prg_bank_pins(Address addr) const {
+    unsigned slot = (addr >> 13U) & 3U;
+    if (prg_mode_ && !(slot & 1U))
+        slot ^= 2U;
+    return slot < 2 ? bank_registers_[6 + slot] : static_cast<Byte>(0xFCU | slot);
+}
 void Mmc3::reset() {
+    a971210_outer_.fill(0);
     pikachu_xor_ = 0U;
     pikachu_unlocked_ = false;
     mapper197_prg_ = 0U;
@@ -214,6 +289,15 @@ void Mmc3::reset() {
 }
 
 void Mmc3::update_prg_banks() {
+    if (mapper_ == 259U) {
+        const bool pair = (board_mode_ & 8U) != 0U;
+        const unsigned base = pair ? board_mode_ & 14U : board_mode_;
+        for (unsigned slot = 0; slot < 4; ++slot) {
+            const unsigned page = base | (pair ? slot >> 1 : 0U);
+            prg_offsets_[slot] = page * 0x4000U + (slot & 1U) * 0x2000U;
+        }
+        return;
+    }
     if (mapper_ == 219U && a9461_extended_) {
         for (unsigned slot = 0U; slot < prg_offsets_.size(); ++slot)
             prg_offsets_[slot] =
@@ -228,8 +312,8 @@ void Mmc3::update_prg_banks() {
             prg_offsets_[slot] = page * 0x8000U + slot * 0x2000U;
         return;
     }
-    const bool inner_512k =
-        mapper_ == 205U || mapper_ == 215U || mapper_ == 245U || mapper_ == 513U || t9552_;
+    const bool inner_512k = mapper_ == 205U || mapper_ == 215U || mapper_ == 245U ||
+                            mapper_ == 513U || mapper_ == 545U || t9552_;
     const std::size_t inner_banks =
         mapper_ == 219U                                                    ? 16U
         : mapper_ == 198U                                                  ? 128U
@@ -253,6 +337,34 @@ void Mmc3::update_prg_banks() {
         prg_offsets_[1] = static_cast<uint32_t>(r7) * 0x2000;
         prg_offsets_[2] = static_cast<uint32_t>(r6) * 0x2000;
         prg_offsets_[3] = static_cast<uint32_t>(last) * 0x2000;
+    }
+    if (mapper_ == 420U) {
+        const auto mode = a971210_outer_[0];
+        const auto pins = a971210_outer_[2];
+        for (unsigned slot = 0; slot < 4; ++slot) {
+            if (mode & 0x80U) {
+                const unsigned bank = ((mode >> 1U) & 7U) | ((pins & 0x20U) >> 2U);
+                prg_offsets_[slot] = bank * 32768U + slot * 8192U;
+            } else {
+                const unsigned mask = (mode & 0x20U)   ? 0x1FFFFU
+                                      : (pins & 0x20U) ? 0x3FFFFU
+                                                       : 0x7FFFFU;
+                prg_offsets_[slot] = ((pins & 4U) << 16U) | (prg_offsets_[slot] & mask);
+            }
+        }
+    }
+    if (mapper_ == 531U) {
+        for (unsigned slot = 0; slot < 4; ++slot) {
+            const unsigned outer = slot < 2 ? littlecom_prg_[slot] : 0xE0U;
+            prg_offsets_[slot] = (outer << 13U) | (prg_offsets_[slot] & 0x3FFFFU);
+        }
+    }
+    if (mapper_ == 545U) {
+        for (auto& offset : prg_offsets_) {
+            const bool small_chip = (board_mode_ & 8U) != 0 && (offset & 0x20000U) == 0;
+            const auto base = small_chip ? 0x80000U : ((board_mode_ & 3U) << 17U);
+            offset = base | (offset & 0x1FFFFU);
+        }
     }
     if (mapper_ == 198U)
         for (auto& offset : prg_offsets_)
@@ -334,6 +446,11 @@ void Mmc3::update_chr_banks() {
     }
 
     auto bank = [this](uint8_t reg) -> uint32_t {
+        if (mapper_ == 545U) {
+            const auto chr =
+                (reg & 0x7FU) | ((board_mode_ & 3U) << 7U) | ((board_mode_ & 4U) ? 0U : 0x40U);
+            return chr * 1024U;
+        }
         if (mapper_ == 219U)
             return (((reg & 0x7FU) | (static_cast<unsigned>(a9461_outer_) << 7U)) * 0x400U) %
                    chr_rom_.size();
@@ -431,6 +548,34 @@ Byte Mmc3::read_prg(Address addr) {
 }
 
 void Mmc3::write_prg(Address addr, Byte value) {
+    if (mapper_ == 259U && addr >= 0x6000U && addr < 0x8000U) {
+        if (prg_ram_enabled_ && !prg_ram_write_protected_) {
+            board_mode_ = value & 15U;
+            update_prg_banks();
+        }
+        return;
+    }
+    if (mapper_ == 420U && addr >= 0x6000U && addr < 0x8000U) {
+        switch (addr & 3U) {
+        case 0:
+            a971210_outer_[0] = value & 0xAEU;
+            break;
+        case 1:
+            a971210_outer_[1] = value & 0x84U;
+            break;
+        case 3:
+            a971210_outer_[2] = value & 0x24U;
+            break;
+        }
+        update_prg_banks();
+        return;
+    }
+    if (mapper_ == 545U && (addr & 0xF120U) == 0xF120U) {
+        board_mode_ = value & 15U;
+        update_prg_banks();
+        update_chr_banks();
+        // The MMC3 itself still sees the write at its ordinary IRQ port.
+    }
     if (mapper_ == 254U) {
         // Protection overlays the normal MMC3 decoders; both effects occur.
         if ((addr & 0xE001U) == 0x8000U)
@@ -531,7 +676,7 @@ void Mmc3::write_prg(Address addr, Byte value) {
         addr = kPorts[pattern][slot];
         if (addr == 0x8000U)
             value = static_cast<Byte>((value & 0xC0U) | kIndices[pattern][value & 7U]);
-    } else if (mapper_ == 114U) {
+    } else if (mapper_ == 114U || mapper_ == 182U) {
         constexpr std::array<std::array<Address, 8>, 2> kPorts = {
             {{0xA001U, 0xA000U, 0x8000U, 0xC000U, 0x8001U, 0xC001U, 0xE000U, 0xE001U},
              {0xA001U, 0x8001U, 0x8000U, 0xC001U, 0xA000U, 0xC000U, 0xE000U, 0xE001U}}};
@@ -547,7 +692,7 @@ void Mmc3::write_prg(Address addr, Byte value) {
                                   ((data & 2U) >> 1U) | ((data & 1U) << 2U));
     }
 
-    if ((mapper_ == 114U || mapper_ == 123U) && (addr & 0xE001U) == 0x8000U) {
+    if ((mapper_ == 114U || mapper_ == 123U || mapper_ == 182U) && (addr & 0xE001U) == 0x8000U) {
         constexpr std::array<std::array<Byte, 8>, 2> kIndices = {
             {{0U, 3U, 1U, 5U, 6U, 7U, 2U, 4U}, {0U, 2U, 5U, 3U, 6U, 1U, 7U, 4U}}};
         value = static_cast<Byte>((value & 0xC0U) | kIndices[scramble_profile_][value & 7U]);
@@ -634,7 +779,7 @@ void Mmc3::write_a9461_bank(Byte value) {
 }
 
 std::span<Byte> Mmc3::trainer_ram() {
-    if (mapper_ != 4U)
+    if (mapper_ != 4U && mapper_ != 100U)
         return {};
     return std::span{prg_ram_}.subspan(0x1000U);
 }
@@ -688,7 +833,15 @@ void Mmc3::clock_irq_counter() {
 }
 
 Byte Mmc3::read_chr(Address addr) {
-    if (mapper_ == 198U)
+    if (mapper_ == 420U) {
+        const unsigned pins = a971210_outer_[1];
+        unsigned bank = chr_bank(addr);
+        if (pins & 0x80U)
+            bank = (bank & 0x7FU) | 0x100U;
+        bank |= (pins & 4U) << 5U;
+        return chr_rom_[bank * 1024U + (addr & 0x3FFU)];
+    }
+    if (mapper_ == 198U || mapper_ == 531U)
         return chr_ram_[(static_cast<unsigned>(chr_bank(addr)) & 7U) * 0x400U + (addr & 0x3FFU)];
     if (mapper_ == 197U) {
         const auto pa11 = mapper197_profile_ == 1U   ? 0x800U
@@ -741,7 +894,7 @@ Byte Mmc3::read_chr(Address addr) {
 }
 
 void Mmc3::write_chr(Address addr, Byte value) {
-    if (mapper_ == 198U) {
+    if (mapper_ == 198U || mapper_ == 531U) {
         chr_ram_[(static_cast<unsigned>(chr_bank(addr)) & 7U) * 0x400U + (addr & 0x3FFU)] = value;
     } else if (mapper_ == 262U) {
         if ((board_mode_ & 0x40U) != 0U)
@@ -843,6 +996,8 @@ std::optional<Address> Mmc3::nametable_address(Address addr) const {
 }
 
 bool Mmc3::maps_expansion(Address addr) const {
+    if (mapper_ == 531U)
+        return addr == 0x4906U || addr == 0x4C03U;
     if (mapper_ == 238U)
         return addr >= 0x4020U && addr < 0x8000U;
     if (mapper_ == 219U)
@@ -873,6 +1028,8 @@ Byte Mmc3::expansion_read_mask(Address addr) const {
 }
 
 Byte Mmc3::read_expansion(Address addr) {
+    if (mapper_ == 531U)
+        return addr == 0x4906U ? keyboard_.read_row(keyboard_row_) : 0U;
     if (mapper_ == 238U && maps_expansion(addr))
         return contra_protection_;
     if (mapper_ == 208U && gouder_profile_ == 0U && addr >= 0x5800U && addr < 0x6000U)
@@ -887,6 +1044,15 @@ Byte Mmc3::read_expansion(Address addr) {
 }
 
 void Mmc3::write_expansion(Address addr, Byte value) {
+    if (mapper_ == 531U) {
+        if (addr == 0x4904U)
+            keyboard_row_ = value;
+        if (addr == 0x4C00U || addr == 0x4C01U) {
+            littlecom_prg_[addr & 1U] = value & 0xE0U;
+            update_prg_banks();
+        }
+        return;
+    }
     if (!maps_expansion(addr))
         return;
     if (mapper_ == 238U) {
@@ -1024,15 +1190,21 @@ uint16_t Mmc3::pikachu_state_tag() const {
 // New board payloads serialize registers, never derived offsets or immutable
 // IRQ profiles. Keep mapper 4's historical payload in mapper_state.cpp intact.
 void Mmc3::save_variant_state(StateWriter& writer) const {
-    if (mapper_ == 254U) {
+    if (mapper_ == 420U) {
+        writer.write<Word>(420);
+        writer.write_array(a971210_outer_);
+    }
+    if (mapper_ == 100U || mapper_ == 254U || mapper_ == 555U ||
+        (mapper_ == 556U && prg_ram_size_)) {
         writer.write_array(prg_ram_);
     } else if (mapper_ == 199U) {
         writer.write_bytes(fs309_nvram_);
         writer.write_array(chr_ram_);
     } else if (mapper_ == 513U) {
         writer.write_bytes(chr_nvram_);
-    } else if (mapper_ != 205U && mapper_ != 208U && mapper_ != 215U && mapper_ != 219U &&
-               mapper_ != 238U) {
+    } else if (mapper_ != 182U && mapper_ != 205U && mapper_ != 208U && mapper_ != 215U &&
+               mapper_ != 219U && mapper_ != 259U && mapper_ != 238U && mapper_ != 420U &&
+               mapper_ != 545U && mapper_ != 556U && mapper_ != 594U) {
         writer.write_array(prg_ram_);
         writer.write_array(chr_ram_);
     }
@@ -1115,7 +1287,17 @@ void Mmc3::save_variant_state(StateWriter& writer) const {
     }
     if (mapper_ == 250U)
         writer.write<Byte>(nitra_prg_mux_ ? 1U : 0U);
-    if (mapper_ == 512U)
+    if (mapper_ == 531U) {
+        writer.write<Word>(531);
+        writer.write_array(littlecom_prg_);
+        writer.write(keyboard_row_);
+        keyboard_.save_state(writer);
+    }
+    if (mapper_ == 259U)
+        writer.write<Word>(259U);
+    if (mapper_ == 545U)
+        writer.write<Word>(545);
+    if (mapper_ == 259U || mapper_ == 512U || mapper_ == 545U)
         writer.write(board_mode_);
     if (mapper_ == 513U)
         writer.write(ppu_chr_slot_);
@@ -1136,7 +1318,10 @@ void Mmc3::save_variant_state(StateWriter& writer) const {
 }
 
 void Mmc3::load_variant_state(StateReader& reader) {
-    if (mapper_ != 238U && mapper_ != 245U && mapper_ != 254U) {
+    if (mapper_ != 100U && mapper_ != 115U && mapper_ != 182U && mapper_ != 199U &&
+        mapper_ != 555U && mapper_ != 556U && mapper_ != 594U && mapper_ != 259U &&
+        mapper_ != 420U && mapper_ != 238U && mapper_ != 245U && mapper_ != 254U &&
+        mapper_ != 531U && mapper_ != 545U) {
         load_variant_state_impl(reader);
         return;
     }
@@ -1151,7 +1336,16 @@ void Mmc3::load_variant_state(StateReader& reader) {
 }
 
 void Mmc3::load_variant_state_impl(StateReader& reader) {
-    if (mapper_ == 254U) {
+    if (mapper_ == 420U) {
+        if (reader.read<Word>() != 420)
+            reader.fail();
+        reader.read_array(a971210_outer_);
+        if ((a971210_outer_[0] & ~0xAEU) || (a971210_outer_[1] & ~0x84U) ||
+            (a971210_outer_[2] & ~0x24U))
+            reader.fail();
+    }
+    if (mapper_ == 100U || mapper_ == 254U || mapper_ == 555U ||
+        (mapper_ == 556U && prg_ram_size_)) {
         reader.read_array(prg_ram_);
     } else if (mapper_ == 199U) {
         reader.read_bytes(fs309_nvram_, 0x8000U);
@@ -1166,8 +1360,9 @@ void Mmc3::load_variant_state_impl(StateReader& reader) {
             chr_nvram_.resize(0x8000U);
             reader.fail();
         }
-    } else if (mapper_ != 205U && mapper_ != 208U && mapper_ != 215U && mapper_ != 219U &&
-               mapper_ != 238U) {
+    } else if (mapper_ != 182U && mapper_ != 205U && mapper_ != 208U && mapper_ != 215U &&
+               mapper_ != 219U && mapper_ != 259U && mapper_ != 238U && mapper_ != 420U &&
+               mapper_ != 545U && mapper_ != 556U && mapper_ != 594U) {
         reader.read_array(prg_ram_);
         reader.read_array(chr_ram_);
     }
@@ -1248,7 +1443,20 @@ void Mmc3::load_variant_state_impl(StateReader& reader) {
     const auto t9552_order = t9552_ ? reader.read<Byte>() : Byte{0U};
     const auto scramble = mapper_ == 114U ? reader.read<Byte>() : Byte{0U};
     const auto nitra_profile = mapper_ == 250U ? reader.read<Byte>() : Byte{0U};
-    if (mapper_ == 512U)
+    if (mapper_ == 531U) {
+        if (reader.read<Word>() != 531)
+            reader.fail();
+        reader.read_array(littlecom_prg_);
+        reader.read(keyboard_row_);
+        keyboard_.load_state(reader);
+        if ((littlecom_prg_[0] | littlecom_prg_[1]) & 0x1FU)
+            reader.fail();
+    }
+    if (mapper_ == 259U && reader.read<Word>() != 259)
+        reader.fail();
+    if (mapper_ == 545U && reader.read<Word>() != 545)
+        reader.fail();
+    if (mapper_ == 259U || mapper_ == 512U || mapper_ == 545U)
         reader.read(board_mode_);
     if (mapper_ == 513U)
         reader.read(ppu_chr_slot_);
@@ -1285,7 +1493,9 @@ void Mmc3::load_variant_state_impl(StateReader& reader) {
          std::all_of(bank_registers_.begin(), bank_registers_.begin() + 6, [](Byte bank) {
              return bank <= 127U;
          }));
-    if (!reader.ok() || mixed_chr_tag != mixed_chr_state_tag() || bank_select_ > 7U ||
+    if (!reader.ok() || (mapper_ == 100U && !(ram & 0x80U)) ||
+        ((mapper_ == 259U || mapper_ == 545U) && board_mode_ > 15U) ||
+        mixed_chr_tag != mixed_chr_state_tag() || bank_select_ > 7U ||
         (mapper_ == 254U && (pikachu_tag != pikachu_state_tag() || pikachu_unlock > 1U)) ||
         (mapper_ == 245U && (f003_tag != f003_state_tag() || ppu_chr_slot_ > 3U)) || !valid_a9461 ||
         (mapper_ == 238U &&
@@ -1330,7 +1540,7 @@ void Mmc3::load_variant_state_impl(StateReader& reader) {
             title_jumper_ = 0U;
         if (mapper_ == 115U && kasheng_solder_pad_ > 7U)
             kasheng_solder_pad_ = 0U;
-        reset();
+        Mmc3::reset();
         reader.fail();
         return;
     }

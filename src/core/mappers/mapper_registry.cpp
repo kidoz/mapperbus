@@ -888,12 +888,18 @@ namespace {
         return MulticartLatches::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 258U)
         return Shanghai158B::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 259U)
+        return Mmc3::validate_f15(header, prg_size, chr_size);
     if (header.mapper_number == 329U)
         return TransformerKeyboard::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 420U)
+        return Mmc3::validate_a971210(header, prg_size, chr_size);
     if (header.mapper_number == 440U || header.mapper_number == 442U)
         return Education440442::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 531U)
         return Mmc3::validate_littlecom(header, prg_size, chr_size);
+    if (header.mapper_number == 545U)
+        return Mmc3::validate_st80(header, prg_size, chr_size);
     if (header.mapper_number == 30U || header.mapper_number == 111U)
         return FlashBoards::validate_geometry(header, prg_size, chr_size);
     if (JyCompany::supports_mapper(header.mapper_number))
@@ -1887,6 +1893,7 @@ void register_builtin_mappers() {
     registry.register_mapper(82, make_factory<TaitoX1017>());
     registry.register_mapper(531, make_factory<Mmc3>());
     registry.register_mapper(541, make_factory<MulticartLatches>());
+    registry.register_mapper(545, make_factory<Mmc3>());
     registry.register_mapper(551, make_factory<Fs305>());
     registry.register_mapper(552, make_factory<TaitoX1017>());
     registry.register_mapper(18, make_factory<JalecoSs88006>());
@@ -1993,6 +2000,7 @@ void register_builtin_mappers() {
     registry.register_mapper(256, make_factory<OneBus>());
     registry.register_mapper(257, make_factory<Mapper257>());
     registry.register_mapper(258, make_factory<Shanghai158B>());
+    registry.register_mapper(259, make_factory<Mmc3>());
     registry.register_mapper(260, make_factory<HpMulticart260>());
     registry.register_mapper(266, make_factory<CityFighter266>());
     registry.register_mapper(267, make_factory<Mapper267>());
@@ -2126,6 +2134,7 @@ void register_builtin_mappers() {
     registry.register_mapper(415, make_factory<Mapper415>());
     registry.register_mapper(416, make_factory<Mapper416>());
     registry.register_mapper(417, make_factory<Mapper417>());
+    registry.register_mapper(420, make_factory<Mmc3>());
     registry.register_mapper(422, make_factory<Mapper422>());
     registry.register_mapper(428, make_factory<MulticartLatches>());
     registry.register_mapper(429, make_factory<Mapper429>());

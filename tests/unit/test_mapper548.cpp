@@ -188,3 +188,25 @@ TEST_CASE(
     }
 }
 
+TEST_CASE("ST-80 routes MMC3 pins to the menu, the large chip and the small chip", "[mapper545]") {
+    auto c = cartridge(545, 640, 512, 0, 0, 0);
+    CHECK(c.read_prg(0x8000) == 0);
+    CHECK(c.read_prg(0xE000) == 15);
+    CHECK(c.read_chr(0) == 64);
+    CHECK_FALSE(c.maps_prg(0x6000));
+    c.write_prg(0xF120, 15);
+    CHECK(c.read_prg(0x8000) == 64);
+    CHECK(c.read_prg(0xE000) == 63);
+    CHECK(c.read_chr(0) == 128);
+    c.write_prg(0x8000, 6);
+    c.write_prg(0x8001, 0x12);
+    CHECK(c.read_prg(0x8000) == 50);
+    c.write_prg(0xC000, 1);
+    c.write_prg(0xC001, 0);
+    c.write_prg(0xE001, 0);
+    c.clock_irq_counter();
+    c.clock_irq_counter();
+    CHECK(c.irq_pending());
+    snapshot(c);
+}
+

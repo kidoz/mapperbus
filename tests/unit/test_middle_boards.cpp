@@ -70,6 +70,26 @@ TEST_CASE("158B protects its lookup port while switching MMC3 and NROM banks",
     CHECK(cart->read_prg(0x8000) == 2);
     CHECK(cart->read_prg(0xFFFF) == 3);
 }
+TEST_CASE("F-15 gates its discrete PRG latch with the MMC3 WRAM control",
+          "[mapper259][cartridge]") {
+    register_builtin_mappers();
+    auto cart = Cartridge::from_data(image(259, 16, 32));
+    REQUIRE(cart);
+    cart->write_prg(0xA001, 0x80);
+    cart->write_prg(0x7FFF, 3);
+    CHECK(cart->read_prg(0x8000) == 3);
+    CHECK(cart->read_prg(0xFFFF) == 3);
+    cart->write_prg(0x6000, 13);
+    CHECK(cart->read_prg(0x8000) == 12);
+    CHECK(cart->read_prg(0xFFFF) == 13);
+    cart->write_prg(0xA001, 0);
+    cart->write_prg(0x7FFF, 4);
+    CHECK(cart->read_prg(0x8000) == 12);
+    cart->write_prg(0x8000, 2);
+    cart->write_prg(0x8001, 16);
+    CHECK(cart->read_chr(0x1000) == 2);
+}
+
 TEST_CASE("Computer keyboards multiplex serial keys onto D1 and D6 alongside port two",
           "[mapper371][mapper440][mapper442][cartridge]") {
     register_builtin_mappers();
