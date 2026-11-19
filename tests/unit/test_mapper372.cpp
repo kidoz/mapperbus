@@ -666,7 +666,7 @@ TEST_CASE("Mapper 372 rejects truncated malformed and incompatible states atomic
         {base + 21U, 0x20U},
         {base + 21U, 0xFFU},
     }};
-    for (const auto [offset, value] : bad_fields) {
+    for (const auto& [offset, value] : bad_fields) {
         auto invalid = saved;
         invalid[offset] = value;
         CAPTURE(offset, value);

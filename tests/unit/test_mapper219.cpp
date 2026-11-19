@@ -372,7 +372,7 @@ TEST_CASE("Mapper 219 snapshots retain both register files and validate every ca
         REQUIRE(pending_reader.ok());
         REQUIRE(m->irq_pending());
         for (std::size_t n = 0U; n < saved.size(); ++n) {
-            StateReader truncated(std::span(saved).first(n));
+            StateReader truncated{std::span(saved).first(n)};
             m->load_state(truncated);
             REQUIRE_FALSE(truncated.ok());
             REQUIRE(state(*m) == initial);

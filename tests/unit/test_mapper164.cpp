@@ -457,7 +457,7 @@ TEST_CASE("Mapper 164 rejects malformed and cross-geometry states atomically",
         auto copy = board();
         load(*copy, saved);
         const auto before = state(*copy);
-        StateReader reader(std::span(saved).first(length));
+        StateReader reader{std::span(saved).first(length)};
         copy->load_state(reader);
         REQUIRE_FALSE(reader.ok());
         REQUIRE(state(*copy) == before);

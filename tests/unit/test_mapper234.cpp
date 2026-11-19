@@ -308,7 +308,7 @@ TEST_CASE("Mapper 234 snapshots retain lock gates and CIC latch with population 
         REQUIRE(reader.remaining() == 0U);
         REQUIRE(state(*copy) == saved);
         for (std::size_t n = 0U; n < saved.size(); ++n) {
-            StateReader truncated(std::span(saved).first(n));
+            StateReader truncated{std::span(saved).first(n)};
             m->load_state(truncated);
             REQUIRE_FALSE(truncated.ok());
             REQUIRE(state(*m) == saved);

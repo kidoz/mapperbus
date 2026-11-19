@@ -174,7 +174,7 @@ TEST_CASE("Mapper 144 state replays the latch and rejects malformed input atomic
 
     for (const std::size_t length : {0UZ, 1UZ, 2UZ}) {
         const auto before = state(target);
-        StateReader truncated(std::span(saved).first(length));
+        StateReader truncated{std::span(saved).first(length)};
         target.load_state(truncated);
         REQUIRE_FALSE(truncated.ok());
         REQUIRE(state(target) == before);
@@ -238,8 +238,8 @@ TEST_CASE("Mapper 144 validates the documented ROM-only board geometry", "[mappe
         REQUIRE_FALSE(Mapper144::validate_geometry(header(mirror), kPrgSize, kChrSize));
     }
 
-    const auto reject_memory = [](INesHeader h) {
-        REQUIRE_FALSE(Mapper144::validate_geometry(h, kPrgSize, kChrSize));
+    const auto reject_memory = [](const INesHeader& candidate) {
+        REQUIRE_FALSE(Mapper144::validate_geometry(candidate, kPrgSize, kChrSize));
     };
     h = header();
     h.has_battery = true;

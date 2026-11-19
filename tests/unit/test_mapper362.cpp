@@ -152,7 +152,7 @@ TEST_CASE("Mapper 362 decodes VRC4f F00F aliases and ignores B004", "[mapper362]
         actual->write_prg(0xB000U, static_cast<Byte>(value));
         actual->write_prg(0xB001U, static_cast<Byte>(value));
         const auto programmed = state(*actual);
-        StateReader reader(std::span(programmed).subspan(kChrBanksOffset));
+        StateReader reader{std::span(programmed).subspan(kChrBanksOffset)};
         REQUIRE(reader.read<std::uint16_t>() == ((value & 15U) | ((value & 31U) << 4U)));
     }
 }

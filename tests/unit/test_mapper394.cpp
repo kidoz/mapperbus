@@ -822,7 +822,7 @@ TEST_CASE("Mapper 394 fixed snapshots replay without ROM and reject every trunca
         {{0U, 0U},     {2U, 1U},     {6U, 1U},  {10U, 0U}, {11U, 0x20U}, {12U, 1U}, {13U, 8U},
          {20U, 0x40U}, {21U, 0x40U}, {22U, 2U}, {25U, 8U}, {25U, 4U},    {26U, 1U}, {27U, 0x80U},
          {59U, 2U},    {61U, 4U},    {68U, 9U}, {76U, 2U}, {77U, 2U},    {78U, 2U}, {0U, 0xFFU}}};
-    for (const auto [offset, value] : invalid_fields) {
+    for (const auto& [offset, value] : invalid_fields) {
         auto invalid = saved;
         invalid[offset] = value;
         CAPTURE(offset, value);

@@ -193,10 +193,10 @@ TEST_CASE("Mapper 188 exposes D2 ADC and active-low buttons with open-bus high b
         [](const INesHeader& header,
            std::vector<Byte> prg,
            std::vector<Byte> chr) -> std::unique_ptr<Mapper> {
-            auto mapper =
+            auto karaoke =
                 std::make_unique<KaraokeStudio188>(header, std::move(prg), std::move(chr));
-            mapper->set_microphone_inputs(true, false, true);
-            return mapper;
+            karaoke->set_microphone_inputs(true, false, true);
+            return karaoke;
         });
     auto cartridge = Cartridge::from_data(make_ines_rom(0x20000U));
     REQUIRE(cartridge);

@@ -339,7 +339,7 @@ TEST_CASE("Mapper 189 snapshots replay active state and reject corruption atomic
     REQUIRE(active.ok());
 
     for (std::size_t length = 0U; length < saved.size(); ++length) {
-        StateReader reader(std::span(saved).first(length));
+        StateReader reader{std::span(saved).first(length)};
         mapper->load_state(reader);
         REQUIRE_FALSE(reader.ok());
         REQUIRE(state(*mapper) == saved);
@@ -354,7 +354,7 @@ TEST_CASE("Mapper 189 snapshots replay active state and reject corruption atomic
                                                                    {20U, 0x40U},
                                                                    {21U, 2U},
                                                                    {24U, 5U}}};
-    for (const auto [offset, value] : invalid) {
+    for (const auto& [offset, value] : invalid) {
         auto bad = saved;
         bad[offset] = value;
         StateReader reader(bad);

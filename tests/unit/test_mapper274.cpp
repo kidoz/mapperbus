@@ -292,7 +292,7 @@ TEST_CASE("Mapper 274 malformed and cross-population snapshots reject atomically
     mapper->write_chr(0x321U, 0xC3U);
     const auto saved = state(*mapper);
     for (std::size_t size = 0U; size < saved.size(); ++size) {
-        StateReader reader(std::span(saved).first(size));
+        StateReader reader{std::span(saved).first(size)};
         mapper->load_state(reader);
         REQUIRE_FALSE(reader.ok());
         REQUIRE(state(*mapper) == saved);

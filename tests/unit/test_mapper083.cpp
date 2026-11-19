@@ -426,7 +426,7 @@ TEST_CASE("Cony/Yoko snapshots restore all mutable state and reject damage atomi
 
         for (std::size_t length :
              std::array<std::size_t, 8>{0U, 1U, 2U, 9U, 27U, 28U, 31U, saved.size() - 1U}) {
-            StateReader reader(std::span(saved).first(length));
+            StateReader reader{std::span(saved).first(length)};
             m->load_state(reader);
             REQUIRE_FALSE(reader.ok());
             REQUIRE(state(*m) == saved);
@@ -497,7 +497,7 @@ TEST_CASE("Mapper 264 snapshots bind Yoko wiring and reject other family profile
     REQUIRE(m->read_expansion(0x5400U) == 0xA5U);
 
     for (std::size_t length : {0U, 10U, 27U, 31U}) {
-        StateReader truncated(std::span(saved).first(length));
+        StateReader truncated{std::span(saved).first(length)};
         m->load_state(truncated);
         REQUIRE_FALSE(truncated.ok());
         REQUIRE(state(*m) == saved);

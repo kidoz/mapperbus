@@ -387,7 +387,7 @@ TEST_CASE("Mapper 091 snapshots replay all state and reject damage atomically", 
         REQUIRE(saved.size() == kStateBytes);
 
         for (std::size_t length = 0U; length < saved.size(); ++length) {
-            StateReader reader(std::span(saved).first(length));
+            StateReader reader{std::span(saved).first(length)};
             m->load_state(reader);
             REQUIRE_FALSE(reader.ok());
             REQUIRE(state(*m) == saved);

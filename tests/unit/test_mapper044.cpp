@@ -310,7 +310,7 @@ TEST_CASE("Mapper 044 snapshots replay all mutable state and reject corruption a
     REQUIRE(mapper->mirror_mode() == MirrorMode::Horizontal);
 
     for (std::size_t length = 0U; length < saved.size(); ++length) {
-        StateReader truncated(std::span(saved).first(length));
+        StateReader truncated{std::span(saved).first(length)};
         mapper->load_state(truncated);
         REQUIRE_FALSE(truncated.ok());
         REQUIRE(state(*mapper) == saved);

@@ -210,7 +210,7 @@ TEST_CASE("Mapper 174 snapshots replay the latch and reject malformed tags atomi
     mapper->write_prg(0xFFFFU, 0xFFU);
     const auto saved = state(*mapper);
     for (std::size_t size = 0U; size < saved.size(); ++size) {
-        StateReader reader(std::span(saved).first(size));
+        StateReader reader{std::span(saved).first(size)};
         mapper->load_state(reader);
         REQUIRE_FALSE(reader.ok());
         REQUIRE(state(*mapper) == saved);

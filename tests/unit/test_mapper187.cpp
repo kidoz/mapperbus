@@ -420,7 +420,7 @@ TEST_CASE("Mapper 187 malformed state rejection leaves all mapper state unchange
         {0U, 0xBCU},
         {1U, 1U},
     }};
-    for (const auto [offset, value] : invalid) {
+    for (const auto& [offset, value] : invalid) {
         auto bad = saved;
         bad[offset] = value;
         reject(bad);

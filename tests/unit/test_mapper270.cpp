@@ -474,7 +474,7 @@ TEST_CASE("Mapper 270 bounded snapshots replay and reject corruption atomically"
     REQUIRE(saved.size() == 8225U);
 
     for (std::size_t length : {0UZ, 1UZ, 2UZ, 10UZ, 29UZ, 30UZ, 31UZ, 32UZ, 33UZ, 34UZ, 8224UZ}) {
-        StateReader reader(std::span(saved).first(length));
+        StateReader reader{std::span(saved).first(length)};
         m->load_state(reader);
         REQUIRE_FALSE(reader.ok());
         REQUIRE(state(*m) == saved);
@@ -494,7 +494,7 @@ TEST_CASE("Mapper 270 bounded snapshots replay and reject corruption atomically"
         {31U, 0x80U},
         {32U, 2U},
     }};
-    for (const auto [offset, value] : kInvalid) {
+    for (const auto& [offset, value] : kInvalid) {
         auto bad = saved;
         bad[10] ^= 0xFFU;
         bad[offset] = value;

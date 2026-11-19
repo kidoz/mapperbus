@@ -225,7 +225,7 @@ TEST_CASE("Mapper 236 states bind geometry and pads and reject malformed latches
             REQUIRE(reader.remaining() == 0U);
             REQUIRE(state(*copy) == saved);
             for (std::size_t n : {0UZ, 1UZ, 2UZ, 3UZ, saved.size() - 1U}) {
-                StateReader truncated(std::span(saved).first(n));
+                StateReader truncated{std::span(saved).first(n)};
                 m->load_state(truncated);
                 REQUIRE_FALSE(truncated.ok());
                 REQUIRE(state(*m) == saved);

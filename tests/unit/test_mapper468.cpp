@@ -912,7 +912,7 @@ TEST_CASE("Mapper 468 rejects truncated damaged and mismatched states atomically
          {16U, 2U},    {26U, 4U},    {27U, 0x20U}, {28U, 5U},    {29U, 0x20U},
          {33U, 0x10U}, {34U, 0x20U}, {38U, 2U},    {40U, 0x08U}, {49U, 4U},
          {70U, 0x10U}, {79U, 8U},    {80U, 2U},    {92U, 3U},    {180U, 2U}}};
-    for (const auto [offset, value] : invalid_fields) {
+    for (const auto& [offset, value] : invalid_fields) {
         auto invalid = saved;
         invalid[offset] = value;
         CAPTURE(offset, value);

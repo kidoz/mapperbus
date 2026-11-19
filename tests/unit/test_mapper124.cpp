@@ -348,7 +348,7 @@ TEST_CASE("Mapper 124 MMC1 serial banking covers all PRG modes and CHR modes", "
     }
     const std::array<std::pair<Address, unsigned>, 4> registers{
         {{0x8000U, 7U}, {0xA000U, 8U}, {0xC000U, 9U}, {0xE000U, 10U}}};
-    for (const auto [base, offset] : registers)
+    for (const auto& [base, offset] : registers)
         for (Address addr :
              {base, static_cast<Address>(base + 0x1234U), static_cast<Address>(base + 0x1FFFU)}) {
             m->reset();
@@ -644,7 +644,7 @@ TEST_CASE("Mapper 124 state replay is bounded complete and rejection is atomic",
                                                                 {26U, 4U},
                                                                 {1U, 0U},
                                                                 {6U, 0x20U}}};
-    for (const auto [offset, value] : invalid) {
+    for (const auto& [offset, value] : invalid) {
         auto bad = saved;
         bad[offset] = value;
         StateReader rejected(bad);
@@ -653,7 +653,7 @@ TEST_CASE("Mapper 124 state replay is bounded complete and rejection is atomic",
         REQUIRE(state(*copy) == saved);
     }
     for (std::size_t length : {0UZ, 1UZ, 27UZ, 28UZ, 8219UZ, 8220UZ, saved.size() - 1U}) {
-        StateReader truncated(std::span(saved).first(length));
+        StateReader truncated{std::span(saved).first(length)};
         copy->load_state(truncated);
         REQUIRE_FALSE(truncated.ok());
         REQUIRE(state(*copy) == saved);

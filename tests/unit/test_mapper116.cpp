@@ -388,7 +388,7 @@ TEST_CASE("Mapper 116 state replays all ASICs and rejects corruption atomically"
     supervisor(*copy, 1U);
     REQUIRE(copy->irq_pending());
     for (std::size_t n = 0U; n < saved.size(); ++n) {
-        StateReader truncated(std::span(saved).first(n));
+        StateReader truncated{std::span(saved).first(n)};
         mapper->load_state(truncated);
         REQUIRE_FALSE(truncated.ok());
         REQUIRE(state(*mapper) == saved);

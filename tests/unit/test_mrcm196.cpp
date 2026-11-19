@@ -306,7 +306,7 @@ TEST_CASE("MRCM snapshots retain override state, hidden MMC3 registers, IRQs and
                 REQUIRE_FALSE(cross.ok());
             }
             for (std::size_t length : {0UZ, 16399UZ, saved.size() - 1U}) {
-                StateReader short_state(std::span(saved).first(length));
+                StateReader short_state{std::span(saved).first(length)};
                 copy->load_state(short_state);
                 REQUIRE_FALSE(short_state.ok());
             }

@@ -390,7 +390,7 @@ TEST_CASE("Mapper 183 snapshots are bounded canonical and atomic on rejection", 
     const auto saved = state(*mapper);
     REQUIRE(saved.size() == kStateSize);
     for (unsigned length = 0U; length < saved.size(); ++length) {
-        StateReader reader(std::span(saved).first(length));
+        StateReader reader{std::span(saved).first(length)};
         mapper->load_state(reader);
         REQUIRE_FALSE(reader.ok());
         REQUIRE(state(*mapper) == saved);
@@ -408,7 +408,7 @@ TEST_CASE("Mapper 183 snapshots are bounded canonical and atomic on rejection", 
         {20U, 1U},  {22U, 2U}, {37U, 2U}, {37U, 5U}, {38U, 4U}, {39U, 1U}, {40U, 1U},  {42U, 1U},
         {44U, 0U},  {45U, 0U}, {46U, 1U}, {47U, 1U}, {48U, 1U}, {49U, 1U}, {57U, 1U},
     }};
-    for (const auto [offset, value] : bad_fields) {
+    for (const auto& [offset, value] : bad_fields) {
         auto bad = saved;
         bad[offset] = value;
         StateReader reader(bad);

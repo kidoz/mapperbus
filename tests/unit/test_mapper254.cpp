@@ -243,7 +243,7 @@ TEST_CASE("Mapper 254 bounded states reject malformed fields and population mism
         REQUIRE(saved.size() == 8211U);
         REQUIRE(saved[8209U] == static_cast<Byte>(unlocked));
         for (unsigned length : {0U, 1U, 8191U, 8192U, 8207U, 8210U}) {
-            StateReader r(std::span(saved).first(length));
+            StateReader r{std::span(saved).first(length)};
             m->load_state(r);
             REQUIRE_FALSE(r.ok());
             REQUIRE(state(*m) == saved);
@@ -259,7 +259,7 @@ TEST_CASE("Mapper 254 bounded states reject malformed fields and population mism
              {8207U, 0xFFU},
              {8208U, 0U},
              {8209U, 2U}}};
-        for (const auto [offset, value] : kBad) {
+        for (const auto& [offset, value] : kBad) {
             auto bad = saved;
             bad[0] ^= 0xFFU;
             bad[offset] = value;
@@ -275,7 +275,7 @@ TEST_CASE("Mapper 254 bounded states reject malformed fields and population mism
         REQUIRE(r.remaining() == 0U);
         REQUIRE(state(*m) == saved);
         REQUIRE(m->read_prg(0x6000U) == (unlocked ? 0xA7U : 0x32U));
-        for (const auto [battery, vertical] : {std::pair{false, true}, std::pair{true, false}}) {
+        for (const auto& [battery, vertical] : {std::pair{false, true}, std::pair{true, false}}) {
             auto other = board(false, battery, vertical);
             const auto before = state(*other);
             StateReader mismatch(saved);

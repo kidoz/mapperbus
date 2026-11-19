@@ -300,7 +300,7 @@ TEST_CASE("OneBus state stages small fields and rejects truncation corruption an
     m.write_ppu_register(0x2012U, 0xFFU);
     const auto saved = state(m);
     for (unsigned length = 0U; length < saved.size(); ++length) {
-        StateReader r(std::span(saved).first(length));
+        StateReader r{std::span(saved).first(length)};
         m.load_state(r);
         REQUIRE_FALSE(r.ok());
         REQUIRE(state(m) == saved);

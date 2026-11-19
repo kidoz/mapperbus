@@ -394,7 +394,7 @@ TEST_CASE("Mapper 105 malformed states reject without mutating live state", "[ma
     m->write_chr(0x1FFFU, 0x81U);
     const auto before = state(*m);
     for (std::size_t length : {0UZ, 1UZ, 2UZ, 13UZ, 14UZ, 8191UZ, kStateSize - 1U}) {
-        StateReader reader(std::span(saved).first(length));
+        StateReader reader{std::span(saved).first(length)};
         m->load_state(reader);
         REQUIRE_FALSE(reader.ok());
         REQUIRE(state(*m) == before);

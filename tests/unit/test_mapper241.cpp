@@ -389,9 +389,9 @@ TEST_CASE("LPC synthetic voiced parameters produce known chirp samples at every 
     stream.frame(15U);
     const std::array<int16_t, 3> prefix{0, 512, 3328};
     std::vector<int16_t> ntsc;
-    for (const auto [region, clock] : {std::pair{Region::NTSC, 1789773U},
-                                       std::pair{Region::PAL, 1662607U},
-                                       std::pair{Region::Dendy, 1773448U}}) {
+    for (const auto& [region, clock] : {std::pair{Region::NTSC, 1789773U},
+                                        std::pair{Region::PAL, 1662607U},
+                                        std::pair{Region::Dendy, 1773448U}}) {
         LpcSpeech s;
         s.set_region(region);
         feed(s, stream);
@@ -479,24 +479,24 @@ TEST_CASE("LPC partial frames and mid-utterance states resume exactly and reject
     REQUIRE(speech_state(a) == speech_state(restored));
     const auto before = speech_state(a);
     for (std::size_t length = 0; length < before.size(); ++length) {
-        StateReader bad(std::span(before).first(length));
+        StateReader bad{std::span(before).first(length)};
         a.load_state(bad);
         REQUIRE_FALSE(bad.ok());
         REQUIRE(speech_state(a) == before);
     }
-    for (const auto [offset, value] : {std::pair{0U, 0U},
-                                       {18U, 128U},
-                                       {19U, 129U},
-                                       {23U, 255U},
-                                       {25U, 255U},
-                                       {26U, 80U},
-                                       {27U, 200U},
-                                       {28U, 13U},
-                                       {29U, 2U},
-                                       {30U, 2U},
-                                       {31U, 2U},
-                                       {32U, 159U},
-                                       {35U, 1U}}) {
+    for (const auto& [offset, value] : {std::pair{0U, 0U},
+                                        {18U, 128U},
+                                        {19U, 129U},
+                                        {23U, 255U},
+                                        {25U, 255U},
+                                        {26U, 80U},
+                                        {27U, 200U},
+                                        {28U, 13U},
+                                        {29U, 2U},
+                                        {30U, 2U},
+                                        {31U, 2U},
+                                        {32U, 159U},
+                                        {35U, 1U}}) {
         auto bytes = before;
         bytes[offset] = static_cast<Byte>(value);
         StateReader bad(bytes);

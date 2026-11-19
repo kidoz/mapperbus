@@ -557,7 +557,7 @@ TEST_CASE("Mapper 391 bounded snapshots replay without ROM and reject damage ato
                                                                               {27U, 4U},
                                                                               {28U, 1U},
                                                                               {28U, 0x3FU}}};
-    for (const auto [offset, value] : invalid_fields) {
+    for (const auto& [offset, value] : invalid_fields) {
         auto invalid = saved;
         invalid[offset] = value;
         CAPTURE(offset, value);

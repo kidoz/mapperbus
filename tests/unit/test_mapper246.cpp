@@ -222,7 +222,7 @@ TEST_CASE("Mapper 246 snapshots restore registers and battery RAM with atomic re
     const auto saved = state(*m);
     REQUIRE(saved.size() == 2058U);
     for (unsigned length = 0U; length < saved.size(); ++length) {
-        StateReader r(std::span(saved).first(length));
+        StateReader r{std::span(saved).first(length)};
         m->load_state(r);
         REQUIRE_FALSE(r.ok());
         REQUIRE(state(*m) == saved);

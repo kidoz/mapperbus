@@ -214,7 +214,7 @@ TEST_CASE("Mapper 120 rejects malformed snapshots atomically", "[mapper120][stat
     mapper.write_chr(0x123U, 0xA7U);
     const auto saved = state(mapper);
     for (std::size_t size : {0UZ, 1UZ, 2UZ, 3UZ, 4UZ, 4096UZ, 8194UZ}) {
-        StateReader reader(std::span(saved).first(size));
+        StateReader reader{std::span(saved).first(size)};
         mapper.load_state(reader);
         REQUIRE_FALSE(reader.ok());
         REQUIRE(state(mapper) == saved);

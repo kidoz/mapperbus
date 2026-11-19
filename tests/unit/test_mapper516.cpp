@@ -182,9 +182,9 @@ TEST_CASE("Mapper 516 validates ROM-only NES 2.0 geometry and bounded state",
             }
         }
     }
-    for (const auto sizes : {std::pair<std::size_t, std::size_t>{0x8000U, 0x2000U},
-                             {0x10000U, 0x40000U},
-                             {kDefaultPrgSize, kDefaultChrSize}}) {
+    for (const auto& sizes : {std::pair<std::size_t, std::size_t>{0x8000U, 0x2000U},
+                              {0x10000U, 0x40000U},
+                              {kDefaultPrgSize, kDefaultChrSize}}) {
         for (const auto mirror : {MirrorMode::Horizontal, MirrorMode::Vertical}) {
             auto mapper = board(sizes.first, sizes.second, mirror, 0x35U);
             auto different_rom = board(sizes.first, sizes.second, mirror, 0x80U);

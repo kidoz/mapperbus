@@ -77,7 +77,7 @@ std::pair<unsigned, unsigned> banks(
 
 TEST_CASE("Mapper 227 decodes all banks, modes, populations and physical ROM sizes",
           "[mappers][mapper227]") {
-    for (const auto [sub, battery, legacy] :
+    for (const auto& [sub, battery, legacy] :
          std::array<std::tuple<Byte, bool, bool>, 5>{{{0U, false, false},
                                                       {1U, false, false},
                                                       {2U, false, false},
@@ -313,7 +313,7 @@ TEST_CASE("Mapper 227 snapshots validate fitted hardware and commit RAM only aft
             REQUIRE(reader.remaining() == 0U);
             REQUIRE(state(*copy) == saved);
             for (std::size_t n : {0UZ, 1UZ, 2UZ, 3UZ, 4UZ, 4096UZ, saved.size() - 1U}) {
-                StateReader truncated(std::span(saved).first(n));
+                StateReader truncated{std::span(saved).first(n)};
                 m->load_state(truncated);
                 REQUIRE_FALSE(truncated.ok());
                 REQUIRE(state(*m) == reset_ram);
@@ -464,7 +464,7 @@ Cartridge cartridge(Byte sub = 0U, bool battery = false, bool legacy = false, By
 }
 TEST_CASE("Mapper 227 CPU fixtures exercise all populations, solder-pad reads and atomic replay",
           "[mappers][mapper227][state]") {
-    for (const auto [sub, battery, legacy, pads] :
+    for (const auto& [sub, battery, legacy, pads] :
          std::array<std::tuple<Byte, bool, bool, Byte>, 8>{{{0U, false, false, 0U},
                                                             {0U, false, true, 0U},
                                                             {0U, true, false, 0U},

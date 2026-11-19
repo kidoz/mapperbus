@@ -223,7 +223,7 @@ TEST_CASE("Mapper 242 snapshots bind population and pads and reject malformed st
         m->write_prg(0xFFFFU, 0U);
         const auto saved = state(*m);
         for (std::size_t n : {0U, 1U, 2U, 3U, 8195U}) {
-            StateReader r(std::span(saved).first(n));
+            StateReader r{std::span(saved).first(n)};
             m->load_state(r);
             REQUIRE_FALSE(r.ok());
             REQUIRE(state(*m) == saved);

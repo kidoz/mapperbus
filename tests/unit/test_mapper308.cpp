@@ -398,7 +398,7 @@ TEST_CASE("Mapper 308 snapshots replay partial IRQ phase and reject atomically",
     REQUIRE(state(*copy) == saved);
 
     for (std::size_t length = 0U; length < saved.size(); ++length) {
-        StateReader truncated(std::span(saved).first(length));
+        StateReader truncated{std::span(saved).first(length)};
         copy->load_state(truncated);
         REQUIRE_FALSE(truncated.ok());
         REQUIRE(state(*copy) == saved);

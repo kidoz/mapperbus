@@ -366,7 +366,7 @@ TEST_CASE("Mapper 267 state replay is bounded and all rejected imports are atomi
     REQUIRE(saved.size() == 16U);
 
     for (std::size_t length = 0U; length < saved.size(); ++length) {
-        StateReader reader(std::span(saved).first(length));
+        StateReader reader{std::span(saved).first(length)};
         m->load_state(reader);
         REQUIRE_FALSE(reader.ok());
         REQUIRE(state(*m) == saved);

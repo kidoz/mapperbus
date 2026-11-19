@@ -295,7 +295,7 @@ TEST_CASE("Mapper 117 snapshots replay banking, IRQ and scanline phase atomicall
     m->load_state(restore);
     REQUIRE(restore.ok());
     for (std::size_t size = 0U; size < saved.size(); ++size) {
-        StateReader truncated(std::span(saved).first(size));
+        StateReader truncated{std::span(saved).first(size)};
         m->load_state(truncated);
         REQUIRE_FALSE(truncated.ok());
         REQUIRE(state(*m) == saved);

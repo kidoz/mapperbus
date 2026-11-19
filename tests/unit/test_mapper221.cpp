@@ -213,7 +213,7 @@ TEST_CASE("Mapper 221 snapshots restore protected RAM and validate canonical add
     copy->write_chr(0x123U, 0U);
     REQUIRE(copy->read_chr(0x123U) == static_cast<Byte>(0x123U ^ 1U));
     for (std::size_t n : {0UZ, 1UZ, 2UZ, 3UZ, 4UZ, 5UZ, 4096UZ, 8196UZ}) {
-        StateReader truncated(std::span(saved).first(n));
+        StateReader truncated{std::span(saved).first(n)};
         m->load_state(truncated);
         REQUIRE_FALSE(truncated.ok());
         REQUIRE(state(*m) == reset_ram);

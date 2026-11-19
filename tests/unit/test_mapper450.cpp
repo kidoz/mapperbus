@@ -106,9 +106,9 @@ void require_prg(Mapper450& mapper,
 TEST_CASE("Mapper 450 validates decoded geometry memory and CIRAM metadata",
           "[mapper450][geometry][ram]") {
     for (const auto mirror : {MirrorMode::Horizontal, MirrorMode::Vertical}) {
-        for (const auto sizes : {std::pair{kMinPrgSize, kMinChrSize},
-                                 std::pair{0x00A000UZ, 0x002C00UZ},
-                                 std::pair{kMaxPrgSize, kMaxChrSize}}) {
+        for (const auto& sizes : {std::pair{kMinPrgSize, kMinChrSize},
+                                  std::pair{0x00A000UZ, 0x002C00UZ},
+                                  std::pair{kMaxPrgSize, kMaxChrSize}}) {
             auto mapper = board(sizes.first, sizes.second, mirror);
             auto different = board(sizes.first, sizes.second, mirror, 0x80U);
             CAPTURE(mirror, sizes.first, sizes.second);
@@ -492,7 +492,7 @@ TEST_CASE("Mapper 450 rejects damaged truncated and incompatible states atomical
         {kMirrorOffset, static_cast<Byte>(MirrorMode::SingleLower)},
         {kMirrorOffset, 0xFFU},
     }};
-    for (const auto [offset, value] : invalid) {
+    for (const auto& [offset, value] : invalid) {
         auto bad = active;
         bad[offset] = value;
         bad[kChrBanksOffset] ^= 0xFFU;

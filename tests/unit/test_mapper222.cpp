@@ -347,7 +347,7 @@ TEST_CASE("Mapper 222 CTC-31 snapshots replay and reject corruption atomically",
     REQUIRE(state(*copy) == state(*mapper));
 
     for (std::size_t length = 0U; length < saved.size(); ++length) {
-        StateReader truncated(std::span(saved).first(length));
+        StateReader truncated{std::span(saved).first(length)};
         copy->load_state(truncated);
         REQUIRE_FALSE(truncated.ok());
         REQUIRE(state(*copy) == state(*mapper));

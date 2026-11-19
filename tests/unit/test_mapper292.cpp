@@ -409,7 +409,7 @@ TEST_CASE("Mapper 292 snapshots are bounded, replayable and atomically validated
     REQUIRE(copy->mirror_mode() == mapper->mirror_mode());
 
     for (std::size_t size = 0U; size < saved.size(); ++size) {
-        StateReader truncated(std::span(saved).first(size));
+        StateReader truncated{std::span(saved).first(size)};
         mapper->load_state(truncated);
         REQUIRE_FALSE(truncated.ok());
         REQUIRE(state(*mapper) == saved);

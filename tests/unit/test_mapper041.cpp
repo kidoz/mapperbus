@@ -170,7 +170,7 @@ TEST_CASE("Mapper 041 state replay is bounded and rejection is atomic", "[mapper
 
     const auto before = state(*restored);
     for (std::size_t size = 0U; size < saved.size(); ++size) {
-        StateReader truncated(std::span(saved).first(size));
+        StateReader truncated{std::span(saved).first(size)};
         restored->load_state(truncated);
         REQUIRE_FALSE(truncated.ok());
         REQUIRE(state(*restored) == before);
@@ -205,10 +205,10 @@ TEST_CASE("Mapper 041 accepts only its documented geometry", "[mapper041]") {
     invalid = header();
     invalid.has_battery = true;
     REQUIRE_FALSE(Caltron041::validate_geometry(invalid, 0x40000U, 0x20000U));
-    for (std::size_t INesHeader::* field : {&INesHeader::prg_ram_size,
-                                            &INesHeader::prg_nvram_size,
-                                            &INesHeader::chr_ram_size,
-                                            &INesHeader::chr_nvram_size}) {
+    for (std::size_t INesHeader::*field : {&INesHeader::prg_ram_size,
+                                           &INesHeader::prg_nvram_size,
+                                           &INesHeader::chr_ram_size,
+                                           &INesHeader::chr_nvram_size}) {
         invalid = header();
         invalid.*field = 0x2000U;
         REQUIRE_FALSE(Caltron041::validate_geometry(invalid, 0x40000U, 0x20000U));

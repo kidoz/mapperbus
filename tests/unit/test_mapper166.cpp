@@ -272,7 +272,7 @@ TEST_CASE("Mappers 166 and 167 replay bounded state and reject damage atomically
         REQUIRE(copy->read_prg(0xC000U) == high_bank);
 
         for (std::size_t length : {0UZ, 1UZ, 2UZ, 5UZ, 6UZ, 8197UZ, 16389UZ}) {
-            StateReader truncated(std::span(saved).first(length));
+            StateReader truncated{std::span(saved).first(length)};
             mapper->load_state(truncated);
             REQUIRE_FALSE(truncated.ok());
             REQUIRE(state(*mapper) == saved);

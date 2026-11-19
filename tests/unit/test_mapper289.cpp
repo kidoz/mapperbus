@@ -359,7 +359,7 @@ TEST_CASE("Mapper 289 snapshots replay bounded mutable state without ROM and rej
     REQUIRE(copy->read_chr(0x0123U) == mapper->read_chr(0x0123U));
 
     for (std::size_t size = 0U; size < saved.size(); ++size) {
-        StateReader truncated(std::span(saved).first(size));
+        StateReader truncated{std::span(saved).first(size)};
         copy->load_state(truncated);
         REQUIRE_FALSE(truncated.ok());
         REQUIRE(state(*copy) == saved);

@@ -214,7 +214,7 @@ TEST_CASE("Mapper 238 compact state restores protection and pending IRQ and reje
     REQUIRE(copy->irq_pending());
     REQUIRE(copy->read_prg(0x7FFFU) == 3U);
     for (std::size_t n = 0U; n < saved.size(); ++n) {
-        StateReader short_state(std::span(saved).first(n));
+        StateReader short_state{std::span(saved).first(n)};
         m->load_state(short_state);
         REQUIRE_FALSE(short_state.ok());
         REQUIRE(state(*m) == saved);

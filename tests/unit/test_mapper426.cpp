@@ -715,7 +715,7 @@ TEST_CASE("Mapper 426 bounded snapshots replay without ROM and reject damage ato
         {kSerialDataOffset, 2U},
         {kSerialOutputOffset, 2U},
     }};
-    for (const auto [offset, value] : bad_fields) {
+    for (const auto& [offset, value] : bad_fields) {
         auto bad = expected;
         bad[offset] = value;
         CAPTURE(offset, value);

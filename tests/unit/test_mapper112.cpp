@@ -215,7 +215,7 @@ TEST_CASE("Mapper 112 snapshots replay all latches and reject damage atomically"
         REQUIRE(copy->read_chr(addr) == m->read_chr(addr));
 
     for (std::size_t size = 0U; size < saved.size(); ++size) {
-        StateReader truncated(std::span(saved).first(size));
+        StateReader truncated{std::span(saved).first(size)};
         m->load_state(truncated);
         REQUIRE_FALSE(truncated.ok());
         REQUIRE(state(*m) == saved);

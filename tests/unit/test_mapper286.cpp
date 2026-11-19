@@ -288,7 +288,7 @@ TEST_CASE("Mapper 286 state replay is deterministic and rejection is atomic",
     }
     for (std::size_t size = 0U; size < saved.size(); ++size) {
         const auto before = state(*mapper);
-        StateReader truncated(std::span(saved).first(size));
+        StateReader truncated{std::span(saved).first(size)};
         mapper->load_state(truncated);
         REQUIRE_FALSE(truncated.ok());
         REQUIRE(state(*mapper) == before);

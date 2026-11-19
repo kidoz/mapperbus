@@ -574,7 +574,7 @@ TEST_CASE("Mapper 359 rejects malformed and incompatible states atomically", "[m
         {kA12PinsOffset, 3U},
         {kA12PinsOffset, 0xFFU},
     }};
-    for (const auto [offset, value] : invalid_fields) {
+    for (const auto& [offset, value] : invalid_fields) {
         auto invalid = saved;
         invalid[offset] = value;
         CAPTURE(offset, value);

@@ -554,7 +554,7 @@ TEST_CASE("Mapper 448 rejects truncated damaged and mismatched states atomically
         {kIrqPrescalerOffset + 1U, 2U},
         {11U, 1U},
     }};
-    for (const auto [offset, value] : invalid_fields) {
+    for (const auto& [offset, value] : invalid_fields) {
         auto invalid = active;
         invalid[offset] = value;
         if (offset == kIrqPrescalerOffset) {

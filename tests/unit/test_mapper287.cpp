@@ -369,7 +369,7 @@ TEST_CASE("Mapper 287 snapshots replay all latches and reject corruption atomica
     REQUIRE(mapper->irq_pending());
 
     for (std::size_t length = 0U; length < saved.size(); ++length) {
-        StateReader reader(std::span(saved).first(length));
+        StateReader reader{std::span(saved).first(length)};
         mapper->load_state(reader);
         REQUIRE_FALSE(reader.ok());
         REQUIRE(state(*mapper) == saved);

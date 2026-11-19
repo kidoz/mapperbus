@@ -654,7 +654,7 @@ TEST_CASE("Mapper 126 save-state replay is complete and rejection is atomic", "[
 
     for (std::size_t length :
          std::array<std::size_t, 9>{0U, 1U, 9U, 10U, 28U, 29U, 36U, 37U, expected.size() - 1U}) {
-        StateReader reader(std::span(expected).first(length));
+        StateReader reader{std::span(expected).first(length)};
         mapper->load_state(reader);
         REQUIRE_FALSE(reader.ok());
         REQUIRE(save(*mapper) == expected);
@@ -677,7 +677,7 @@ TEST_CASE("Mapper 126 save-state replay is complete and rejection is atomic", "[
         {29U + 8U + 8192U + 1U, 0U},
         {1U, 0U},
     }};
-    for (const auto [offset, value] : bad_fields) {
+    for (const auto& [offset, value] : bad_fields) {
         auto bad = expected;
         bad[offset] = value;
         StateReader reader(bad);

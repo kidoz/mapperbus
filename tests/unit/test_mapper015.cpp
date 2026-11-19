@@ -252,7 +252,7 @@ TEST_CASE("Mapper 015 rejects truncated corrupt and wrong-geometry states atomic
     mapper->write_prg(0x8000U, 0xFDU);
     const auto saved = state(*mapper);
     for (std::size_t size = 0U; size < saved.size(); ++size) {
-        StateReader reader(std::span(saved).first(size));
+        StateReader reader{std::span(saved).first(size)};
         mapper->load_state(reader);
         REQUIRE_FALSE(reader.ok());
         REQUIRE(state(*mapper) == saved);

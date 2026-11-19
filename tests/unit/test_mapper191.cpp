@@ -359,7 +359,7 @@ TEST_CASE("Mapper 191 bounded state rejection is atomic and binds immutable wiri
     REQUIRE(saved.size() == 2065U);
 
     for (std::size_t length = 0; length < saved.size(); ++length) {
-        StateReader reader(std::span(saved).first(length));
+        StateReader reader{std::span(saved).first(length)};
         mapper->load_state(reader);
         REQUIRE_FALSE(reader.ok());
         REQUIRE(state(*mapper) == saved);
@@ -376,7 +376,7 @@ TEST_CASE("Mapper 191 bounded state rejection is atomic and binds immutable wiri
         {16U, 4U},
         {16U, 0xFFU},
     }};
-    for (const auto [offset, value] : kInvalid) {
+    for (const auto& [offset, value] : kInvalid) {
         auto corrupt = saved;
         corrupt[offset] = value;
         StateReader reader(corrupt);

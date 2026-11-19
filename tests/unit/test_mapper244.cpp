@@ -194,7 +194,7 @@ TEST_CASE("Mapper 244 four-byte snapshots validate bank ranges and fixed mirrori
     m->write_prg(0x8200U, 0x0FU);
     const auto saved = state(*m);
     for (std::size_t size = 0U; size < 4U; ++size) {
-        StateReader r(std::span(saved).first(size));
+        StateReader r{std::span(saved).first(size)};
         m->load_state(r);
         REQUIRE_FALSE(r.ok());
         REQUIRE(state(*m) == saved);

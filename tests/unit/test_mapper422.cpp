@@ -764,7 +764,7 @@ TEST_CASE("Mapper 422 bounded snapshots replay state without ROM and reject dama
         {kWramLengthOffset + 1U, 0U},
         {kWramLengthOffset + 8U + kWramSize + 1U, 0U},
     }};
-    for (const auto [offset, value] : bad_fields) {
+    for (const auto& [offset, value] : bad_fields) {
         auto bad = expected;
         bad[offset] = value;
         CAPTURE(offset, value);

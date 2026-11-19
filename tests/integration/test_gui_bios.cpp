@@ -101,11 +101,11 @@ struct Gate {
         finished = true;
         changed.notify_all();
     }
-    bool reached(bool Gate::* flag) {
+    bool reached(bool Gate::*flag) {
         const std::lock_guard lock(mutex);
         return this->*flag;
     }
-    bool wait(bool Gate::* flag) {
+    bool wait(bool Gate::*flag) {
         std::unique_lock lock(mutex);
         return changed.wait_for(lock, 5s, [&] { return this->*flag; });
     }

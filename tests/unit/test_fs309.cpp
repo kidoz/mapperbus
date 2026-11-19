@@ -216,7 +216,7 @@ TEST_CASE("FS309 snapshots retain the full chip, unbanked CHR, seven PRG bits an
             copy->acknowledge_irq();
         }
         for (std::size_t length : {0UZ, 32775UZ, kTag, saved.size() - 1U}) {
-            StateReader short_state(std::span(saved).first(length));
+            StateReader short_state{std::span(saved).first(length)};
             copy->load_state(short_state);
             REQUIRE_FALSE(short_state.ok());
         }

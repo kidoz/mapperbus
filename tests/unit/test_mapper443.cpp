@@ -697,7 +697,7 @@ TEST_CASE("Mapper 443 rejects truncated damaged and mismatched states atomically
                                                                               {26U, 4U},
                                                                               {27U, 1U},
                                                                               {27U, 0x3FU}}};
-    for (const auto [offset, value] : invalid_fields) {
+    for (const auto& [offset, value] : invalid_fields) {
         auto invalid = saved;
         invalid[offset] = value;
         invalid[kRamOffset + 0x123U] ^= 0xFFU;

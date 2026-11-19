@@ -217,7 +217,7 @@ TEST_CASE("Mapper 283 snapshots replay latch and CHR state and reject atomically
     REQUIRE(copy->read_prg(0x8000U) == mapper->read_prg(0x8000U));
 
     for (std::size_t size = 0U; size < saved.size(); ++size) {
-        StateReader truncated(std::span(saved).first(size));
+        StateReader truncated{std::span(saved).first(size)};
         mapper->load_state(truncated);
         REQUIRE_FALSE(truncated.ok());
         REQUIRE(state(*mapper) == saved);

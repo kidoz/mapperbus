@@ -227,7 +227,7 @@ TEST_CASE("Mapper 063 rejects malformed and mismatched states atomically", "[map
                           0U);
         const auto saved = state(*mapper);
         for (std::size_t length : {0U, 1U, 3U, 4U, 5U, 8197U}) {
-            StateReader reader(std::span(saved).first(length));
+            StateReader reader{std::span(saved).first(length)};
             mapper->load_state(reader);
             REQUIRE_FALSE(reader.ok());
             REQUIRE(state(*mapper) == saved);

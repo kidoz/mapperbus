@@ -364,7 +364,7 @@ TEST_CASE("Mapper 155 state replay is complete and rejection is atomic", "[mappe
     REQUIRE(mapper->read_prg(0xC000U) == 5U);
 
     for (std::size_t length = 0; length < saved.size(); ++length) {
-        StateReader reader(std::span(saved).first(length));
+        StateReader reader{std::span(saved).first(length)};
         mapper->load_state(reader);
         REQUIRE_FALSE(reader.ok());
         REQUIRE(state(*mapper) == saved);
@@ -415,7 +415,7 @@ TEST_CASE("Mapper 155 large RAM snapshots preserve volatile and persistent bytes
     REQUIRE(reader.ok());
     REQUIRE(state(*mapper) == saved);
     for (std::size_t length : {saved.size() - 1U, saved.size() - k8K, std::size_t{27U}}) {
-        StateReader truncated(std::span(saved).first(length));
+        StateReader truncated{std::span(saved).first(length)};
         mapper->load_state(truncated);
         REQUIRE_FALSE(truncated.ok());
         REQUIRE(state(*mapper) == saved);

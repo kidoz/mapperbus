@@ -403,7 +403,7 @@ TEST_CASE("Mapper 037 snapshots replay exactly and reject corruption atomically"
     REQUIRE(state(*copy) == saved);
 
     for (std::size_t size = 0U; size < saved.size(); ++size) {
-        StateReader truncated(std::span(saved).first(size));
+        StateReader truncated{std::span(saved).first(size)};
         copy->load_state(truncated);
         REQUIRE_FALSE(truncated.ok());
         REQUIRE(state(*copy) == saved);
@@ -420,7 +420,7 @@ TEST_CASE("Mapper 037 snapshots replay exactly and reject corruption atomically"
         std::pair{15UZ, 4U},
         std::pair{16UZ, 1U},
     };
-    for (const auto [offset, value] : invalid) {
+    for (const auto& [offset, value] : invalid) {
         auto bad = saved;
         bad[offset] = value;
         StateReader rejected(bad);

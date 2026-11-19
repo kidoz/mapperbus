@@ -209,7 +209,7 @@ TEST_CASE("Mapper 057 state replay is bounded and malformed loads are atomic",
     REQUIRE(copy->mirror_mode() == m->mirror_mode());
 
     for (std::size_t size = 0U; size < saved.size(); ++size) {
-        StateReader truncated(std::span(saved).first(size));
+        StateReader truncated{std::span(saved).first(size)};
         m->load_state(truncated);
         REQUIRE_FALSE(truncated.ok());
         REQUIRE(state(*m) == saved);

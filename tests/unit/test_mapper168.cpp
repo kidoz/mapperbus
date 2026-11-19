@@ -364,7 +364,7 @@ TEST_CASE("Mapper 168 malformed states and wrong battery populations reject with
     const auto saved = state(*mapper);
 
     for (std::size_t size : {0U, 1U, 2U, 3U, 4U, 5U, 6U, 100U, 65541U}) {
-        StateReader reader(std::span(saved).first(size));
+        StateReader reader{std::span(saved).first(size)};
         mapper->load_state(reader);
         REQUIRE_FALSE(reader.ok());
         REQUIRE(state(*mapper) == saved);

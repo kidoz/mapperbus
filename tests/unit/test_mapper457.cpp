@@ -87,7 +87,7 @@ std::size_t expected_prg(Address addr, Byte outer_bank, Byte mode, Byte r6, Byte
     const unsigned selected =
         slot == 1U                                                                       ? r7 & mask
         : (((mode & 0x40U) == 0U && slot == 0U) || ((mode & 0x40U) != 0U && slot == 2U)) ? r6 & mask
-        : slot == 3U ? mask
+        : slot == 3U                                                                     ? mask
                      : mask - 1U;
     const std::size_t outer_size = (outer_bank & 8U) != 0U ? 0x040000UZ : 0x020000UZ;
     const std::size_t physical =
@@ -584,7 +584,7 @@ TEST_CASE("Mapper 457 rejects truncated damaged and mismatched states atomically
          {kIrqFlagsOffset, 8U},
          {kIrqFlagsOffset, 4U},
          {kRamFlagsOffset, 1U}}};
-    for (const auto [offset, value] : invalid_fields) {
+    for (const auto& [offset, value] : invalid_fields) {
         auto invalid = saved;
         invalid[offset] = value;
         CAPTURE(offset, value);

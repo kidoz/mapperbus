@@ -987,9 +987,7 @@ TEST_CASE("Recent archive members round-trip and deduplicate independently",
                        std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     std::filesystem::create_directories(root);
     const auto path = root / "collection.zip";
-    {
-        std::ofstream file(path);
-    }
+    { std::ofstream file(path); }
     MapperBusConfiguration configuration;
     touch_recent_rom(configuration, path, "one.nes");
     touch_recent_rom(configuration, path, "folder/two#;\n.nes");
@@ -1036,7 +1034,7 @@ struct ConfigurationGate {
         changed.notify_all();
         changed.wait(lock, [this] { return released; });
     }
-    bool wait(bool ConfigurationGate::* flag) {
+    bool wait(bool ConfigurationGate::*flag) {
         std::unique_lock lock(mutex);
         return changed.wait_for(
             lock, std::chrono::seconds(5), [this, flag] { return this->*flag; });

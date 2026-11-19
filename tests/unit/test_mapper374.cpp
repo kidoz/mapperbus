@@ -416,7 +416,7 @@ TEST_CASE("Mapper 374 rejects damaged truncated and mismatched states atomically
         {kChr1Offset, 0x20U},
         {kPrgOffset, 0x20U},
     }};
-    for (const auto [offset, value] : kInvalidFields) {
+    for (const auto& [offset, value] : kInvalidFields) {
         auto invalid = saved;
         invalid[offset] = value;
         CAPTURE(offset, value);

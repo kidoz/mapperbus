@@ -399,7 +399,7 @@ TEST_CASE("Mapper 027 rejects truncated corrupt and mismatched states atomically
     const auto saved = state(*mapper);
 
     for (std::size_t length : {0UZ, 1UZ, 4UZ, 12UZ, 31UZ, 39UZ, 47UZ, 1000UZ, saved.size() - 1U}) {
-        StateReader reader(std::span(saved).first(length));
+        StateReader reader{std::span(saved).first(length)};
         mapper->load_state(reader);
         REQUIRE_FALSE(reader.ok());
         REQUIRE(state(*mapper) == saved);

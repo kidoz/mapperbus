@@ -387,7 +387,7 @@ TEST_CASE("Mapper 313 rejects damaged truncated and mismatched states atomically
     const auto saved = state(*mapper);
 
     for (std::size_t size = 0U; size < saved.size(); ++size) {
-        StateReader reader(std::span(saved).first(size));
+        StateReader reader{std::span(saved).first(size)};
         mapper->load_state(reader);
         REQUIRE_FALSE(reader.ok());
         REQUIRE(state(*mapper) == saved);
@@ -423,7 +423,7 @@ TEST_CASE("Mapper 313 rejects damaged truncated and mismatched states atomically
         {23U, 8U},
         {23U, 0xFFU},
     }};
-    for (const auto [offset, value] : invalid_fields) {
+    for (const auto& [offset, value] : invalid_fields) {
         auto invalid = saved;
         invalid[offset] = value;
         StateReader reader(invalid);

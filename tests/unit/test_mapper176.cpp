@@ -533,7 +533,7 @@ TEST_CASE("Mapper 176 bounded state replay is byte-exact and rejection is atomic
                                                                       {35U, 8U},
                                                                       {35U, 4U},
                                                                       {36U, 0xFFU}}};
-    for (const auto [offset, value] : bad_fields) {
+    for (const auto& [offset, value] : bad_fields) {
         auto bad = saved;
         bad[offset] = value;
         StateReader reader(bad);
@@ -548,7 +548,7 @@ TEST_CASE("Mapper 176 bounded state replay is byte-exact and rejection is atomic
                                std::size_t{36U},
                                std::size_t{43U},
                                saved.size() - 1U}) {
-        StateReader reader(std::span(saved).first(length));
+        StateReader reader{std::span(saved).first(length)};
         m->load_state(reader);
         REQUIRE_FALSE(reader.ok());
         REQUIRE(state(*m) == saved);

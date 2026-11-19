@@ -717,17 +717,17 @@ TEST_CASE("Mapper 518 rejects truncated damaged and mismatched states atomically
         CAPTURE(offset);
         load_rejected(*mapper, invalid);
     }
-    for (const auto [offset, value] : {std::pair{kModeStateOffset, 8U},
-                                       std::pair{kPinsStateOffset, 4U},
-                                       std::pair{kSpeechStateOffset, 0U},
-                                       std::pair{kSpeechStateOffset + 18U, 128U},
-                                       std::pair{kSpeechStateOffset + 19U, 129U},
-                                       std::pair{kSpeechStateOffset + 20U, 3U},
-                                       std::pair{kSpeechStateOffset + 27U, 100U},
-                                       std::pair{kSpeechStateOffset + 28U, 200U},
-                                       std::pair{kSpeechStateOffset + 29U, 13U},
-                                       std::pair{kSpeechStateOffset + 30U, 16U},
-                                       std::pair{kSpeechStateOffset + 31U, 16U}}) {
+    for (const auto& [offset, value] : {std::pair{kModeStateOffset, 8U},
+                                        std::pair{kPinsStateOffset, 4U},
+                                        std::pair{kSpeechStateOffset, 0U},
+                                        std::pair{kSpeechStateOffset + 18U, 128U},
+                                        std::pair{kSpeechStateOffset + 19U, 129U},
+                                        std::pair{kSpeechStateOffset + 20U, 3U},
+                                        std::pair{kSpeechStateOffset + 27U, 100U},
+                                        std::pair{kSpeechStateOffset + 28U, 200U},
+                                        std::pair{kSpeechStateOffset + 29U, 13U},
+                                        std::pair{kSpeechStateOffset + 30U, 16U},
+                                        std::pair{kSpeechStateOffset + 31U, 16U}}) {
         auto invalid = saved;
         invalid[offset] = static_cast<Byte>(value);
         CAPTURE(offset, value);

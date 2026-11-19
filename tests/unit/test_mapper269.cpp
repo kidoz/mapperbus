@@ -354,7 +354,7 @@ TEST_CASE("Mapper 269 snapshots replay and reject corruption without mutation", 
     const auto saved = state(*m);
     REQUIRE(saved.size() == kStateBytes);
     for (unsigned length : {0U, 1U, 9U, 10U, 8191U, 8201U, 8221U}) {
-        StateReader r(std::span(saved).first(length));
+        StateReader r{std::span(saved).first(length)};
         m->load_state(r);
         REQUIRE_FALSE(r.ok());
         REQUIRE(state(*m) == saved);
@@ -372,7 +372,7 @@ TEST_CASE("Mapper 269 snapshots replay and reject corruption without mutation", 
                                                              {8220U, 4U},
                                                              {8221U, 1U},
                                                              {1U, 0U}}};
-    for (const auto [offset, value] : invalid) {
+    for (const auto& [offset, value] : invalid) {
         INFO("offset=" << offset << " value=" << +value);
         auto bad = saved;
         bad[10] ^= 0xFFU;

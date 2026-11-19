@@ -448,7 +448,7 @@ TEST_CASE("Mapper 327 rejects malformed states atomically", "[mapper327][state]"
     const auto saved = state(*mapper);
 
     for (std::size_t length = 0U; length < saved.size(); ++length) {
-        StateReader reader(std::span(saved).first(length));
+        StateReader reader{std::span(saved).first(length)};
         mapper->load_state(reader);
         REQUIRE_FALSE(reader.ok());
         REQUIRE(state(*mapper) == saved);

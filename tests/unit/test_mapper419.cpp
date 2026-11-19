@@ -984,7 +984,7 @@ TEST_CASE("Mapper 419 rejects damaged truncated and mismatched states atomically
         {kNibbleOffset, 16U},
         {kPeriodOffset, 0U},
     }};
-    for (const auto [offset, value] : invalid_fields) {
+    for (const auto& [offset, value] : invalid_fields) {
         auto invalid = saved;
         invalid[offset] = value;
         CAPTURE(offset, value);

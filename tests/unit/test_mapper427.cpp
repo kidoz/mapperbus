@@ -906,7 +906,7 @@ TEST_CASE("Mapper 427 bounded snapshots replay partial serial state and reject d
         {kEepromAddressOffset + 1U, 2U},
         {kEepromBitOffset, 9U},
     }};
-    for (const auto [offset, value] : bad_fields) {
+    for (const auto& [offset, value] : bad_fields) {
         auto bad = expected;
         bad[offset] = value;
         CAPTURE(offset, value);

@@ -597,7 +597,7 @@ TEST_CASE("Every new board restores mutable state and rejects truncation", "[map
         StateWriter replay;
         mapper->save_state(replay);
         REQUIRE(replay.data() == saved);
-        StateReader short_reader(std::span(saved).first(saved.size() - 1));
+        StateReader short_reader{std::span(saved).first(saved.size() - 1)};
         mapper->load_state(short_reader);
         REQUIRE_FALSE(short_reader.ok());
     }

@@ -185,7 +185,7 @@ TEST_CASE("Mapper 060 snapshots replay the reset phase and reject damage atomica
     REQUIRE(copy->read_chr(0x123U) == mapper->read_chr(0x123U));
 
     for (std::size_t size = 0U; size < selected.size(); ++size) {
-        StateReader truncated(std::span(selected).first(size));
+        StateReader truncated{std::span(selected).first(size)};
         mapper->load_state(truncated);
         REQUIRE_FALSE(truncated.ok());
         REQUIRE(save(*mapper) == selected);

@@ -110,7 +110,7 @@ std::size_t expected_prg(Address addr, Address latch, Byte mode, Byte r6, Byte r
     const unsigned selected =
         slot == 1U                                                                       ? r7 & mask
         : (((mode & 0x40U) == 0U && slot == 0U) || ((mode & 0x40U) != 0U && slot == 2U)) ? r6 & mask
-        : slot == 3U ? mask
+        : slot == 3U                                                                     ? mask
                      : mask - 1U;
     return (selected | (outer_bank << 4U)) * kPrgBankSize + (addr & 0x1FFFU);
 }
@@ -671,7 +671,7 @@ TEST_CASE("Mapper 455 rejects truncated damaged and mismatched states atomically
                                                                               {28U, 1U},
                                                                               {28U, 0x3FU},
                                                                               {11U, 0x40U}}};
-    for (const auto [offset, value] : invalid_fields) {
+    for (const auto& [offset, value] : invalid_fields) {
         auto invalid = saved;
         invalid[offset] = value;
         invalid[kRamOffset + 0x123U] ^= 0xFFU;

@@ -251,7 +251,7 @@ TEST_CASE("Mapper 294 snapshots are bounded replayable and atomically rejected",
     REQUIRE(copy->mirror_mode() == MirrorMode::Horizontal);
 
     for (std::size_t size = 0U; size < saved.size(); ++size) {
-        StateReader truncated(std::span(saved).first(size));
+        StateReader truncated{std::span(saved).first(size)};
         copy->load_state(truncated);
         REQUIRE_FALSE(truncated.ok());
         REQUIRE(state(*copy) == saved);

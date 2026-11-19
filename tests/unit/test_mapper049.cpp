@@ -297,7 +297,7 @@ TEST_CASE("Mapper 049 state replays partial IRQs and rejects malformed input ato
     const auto before_rejection = state(*mapper);
 
     for (unsigned length = 0U; length < saved.size(); ++length) {
-        StateReader short_reader(std::span(saved).first(length));
+        StateReader short_reader{std::span(saved).first(length)};
         mapper->load_state(short_reader);
         REQUIRE_FALSE(short_reader.ok());
         REQUIRE(state(*mapper) == before_rejection);
@@ -313,7 +313,7 @@ TEST_CASE("Mapper 049 state replays partial IRQs and rejects malformed input ato
                                                                  {16U, 4U},
                                                                  {17U, 1U},
                                                                  {13U, 4U}}};
-    for (const auto [offset, value] : kBad) {
+    for (const auto& [offset, value] : kBad) {
         auto bad = saved;
         bad[offset] = value;
         StateReader bad_reader(bad);

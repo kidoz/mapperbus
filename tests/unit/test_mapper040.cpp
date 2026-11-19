@@ -343,7 +343,7 @@ TEST_CASE("Mapper 040 malformed state rejection is bounded and atomic", "[mapper
     const auto saved = save(*board);
 
     for (std::size_t size = 0U; size < saved.size(); ++size) {
-        StateReader reader(std::span(saved).first(size));
+        StateReader reader{std::span(saved).first(size)};
         board->load_state(reader);
         REQUIRE_FALSE(reader.ok());
         REQUIRE(save(*board) == saved);

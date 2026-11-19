@@ -347,7 +347,7 @@ TEST_CASE("Mapper 260 malformed snapshots reject without mutation", "[mapper260]
     mapper->clock_irq_counter();
     const auto saved = state(*mapper);
     for (std::size_t size = 0U; size < saved.size(); ++size) {
-        StateReader reader(std::span(saved).first(size));
+        StateReader reader{std::span(saved).first(size)};
         mapper->load_state(reader);
         REQUIRE_FALSE(reader.ok());
         REQUIRE(state(*mapper) == saved);

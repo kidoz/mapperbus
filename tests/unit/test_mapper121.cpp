@@ -419,7 +419,7 @@ TEST_CASE("Mapper 121 snapshots replay all mutable state and reject atomically",
     REQUIRE(copy->irq_pending());
 
     for (std::size_t size = 0U; size < saved.size(); ++size) {
-        StateReader truncated(std::span(saved).first(size));
+        StateReader truncated{std::span(saved).first(size)};
         mapper->load_state(truncated);
         REQUIRE_FALSE(truncated.ok());
         REQUIRE(state(*mapper) == saved);

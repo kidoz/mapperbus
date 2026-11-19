@@ -192,7 +192,7 @@ TEST_CASE("Mapper 205 validates compact state and retains its physical pad acros
         const auto initial = state(*m);
         for (unsigned size = 0U; size < initial.size(); ++size) {
             m->write_prg(0x6000U, 3U);
-            StateReader short_reader(std::span(initial).first(size));
+            StateReader short_reader{std::span(initial).first(size)};
             m->load_state(short_reader);
             REQUIRE_FALSE(short_reader.ok());
             REQUIRE(state(*m) == initial);

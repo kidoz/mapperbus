@@ -252,7 +252,7 @@ TEST_CASE("Mapper 125 snapshots replay RAM and reject damage atomically", "[mapp
 
     const auto before = state(*mapper);
     for (std::size_t length = 0U; length < saved.size(); ++length) {
-        StateReader truncated(std::span(saved).first(length));
+        StateReader truncated{std::span(saved).first(length)};
         mapper->load_state(truncated);
         REQUIRE_FALSE(truncated.ok());
         REQUIRE(state(*mapper) == before);

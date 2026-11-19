@@ -457,7 +457,7 @@ TEST_CASE("Mapper 224 snapshots replay and reject corruption without mutation", 
 
     const auto before = state(*m);
     for (std::size_t length : {0U, 1U, 10U, 31U, 32U, 39U, 40U, 8231U, 8232U, 8239U, 270383U}) {
-        StateReader reader(std::span(saved).first(length));
+        StateReader reader{std::span(saved).first(length)};
         m->load_state(reader);
         REQUIRE_FALSE(reader.ok());
         REQUIRE(state(*m) == before);
@@ -473,7 +473,7 @@ TEST_CASE("Mapper 224 snapshots replay and reject corruption without mutation", 
                                                                       {29U, 4U},
                                                                       {30U, 1U},
                                                                       {31U, 8U}}};
-    for (const auto [offset, value] : bad_fields) {
+    for (const auto& [offset, value] : bad_fields) {
         auto bad = saved;
         bad[offset] = value;
         StateReader reader(bad);

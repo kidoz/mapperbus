@@ -320,7 +320,7 @@ TEST_CASE("Mapper 059 snapshots replay every latch and reject damage atomically"
     mapper->write_prg(0x83A5U, 0U);
     const auto saved = state(*mapper);
     for (std::size_t size = 0U; size < saved.size(); ++size) {
-        StateReader truncated(std::span(saved).first(size));
+        StateReader truncated{std::span(saved).first(size)};
         mapper->load_state(truncated);
         REQUIRE_FALSE(truncated.ok());
         REQUIRE(state(*mapper) == saved);

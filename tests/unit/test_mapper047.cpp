@@ -247,7 +247,7 @@ TEST_CASE("Mapper 047 decodes MMC3 register aliases without bus conflicts", "[ma
                                                                  {0xC001U, 0xDFFFU},
                                                                  {0xE000U, 0xFFFEU},
                                                                  {0xE001U, 0xFFFFU}}};
-    for (const auto [first, last] : aliases) {
+    for (const auto& [first, last] : aliases) {
         mapper->reset();
         mapper->write_prg(first, 0x86U);
         mapper->write_prg(last, 0x87U);
@@ -385,7 +385,7 @@ TEST_CASE("Mapper 047 state replay is bounded validated and atomic", "[mapper047
     REQUIRE(state(*copy) == saved);
 
     for (std::size_t length = 0U; length < saved.size(); ++length) {
-        StateReader truncated(std::span(saved).first(length));
+        StateReader truncated{std::span(saved).first(length)};
         mapper->load_state(truncated);
         REQUIRE_FALSE(truncated.ok());
         REQUIRE(state(*mapper) == saved);
@@ -401,7 +401,7 @@ TEST_CASE("Mapper 047 state replay is bounded validated and atomic", "[mapper047
          {15U, 4U},
          {16U, 1U},
          {1U, 0U}}};
-    for (const auto [offset, value] : invalid) {
+    for (const auto& [offset, value] : invalid) {
         auto bad = saved;
         bad[offset] = value;
         StateReader rejected(bad);

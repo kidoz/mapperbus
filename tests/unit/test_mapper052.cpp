@@ -328,7 +328,7 @@ TEST_CASE("Mapper 052 save state replays RAM IRQ and latch state without ROM byt
                                std::size_t{27U},
                                std::size_t{100U},
                                saved.size() - 1U}) {
-        StateReader truncated(std::span(saved).first(length));
+        StateReader truncated{std::span(saved).first(length)};
         mapper->load_state(truncated);
         REQUIRE_FALSE(truncated.ok());
         REQUIRE(state(*mapper) == saved);
@@ -342,7 +342,7 @@ TEST_CASE("Mapper 052 save state replays RAM IRQ and latch state without ROM byt
                                                                          {21U, 0x40U},
                                                                          {23U, 2U},
                                                                          {27U, 1U}}};
-    for (const auto [offset, value] : bad_fields) {
+    for (const auto& [offset, value] : bad_fields) {
         auto corrupt = saved;
         corrupt[offset] = value;
         StateReader rejected(corrupt);

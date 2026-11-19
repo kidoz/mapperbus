@@ -296,7 +296,7 @@ TEST_CASE("Mapper 128 bounded state replays CHR and latches and rejects damage a
         REQUIRE(m->mirror_mode() == MirrorMode::Horizontal);
 
         for (std::size_t length : {0U, 1U, 2U, 3U, 4U, 5U, 8195U, 8196U}) {
-            StateReader reader(std::span(saved).first(length));
+            StateReader reader{std::span(saved).first(length)};
             m->load_state(reader);
             REQUIRE_FALSE(reader.ok());
             REQUIRE(state(*m) == saved);

@@ -300,7 +300,7 @@ TEST_CASE("FS303 snapshots retain modes, hidden RAM, IRQs and immutable RAM popu
             }
             constexpr std::size_t kTag = 16399U;
             for (const auto size : {0UZ, kTag, saved.size() - 1U}) {
-                StateReader truncated(std::span(saved).first(size));
+                StateReader truncated{std::span(saved).first(size)};
                 copy->load_state(truncated);
                 REQUIRE_FALSE(truncated.ok());
             }

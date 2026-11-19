@@ -512,7 +512,7 @@ TEST_CASE("Mapper 268 bounded state replays and rejects corruption or geometry c
 
     for (std::size_t length :
          std::array<std::size_t, 8>{0U, 19U, 20U, 41U, 42U, 49U, 50U, saved.size() - 1U}) {
-        StateReader reader(std::span(saved).first(length));
+        StateReader reader{std::span(saved).first(length)};
         m->load_state(reader);
         REQUIRE_FALSE(reader.ok());
         REQUIRE(state(*m) == saved);

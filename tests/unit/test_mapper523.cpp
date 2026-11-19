@@ -789,7 +789,7 @@ TEST_CASE("Mapper 523 rejects truncated damaged and mismatched states atomically
         {kInnerVolatileLengthOffset, 0xFFU},
         {kInnerNvramLengthOffset, 0xFFU},
     }};
-    for (const auto [offset, value] : bad_fields) {
+    for (const auto& [offset, value] : bad_fields) {
         auto invalid = saved;
         invalid[kStatePrefixSize + offset] = value;
         CAPTURE(offset, value);

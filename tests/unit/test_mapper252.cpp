@@ -143,7 +143,7 @@ TEST_CASE("Mapper 252 selects exact raw CHR banks 6 and 7 before ROM wrapping", 
         m->write_prg(0xB000U, static_cast<Byte>(value));
         m->write_prg(0xB004U, static_cast<Byte>(value));
         const auto saved = state(*m);
-        StateReader r(std::span(saved).subspan(4U));
+        StateReader r{std::span(saved).subspan(4U)};
         REQUIRE(r.read<uint16_t>() == ((value & 15U) | ((value & 31U) << 4U)));
     }
 }
@@ -226,7 +226,7 @@ TEST_CASE("Mapper 252 CPU IRQ modes cover all latches acknowledgement and fracti
     const auto partial = state(*m);
     m->write_prg(0xF008U, 0U); // Every control write resets the divider, including disable.
     const auto disabled = state(*m);
-    StateReader divider(std::span(disabled).subspan(24U));
+    StateReader divider{std::span(disabled).subspan(24U)};
     REQUIRE(divider.read<uint16_t>() == 341U);
     REQUIRE(disabled[23U] == partial[23U]);
     m->reset();
@@ -296,7 +296,7 @@ TEST_CASE("Mapper 252 stages bounded snapshots and rejects malformed fields atom
     const auto saved = state(*m);
     REQUIRE(saved.size() == 10269U);
     for (unsigned length : {0U, 1U, 4U, 20U, 29U, 8220U, 10268U}) {
-        StateReader r(std::span(saved).first(length));
+        StateReader r{std::span(saved).first(length)};
         m->load_state(r);
         REQUIRE_FALSE(r.ok());
         REQUIRE(state(*m) == saved);
@@ -314,7 +314,7 @@ TEST_CASE("Mapper 252 stages bounded snapshots and rejects malformed fields atom
                                                                     {27U, 2U},
                                                                     {28U, 2U},
                                                                     {28U, 1U}}};
-    for (const auto [offset, value] : kBadFields) {
+    for (const auto& [offset, value] : kBadFields) {
         auto bad = saved;
         bad[offset] = value;
         StateReader r(bad);

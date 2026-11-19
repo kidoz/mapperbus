@@ -335,8 +335,8 @@ TEST_CASE("VT3x UNROM mode switches 16 KiB pages and selects unbanked CHR RAM",
         const auto lower = static_cast<std::size_t>((value * 2U) & 0x3FU) * 8192U;
         REQUIRE(mapper.read_prg(0x8123U) == pattern((lower + 0x123U) & 262143U));
         REQUIRE(mapper.read_prg(0xA123U) == pattern((lower + 8192U + 0x123U) & 262143U));
-        REQUIRE(mapper.read_prg(0xC123U) == pattern(0xFEU * 8192U + 0x123U & 262143U));
-        REQUIRE(mapper.read_prg(0xE123U) == pattern(0xFFU * 8192U + 0x123U & 262143U));
+        REQUIRE(mapper.read_prg(0xC123U) == pattern((0xFEU * 8192U + 0x123U) & 262143U));
+        REQUIRE(mapper.read_prg(0xE123U) == pattern((0xFFU * 8192U + 0x123U) & 262143U));
         REQUIRE(mapper.mirror_mode() == MirrorMode::Vertical);
     }
     for (unsigned addr = 0U; addr < 8192U; ++addr) {
@@ -577,7 +577,7 @@ TEST_CASE("VT3x state is bounded atomic and excludes immutable ROM", "[mapper296
     REQUIRE(mapper.read_chr(0x321U) == 0x9CU);
 
     for (std::size_t length = 0U; length < saved.size(); ++length) {
-        StateReader reader(std::span(saved).first(length));
+        StateReader reader{std::span(saved).first(length)};
         mapper.load_state(reader);
         REQUIRE_FALSE(reader.ok());
         REQUIRE(mapper_state(mapper) == saved);
@@ -602,7 +602,7 @@ TEST_CASE("VT3x state is bounded atomic and excludes immutable ROM", "[mapper296
         {19U + 27U, 5U},
         {19U + 28U, 0x20U},
     }};
-    for (const auto [offset, value] : invalid_fields) {
+    for (const auto& [offset, value] : invalid_fields) {
         auto bad = saved;
         bad[offset] = value;
         StateReader reader(bad);

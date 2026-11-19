@@ -482,7 +482,7 @@ TEST_CASE("Mapper 525 rejects truncated damaged and mismatched states atomically
         {kMirrorOffset, 2U},
         {kMirrorOffset, 0xFFU},
     }};
-    for (const auto [offset, value] : bad_fields) {
+    for (const auto& [offset, value] : bad_fields) {
         auto invalid = saved;
         invalid[offset] = value;
         CAPTURE(offset, value);

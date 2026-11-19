@@ -285,7 +285,7 @@ TEST_CASE("Mapper 099 state replay is bounded tagged and atomic", "[mapper099]")
     const auto saved = mapper_state(*mapper);
     REQUIRE(saved.size() == 2051U);
     for (std::size_t length = 0U; length < saved.size(); ++length) {
-        StateReader reader(std::span(saved).first(length));
+        StateReader reader{std::span(saved).first(length)};
         mapper->load_state(reader);
         REQUIRE_FALSE(reader.ok());
         REQUIRE(mapper_state(*mapper) == saved);

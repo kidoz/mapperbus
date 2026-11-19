@@ -681,7 +681,7 @@ TEST_CASE("Mapper 447 rejects truncated damaged and mismatched states atomically
         {kIrqFlagsOffset, 4U},
         {kIrqFlagsOffset, 2U},
     }};
-    for (const auto [offset, value] : invalid_fields) {
+    for (const auto& [offset, value] : invalid_fields) {
         auto invalid = active;
         invalid[offset] = value;
         invalid[kRamOffset + 0x123U] ^= 0xFFU;

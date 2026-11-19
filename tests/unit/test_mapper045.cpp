@@ -472,7 +472,7 @@ TEST_CASE("Mapper 045 state replay is bounded and all rejection paths are atomic
     const auto saved = state(*m);
     REQUIRE(saved.size() == 8224U);
     for (std::size_t size : {0U, 1U, 9U, 10U, 8191U, 8192U, 8223U}) {
-        StateReader reader(std::span(saved).first(size));
+        StateReader reader{std::span(saved).first(size)};
         m->load_state(reader);
         REQUIRE_FALSE(reader.ok());
         REQUIRE(state(*m) == saved);
@@ -492,7 +492,7 @@ TEST_CASE("Mapper 045 state replay is bounded and all rejection paths are atomic
         {base + 19U, 4U},
         {base + 21U, 0x20U},
     }};
-    for (const auto [offset, value] : bad_fields) {
+    for (const auto& [offset, value] : bad_fields) {
         auto bad = saved;
         bad[offset] = value;
         INFO("offset=" << offset << " value=" << +value);

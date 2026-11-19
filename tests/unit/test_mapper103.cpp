@@ -216,7 +216,7 @@ TEST_CASE("Mapper 103 state replay is bounded and rejection is atomic",
     REQUIRE(copy->read_prg(0xC123U) == 56U);
 
     for (std::size_t size : {0UZ, 1UZ, 2UZ, 5UZ, 6UZ, 100UZ, 24581UZ}) {
-        StateReader reader(std::span(saved).first(size));
+        StateReader reader{std::span(saved).first(size)};
         m->load_state(reader);
         REQUIRE_FALSE(reader.ok());
         REQUIRE(state(*m) == saved);

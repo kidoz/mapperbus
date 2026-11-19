@@ -307,7 +307,7 @@ TEST_CASE("Mapper 156 rejects truncated and invalid snapshots atomically", "[map
     const auto saved = state(*mapper);
 
     for (std::size_t length : {0UZ, 1UZ, 2UZ, 17UZ, 18UZ, 19UZ, 20UZ, 100UZ, saved.size() - 1U}) {
-        StateReader reader(std::span(saved).first(length));
+        StateReader reader{std::span(saved).first(length)};
         mapper->load_state(reader);
         REQUIRE_FALSE(reader.ok());
         REQUIRE(state(*mapper) == saved);

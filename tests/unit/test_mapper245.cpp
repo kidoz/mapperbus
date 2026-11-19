@@ -248,7 +248,7 @@ TEST_CASE("Mapper 245 snapshots bind geometry and reset mirroring and reject cor
     const auto saved = state(*m);
     REQUIRE(saved.size() == 16402U);
     for (unsigned length : {0U, 8191U, 16384U, 16399U, 16401U}) {
-        StateReader r(std::span(saved).first(length));
+        StateReader r{std::span(saved).first(length)};
         m->load_state(r);
         REQUIRE_FALSE(r.ok());
         REQUIRE(state(*m) == saved);

@@ -372,7 +372,7 @@ TEST_CASE("Mapper 272 snapshots stage all fields and reject damage atomically", 
 
     for (std::size_t size = 0U; size < saved.size(); ++size) {
         const auto before = save(*replay);
-        StateReader reader(std::span(saved).first(size));
+        StateReader reader{std::span(saved).first(size)};
         replay->load_state(reader);
         REQUIRE_FALSE(reader.ok());
         REQUIRE(save(*replay) == before);
@@ -389,7 +389,7 @@ TEST_CASE("Mapper 272 snapshots stage all fields and reject damage atomically", 
                                                                   {16U, 2U},
                                                                   {17U, 2U},
                                                                   {15U, 0U}};
-    for (const auto [offset, value] : invalid) {
+    for (const auto& [offset, value] : invalid) {
         auto damaged = saved;
         damaged[offset] = value;
         StateReader reader(damaged);

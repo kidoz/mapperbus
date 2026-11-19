@@ -229,7 +229,7 @@ TEST_CASE("Mapper 288 snapshots are bounded, replayable, and atomic on rejection
     require_mapping(*replay, 0x3FU);
 
     for (std::size_t length = 0U; length < saved.size(); ++length) {
-        StateReader reader(std::span(saved).first(length));
+        StateReader reader{std::span(saved).first(length)};
         replay->load_state(reader);
         REQUIRE_FALSE(reader.ok());
         REQUIRE(state(*replay) == saved);

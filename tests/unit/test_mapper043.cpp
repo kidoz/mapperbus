@@ -331,7 +331,7 @@ TEST_CASE("Mapper 043 fixed snapshots replay IRQ progress and reject corruption 
     const auto saved = state(*mapper);
 
     for (std::size_t size = 0U; size < saved.size(); ++size) {
-        StateReader reader(std::span(saved).first(size));
+        StateReader reader{std::span(saved).first(size)};
         mapper->load_state(reader);
         REQUIRE_FALSE(reader.ok());
         REQUIRE(state(*mapper) == saved);

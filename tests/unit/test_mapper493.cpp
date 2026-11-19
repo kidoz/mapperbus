@@ -246,7 +246,7 @@ TEST_CASE("Mapper 493 exhaustively combines outer and inner PRG CHR banking",
         {0x0FU, 0x00U},
         {0x0FU, 0x71U},
     }};
-    for (const auto [outer, inner] : edges) {
+    for (const auto& [outer, inner] : edges) {
         mapper->write_prg(0x6000U, outer);
         mapper->write_prg(0x8000U, inner);
         for (unsigned raw = 0x8000U; raw <= 0xFFFFU; raw += 0x101U) {

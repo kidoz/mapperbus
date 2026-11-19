@@ -317,7 +317,7 @@ TEST_CASE("Mapper 319 rejects malformed and mismatched states atomically", "[map
     REQUIRE_FALSE(pad_reader.ok());
     REQUIRE(state(*wrong_pad) == before);
 
-    for (const auto geometry :
+    for (const auto& geometry :
          {std::pair{kPrgBankSize, kMaxChrSize}, std::pair{kMaxPrgSize, kChrBankSize}}) {
         auto other = board(geometry.first, geometry.second);
         before = state(*other);

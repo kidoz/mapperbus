@@ -167,7 +167,7 @@ TEST_CASE("Mapper 228 snapshots reject other populations, noncanonical latches a
         REQUIRE(reader.remaining() == 0U);
         REQUIRE(state(*copy) == saved);
         for (std::size_t n = 0U; n < saved.size(); ++n) {
-            StateReader truncated(std::span(saved).first(n));
+            StateReader truncated{std::span(saved).first(n)};
             m->load_state(truncated);
             REQUIRE_FALSE(truncated.ok());
             REQUIRE(state(*m) == reset);

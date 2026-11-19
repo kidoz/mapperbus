@@ -337,7 +337,7 @@ TEST_CASE("Mapper 215 snapshots retain scrambling and pending IRQs and reject ma
         other->load_state(wrong);
         REQUIRE_FALSE(wrong.ok());
         for (std::size_t n = 0U; n < saved.size(); ++n) {
-            StateReader short_reader(std::span(saved).first(n));
+            StateReader short_reader{std::span(saved).first(n)};
             m->load_state(short_reader);
             REQUIRE_FALSE(short_reader.ok());
             REQUIRE(state(*m) == initial);

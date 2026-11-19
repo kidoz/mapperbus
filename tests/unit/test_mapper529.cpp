@@ -213,10 +213,10 @@ TEST_CASE("Mapper 529 validates ROM RAM EEPROM and CIRAM geometry with bounded c
             }
         }
     }
-    for (const auto [chr_size, eeprom] : {std::pair{kChrSize, false},
-                                          std::pair{kChrSize, true},
-                                          std::pair{0UZ, false},
-                                          std::pair{0UZ, true}}) {
+    for (const auto& [chr_size, eeprom] : {std::pair{kChrSize, false},
+                                           std::pair{kChrSize, true},
+                                           std::pair{0UZ, false},
+                                           std::pair{0UZ, true}}) {
         auto mapper = board(kPrgSize, chr_size, eeprom, MirrorMode::Horizontal, 0x35U);
         auto different_rom = board(kPrgSize, chr_size, eeprom, MirrorMode::Horizontal, 0xA0U);
         const auto cold = state(*mapper);
@@ -846,7 +846,7 @@ TEST_CASE("Mapper 529 rejects truncated damaged and mismatched states atomically
         {kEepromPendingOffset, 0U},
         {kEepromPhaseOffset, 0U},
     }};
-    for (const auto [offset, value] : invalid_fields) {
+    for (const auto& [offset, value] : invalid_fields) {
         auto invalid = saved;
         invalid[offset] = value;
         CAPTURE(offset, value);

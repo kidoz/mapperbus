@@ -336,7 +336,7 @@ TEST_CASE("Mapper 291 fixed states replay without ROM and reject corruption atom
         REQUIRE(copy->read_chr(addr) == mapper->read_chr(addr));
 
     for (std::size_t length = 0U; length < saved.size(); ++length) {
-        StateReader truncated(std::span(saved).first(length));
+        StateReader truncated{std::span(saved).first(length)};
         mapper->load_state(truncated);
         REQUIRE_FALSE(truncated.ok());
         REQUIRE(state(*mapper) == saved);
@@ -351,7 +351,7 @@ TEST_CASE("Mapper 291 fixed states replay without ROM and reject corruption atom
     }
     constexpr std::array<std::pair<std::size_t, Byte>, 6> invalid_fields{
         {{11U, 0x08U}, {18U, 0x40U}, {19U, 0x40U}, {20U, 2U}, {23U, 4U}, {24U, 1U}}};
-    for (const auto [offset, value] : invalid_fields) {
+    for (const auto& [offset, value] : invalid_fields) {
         auto invalid = saved;
         invalid[offset] = value;
         StateReader reader(invalid);

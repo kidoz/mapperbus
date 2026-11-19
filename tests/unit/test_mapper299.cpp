@@ -232,7 +232,7 @@ TEST_CASE("Mapper 299 state is bounded, ROM-free, replayable and atomic on rejec
     REQUIRE(state(*replay) == saved);
 
     for (std::size_t length = 0U; length < saved.size(); ++length) {
-        StateReader reader(std::span(saved).first(length));
+        StateReader reader{std::span(saved).first(length)};
         replay->load_state(reader);
         REQUIRE_FALSE(reader.ok());
         REQUIRE(state(*replay) == saved);

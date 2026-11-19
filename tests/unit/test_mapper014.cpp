@@ -326,7 +326,7 @@ TEST_CASE("Mapper 014 state replays both ASICs and rejects malformed input atomi
     REQUIRE(copy->mirror_mode() == MirrorMode::Vertical);
 
     for (std::size_t size = 0U; size < saved.size(); ++size) {
-        StateReader short_state(std::span(saved).first(size));
+        StateReader short_state{std::span(saved).first(size)};
         m->load_state(short_state);
         REQUIRE_FALSE(short_state.ok());
         REQUIRE(state(*m) == saved);
@@ -351,7 +351,7 @@ TEST_CASE("Mapper 014 state replays both ASICs and rejects malformed input atomi
         {36U, 4U},
         {37U, 2U},
     }};
-    for (const auto [offset, value] : invalid) {
+    for (const auto& [offset, value] : invalid) {
         auto bad = saved;
         bad[offset] = value;
         StateReader bad_state(bad);

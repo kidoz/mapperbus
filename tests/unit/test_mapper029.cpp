@@ -246,7 +246,7 @@ TEST_CASE("Mapper 029 rejects malformed snapshots atomically", "[mapper029][stat
 
     for (std::size_t length : {0UZ, 1UZ, 2UZ, 3UZ, 8194UZ, 8195UZ, 40962UZ}) {
         INFO("truncated bytes: " << length);
-        StateReader reader(std::span(saved).first(length));
+        StateReader reader{std::span(saved).first(length)};
         mapper.load_state(reader);
         REQUIRE_FALSE(reader.ok());
         REQUIRE(state(mapper) == saved);

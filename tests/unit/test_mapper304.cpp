@@ -302,7 +302,7 @@ TEST_CASE("Mapper 304 rejects truncated and invalid states without any mutation"
     REQUIRE(saved.size() == 8199U);
 
     for (std::size_t length = 0U; length < saved.size(); ++length) {
-        StateReader reader(std::span(saved).first(length));
+        StateReader reader{std::span(saved).first(length)};
         mapper.load_state(reader);
         REQUIRE_FALSE(reader.ok());
         REQUIRE(state(mapper) == saved);

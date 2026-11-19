@@ -251,7 +251,7 @@ TEST_CASE("Mapper 208 snapshots retain the key, protection bytes, bank latch and
         other->load_state(wrong);
         REQUIRE_FALSE(wrong.ok());
         for (std::size_t length = 0U; length < saved.size(); ++length) {
-            StateReader short_reader(std::span(saved).first(length));
+            StateReader short_reader{std::span(saved).first(length)};
             m->load_state(short_reader);
             REQUIRE_FALSE(short_reader.ok());
             REQUIRE(state(*m) == initial);

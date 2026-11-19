@@ -530,7 +530,7 @@ TEST_CASE("Mapper 322 rejects truncated, mismatched and invalid states atomicall
     const auto saved = state(*mapper);
 
     for (std::size_t size = 0U; size < saved.size(); ++size) {
-        StateReader truncated(std::span(saved).first(size));
+        StateReader truncated{std::span(saved).first(size)};
         mapper->load_state(truncated);
         REQUIRE_FALSE(truncated.ok());
         REQUIRE(state(*mapper) == saved);
@@ -546,7 +546,7 @@ TEST_CASE("Mapper 322 rejects truncated, mismatched and invalid states atomicall
          {23U, 8U},
          {23U, 4U},
          {24U, 1U}}};
-    for (const auto [offset, value] : invalid) {
+    for (const auto& [offset, value] : invalid) {
         auto bad = saved;
         bad[offset] = value;
         StateReader rejected(bad);

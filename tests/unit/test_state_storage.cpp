@@ -270,7 +270,7 @@ struct StateIOGate {
         changed.notify_all();
         changed.wait(lock, [this] { return released; });
     }
-    bool wait(bool StateIOGate::* flag) {
+    bool wait(bool StateIOGate::*flag) {
         std::unique_lock lock(mutex);
         return changed.wait_for(
             lock, std::chrono::seconds(5), [this, flag] { return this->*flag; });

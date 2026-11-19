@@ -224,7 +224,7 @@ TEST_CASE("Mapper 218 component snapshots store only immutable wiring and reject
         REQUIRE(valid.ok());
         REQUIRE(valid.remaining() == 0U);
         for (std::size_t size : {0UZ, 1UZ}) {
-            StateReader truncated(std::span(saved).first(size));
+            StateReader truncated{std::span(saved).first(size)};
             m->load_state(truncated);
             REQUIRE_FALSE(truncated.ok());
             REQUIRE(state(*m) == saved);
