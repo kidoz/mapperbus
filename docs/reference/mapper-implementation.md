@@ -4853,7 +4853,7 @@ or another registered cartridge ID.
 | 034 | BNROM / NINA-001 | New implementation: DiscreteMapper | [r24073](https://www.nesdev.org/w/index.php?oldid=24073) |
 | 035 | J.Y. Company ASIC | New implementation: JyCompany | [r24184](https://www.nesdev.org/w/index.php?oldid=24184) |
 | 036 | TXC/JV001 protection board | New implementation: Txc | [r4196](https://www.nesdev.org/w/index.php?oldid=4196) |
-| 037 | Board-specific specification | Not registered | [r4204](https://www.nesdev.org/w/index.php?oldid=4204) |
+| 037 | Board-specific specification | Registered: Mmc3Multicart37 | [r4204](https://www.nesdev.org/w/index.php?oldid=4204) |
 | 038 | Board-specific specification | New implementation: DiscreteMapper | [r23289](https://www.nesdev.org/w/index.php?oldid=23289) |
 | 039 | Board-specific specification | Not registered | [r4217](https://www.nesdev.org/w/index.php?oldid=4217) |
 | 040 | Board-specific specification | Not registered | [r19687](https://www.nesdev.org/w/index.php?oldid=19687) |
