@@ -16,6 +16,7 @@
 #include "core/mappers/fds_conversion108.hpp"
 #include "core/mappers/ffe_super_magic_card.hpp"
 #include "core/mappers/flash_boards.hpp"
+#include "core/mappers/fs304.hpp"
 #include "core/mappers/g0151.hpp"
 #include "core/mappers/golden_game.hpp"
 #include "core/mappers/irem.hpp"
@@ -154,6 +155,8 @@ namespace {
         return T4a54a::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 142U)
         return KaiserKs202::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 164U)
+        return Fs304::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 12U)
         return Mapper012::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 14U)
@@ -1119,6 +1122,7 @@ void register_builtin_mappers() {
     registry.register_mapper(122, make_factory<Jy043>());
     registry.register_mapper(134, make_factory<T4a54a>());
     registry.register_mapper(142, make_factory<KaiserKs202>());
+    registry.register_mapper(164, make_factory<Fs304>());
     registry.register_mapper(12, make_factory<Mapper012>());
     registry.register_mapper(14, make_factory<Sl1632>());
     registry.register_mapper(15, make_factory<Mapper015>());
