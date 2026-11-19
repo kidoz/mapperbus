@@ -60,6 +60,7 @@
 #include "core/mappers/nrom.hpp"
 #include "core/mappers/ntdec_2722.hpp"
 #include "core/mappers/ntdec_n625092.hpp"
+#include "core/mappers/oeka_kids.hpp"
 #include "core/mappers/rambo1.hpp"
 #include "core/mappers/realtec_multicart.hpp"
 #include "core/mappers/ret_cufrom.hpp"
@@ -114,6 +115,8 @@ namespace {
         return Multicart063::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 83U || header.mapper_number == 264U)
         return ConyYoko::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 96U)
+        return OekaKids::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 12U)
         return Mapper012::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 14U)
@@ -1038,6 +1041,7 @@ void register_builtin_mappers() {
     registry.register_mapper(63, make_factory<Multicart063>());
     for (const uint16_t id : {83U, 264U})
         registry.register_mapper(id, make_factory<ConyYoko>());
+    registry.register_mapper(96, make_factory<OekaKids>());
     registry.register_mapper(12, make_factory<Mapper012>());
     registry.register_mapper(14, make_factory<Sl1632>());
     registry.register_mapper(15, make_factory<Mapper015>());
