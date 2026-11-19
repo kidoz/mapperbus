@@ -5239,7 +5239,7 @@ some historical aliases share a factory with another ID.
 | 415 | Board-specific specification | Registered: Mapper415 | [r8043](https://www.nesdev.org/w/index.php?oldid=8043) |
 | 416 | Board-specific specification | Registered: Mapper416 | [r8044](https://www.nesdev.org/w/index.php?oldid=8044) |
 | 417 | Board-specific specification | Registered: Mapper417 | [r19973](https://www.nesdev.org/w/index.php?oldid=19973) |
-| 418 | Board-specific specification | Not registered | [r8047](https://www.nesdev.org/w/index.php?oldid=8047) |
+| 418 | Taito / Namco 108 variant | Registered: Namco108 | [r8047](https://www.nesdev.org/w/index.php?oldid=8047) |
 | 419 | Board-specific specification | Not registered | [r23377](https://www.nesdev.org/w/index.php?oldid=23377) |
 | 420 | Kasheng A971210 | Registered: Mmc3 | [r8052](https://www.nesdev.org/w/index.php?oldid=8052) |
 | 421 | Board-specific specification | Not registered | [r8053](https://www.nesdev.org/w/index.php?oldid=8053) |
@@ -5345,7 +5345,7 @@ some historical aliases share a factory with another ID.
 | 554 | Board-specific specification | Not registered | [r8195](https://www.nesdev.org/w/index.php?oldid=8195) |
 | 555 | Board-specific specification | Not registered | [r8198](https://www.nesdev.org/w/index.php?oldid=8198) |
 | 556 | Board-specific specification | Not registered | [r22948](https://www.nesdev.org/w/index.php?oldid=22948) |
-| 557 | Board-specific specification | Not registered | [r21239](https://www.nesdev.org/w/index.php?oldid=21239) |
+| 557 | NTDEC 2718 | Registered: Namco108 | [r21239](https://www.nesdev.org/w/index.php?oldid=21239) |
 | 558 | Yancheng YC-03-09 | Not registered | [r23362](https://www.nesdev.org/w/index.php?oldid=23362) |
 | 560 | Board-specific specification | Not registered | [r23154](https://www.nesdev.org/w/index.php?oldid=23154) |
 | 561 | Bung Super Game Doctor | Not registered | [r18925](https://www.nesdev.org/w/index.php?oldid=18925) |
