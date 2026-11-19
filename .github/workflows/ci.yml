@@ -145,6 +145,7 @@ jobs:
         run: |
           meson setup buildDir-sanitize \
             -Db_sanitize=address,undefined \
+            -Doptimization=1 \
             -Db_lto=false \
             -Db_lundef=false \
             -Denable_nodalkit_gui=false
