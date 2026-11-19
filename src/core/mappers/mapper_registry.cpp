@@ -276,6 +276,7 @@
 #include "core/mappers/mapper529.hpp"
 #include "core/mappers/mapper530.hpp"
 #include "core/mappers/mapper547.hpp"
+#include "core/mappers/mapper548.hpp"
 #include "core/mappers/maxi15.hpp"
 #include "core/mappers/mmc1.hpp"
 #include "core/mappers/mmc1a.hpp"
@@ -945,6 +946,8 @@ namespace {
         return Mmc1::validate_03101(header, prg_size, chr_size);
     if (header.mapper_number == 547U)
         return Mapper547::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 548U)
+        return Mapper548::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 550U)
         return Mmc1::validate_jy820845c(header, prg_size, chr_size);
     if (header.mapper_number == 557U)
@@ -1957,6 +1960,7 @@ void register_builtin_mappers() {
     registry.register_mapper(545, make_factory<Mmc3>());
     registry.register_mapper(546, make_factory<Mmc1>());
     registry.register_mapper(547, make_factory<Mapper547>());
+    registry.register_mapper(548, make_factory<Mapper548>());
     registry.register_mapper(550, make_factory<Mmc1>());
     registry.register_mapper(551, make_factory<Fs305>());
     registry.register_mapper(552, make_factory<TaitoX1017>());

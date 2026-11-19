@@ -210,6 +210,34 @@ TEST_CASE("ST-80 routes MMC3 pins to the menu, the large chip and the small chip
     snapshot(c);
 }
 
+TEST_CASE("Co Tung CTC-15 latches address pins separately from bank selection and IRQ",
+          "[mapper548]") {
+    auto c = cartridge(548, 128, 0, 0, 7, 7);
+    CHECK(c.read_prg(0x8000) == 14);
+    CHECK(c.read_prg(0xC000) == 6);
+    c.write_expansion(0x4828, 0);
+    CHECK(c.read_prg(0x8000) == 14);
+    c.write_expansion(0x57FF, 0xFF);
+    CHECK(c.read_prg(0x8000) == 6);
+    for (unsigned i = 0; i < 23679; ++i)
+        c.clock_cpu_falling_edge();
+    CHECK_FALSE(c.irq_pending());
+    c.clock_cpu_falling_edge();
+    CHECK(c.irq_pending());
+    c.write_prg(0x6000, 0x37);
+    c.write_chr(0x1FFF, 0x91);
+    snapshot(c);
+    CHECK(c.read_prg(0x6000) == 0x37);
+    CHECK(c.read_chr(0x1FFF) == 0x91);
+    for (unsigned i = 0; i < 640; ++i)
+        c.clock_cpu_falling_edge();
+    CHECK_FALSE(c.irq_pending());
+    c.write_expansion(0x4804, 0);
+    for (unsigned i = 0; i < 23680; ++i)
+        c.clock_cpu_falling_edge();
+    CHECK_FALSE(c.irq_pending());
+}
+
 TEST_CASE("JY820845C observes MMC1 writes during MHROM banking and locks its game selection",
           "[mapper550]") {
     auto c = cartridge(550, 512, 128, 0, 7, 0);
