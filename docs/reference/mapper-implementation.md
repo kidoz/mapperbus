@@ -5317,7 +5317,7 @@ or another registered cartridge ID.
 | 524 | Board-specific specification | Registered: Mapper524 | [r8116](https://www.nesdev.org/w/index.php?oldid=8116) |
 | 525 | Board-specific specification | Registered: Mapper525 | [r8120](https://www.nesdev.org/w/index.php?oldid=8120) |
 | 526 | Board-specific specification | Registered: Mapper526 | [r20369](https://www.nesdev.org/w/index.php?oldid=20369) |
-| 527 | Board-specific specification | Not registered | [r8124](https://www.nesdev.org/w/index.php?oldid=8124) |
+| 527 | Board-specific specification | Registered: Mapper527 | [r8124](https://www.nesdev.org/w/index.php?oldid=8124) |
 | 528 | Board-specific specification | Not registered | [r8126](https://www.nesdev.org/w/index.php?oldid=8126) |
 | 529 | Board-specific specification | Not registered | [r19170](https://www.nesdev.org/w/index.php?oldid=19170) |
 | 530 | Board-specific specification | Not registered | [r8130](https://www.nesdev.org/w/index.php?oldid=8130) |
