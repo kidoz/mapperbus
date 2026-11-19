@@ -47,6 +47,7 @@
 #include "core/mappers/mapper106.hpp"
 #include "core/mappers/mapper112.hpp"
 #include "core/mappers/mapper117.hpp"
+#include "core/mappers/mapper120_lh15.hpp"
 #include "core/mappers/maxi15.hpp"
 #include "core/mappers/mmc1.hpp"
 #include "core/mappers/mmc2.hpp"
@@ -132,6 +133,8 @@ namespace {
         return FdsConversion108::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 112U)
         return Mapper112::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 120U)
+        return Lh15::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 12U)
         return Mapper012::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 14U)
@@ -1072,6 +1075,7 @@ void register_builtin_mappers() {
     registry.register_mapper(105, make_factory<NesEvent>());
     registry.register_mapper(108, make_factory<FdsConversion108>());
     registry.register_mapper(112, make_factory<Mapper112>());
+    registry.register_mapper(120, make_factory<Lh15>());
     registry.register_mapper(12, make_factory<Mapper012>());
     registry.register_mapper(14, make_factory<Sl1632>());
     registry.register_mapper(15, make_factory<Mapper015>());
