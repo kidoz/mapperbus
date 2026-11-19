@@ -63,7 +63,7 @@ and duplicate ROM member names are rejected or are not ROM candidates. FDS image
 
 The archive file and total declared member sizes are each limited to 256 MiB;
 there may be at most 1024 entries. Member names are limited to 4096 bytes each
-and 1 MiB combined. Selected ROM output is limited to 16 MiB, both before and
+and 1 MiB combined. Selected ROM output is limited to 128 MiB plus 528 bytes for the header and trainer, both before and
 during decompression. Corrupt selected data and archive read errors abort the
 load, preserving the previous game. These checks bound application buffers;
 libarchive also allocates decoder memory internally, especially for solid 7z
