@@ -2074,6 +2074,7 @@ void register_builtin_mappers() {
     registry.register_mapper(339, make_factory<Mapper339>());
     registry.register_mapper(340, make_factory<Mapper340>());
     registry.register_mapper(341, make_factory<Mapper341>());
+    registry.register_mapper(342, make_factory<Mapper342>());
     registry.register_mapper(343, make_factory<ChrRamMulticarts>());
     registry.register_mapper(344, make_factory<Mapper344>());
     registry.register_mapper(345, make_factory<Mapper345>());

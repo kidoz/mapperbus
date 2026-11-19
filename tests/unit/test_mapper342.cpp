@@ -7,7 +7,9 @@
 #include <span>
 #include <vector>
 
+#include "core/cartridge/cartridge.hpp"
 #include "core/mappers/mapper342.hpp"
+#include "core/mappers/mapper_registry.hpp"
 #include "core/state/state.hpp"
 
 using namespace mapperbus::core;
@@ -17,11 +19,10 @@ constexpr std::size_t kPrgSize = 4UZ * 1024UZ * 1024UZ;
 constexpr std::size_t kChrRamSize = 512UZ * 1024UZ;
 constexpr std::size_t kWramSize = 32UZ * 1024UZ;
 constexpr std::size_t kRegistersOffset = 14UZ;
-constexpr std::size_t kPrgBanksOffset = 22UZ;
 constexpr std::size_t kChrBanksOffset = 26UZ;
 constexpr std::size_t kWramLengthOffset = 42UZ;
 constexpr std::size_t kWramDataOffset = 50UZ;
-constexpr std::size_t kStateOverhead = 58UZ;
+constexpr std::size_t kStateOverhead = 96UZ;
 
 INesHeader header(bool fram = true, MirrorMode mirror = MirrorMode::Vertical) {
     INesHeader h{};
@@ -69,7 +70,7 @@ std::vector<Byte> state(const Mapper& mapper) {
 }
 
 std::array<Byte, 4> prg_banks(const std::array<Byte, 8>& regs) {
-    return {static_cast<Byte>((regs[5] >> 1U) & 0x3EU), 0xFDU, 0xFEU, 0xFFU};
+    return {static_cast<Byte>((regs[5] >> 1U) & 0x3EU), 1U, 0xFEU, 0xFFU};
 }
 
 std::array<std::uint16_t, 8> chr_banks(const std::array<Byte, 8>& regs) {
@@ -107,7 +108,7 @@ std::size_t expected_prg(const std::array<Byte, 8>& regs, Address addr, std::siz
 
 std::size_t expected_chr(const std::array<Byte, 8>& regs, Address addr, std::size_t size) {
     const auto banks = chr_banks(regs);
-    const unsigned mode = regs[4] & 7U;
+    const unsigned mode = regs[4] >> 5U;
     const unsigned slot = (addr >> 10U) & 7U;
     const auto paired = [&](unsigned index) { return (banks[index] & 0x1FEU) | (slot & 1U); };
     unsigned bank = 0U;
@@ -116,7 +117,7 @@ std::size_t expected_chr(const std::array<Byte, 8>& regs, Address addr, std::siz
     } else if (mode == 2U) {
         bank = slot < 2U ? paired(0U) : slot < 4U ? paired(2U) : banks[slot];
     } else if (mode == 3U) {
-        bank = slot < 4U ? banks[slot] : slot < 6U ? paired(0U) : paired(2U);
+        bank = slot < 4U ? banks[slot + 4U] : slot < 6U ? paired(0U) : paired(2U);
     } else if (mode == 4U) {
         bank = (banks[slot < 4U ? 0U : 4U] & 0x1FCU) | (slot & 3U);
     } else if (mode == 6U) {
@@ -179,7 +180,7 @@ TEST_CASE("Mapper 342 validates mapper submapper ROM and exact memory population
             h.chr_nvram_size = 0x2000U;
             break;
         case 1U:
-            h.prg_ram_size = 0x8000U;
+            h.prg_ram_size = 0x4000U;
             h.prg_nvram_size = 0U;
             break;
         case 2U:
@@ -239,7 +240,7 @@ TEST_CASE("Mapper 342 decodes every native register alias and locks atomically",
     REQUIRE(state(*mapper) == initial);
     for (const Address addr : {0x5000U, 0x5007U, 0x5FF8U, 0x5FFFU}) {
         REQUIRE(mapper->maps_expansion(addr));
-        REQUIRE(mapper->expansion_read_mask(addr) == 0U);
+        REQUIRE(mapper->expansion_read_mask(addr) == 0xFFU);
         REQUIRE(mapper->read_expansion(addr) == 0U);
     }
 }
@@ -265,18 +266,19 @@ TEST_CASE("Mapper 342 native PRG modes apply bank pins before mask and base", "[
     for (const Byte mode : {2U, 3U}) {
         mapper->reset();
         reg(*mapper, 3U, static_cast<Byte>(mode << 5U));
-        REQUIRE(mapper->prg_read_mask(0x8000U) == 0U);
-        REQUIRE(mapper->read_prg(0x8000U) == 0U);
+        REQUIRE(mapper->prg_read_mask(0x8000U) == 0xFFU);
+        REQUIRE(mapper->read_prg(0x8000U) == cell(mode == 2U ? 0U : 0x1C000U));
     }
 }
 
-TEST_CASE("Mapper 342 reset PRG banks are zero, FD, FE and FF", "[mapper342][reset]") {
+TEST_CASE("Mapper 342 reset PRG banks are zero, one, FE and FF with a 128 KiB menu limit",
+          "[mapper342][reset]") {
     auto mapper = board();
     for (const Address addr : {0x8000U, 0x8001U, 0x9FFFU, 0xA000U, 0xBFFFU}) {
         REQUIRE(mapper->read_prg(addr) == cell(addr - 0x8000U));
     }
     for (const Address addr : {0xC000U, 0xC123U, 0xE000U, 0xFFFFU}) {
-        REQUIRE(mapper->read_prg(addr) == cell(0x1FC000UZ + (addr - 0xC000U)));
+        REQUIRE(mapper->read_prg(addr) == cell(0x1C000UZ + (addr - 0xC000U)));
     }
 }
 
@@ -293,7 +295,7 @@ TEST_CASE("Mapper 342 native CHR modes mask RAM pins and honor write enable", "[
             }
         }
         std::array<Byte, 8> regs{0U, 0U, 0x80U, 0x12U, 0xA8U, 0x80U, 0U, 0x02U};
-        regs[4] = static_cast<Byte>((regs[4] & 0xF8U) | mode);
+        regs[4] = static_cast<Byte>((regs[4] & 31U) | (mode << 5U));
         for (unsigned index = 0U; index < regs.size(); ++index) {
             reg(*mapper, index, regs[index]);
         }
@@ -313,10 +315,11 @@ TEST_CASE("Mapper 342 native CHR modes mask RAM pins and honor write enable", "[
     mapper->write_chr(0x0123U, 0xA7U);
     REQUIRE(mapper->read_chr(0x0123U) == 0xA7U);
     for (const Byte mode : {1U, 5U}) {
-        reg(*mapper, 4U, mode);
-        REQUIRE(mapper->read_chr(0x0123U) == 0U);
+        reg(*mapper, 4U, static_cast<Byte>(mode << 5U));
+        mapper->write_chr(0x0123, 0xA7);
+        REQUIRE(mapper->read_chr(0x0123U) == 0xA7U);
         mapper->write_chr(0x0123U, 0x5CU);
-        REQUIRE(mapper->read_chr(0x0123U) == 0U);
+        REQUIRE(mapper->read_chr(0x0123U) == 0x5CU);
     }
 }
 
@@ -325,10 +328,10 @@ TEST_CASE("Mapper 342 CIRAM controls include four-screen override", "[mapper342]
     REQUIRE(mapper->mirror_mode() == MirrorMode::Vertical);
     for (unsigned control = 0U; control < 0x80U; ++control) {
         reg(*mapper, 7U, static_cast<Byte>(control));
-        const auto expected = (control & 0x10U) != 0U      ? MirrorMode::FourScreen
-                              : (control & 0x0CU) == 0x00U ? MirrorMode::Vertical
-                              : (control & 0x0CU) == 0x04U ? MirrorMode::Horizontal
-                              : (control & 0x0CU) == 0x08U ? MirrorMode::SingleLower
+        const auto expected = (control & 0x20U) != 0U      ? MirrorMode::FourScreen
+                              : (control & 0x18U) == 0x00U ? MirrorMode::Vertical
+                              : (control & 0x18U) == 0x08U ? MirrorMode::Horizontal
+                              : (control & 0x18U) == 0x10U ? MirrorMode::SingleLower
                                                            : MirrorMode::SingleUpper;
         CAPTURE(control);
         REQUIRE(mapper->mirror_mode() == expected);
@@ -502,16 +505,14 @@ TEST_CASE("Mapper 342 rejects bounded malformed and incompatible states atomical
         invalid[offset] ^= 1U;
         reject(invalid);
     }
-    for (std::size_t index = 0U; index < 4U; ++index) {
-        auto invalid = saved;
-        invalid[kPrgBanksOffset + index] ^= 1U;
-        reject(invalid);
-    }
     for (std::size_t index = 0U; index < 8U; ++index) {
         auto invalid = saved;
-        invalid[kChrBanksOffset + index * 2U] ^= 1U;
+        invalid[kChrBanksOffset + index * 2U + 1U] |= 0x02U;
         reject(invalid);
     }
+    auto invalid_low_m2 = saved;
+    invalid_low_m2.back() = 4U;
+    reject(invalid_low_m2);
     for (const std::size_t offset : {kWramLengthOffset, kWramDataOffset + kWramSize}) {
         auto invalid = saved;
         std::fill(invalid.begin() + static_cast<std::ptrdiff_t>(offset),
@@ -532,7 +533,7 @@ TEST_CASE("Mapper 342 rejects bounded malformed and incompatible states atomical
     incompatible(board(kPrgSize, kChrRamSize, false));
 }
 
-TEST_CASE("Mapper 342 partial component exposes no simulated ASIC IRQ audio or flash",
+TEST_CASE("Mapper 342 native menu keeps IRQ idle and does not expose audio or flash programming",
           "[mapper342]") {
     auto mapper = board();
     const auto before = state(*mapper);
@@ -551,6 +552,221 @@ TEST_CASE("Mapper 342 partial component exposes no simulated ASIC IRQ audio or f
         mapper->write_prg(addr, 0xFFU);
     }
     REQUIRE(state(*mapper) == before);
+}
+
+TEST_CASE("COOLGIRL native menu locks outer pins while game cores own inner pins", "[mapper342]") {
+    auto mapper = board();
+    const auto start = [&](Byte core, Byte prg_mode, Byte chr_mode = 0U) {
+        mapper->reset();
+        reg(*mapper, 2, 0);
+        reg(*mapper, 3, static_cast<Byte>(prg_mode << 5U));
+        reg(*mapper, 4, static_cast<Byte>(chr_mode << 5U));
+        reg(*mapper, 6, core);
+        reg(*mapper, 7, 0x82); // lock native and enable pattern writes
+    };
+    start(1, 0);
+    mapper->write_prg(0x8000, 5);
+    REQUIRE(mapper->read_prg(0x8123) == cell(5U * 0x4000U + 0x123U));
+    reg(*mapper, 5, 0);
+    REQUIRE(mapper->read_prg(0x8123) == cell(5U * 0x4000U + 0x123U));
+    start(0x21, 0); // Fire Hawk's $9000 is a mirror register
+    mapper->write_prg(0x9000, 0x10);
+    REQUIRE(mapper->mirror_mode() == MirrorMode::SingleUpper);
+    REQUIRE(mapper->read_prg(0x8123) == cell(0x123));
+    start(2, 0);
+    mapper->write_prg(0x8000, 3);
+    mapper->write_chr(0x123, 0xA7);
+    mapper->write_prg(0x8000, 0);
+    REQUIRE(mapper->read_chr(0x123) != 0xA7);
+    mapper->write_prg(0xFFFF, 3);
+    REQUIRE(mapper->read_chr(0x123) == 0xA7);
+    start(8, 7);
+    mapper->write_prg(0x9999, 0x15);
+    REQUIRE(mapper->read_prg(0x8123) == cell(5U * 0x8000U + 0x123U));
+    REQUIRE(mapper->mirror_mode() == MirrorMode::SingleUpper);
+    start(16, 0);
+    const auto serial = [&](Address addr, Byte data) {
+        for (unsigned bit = 0; bit < 5; ++bit) {
+            mapper->write_prg_cpu(addr, (data >> bit) & 1U, false);
+            mapper->write_prg_cpu(addr, 0x80, true); // RMW trailing strobe is filtered
+        }
+    };
+    serial(0x8000, 0x1E); // fixed last, 4K CHR, vertical
+    serial(0xE000, 5);
+    REQUIRE(mapper->read_prg(0x8123) == cell(5U * 0x4000U + 0x123));
+    REQUIRE(mapper->mirror_mode() == MirrorMode::Vertical);
+    serial(0x8000, 0x0B); // fixed first, switched high, horizontal
+    REQUIRE(mapper->read_prg(0xC123) == cell(5U * 0x4000U + 0x123));
+    REQUIRE(mapper->mirror_mode() == MirrorMode::Horizontal);
+    start(20, 4, 2);
+    mapper->write_prg(0x8000, 6);
+    mapper->write_prg(0x8001, 9);
+    REQUIRE(mapper->read_prg(0x8123) == cell(9U * 0x2000U + 0x123));
+    mapper->write_prg(0x8000, 0x46);
+    REQUIRE(mapper->read_prg(0xC123) == cell(9U * 0x2000U + 0x123));
+    mapper->write_prg(0x8000, 2);
+    mapper->write_prg(0x8001, 0x11);
+    mapper->write_chr(0x1004, 0x7A);
+    mapper->write_prg(0x8000, 0x82);
+    REQUIRE(mapper->read_chr(4) == 0x7A); // inverted 1K banks move to $0000
+    mapper->write_prg(0xA000, 1);
+    REQUIRE(mapper->mirror_mode() == MirrorMode::Horizontal);
+}
+
+TEST_CASE("COOLGIRL CPLD IRQ filters A12 against three M2 rising edges", "[mapper342]") {
+    auto mapper = board();
+    reg(*mapper, 6, 20);
+    mapper->write_prg(0xC000, 2);
+    mapper->write_prg(0xC001, 0xFF);
+    mapper->write_prg(0xE001, 0);
+    const auto edge = [&](unsigned cycles) {
+        mapper->observe_ppu_a12(false);
+        for (unsigned i = 0; i < cycles; ++i)
+            mapper->clock_cpu();
+        mapper->observe_ppu_a12(true);
+        mapper->clock_cpu_falling_edge();
+    };
+    edge(3); // reload 2 and arm
+    edge(2); // rejected pulse
+    edge(3); // 2 -> 1
+    REQUIRE_FALSE(mapper->irq_pending());
+    const auto before_last = state(*mapper);
+    edge(3); // 1 -> 0
+    REQUIRE(mapper->irq_pending());
+    mapper->write_prg(0xE000, 0);
+    REQUIRE_FALSE(mapper->irq_pending());
+    StateReader reader(before_last);
+    mapper->load_state(reader);
+    REQUIRE(reader.ok());
+    edge(3);
+    REQUIRE(mapper->irq_pending());
+    mapper->write_prg(0xE000, 0);
+    mapper->write_prg(0xC000, 0);
+    mapper->write_prg(0xC001, 0);
+    mapper->write_prg(0xE001, 0);
+    edge(3);
+    REQUIRE_FALSE(mapper->irq_pending()); // cannot arm on a zero reload
+}
+
+TEST_CASE("COOLGIRL loads a trimmed flash profile with volatile SRAM through the registry",
+          "[mapper342]") {
+    constexpr std::size_t size = 2240UZ * 1024UZ;
+    std::vector<Byte> image(size + 16U, 0xFFU);
+    std::array<Byte, 16> h{
+        'N', 'E', 'S', 0x1A, static_cast<Byte>(size / 16384U), 0U, 0x60, 0x58, 1, 0, 9, 12};
+    std::ranges::copy(h, image.begin());
+    register_builtin_mappers();
+    auto cartridge = Cartridge::from_data(image);
+    if (!cartridge)
+        FAIL(cartridge.error());
+    auto hdr = header(false);
+    hdr.prg_ram_size = kWramSize;
+    hdr.chr_ram_size = 256U * 1024U;
+    Mapper342 mapper(hdr, rom(size), {});
+    REQUIRE(mapper.battery_ram().empty());
+    reg(mapper, 7, 1);
+    mapper.write_prg(0x6000, 0xA7);
+    mapper.reset();
+    reg(mapper, 7, 1);
+    REQUIRE(mapper.read_prg(0x6000) == 0xA7);
+    mapper.power_on();
+    reg(mapper, 7, 1);
+    REQUIRE(mapper.read_prg(0x6000) == 0);
+    reg(mapper, 1, 200);
+    REQUIRE(mapper.read_prg(0x8123) == 0xFF); // unprogrammed tail, no modulo by file length
+}
+
+TEST_CASE("COOLGIRL default optional CPLD cores decode game registers and interrupts",
+          "[mapper342]") {
+    auto mapper = board();
+    const auto start = [&](Byte id) {
+        mapper->reset();
+        reg(*mapper, 2, 0);
+        reg(*mapper, 3, 4U << 5U);
+        reg(*mapper, 4, 7U << 5U);
+        reg(*mapper, 6, id);
+        reg(*mapper, 7, 0x83);
+    };
+    start(13); // J.Y. PRG, CHR, mirror and IRQ through the shared A12 counter.
+    mapper->write_prg(0x8002, 0x15);
+    REQUIRE(mapper->read_prg(0xC123) == cell(0xD5U * 8192U + 0x123U));
+    mapper->write_prg(0xD001, 3);
+    REQUIRE(mapper->mirror_mode() == MirrorMode::SingleUpper);
+    mapper->write_prg(0xC006, 0x81);
+    mapper->write_prg(0xC005, 0x80);
+    mapper->write_prg(0xC003, 0);
+    for (int edge = 0; edge < 2; ++edge) {
+        mapper->observe_ppu_a12(false);
+        for (int m2 = 0; m2 < 3; ++m2)
+            mapper->clock_cpu();
+        mapper->observe_ppu_a12(true);
+        mapper->clock_cpu_falling_edge();
+    }
+    REQUIRE(mapper->irq_pending());
+    start(14); // Irem H3001 counter expires when it reaches zero.
+    mapper->write_prg(0x9005, 0);
+    mapper->write_prg(0x9006, 2);
+    mapper->write_prg(0x9004, 0);
+    mapper->write_prg(0x9003, 0x80);
+    mapper->clock_cpu_falling_edge();
+    REQUIRE_FALSE(mapper->irq_pending());
+    mapper->clock_cpu_falling_edge();
+    REQUIRE(mapper->irq_pending());
+    mapper->write_prg(0x9004, 0);
+    REQUIRE_FALSE(mapper->irq_pending());
+    start(15); // CV3 firmware subset, split banks and /RD scanline detection.
+    mapper->write_expansion(0x5115, 9);
+    REQUIRE(mapper->read_prg(0x8123) == cell(8U * 8192U + 0x123));
+    REQUIRE(mapper->read_prg(0xA123) == cell(9U * 8192U + 0x123));
+    mapper->write_expansion(0x5105, 0xFF);
+    REQUIRE(mapper->mirror_mode() == MirrorMode::FourScreen);
+    REQUIRE(mapper->write_nametable(0x2C42, 0xF1));
+    REQUIRE(mapper->read_nametable(0x2C42) == 0xF1);
+    mapper->write_expansion(0x5203, 0);
+    mapper->write_expansion(0x5204, 0x80);
+    mapper->observe_ppu_read(0x0010);
+    for (unsigned nt = 0; nt < 4; ++nt)
+        mapper->observe_ppu_read(0x2000U);
+    REQUIRE(mapper->irq_pending());
+    REQUIRE(mapper->read_expansion(0x5204) == 0xC0);
+    REQUIRE_FALSE(mapper->irq_pending());
+    for (int cycle = 0; cycle < 16; ++cycle)
+        mapper->clock_cpu_falling_edge();
+    REQUIRE(mapper->read_expansion(0x5204) == 0U);
+    start(23); // FDS conversions substitute an 8K ROM socket for WRAM.
+    mapper->write_prg(0xE000, 8);
+    mapper->write_prg(0x6123, 0x42);
+    REQUIRE(mapper->read_prg(0x6123) == cell(8U * 8192U + 0x123));
+    start(24); // VRC4a/c combined pin decode (A1/A6 low selector, A2/A7 high).
+    mapper->write_prg(0xF000, 0xF);
+    mapper->write_prg(0xF040, 0xF);
+    mapper->write_prg(0xF004, 2);
+    for (int cycle = 0; cycle < 113; ++cycle)
+        mapper->clock_cpu_falling_edge();
+    REQUIRE_FALSE(mapper->irq_pending());
+    mapper->clock_cpu_falling_edge();
+    REQUIRE(mapper->irq_pending());
+    mapper->write_prg(0xF0C0, 0);
+    REQUIRE_FALSE(mapper->irq_pending());
+    start(25); // FME-7 enables a separate downcounter and a ROM/RAM low window.
+    const auto fme = [&](Byte command, Byte data) {
+        mapper->write_prg(0x8000, command);
+        mapper->write_prg(0xA000, data);
+    };
+    fme(8, 8);
+    REQUIRE(mapper->read_prg(0x6123) == cell(8U * 8192U + 0x123));
+    fme(8, 0xC0);
+    mapper->write_prg(0x6123, 0x8F);
+    REQUIRE(mapper->read_prg(0x6123) == 0x8F);
+    fme(14, 1);
+    fme(15, 0);
+    fme(13, 0x81);
+    mapper->clock_cpu_falling_edge();
+    REQUIRE_FALSE(mapper->irq_pending());
+    mapper->clock_cpu_falling_edge();
+    REQUIRE(mapper->irq_pending());
+    fme(13, 0);
+    REQUIRE_FALSE(mapper->irq_pending());
 }
 
 } // namespace
