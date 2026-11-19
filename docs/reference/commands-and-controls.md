@@ -102,7 +102,10 @@ indices 2/3, and unbound keys. Attach them separately with
 Source: [Gamepad configuration](../../src/platform/input/gamepad_config.hpp).
 
 For a standard Vs. Unisystem cabinet, the microphone binding (default M)
-inserts a coin. Start and Select operate the cabinet buttons.
+inserts a coin. Start and Select operate the cabinet buttons. Hold **F10** for
+the service switch in SDL3 or NodalKit. Set the eight DIP switches at launch
+with `--vs-dips BYTE`, using a decimal or `0x` hexadecimal mask. Bit 0 sets DIP
+switch 1. The headless CLI also accepts the DIP mask.
 
 ### Default keyboard bindings
 
@@ -215,7 +218,7 @@ and volume accepts 0–100. The headless CLI does not open capture. See
 ## Headless CLI
 
 ```text
-./buildDir/src/frontends/cli/mapperbus-cli <rom-file|archive> [--entry NAME] [--fds-bios PATH] [--dcs-option PATH] [--board-profile NAME] [--frames N] [--region ntsc|pal|hybrid] [--controller-timing T] [--controller-wiring W] [--controller-mode standard|four-score|hori-4-player] [--expansion-controllers none|1|2|both] [--barcode DIGITS] [--barcode-frame N] [--barcode-cycles N] [--datach-save PATH]
+./buildDir/src/frontends/cli/mapperbus-cli <rom-file|archive> [--entry NAME] [--fds-bios PATH] [--dcs-option PATH] [--game-doctor-bios PATH] [--vs-dips BYTE] [--board-profile NAME] [--frames N] [--region ntsc|pal|hybrid] [--controller-timing T] [--controller-wiring W] [--controller-mode standard|four-score|hori-4-player] [--expansion-controllers none|1|2|both] [--barcode DIGITS] [--barcode-frame N] [--barcode-cycles N] [--datach-save PATH]
 ```
 
 Loads NES/FDS media, resets the emulator, executes 60 frames by default, and
