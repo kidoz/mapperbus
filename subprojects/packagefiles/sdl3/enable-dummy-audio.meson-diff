@@ -1,0 +1,12 @@
+--- b/src/audio/meson.build	2026-11-19 23:19:25
++++ c/src/audio/meson.build	2026-11-19 23:19:41
+@@ -11,6 +11,9 @@
+   subdir('pipewire')
+ endif
+ 
++cdata.set('SDL_AUDIO_DRIVER_DUMMY', 1)
++subdir('dummy')
++
+ sources += files(
+   'SDL_audio.c',
+   'SDL_audiocvt.c',

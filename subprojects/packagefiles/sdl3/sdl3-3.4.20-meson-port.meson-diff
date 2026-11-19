@@ -1,0 +1,2232 @@
+diff -ruN a/LICENSE.build b/LICENSE.build
+--- a/LICENSE.build	1970-01-01 03:00:00
++++ b/LICENSE.build	2026-11-19 23:19:25
+@@ -0,0 +1,19 @@
++Copyright (c) 2021 The Meson development team
++
++Permission is hereby granted, free of charge, to any person obtaining a copy
++of this software and associated documentation files (the "Software"), to deal
++in the Software without restriction, including without limitation the rights
++to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++copies of the Software, and to permit persons to whom the Software is
++furnished to do so, subject to the following conditions:
++
++The above copyright notice and this permission notice shall be included in all
++copies or substantial portions of the Software.
++
++THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
++SOFTWARE.
+diff -ruN a/meson.build b/meson.build
+--- a/meson.build	1970-01-01 03:00:00
++++ b/meson.build	2026-11-19 23:20:08
+@@ -0,0 +1,492 @@
++project(
++  'sdl3',
++  'c',
++  version: '3.4.20',
++  license: 'zlib',
++  meson_version: '>=1.6',
++  default_options: ['c_std=none'],
++)
++
++cc = meson.get_compiler('c')
++
++varr = meson.project_version().split('.')
++
++sdl_major = varr[0].to_int()
++sdl_minor = varr[1].to_int()
++sdl_patch = varr[2].to_int()
++
++cdata = configuration_data()
++
++cdata.set('HAVE_LIBC', 1)
++cdata.set('SDL_DEFAULT_ASSERT_LEVEL', true)
++
++sdl_deps = [
++  dependency('threads'),
++  dependency(
++    'dl',
++    required: false,
++  ),
++  cc.find_library(
++    'm',
++    required: false,
++  ),
++]
++
++add_project_arguments(
++  '-DUSING_GENERATED_CONFIG_H',
++  language: 'c',
++)
++add_project_arguments(
++  '-DSDL_BUILD_MAJOR_VERSION=@0@'.format(sdl_major),
++  '-DSDL_BUILD_MINOR_VERSION=@0@'.format(sdl_minor),
++  '-DSDL_BUILD_MICRO_VERSION=@0@'.format(sdl_patch),
++  language: 'c',
++)
++
++basic_headers = [
++  ['float.h', 'HAVE_FLOAT_H'],
++  ['stdarg.h', 'HAVE_STDARG_H'],
++  ['stddef.h', 'HAVE_STDDEF_H'],
++  ['stdint.h', 'HAVE_STDINT_H'],
++  ['iconv.h', 'HAVE_ICONV_H'],
++  ['inttypes.h', 'HAVE_INTTYPES_H'],
++  ['limits.h', 'HAVE_LIMITS_H'],
++  ['malloc.h', 'HAVE_MALLOC_H'],
++  ['math.h', 'HAVE_MATH_H'],
++  ['memory.h', 'HAVE_MEMORY_H'],
++  ['signal.h', 'HAVE_SIGNAL_H'],
++  ['stdio.h', 'HAVE_STDIO_H'],
++  ['stdlib.h', 'HAVE_STDLIB_H'],
++  ['strings.h', 'HAVE_STRINGS_H'],
++  ['string.h', 'HAVE_STRING_H'],
++  ['sys/types.h', 'HAVE_SYS_TYPES_H'],
++  ['wchar.h', 'HAVE_WCHAR_H'],
++  ['pthread_np.h', 'HAVE_PTHREAD_NP_H'],
++  ['linux/input.h', 'HAVE_LINUX_INPUT_H'],
++  ['ddraw.h', 'HAVE_DDRAW_H'],
++  ['dsound.h', 'HAVE_DSOUND_H'],
++  ['dinput.h', 'HAVE_DINPUT_H'],
++  ['signal.h', 'HAVE_SIGTIMEDWAIT'],
++]
++
++foreach i : basic_headers
++  hname = i[0]
++  define = i[1]
++  cdata.set10(define, cc.has_header(hname))
++endforeach
++
++check_functions = [
++  # check token ['HAVE_GCC_ATOMICS']
++  # check token ['HAVE_GCC_SYNC_LOCK_TEST_AND_SET']
++  # check token ['HAVE_LIBC']
++  # check token ['HAVE_LIBC']
++  ['HAVE_DLOPEN', 'dlopen', '#include<dlfcn.h>'],
++  ['HAVE_MALLOC', 'malloc', '#include<stdlib.h>'],
++  ['HAVE_FDATASYNC', 'fdatasync', '#include<unistd.h>'],
++  ['HAVE_GETENV', 'getenv', '#include<stdlib.h>'],
++  # check token ['HAVE_GETHOSTNAME']
++  ['HAVE_SETENV', 'setenv', '#include<stdlib.h>'],
++  ['HAVE_PUTENV', 'putenv', '#include<stdlib.h>'],
++  ['HAVE_UNSETENV', 'unsetenv', '#include<stdlib.h>'],
++  ['HAVE_ABS', 'abs', '#include<stdlib.h>'],
++  ['HAVE_BCOPY', 'bcopy', '#include<strings.h>'],
++  ['HAVE_MEMSET', 'memset', '#include<string.h>'],
++  ['HAVE_MEMCPY', 'memcpy', '#include<string.h>'],
++  ['HAVE_MEMMOVE', 'memmove', '#include<string.h>'],
++  ['HAVE_MEMCMP', 'memcmp', '#include<string.h>'],
++  # check token ['HAVE_WCSLEN']
++  # check token ['HAVE_WCSNLEN']
++  # check token ['HAVE_WCSLCPY']
++  # check token ['HAVE_WCSLCAT']
++  # check token ['HAVE_WCSSTR']
++  # check token ['HAVE_WCSCMP']
++  # check token ['HAVE_WCSNCMP']
++  # check token ['HAVE_WCSTOL']
++  ['HAVE_STRLEN', 'strlen', '#include<string.h>'],
++  ['HAVE_STRNLEN', 'strnlen', '#include<string.h>'],
++  ['HAVE_STRLCPY', 'strlcpy', '#include<string.h>'],
++  ['HAVE_STRLCAT', 'strlcat', '#include<string.h>'],
++  # check token ['HAVE_STRPBRK']
++  ['HAVE__STRREV', '_strrev', '#include<string.h>'],
++  ['HAVE_INDEX', 'index', '#include<strings.h>'],
++  ['HAVE_RINDEX', 'rindex', '#include<strings.h>'],
++  ['HAVE_STRCHR', 'strchr', '#include<string.h>'],
++  ['HAVE_STRRCHR', 'strrchr', '#include<string.h>'],
++  ['HAVE_STRSTR', 'strstr', '#include<string.h>'],
++  # check token ['HAVE_STRNSTR']
++  ['HAVE_STRTOK_R', 'strtok_r', '#include<string.h>'],
++  # check token ['HAVE_ITOA']
++  # check token ['HAVE__LTOA']
++  # check token ['HAVE__UITOA']
++  # check token ['HAVE__ULTOA']
++  ['HAVE_STRTOL', 'strtol', '#include<stdlib.h>'],
++  ['HAVE_STRTOUL', 'strtoul', '#include<stdlib.h>'],
++  # check token ['HAVE__I64TOA']
++  # check token ['HAVE__UI64TOA']
++  ['HAVE_STRTOLL', 'strtoll', '#include<stdlib.h>'],
++  ['HAVE_STRTOULL', 'strtoull', '#include<stdlib.h>'],
++  ['HAVE_STRTOD', 'strtod', '#include<stdlib.h>'],
++  ['HAVE_ATOI', 'atoi', '#include<stdlib.h>'],
++  ['HAVE_ATOF', 'atof', '#include<stdlib.h>'],
++  ['HAVE_STRCMP', 'strcmp', '#include<string.h>'],
++  ['HAVE_STRNCMP', 'strncmp', '#include<string.h>'],
++  ['HAVE_VSSCANF', 'vsscanf', '#include<stdio.h>'],
++  ['HAVE_VSNPRINTF', 'vsnprintf', '#include<stdio.h>'],
++  ['HAVE_ACOS', 'acos', '#include<math.h>'],
++  ['HAVE_ACOSF', 'acosf', '#include<math.h>'],
++  ['HAVE_ASIN', 'asin', '#include<math.h>'],
++  ['HAVE_ASINF', 'asinf', '#include<math.h>'],
++  ['HAVE_ATAN', 'atan', '#include<math.h>'],
++  ['HAVE_ATANF', 'atanf', '#include<math.h>'],
++  ['HAVE_ATAN2', 'atan2', '#include<math.h>'],
++  ['HAVE_ATAN2F', 'atan2f', '#include<math.h>'],
++  ['HAVE_CEIL', 'ceil', '#include<math.h>'],
++  ['HAVE_CEILF', 'ceilf', '#include<math.h>'],
++  ['HAVE_COPYSIGN', 'copysign', '#include<math.h>'],
++  ['HAVE_COPYSIGNF', 'copysignf', '#include<math.h>'],
++  # check token ['HAVE__COPYSIGN']
++  ['HAVE_COS', 'cos', '#include<math.h>'],
++  ['HAVE_COSF', 'cosf', '#include<math.h>'],
++  ['HAVE_EXP', 'exp', '#include<math.h>'],
++  ['HAVE_EXPF', 'expf', '#include<math.h>'],
++  ['HAVE_FABS', 'fabs', '#include<math.h>'],
++  ['HAVE_FABSF', 'fabsf', '#include<math.h>'],
++  ['HAVE_FLOOR', 'floor', '#include<math.h>'],
++  ['HAVE_FLOORF', 'floorf', '#include<math.h>'],
++  ['HAVE_FMOD', 'fmod', '#include<math.h>'],
++  ['HAVE_FMODF', 'fmodf', '#include<math.h>'],
++  ['HAVE_ISINF', 'isinf', '#include<math.h>'],
++  ['HAVE_ISINFF', 'isinff', '#include<math.h>'],
++  # check token ['HAVE_ISINF_FLOAT_MACRO']
++  ['HAVE_ISNAN', 'isnan', '#include<math.h>'],
++  ['HAVE_ISNANF', 'isnanf', '#include<math.h>'],
++  # check token ['HAVE_ISNAN_FLOAT_MACRO']
++  ['HAVE_LOG', 'log', '#include<math.h>'],
++  ['HAVE_LOGF', 'logf', '#include<math.h>'],
++  ['HAVE_LOG10', 'log10', '#include<math.h>'],
++  ['HAVE_LOG10F', 'log10f', '#include<math.h>'],
++  # check token ['HAVE_LROUND']
++  # check token ['HAVE_LROUNDF']
++  # check token ['HAVE_MODF']
++  # check token ['HAVE_MODFF']
++  ['HAVE_POW', 'pow', '#include<math.h>'],
++  # check token ['HAVE_POWF']
++  ['HAVE_ROUND', 'round', '#include<math.h>'],
++  # check token ['HAVE_ROUNDF']
++  ['HAVE_SCALBN', 'scalbn', '#include<math.h>'],
++  # check token ['HAVE_SCALBNF']
++  ['HAVE_SIN', 'sin', '#include<math.h>'],
++  ['HAVE_SINF', 'sinf', '#include<math.h>'],
++  ['HAVE_SQRT', 'sqrt', '#include<math.h>'],
++  ['HAVE_SQRTF', 'sqrtf', '#include<math.h>'],
++  # check token ['HAVE_TAN']
++  # check token ['HAVE_TANF']
++  # check token ['HAVE_TRUNC']
++  # check token ['HAVE_TRUNCF']
++  # check token ['HAVE__FSEEKI64']
++  # check token ['HAVE_FOPEN64']
++  ['HAVE_FSEEKO', 'fseeko', '#include<stdio.h>'],
++  ['HAVE_FSEEKO64', 'fseeko64', '#include<stdio.h>'],
++  # check token ['HAVE_MEMFD_CREATE']
++  # check token ['HAVE_POSIX_FALLOCATE']
++  ['HAVE_SIGACTION', 'sigaction', '#include<signal.h>'],
++  # check token ['HAVE_SA_SIGACTION']
++  # check token ['HAVE_ST_MTIM']
++  ['HAVE_SETJMP', 'setjmp', '#include<setjmp.h>'],
++  ['HAVE_NANOSLEEP', 'nanosleep', '#include<time.h>'],
++  ['HAVE_GMTIME_R', 'gmtime_r', '#include<time.h>'],
++  # check token ['HAVE_LOCALTIME_R']
++  # check token ['HAVE_NL_LANGINFO']
++  ['HAVE_SYSCONF', 'sysconf', '#include<unistd.h>'],
++  ['HAVE_SYSCTLBYNAME', 'sysctlbyname', '#include<sys/sysctl.h>'],
++  ['HAVE_CLOCK_GETTIME', 'clock_gettime', '#include<time.h>'],
++  ['HAVE_GETPAGESIZE', 'getpagesize', '#include<unistd.h>'],
++  # check token ['HAVE_ICONV']
++  ['HAVE_PTHREAD_SETNAME_NP', 'pthread_setname_np', '#include<pthread.h>'],
++  ['HAVE_PTHREAD_SET_NAME_NP', 'pthread_set_name_np', '#include<pthread.h>'],
++  ['HAVE_SEM_TIMEDWAIT', 'sem_timedwait', '#include<semaphore.h>'],
++  # check token ['HAVE_GETAUXVAL']
++  # check token ['HAVE_ELF_AUX_INFO']
++  ['HAVE_POLL', 'poll', '#include<poll.h>'],
++  # check token ['HAVE__EXIT']
++  # check token ['HAVE_FCITX']
++  ['HAVE_INOTIFY_INIT1', 'inotify_init1', '#include<sys/inotify.h>'],
++  # check token ['HAVE_INOTIFY']
++  # check token ['HAVE_LIBUSB']
++  # check token ['HAVE_O_CLOEXEC']
++]
++
++foreach f : check_functions
++  if cc.has_function(
++    f.get(1),
++    prefix: f.get(2),
++    dependencies: [sdl_deps],
++  )
++    cdata.set(f.get(0), 1)
++  endif
++endforeach
++
++cdata.set('HAVE_HIDAPI', 1)
++
++sources = []
++
++cdata.set('SDL_XKBCOMMON_VERSION_MAJOR', 0)
++cdata.set('SDL_XKBCOMMON_VERSION_MINOR', 0)
++cdata.set('SDL_XKBCOMMON_VERSION_PATCH', 0)
++
++if host_machine.system() == 'darwin'
++  add_languages(
++    'objc',
++    native: false,
++  )
++  add_project_arguments(
++    '-fobjc-arc',
++    language: 'objc',
++  )
++endif
++
++if host_machine.system() == 'linux'
++
++  ## some of these checks could be done via have include
++  ## but it is done this way to be consistent from what CMake does
++  ## additionally these values are not defined in the config file
++
++  # check Kronos EGL support
++  have_opengl_egl_code = '''
++    #define EGL_API_FB
++    #define MESA_EGL_NO_X11_HEADERS
++    #define EGL_NO_X11
++    #include <EGL/egl.h>
++    #include <EGL/eglext.h>
++    int main (int argc, char** argv) { return 0; }
++  '''
++  have_opengl_egl = cc.compiles(
++    have_opengl_egl_code,
++    name: 'have OpenGL EGL support',
++  )
++  # check OpenGL GLX support
++  have_opengl_glx_code = '''
++    #include <GL/glx.h>
++    int main(int argc, char** argv) { return 0; }
++  '''
++  have_opengl_glx = cc.compiles(
++    have_opengl_glx_code,
++    name: 'have OpenGL GLX support',
++  )
++
++  # check OpenGL support
++  have_opengl_code = '''
++    #include <GL/gl.h>
++    #include <GL/glext.h>
++    int main(int argc, char** argv) { return 0; }
++  '''
++  have_opengl = cc.compiles(
++    have_opengl_code,
++    name: 'have OpenGL support',
++  )
++
++
++  # ideally this should have a check for compile like the cmake configuration, see sdlchecks.cmake
++  cdata.set('SDL_PLATFORM_LINUX', 1)
++  cdata.set('SDL_THREAD_PTHREAD', 1)
++  cdata.set('HAVE_STRLEN', 1)
++  cdata.set('SDL_LOADSO_DLOPEN', 1)
++  cdata.set('SDL_PROCESS_POSIX', 1)
++  cdata.set('SDL_SENSOR_DUMMY', 1)
++  cdata.set('SDL_POWER_LINUX', 1)
++  cdata.set('SDL_INPUT_LINUXEV', 1)
++  if have_opengl_egl
++    cdata.set('SDL_VIDEO_OPENGL_EGL', 1)
++  endif
++  if have_opengl_glx
++    cdata.set('SDL_VIDEO_OPENGL_GLX', 1)
++  endif
++  if have_opengl
++    cdata.set('SDL_VIDEO_OPENGL', 1)
++    cdata.set('SDL_VIDEO_RENDER_OGL', 1)
++  endif
++  cdata.set('SDL_GPU_VULKAN', 1)
++  cdata.set('SDL_VIDEO_VULKAN', 1)
++  cdata.set('SDL_VIDEO_RENDER_VULKAN', 1)
++  cdata.set('SDL_TIMER_UNIX', 1)
++  sdl_deps += dependency(
++    'libusb-1.0',
++    required: true,
++  )
++  cdata.set('SDL_HIDAPI_LIBUSB', 1)
++  sdl_deps += dependency('libudev')
++  sdl_deps += dependency('dbus-1')
++  sdl_deps += dependency('libpipewire-0.3')
++  sdl_deps += dependency('wayland-client')
++  sdl_deps += dependency('wayland-egl')
++  sdl_deps += dependency('wayland-cursor')
++  xkbcommon_dep = dependency('xkbcommon')
++  sdl_deps += xkbcommon_dep
++  cdata.set('HAVE_DBUS_DBUS_H', 1)
++  wayland_scanner = find_program('wayland-scanner')
++  subdir('wayland-protocols')
++elif host_machine.system() == 'windows'
++
++  # XInput(legacy) is provided by the Microsoft DirectX SDK and requires windows header include
++  have_xinput_header_code = '''
++    #include <windows.h>
++    #include <xinput.h>
++    int main(int argc, char **argv) { }
++  '''
++  have_xinput_header = cc.compiles(
++    have_xinput_header_code,
++    name: 'have XInput support',
++  )
++
++  # Microsoft Windows gaming input header is provided by the Windows SDK (winrt)
++  have_windows_gaming_input_header_code = '''
++    #define COBJMACROS
++    #include <windows.gaming.input.h>
++    static __x_ABI_CWindows_CGaming_CInput_CIGamepadStatics2 *s2;
++    int main(int argc, char **argv) {  }
++  '''
++  have_windows_gaming_input_header = cc.compiles(
++    have_windows_gaming_input_header_code,
++    name: 'have Windows Gaming Input support',
++  )
++
++  # Microsoft Windows GameInput is provided via the Microsoft Game Development Kit (GDK)
++  have_gameinput_header_code = '''
++    #include <stdbool.h>
++    #define COBJMACROS
++    #include <gameinput.h>
++    int main(int argc, char **argv) {  }
++  '''
++  have_gameinput_header = cc.compiles(
++    have_gameinput_header_code,
++    name: 'have GameInput support',
++  )
++  add_languages(
++    'cpp',
++    native: false,
++  )
++
++
++  cdata.set('SDL_PLATFORM_WIN32', 1)
++  cdata.set('SDL_THREAD_WINDOWS', 1)
++  cdata.set('SDL_THREAD_GENERIC_COND_SUFFIX', 1)
++  cdata.set('SDL_THREAD_GENERIC_RWLOCK_SUFFIX', 1)
++  cdata.set('SDL_LOADSO_WINDOWS', 1)
++  cdata.set('SDL_PROCESS_WINDOWS', 1)
++  cdata.set('SDL_SENSOR_WINDOWS', 1)
++  cdata.set('SDL_POWER_WINDOWS', 1)
++  cdata.set('SDL_VIDEO_RENDER_D3D12', 1)
++  cdata.set('SDL_GPU_VULKAN', 1)
++  cdata.set('SDL_GPU_D3D12', 1)
++  cdata.set('SDL_VIDEO_VULKAN', 1)
++  cdata.set('SDL_VIDEO_RENDER_VULKAN', 1)
++  cdata.set('SDL_VIDEO_OPENGL', 1)
++  cdata.set('SDL_VIDEO_OPENGL_WGL', 1)
++  cdata.set('SDL_VIDEO_RENDER_OGL', 1)
++
++  if have_xinput_header
++    cdata.set('SDL_JOYSTICK_XINPUT', 1)
++    cdata.set('HAVE_XINPUT', true)
++  endif
++  if have_windows_gaming_input_header
++    cdata.set('SDL_JOYSTICK_WGI', 1)
++  endif
++  if have_gameinput_header
++    cdata.set('HAVE_GAMEINPUT_H', 1)
++    cdata.set('SDL_JOYSTICK_GAMEINPUT', 1)
++  endif
++  cdata.set('SDL_JOYSTICK_RAWINPUT', 1)
++
++  cdata.set('SDL_TIMER_WINDOWS', 1)
++  sdl_deps += cc.find_library('version')
++  sdl_deps += cc.find_library('imm32')
++  sdl_deps += cc.find_library('setupapi')
++  sdl_deps += cc.find_library('winmm')
++  sdl_deps += cc.find_library('opengl32')
++elif host_machine.subsystem() == 'macos'
++  cdata.set('SDL_PLATFORM_APPLE', 1)
++  cdata.set('SDL_THREAD_PTHREAD', 1)
++  cdata.set('SDL_THREAD_PTHREAD_RECURSIVE_MUTEX', 1)
++  cdata.set('SDL_LOADSO_DLOPEN', 1)
++  cdata.set('SDL_PROCESS_POSIX', 1)
++  cdata.set('SDL_FILESYSTEM_COCOA', 1)
++  cdata.set('SDL_VIDEO_DRIVER_COCOA', 1)
++  cdata.set('SDL_VIDEO_OPENGL_CGL', 1)
++  cdata.set('SDL_VIDEO_OPENGL', 1)
++  cdata.set('SDL_FSOPS_POSIX', 1)
++  cdata.set('SDL_SENSOR_DUMMY', 1)
++  cdata.set('SDL_POWER_MACOSX', 1)
++  cdata.set('SDL_VIDEO_RENDER_GPU', 1)
++  cdata.set('SDL_GPU_VULKAN', 1)
++  cdata.set('SDL_GPU_METAL', 1)
++  cdata.set('SDL_VIDEO_VULKAN', 1)
++  cdata.set('SDL_VIDEO_METAL', 1)
++  cdata.set('SDL_VIDEO_RENDER_VULKAN', 1)
++  cdata.set('SDL_TIMER_UNIX', 1)
++  sdl_deps += dependency(
++    'appleframeworks',
++    modules: [
++      'AudioToolbox',
++      'AVFoundation',
++      'Carbon',
++      'Cocoa',
++      'CoreAudio',
++      'CoreFoundation',
++      'CoreGraphics',
++      'CoreHaptics',
++      'CoreMedia',
++      'CoreVideo',
++      'ForceFeedback',
++      'Foundation',
++      'GameController',
++      'IOKit',
++      'Metal',
++      'QuartzCore',
++      'UniformTypeIdentifiers',
++    ],
++  )
++else
++  error('Platform not yet supported.')
++endif
++
++if get_option('default_library') == 'both' and cc.get_argument_syntax() == 'msvc'
++  error('default_library=both not supported when compiling with MSVC')
++endif
++
++subdir('src')
++
++# FIXME, this is to work around a bug in upstream headers
++cdata.set('SDL_LIBDECOR_VERSION_MAJOR', 99)
++cdata.set('SDL_LIBDECOR_VERSION_MINOR', 99)
++cdata.set('SDL_LIBDECOR_VERSION_PATCH', 99)
++
++configure_file(
++  input: 'include/build_config/SDL_build_config.h.cmake',
++  output: 'SDL_build_config.h',
++  configuration: cdata,
++  format: 'cmake',
++)
++
++if get_option('default_library') == 'shared'
++  extra_args = ['-DDLL_EXPORT']
++else
++  extra_args = []
++endif
++
++sdl_lib = library(
++  'SDL3',
++  sources,
++  include_directories: ['include', 'src'],
++  c_args: extra_args,
++  dependencies: sdl_deps,
++  install: true,
++)
++
++sdl3_dep = declare_dependency(
++  include_directories: 'include',
++  link_with: sdl_lib,
++  dependencies: sdl_deps,
++)
++
++meson.override_dependency('sdl3', sdl3_dep)
++
+diff -ruN a/src/atomic/meson.build b/src/atomic/meson.build
+--- a/src/atomic/meson.build	1970-01-01 03:00:00
++++ b/src/atomic/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_atomic.c', 'SDL_spinlock.c')
+diff -ruN a/src/audio/aaudio/meson.build b/src/audio/aaudio/meson.build
+--- a/src/audio/aaudio/meson.build	1970-01-01 03:00:00
++++ b/src/audio/aaudio/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_aaudio.c')
+diff -ruN a/src/audio/alsa/meson.build b/src/audio/alsa/meson.build
+--- a/src/audio/alsa/meson.build	1970-01-01 03:00:00
++++ b/src/audio/alsa/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_alsa_audio.c')
+diff -ruN a/src/audio/coreaudio/meson.build b/src/audio/coreaudio/meson.build
+--- a/src/audio/coreaudio/meson.build	1970-01-01 03:00:00
++++ b/src/audio/coreaudio/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_coreaudio.m')
+diff -ruN a/src/audio/directsound/meson.build b/src/audio/directsound/meson.build
+--- a/src/audio/directsound/meson.build	1970-01-01 03:00:00
++++ b/src/audio/directsound/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_directsound.c')
+diff -ruN a/src/audio/disk/meson.build b/src/audio/disk/meson.build
+--- a/src/audio/disk/meson.build	1970-01-01 03:00:00
++++ b/src/audio/disk/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_diskaudio.c')
+diff -ruN a/src/audio/dsp/meson.build b/src/audio/dsp/meson.build
+--- a/src/audio/dsp/meson.build	1970-01-01 03:00:00
++++ b/src/audio/dsp/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_dspaudio.c')
+diff -ruN a/src/audio/dummy/meson.build b/src/audio/dummy/meson.build
+--- a/src/audio/dummy/meson.build	1970-01-01 03:00:00
++++ b/src/audio/dummy/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_dummyaudio.c')
+diff -ruN a/src/audio/jack/meson.build b/src/audio/jack/meson.build
+--- a/src/audio/jack/meson.build	1970-01-01 03:00:00
++++ b/src/audio/jack/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_jackaudio.c')
+diff -ruN a/src/audio/meson.build b/src/audio/meson.build
+--- a/src/audio/meson.build	1970-01-01 03:00:00
++++ b/src/audio/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,23 @@
++if host_machine.system() == 'windows'
++  cdata.set('SDL_AUDIO_DRIVER_DSOUND', 1)
++  #  cdata.set('SDL_AUDIO_DRIVER_WASAPI', 1)
++  subdir('directsound')
++  #  subdir('wasapi')
++elif host_machine.system() == 'darwin'
++  cdata.set('SDL_AUDIO_DRIVER_COREAUDIO', 1)
++  subdir('coreaudio')
++else
++  cdata.set('SDL_AUDIO_DRIVER_PIPEWIRE', 1)
++  subdir('pipewire')
++endif
++
++sources += files(
++  'SDL_audio.c',
++  'SDL_audiocvt.c',
++  'SDL_audiodev.c',
++  'SDL_audioqueue.c',
++  'SDL_audioresample.c',
++  'SDL_audiotypecvt.c',
++  'SDL_mixer.c',
++  'SDL_wave.c',
++)
+diff -ruN a/src/audio/openslES/meson.build b/src/audio/openslES/meson.build
+--- a/src/audio/openslES/meson.build	1970-01-01 03:00:00
++++ b/src/audio/openslES/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_openslES.c')
+diff -ruN a/src/audio/pipewire/meson.build b/src/audio/pipewire/meson.build
+--- a/src/audio/pipewire/meson.build	1970-01-01 03:00:00
++++ b/src/audio/pipewire/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_pipewire.c')
+diff -ruN a/src/audio/pulseaudio/meson.build b/src/audio/pulseaudio/meson.build
+--- a/src/audio/pulseaudio/meson.build	1970-01-01 03:00:00
++++ b/src/audio/pulseaudio/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_pulseaudio.c')
+diff -ruN a/src/audio/qnx/meson.build b/src/audio/qnx/meson.build
+--- a/src/audio/qnx/meson.build	1970-01-01 03:00:00
++++ b/src/audio/qnx/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_qsa_audio.c')
+diff -ruN a/src/audio/sndio/meson.build b/src/audio/sndio/meson.build
+--- a/src/audio/sndio/meson.build	1970-01-01 03:00:00
++++ b/src/audio/sndio/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_sndioaudio.c')
+diff -ruN a/src/audio/wasapi/meson.build b/src/audio/wasapi/meson.build
+--- a/src/audio/wasapi/meson.build	1970-01-01 03:00:00
++++ b/src/audio/wasapi/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_wasapi.c')
+diff -ruN a/src/camera/coremedia/meson.build b/src/camera/coremedia/meson.build
+--- a/src/camera/coremedia/meson.build	1970-01-01 03:00:00
++++ b/src/camera/coremedia/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files()
+diff -ruN a/src/camera/dummy/meson.build b/src/camera/dummy/meson.build
+--- a/src/camera/dummy/meson.build	1970-01-01 03:00:00
++++ b/src/camera/dummy/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_camera_dummy.c')
+diff -ruN a/src/camera/mediafoundation/meson.build b/src/camera/mediafoundation/meson.build
+--- a/src/camera/mediafoundation/meson.build	1970-01-01 03:00:00
++++ b/src/camera/mediafoundation/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_camera_mediafoundation.c')
+diff -ruN a/src/camera/meson.build b/src/camera/meson.build
+--- a/src/camera/meson.build	1970-01-01 03:00:00
++++ b/src/camera/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,3 @@
++subdir('dummy')
++
++sources += files('SDL_camera.c')
+diff -ruN a/src/camera/pipewire/meson.build b/src/camera/pipewire/meson.build
+--- a/src/camera/pipewire/meson.build	1970-01-01 03:00:00
++++ b/src/camera/pipewire/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_camera_pipewire.c')
+diff -ruN a/src/camera/v4l2/meson.build b/src/camera/v4l2/meson.build
+--- a/src/camera/v4l2/meson.build	1970-01-01 03:00:00
++++ b/src/camera/v4l2/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_camera_v4l2.c')
+diff -ruN a/src/core/gdk/meson.build b/src/core/gdk/meson.build
+--- a/src/core/gdk/meson.build	1970-01-01 03:00:00
++++ b/src/core/gdk/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files()
+diff -ruN a/src/core/linux/meson.build b/src/core/linux/meson.build
+--- a/src/core/linux/meson.build	1970-01-01 03:00:00
++++ b/src/core/linux/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,13 @@
++sources += files(
++  'SDL_dbus.c',
++  'SDL_evdev.c',
++  'SDL_evdev_capabilities.c',
++  'SDL_evdev_kbd.c',
++  'SDL_fcitx.c',
++  'SDL_ibus.c',
++  'SDL_ime.c',
++  'SDL_progressbar.c',
++  'SDL_system_theme.c',
++  'SDL_threadprio.c',
++  'SDL_udev.c',
++)
+diff -ruN a/src/core/meson.build b/src/core/meson.build
+--- a/src/core/meson.build	1970-01-01 03:00:00
++++ b/src/core/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,10 @@
++if host_machine.system() == 'windows'
++  subdir('windows')
++elif host_machine.system() == 'darwin'
++  subdir('unix')
++else
++  subdir('unix')
++  subdir('linux')
++endif
++
++sources += files('SDL_core_unsupported.c')
+diff -ruN a/src/core/unix/meson.build b/src/core/unix/meson.build
+--- a/src/core/unix/meson.build	1970-01-01 03:00:00
++++ b/src/core/unix/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,28 @@
++sources += files(
++  'SDL_appid.c',
++  'SDL_fribidi.c',
++  'SDL_gtk.c',
++  'SDL_libthai.c',
++  'SDL_poll.c',
++)
++
++have_unix_usergroupids_code = '''
++    // required for GNU\Linux feature_test_macros(7)
++    #define _GNU_SOURCE
++    #include <unistd.h>
++    int main(int argc, char** argv) { 
++	  getresgid; 
++	  getresuid; 
++	}
++'''
++have_unix_usergroupids = cc.compiles(
++  have_unix_usergroupids_code,
++  name: 'have unix effective User/Group functions support',
++)
++
++if have_unix_usergroupids
++  cdata.set('HAVE_GETRESGID', 1)
++  cdata.set('HAVE_GETRESUID', 1)
++endif
++
++
+diff -ruN a/src/core/windows/meson.build b/src/core/windows/meson.build
+--- a/src/core/windows/meson.build	1970-01-01 03:00:00
++++ b/src/core/windows/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,9 @@
++sources += files(
++  'pch.c',
++  'pch_cpp.cpp',
++  'SDL_gameinput.cpp',
++  'SDL_hid.c',
++  'SDL_immdevice.c',
++  'SDL_windows.c',
++  'SDL_xinput.c',
++)
+diff -ruN a/src/cpuinfo/meson.build b/src/cpuinfo/meson.build
+--- a/src/cpuinfo/meson.build	1970-01-01 03:00:00
++++ b/src/cpuinfo/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_cpuinfo.c')
+diff -ruN a/src/dialog/cocoa/meson.build b/src/dialog/cocoa/meson.build
+--- a/src/dialog/cocoa/meson.build	1970-01-01 03:00:00
++++ b/src/dialog/cocoa/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_cocoadialog.m')
+diff -ruN a/src/dialog/dummy/meson.build b/src/dialog/dummy/meson.build
+--- a/src/dialog/dummy/meson.build	1970-01-01 03:00:00
++++ b/src/dialog/dummy/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_dummydialog.c')
+diff -ruN a/src/dialog/meson.build b/src/dialog/meson.build
+--- a/src/dialog/meson.build	1970-01-01 03:00:00
++++ b/src/dialog/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,9 @@
++if host_machine.system() == 'windows'
++  subdir('windows')
++elif host_machine.system() == 'darwin'
++  subdir('cocoa')
++else
++  subdir('unix')
++endif
++
++sources += files('SDL_dialog.c', 'SDL_dialog_utils.c')
+diff -ruN a/src/dialog/unix/meson.build b/src/dialog/unix/meson.build
+--- a/src/dialog/unix/meson.build	1970-01-01 03:00:00
++++ b/src/dialog/unix/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,6 @@
++sources += files(
++  'SDL_portaldialog.c',
++  'SDL_unixdialog.c',
++  'SDL_zenitydialog.c',
++  'SDL_zenitymessagebox.c',
++)
+diff -ruN a/src/dialog/windows/meson.build b/src/dialog/windows/meson.build
+--- a/src/dialog/windows/meson.build	1970-01-01 03:00:00
++++ b/src/dialog/windows/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_windowsdialog.c')
+diff -ruN a/src/dynapi/meson.build b/src/dynapi/meson.build
+--- a/src/dynapi/meson.build	1970-01-01 03:00:00
++++ b/src/dynapi/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_dynapi.c')
+diff -ruN a/src/events/meson.build b/src/events/meson.build
+--- a/src/events/meson.build	1970-01-01 03:00:00
++++ b/src/events/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,19 @@
++sources += files(
++  'imKStoUCS.c',
++  'SDL_categories.c',
++  'SDL_clipboardevents.c',
++  'SDL_displayevents.c',
++  'SDL_dropevents.c',
++  'SDL_events.c',
++  'SDL_eventwatch.c',
++  'SDL_keyboard.c',
++  'SDL_keymap.c',
++  'SDL_keysym_to_keycode.c',
++  'SDL_keysym_to_scancode.c',
++  'SDL_mouse.c',
++  'SDL_pen.c',
++  'SDL_quit.c',
++  'SDL_scancode_tables.c',
++  'SDL_touch.c',
++  'SDL_windowevents.c',
++)
+diff -ruN a/src/filesystem/cocoa/meson.build b/src/filesystem/cocoa/meson.build
+--- a/src/filesystem/cocoa/meson.build	1970-01-01 03:00:00
++++ b/src/filesystem/cocoa/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_sysfilesystem.m')
+diff -ruN a/src/filesystem/dummy/meson.build b/src/filesystem/dummy/meson.build
+--- a/src/filesystem/dummy/meson.build	1970-01-01 03:00:00
++++ b/src/filesystem/dummy/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_sysfilesystem.c', 'SDL_sysfsops.c')
+diff -ruN a/src/filesystem/gdk/meson.build b/src/filesystem/gdk/meson.build
+--- a/src/filesystem/gdk/meson.build	1970-01-01 03:00:00
++++ b/src/filesystem/gdk/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files()
+diff -ruN a/src/filesystem/meson.build b/src/filesystem/meson.build
+--- a/src/filesystem/meson.build	1970-01-01 03:00:00
++++ b/src/filesystem/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,17 @@
++if host_machine.system() == 'windows'
++  cdata.set('SDL_FSOPS_WINDOWS', 1)
++  cdata.set('SDL_FILESYSTEM_WINDOWS', 1)
++  subdir('windows')
++elif host_machine.system() == 'darwin'
++  cdata.set('SDL_FSOPS_POSIX', 1)
++  cdata.set('SDL_FILESYSTEM_COCOA', 1)
++  subdir('cocoa')
++  subdir('posix')
++else
++  cdata.set('SDL_FSOPS_POSIX', 1)
++  cdata.set('SDL_FILESYSTEM_UNIX', 1)
++  subdir('unix')
++  subdir('posix')
++endif
++
++sources += files('SDL_filesystem.c')
+diff -ruN a/src/filesystem/posix/meson.build b/src/filesystem/posix/meson.build
+--- a/src/filesystem/posix/meson.build	1970-01-01 03:00:00
++++ b/src/filesystem/posix/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_sysfsops.c')
+diff -ruN a/src/filesystem/unix/meson.build b/src/filesystem/unix/meson.build
+--- a/src/filesystem/unix/meson.build	1970-01-01 03:00:00
++++ b/src/filesystem/unix/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_sysfilesystem.c')
+diff -ruN a/src/filesystem/windows/meson.build b/src/filesystem/windows/meson.build
+--- a/src/filesystem/windows/meson.build	1970-01-01 03:00:00
++++ b/src/filesystem/windows/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_sysfilesystem.c', 'SDL_sysfsops.c')
+diff -ruN a/src/gpu/d3d12/meson.build b/src/gpu/d3d12/meson.build
+--- a/src/gpu/d3d12/meson.build	1970-01-01 03:00:00
++++ b/src/gpu/d3d12/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_gpu_d3d12.c')
+diff -ruN a/src/gpu/meson.build b/src/gpu/meson.build
+--- a/src/gpu/meson.build	1970-01-01 03:00:00
++++ b/src/gpu/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,11 @@
++if host_machine.system() == 'windows'
++  subdir('d3d12')
++  subdir('vulkan')
++elif host_machine.system() == 'darwin'
++  subdir('metal')
++  subdir('vulkan')
++else
++  subdir('vulkan')
++endif
++
++sources += files('SDL_gpu.c')
+diff -ruN a/src/gpu/metal/meson.build b/src/gpu/metal/meson.build
+--- a/src/gpu/metal/meson.build	1970-01-01 03:00:00
++++ b/src/gpu/metal/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,2 @@
++sources += files('SDL_gpu_metal.m')
++
+diff -ruN a/src/gpu/vulkan/meson.build b/src/gpu/vulkan/meson.build
+--- a/src/gpu/vulkan/meson.build	1970-01-01 03:00:00
++++ b/src/gpu/vulkan/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_gpu_vulkan.c')
+diff -ruN a/src/haptic/darwin/meson.build b/src/haptic/darwin/meson.build
+--- a/src/haptic/darwin/meson.build	1970-01-01 03:00:00
++++ b/src/haptic/darwin/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_syshaptic.c')
+diff -ruN a/src/haptic/dummy/meson.build b/src/haptic/dummy/meson.build
+--- a/src/haptic/dummy/meson.build	1970-01-01 03:00:00
++++ b/src/haptic/dummy/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_syshaptic.c')
+diff -ruN a/src/haptic/hidapi/meson.build b/src/haptic/hidapi/meson.build
+--- a/src/haptic/hidapi/meson.build	1970-01-01 03:00:00
++++ b/src/haptic/hidapi/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_hidapihaptic.c', 'SDL_hidapihaptic_lg4ff.c')
+diff -ruN a/src/haptic/linux/meson.build b/src/haptic/linux/meson.build
+--- a/src/haptic/linux/meson.build	1970-01-01 03:00:00
++++ b/src/haptic/linux/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_syshaptic.c')
+diff -ruN a/src/haptic/meson.build b/src/haptic/meson.build
+--- a/src/haptic/meson.build	1970-01-01 03:00:00
++++ b/src/haptic/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,14 @@
++if host_machine.system() == 'windows'
++  cdata.set('SDL_HAPTIC_DINPUT', 1)
++  subdir('windows')
++elif host_machine.system() == 'darwin'
++  cdata.set('SDL_HAPTIC_IOKIT', 1)
++  subdir('darwin')
++else
++  cdata.set('SDL_HAPTIC_LINUX', 1)
++  subdir('linux')
++endif
++
++subdir('hidapi')
++
++sources += files('SDL_haptic.c')
+diff -ruN a/src/haptic/windows/meson.build b/src/haptic/windows/meson.build
+--- a/src/haptic/windows/meson.build	1970-01-01 03:00:00
++++ b/src/haptic/windows/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_dinputhaptic.c', 'SDL_windowshaptic.c')
+diff -ruN a/src/hidapi/dist/meson.build b/src/hidapi/dist/meson.build
+--- a/src/hidapi/dist/meson.build	1970-01-01 03:00:00
++++ b/src/hidapi/dist/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files()
+diff -ruN a/src/hidapi/documentation/meson.build b/src/hidapi/documentation/meson.build
+--- a/src/hidapi/documentation/meson.build	1970-01-01 03:00:00
++++ b/src/hidapi/documentation/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files()
+diff -ruN a/src/hidapi/hidapi/meson.build b/src/hidapi/hidapi/meson.build
+--- a/src/hidapi/hidapi/meson.build	1970-01-01 03:00:00
++++ b/src/hidapi/hidapi/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files()
+diff -ruN a/src/hidapi/hidtest/meson.build b/src/hidapi/hidtest/meson.build
+--- a/src/hidapi/hidtest/meson.build	1970-01-01 03:00:00
++++ b/src/hidapi/hidtest/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('test.c')
+diff -ruN a/src/hidapi/ios/meson.build b/src/hidapi/ios/meson.build
+--- a/src/hidapi/ios/meson.build	1970-01-01 03:00:00
++++ b/src/hidapi/ios/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files()
+diff -ruN a/src/hidapi/libusb/meson.build b/src/hidapi/libusb/meson.build
+--- a/src/hidapi/libusb/meson.build	1970-01-01 03:00:00
++++ b/src/hidapi/libusb/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('hid.c')
+diff -ruN a/src/hidapi/linux/meson.build b/src/hidapi/linux/meson.build
+--- a/src/hidapi/linux/meson.build	1970-01-01 03:00:00
++++ b/src/hidapi/linux/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('hid.c')
+diff -ruN a/src/hidapi/m4/meson.build b/src/hidapi/m4/meson.build
+--- a/src/hidapi/m4/meson.build	1970-01-01 03:00:00
++++ b/src/hidapi/m4/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files()
+diff -ruN a/src/hidapi/mac/meson.build b/src/hidapi/mac/meson.build
+--- a/src/hidapi/mac/meson.build	1970-01-01 03:00:00
++++ b/src/hidapi/mac/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('hid.c')
+diff -ruN a/src/hidapi/meson.build b/src/hidapi/meson.build
+--- a/src/hidapi/meson.build	2023-05-26 18:19:04
++++ b/src/hidapi/meson.build	2026-11-19 23:19:25
+@@ -1,22 +1,9 @@
+-project('hidapi', meson_version: '>=0.57.0', version: files('VERSION'))
+-
+-cmake = import('cmake')
+-
+-hidapi_build_options = cmake.subproject_options()
+-hidapi_build_options.set_install(true)
+-
+-hidapi_build = cmake.subproject('hidapi_build_cmake', options: hidapi_build_options)
+-
+-if (hidapi_build.target_list().contains('hidapi_winapi'))
+-	hidapi_winapi_dep = hidapi_build.dependency('hidapi_winapi')
+-	hidapi_dep = hidapi_winapi_dep
+-elif (hidapi_build.target_list().contains('hidapi_darwin'))
+-	hidapi_darwin_dep = hidapi_build.dependency('hidapi_darwin')
+-	hidapi_dep = hidapi_darwin_dep
+-elif (hidapi_build.target_list().contains('hidapi_hidraw'))
+-	hidapi_hidraw_dep = hidapi_build.dependency('hidapi_hidraw')
+-	hidapi_dep = hidapi_hidraw_dep
+-elif (hidapi_build.target_list().contains('hidapi_libusb'))
+-	hidapi_libusb_dep = hidapi_build.dependency('hidapi_libusb')
+-	hidapi_dep = hidapi_libusb_dep
++if host_machine.system() == 'windows'
++  subdir('windows')
++elif host_machine.subsystem() == 'macos'
++  #  subdir('mac')
++else
++  subdir('linux')
+ endif
++
++sources += files('SDL_hidapi.c')
+diff -ruN a/src/hidapi/pc/meson.build b/src/hidapi/pc/meson.build
+--- a/src/hidapi/pc/meson.build	1970-01-01 03:00:00
++++ b/src/hidapi/pc/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files()
+diff -ruN a/src/hidapi/src/cmake/meson.build b/src/hidapi/src/cmake/meson.build
+--- a/src/hidapi/src/cmake/meson.build	1970-01-01 03:00:00
++++ b/src/hidapi/src/cmake/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files()
+diff -ruN a/src/hidapi/src/meson.build b/src/hidapi/src/meson.build
+--- a/src/hidapi/src/meson.build	1970-01-01 03:00:00
++++ b/src/hidapi/src/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files()
+diff -ruN a/src/hidapi/subprojects/hidapi_build_cmake/meson.build b/src/hidapi/subprojects/hidapi_build_cmake/meson.build
+--- a/src/hidapi/subprojects/hidapi_build_cmake/meson.build	1970-01-01 03:00:00
++++ b/src/hidapi/subprojects/hidapi_build_cmake/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files()
+diff -ruN a/src/hidapi/subprojects/meson.build b/src/hidapi/subprojects/meson.build
+--- a/src/hidapi/subprojects/meson.build	1970-01-01 03:00:00
++++ b/src/hidapi/subprojects/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files()
+diff -ruN a/src/hidapi/udev/meson.build b/src/hidapi/udev/meson.build
+--- a/src/hidapi/udev/meson.build	1970-01-01 03:00:00
++++ b/src/hidapi/udev/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files()
+diff -ruN a/src/hidapi/windows/meson.build b/src/hidapi/windows/meson.build
+--- a/src/hidapi/windows/meson.build	1970-01-01 03:00:00
++++ b/src/hidapi/windows/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,4 @@
++sources += files(
++  #  'hid.c',
++  #  'hidapi_descriptor_reconstruct.c',
++  )
+diff -ruN a/src/hidapi/windows/pp_data_dump/meson.build b/src/hidapi/windows/pp_data_dump/meson.build
+--- a/src/hidapi/windows/pp_data_dump/meson.build	1970-01-01 03:00:00
++++ b/src/hidapi/windows/pp_data_dump/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('pp_data_dump.c')
+diff -ruN a/src/hidapi/windows/test/data/meson.build b/src/hidapi/windows/test/data/meson.build
+--- a/src/hidapi/windows/test/data/meson.build	1970-01-01 03:00:00
++++ b/src/hidapi/windows/test/data/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files()
+diff -ruN a/src/hidapi/windows/test/meson.build b/src/hidapi/windows/test/meson.build
+--- a/src/hidapi/windows/test/meson.build	1970-01-01 03:00:00
++++ b/src/hidapi/windows/test/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('hid_report_reconstructor_test.c')
+diff -ruN a/src/io/generic/meson.build b/src/io/generic/meson.build
+--- a/src/io/generic/meson.build	1970-01-01 03:00:00
++++ b/src/io/generic/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_asyncio_generic.c')
+diff -ruN a/src/io/io_uring/meson.build b/src/io/io_uring/meson.build
+--- a/src/io/io_uring/meson.build	1970-01-01 03:00:00
++++ b/src/io/io_uring/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_asyncio_liburing.c')
+diff -ruN a/src/io/meson.build b/src/io/meson.build
+--- a/src/io/meson.build	1970-01-01 03:00:00
++++ b/src/io/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,7 @@
++subdir('generic')
++if host_machine.system() == 'windows'
++  subdir('windows')
++else
++endif
++
++sources += files('SDL_asyncio.c', 'SDL_iostream.c')
+diff -ruN a/src/io/windows/meson.build b/src/io/windows/meson.build
+--- a/src/io/windows/meson.build	1970-01-01 03:00:00
++++ b/src/io/windows/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_asyncio_windows_ioring.c')
+diff -ruN a/src/joystick/apple/meson.build b/src/joystick/apple/meson.build
+--- a/src/joystick/apple/meson.build	1970-01-01 03:00:00
++++ b/src/joystick/apple/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_mfijoystick.m')
+diff -ruN a/src/joystick/darwin/meson.build b/src/joystick/darwin/meson.build
+--- a/src/joystick/darwin/meson.build	1970-01-01 03:00:00
++++ b/src/joystick/darwin/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_iokitjoystick.c')
+diff -ruN a/src/joystick/dummy/meson.build b/src/joystick/dummy/meson.build
+--- a/src/joystick/dummy/meson.build	1970-01-01 03:00:00
++++ b/src/joystick/dummy/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_sysjoystick.c')
+diff -ruN a/src/joystick/gdk/meson.build b/src/joystick/gdk/meson.build
+--- a/src/joystick/gdk/meson.build	1970-01-01 03:00:00
++++ b/src/joystick/gdk/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,3 @@
++sources += files('SDL_gameinputjoystick.cpp')
++
++
+diff -ruN a/src/joystick/hidapi/meson.build b/src/joystick/hidapi/meson.build
+--- a/src/joystick/hidapi/meson.build	1970-01-01 03:00:00
++++ b/src/joystick/hidapi/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,28 @@
++sources += files(
++  'SDL_hidapi_8bitdo.c',
++  'SDL_hidapi_combined.c',
++  'SDL_hidapi_flydigi.c',
++  'SDL_hidapi_gamecube.c',
++  'SDL_hidapi_gip.c',
++  'SDL_hidapi_lg4ff.c',
++  'SDL_hidapi_luna.c',
++  'SDL_hidapi_ps3.c',
++  'SDL_hidapi_ps4.c',
++  'SDL_hidapi_ps5.c',
++  'SDL_hidapi_rumble.c',
++  'SDL_hidapi_shield.c',
++  'SDL_hidapi_sinput.c',
++  'SDL_hidapi_stadia.c',
++  'SDL_hidapi_steam.c',
++  'SDL_hidapi_steam_hori.c',
++  'SDL_hidapi_steam_triton.c',
++  'SDL_hidapi_steamdeck.c',
++  'SDL_hidapi_switch.c',
++  'SDL_hidapi_wii.c',
++  'SDL_hidapi_xbox360.c',
++  'SDL_hidapi_xbox360w.c',
++  'SDL_hidapi_xboxone.c',
++  'SDL_hidapi_zuiki.c',
++  'SDL_hidapijoystick.c',
++  'SDL_report_descriptor.c',
++)
+diff -ruN a/src/joystick/hidapi/steam/meson.build b/src/joystick/hidapi/steam/meson.build
+--- a/src/joystick/hidapi/steam/meson.build	1970-01-01 03:00:00
++++ b/src/joystick/hidapi/steam/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files()
+diff -ruN a/src/joystick/linux/meson.build b/src/joystick/linux/meson.build
+--- a/src/joystick/linux/meson.build	1970-01-01 03:00:00
++++ b/src/joystick/linux/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_sysjoystick.c')
+diff -ruN a/src/joystick/meson.build b/src/joystick/meson.build
+--- a/src/joystick/meson.build	1970-01-01 03:00:00
++++ b/src/joystick/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,25 @@
++if host_machine.system() == 'windows'
++  cdata.set('SDL_JOYSTICK_DINPUT', 1)
++  cdata.set('SDL_JOYSTICK_HIDAPI', 1)
++  subdir('hidapi')
++  subdir('windows')
++  subdir('gdk')
++elif host_machine.system() == 'darwin'
++  cdata.set('SDL_JOYSTICK_IOKIT', 1)
++  cdata.set('SDL_JOYSTICK_MFI', 1)
++  subdir('apple')
++  subdir('darwin')
++else
++  cdata.set('SDL_JOYSTICK_LINUX', 1)
++  subdir('linux')
++endif
++
++subdir('virtual')
++cdata.set('SDL_JOYSTICK_VIRTUAL', 1)
++
++sources += files(
++  'controller_type.c',
++  'SDL_gamepad.c',
++  'SDL_joystick.c',
++  'SDL_steam_virtual_gamepad.c',
++)
+diff -ruN a/src/joystick/virtual/meson.build b/src/joystick/virtual/meson.build
+--- a/src/joystick/virtual/meson.build	1970-01-01 03:00:00
++++ b/src/joystick/virtual/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_virtualjoystick.c')
+diff -ruN a/src/joystick/windows/meson.build b/src/joystick/windows/meson.build
+--- a/src/joystick/windows/meson.build	1970-01-01 03:00:00
++++ b/src/joystick/windows/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,7 @@
++sources += files(
++  'SDL_dinputjoystick.c',
++  'SDL_rawinputjoystick.c',
++  'SDL_windows_gaming_input.c',
++  'SDL_windowsjoystick.c',
++  'SDL_xinputjoystick.c',
++)
+diff -ruN a/src/libm/meson.build b/src/libm/meson.build
+--- a/src/libm/meson.build	1970-01-01 03:00:00
++++ b/src/libm/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,27 @@
++sources += files(
++  'e_atan2.c',
++  'e_exp.c',
++  'e_fmod.c',
++  'e_log10.c',
++  'e_log.c',
++  'e_pow.c',
++  'e_rem_pio2.c',
++  'e_sqrt.c',
++  'k_cos.c',
++  'k_rem_pio2.c',
++  'k_sin.c',
++  'k_tan.c',
++  's_atan.c',
++  's_copysign.c',
++  's_cos.c',
++  's_fabs.c',
++  's_floor.c',
++  's_isinf.c',
++  's_isinff.c',
++  's_isnan.c',
++  's_isnanf.c',
++  's_modf.c',
++  's_scalbn.c',
++  's_sin.c',
++  's_tan.c',
++)
+diff -ruN a/src/loadso/dlopen/meson.build b/src/loadso/dlopen/meson.build
+--- a/src/loadso/dlopen/meson.build	1970-01-01 03:00:00
++++ b/src/loadso/dlopen/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_sysloadso.c')
+diff -ruN a/src/loadso/dummy/meson.build b/src/loadso/dummy/meson.build
+--- a/src/loadso/dummy/meson.build	1970-01-01 03:00:00
++++ b/src/loadso/dummy/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_sysloadso.c')
+diff -ruN a/src/loadso/meson.build b/src/loadso/meson.build
+--- a/src/loadso/meson.build	1970-01-01 03:00:00
++++ b/src/loadso/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,5 @@
++if host_machine.system() == 'windows'
++  subdir('windows')
++else
++  subdir('dlopen')
++endif
+diff -ruN a/src/loadso/windows/meson.build b/src/loadso/windows/meson.build
+--- a/src/loadso/windows/meson.build	1970-01-01 03:00:00
++++ b/src/loadso/windows/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_sysloadso.c')
+diff -ruN a/src/locale/dummy/meson.build b/src/locale/dummy/meson.build
+--- a/src/locale/dummy/meson.build	1970-01-01 03:00:00
++++ b/src/locale/dummy/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_syslocale.c')
+diff -ruN a/src/locale/macos/meson.build b/src/locale/macos/meson.build
+--- a/src/locale/macos/meson.build	1970-01-01 03:00:00
++++ b/src/locale/macos/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_syslocale.m')
+diff -ruN a/src/locale/meson.build b/src/locale/meson.build
+--- a/src/locale/meson.build	1970-01-01 03:00:00
++++ b/src/locale/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,11 @@
++sources += files('SDL_locale.c')
++
++if host_machine.system() == 'windows'
++  subdir('windows')
++elif host_machine.system() == 'darwin'
++  subdir('macos')
++elif host_machine.system() == 'linux'
++  subdir('unix')
++else
++  error('Platform not supported yet.')
++endif
+diff -ruN a/src/locale/unix/meson.build b/src/locale/unix/meson.build
+--- a/src/locale/unix/meson.build	1970-01-01 03:00:00
++++ b/src/locale/unix/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_syslocale.c')
+diff -ruN a/src/locale/windows/meson.build b/src/locale/windows/meson.build
+--- a/src/locale/windows/meson.build	1970-01-01 03:00:00
++++ b/src/locale/windows/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_syslocale.c')
+diff -ruN a/src/main/gdk/meson.build b/src/main/gdk/meson.build
+--- a/src/main/gdk/meson.build	1970-01-01 03:00:00
++++ b/src/main/gdk/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files()
+diff -ruN a/src/main/generic/meson.build b/src/main/generic/meson.build
+--- a/src/main/generic/meson.build	1970-01-01 03:00:00
++++ b/src/main/generic/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_sysmain_callbacks.c')
+diff -ruN a/src/main/ios/meson.build b/src/main/ios/meson.build
+--- a/src/main/ios/meson.build	1970-01-01 03:00:00
++++ b/src/main/ios/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files()
+diff -ruN a/src/main/meson.build b/src/main/meson.build
+--- a/src/main/meson.build	1970-01-01 03:00:00
++++ b/src/main/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,8 @@
++if host_machine.system() == 'windows'
++  subdir('windows')
++  subdir('generic')
++else
++  subdir('generic')
++endif
++
++sources += files('SDL_main_callbacks.c', 'SDL_runapp.c')
+diff -ruN a/src/main/windows/meson.build b/src/main/windows/meson.build
+--- a/src/main/windows/meson.build	1970-01-01 03:00:00
++++ b/src/main/windows/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_sysmain_runapp.c')
+diff -ruN a/src/meson.build b/src/meson.build
+--- a/src/meson.build	1970-01-01 03:00:00
++++ b/src/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,43 @@
++subdir('atomic')
++subdir('audio')
++subdir('camera')
++subdir('core')
++subdir('cpuinfo')
++subdir('dialog')
++subdir('dynapi')
++subdir('events')
++subdir('filesystem')
++subdir('gpu')
++subdir('haptic')
++subdir('hidapi')
++subdir('io')
++subdir('joystick')
++subdir('libm')
++subdir('loadso')
++subdir('locale')
++subdir('main')
++subdir('misc')
++subdir('power')
++subdir('process')
++subdir('render')
++subdir('sensor')
++subdir('stdlib')
++subdir('storage')
++subdir('thread')
++subdir('time')
++subdir('timer')
++subdir('tray')
++subdir('video')
++
++sources += files(
++  'SDL.c',
++  'SDL_assert.c',
++  'SDL_error.c',
++  'SDL_guid.c',
++  'SDL_hashtable.c',
++  'SDL_hints.c',
++  'SDL_list.c',
++  'SDL_log.c',
++  'SDL_properties.c',
++  'SDL_utils.c',
++)
+diff -ruN a/src/misc/dummy/meson.build b/src/misc/dummy/meson.build
+--- a/src/misc/dummy/meson.build	1970-01-01 03:00:00
++++ b/src/misc/dummy/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_sysurl.c')
+diff -ruN a/src/misc/ios/meson.build b/src/misc/ios/meson.build
+--- a/src/misc/ios/meson.build	1970-01-01 03:00:00
++++ b/src/misc/ios/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files()
+diff -ruN a/src/misc/macos/meson.build b/src/misc/macos/meson.build
+--- a/src/misc/macos/meson.build	1970-01-01 03:00:00
++++ b/src/misc/macos/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_sysurl.m')
+diff -ruN a/src/misc/meson.build b/src/misc/meson.build
+--- a/src/misc/meson.build	1970-01-01 03:00:00
++++ b/src/misc/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,9 @@
++if host_machine.system() == 'windows'
++  subdir('windows')
++elif host_machine.system() == 'darwin'
++  subdir('macos')
++else
++  subdir('unix')
++endif
++
++sources += files('SDL_url.c')
+diff -ruN a/src/misc/unix/meson.build b/src/misc/unix/meson.build
+--- a/src/misc/unix/meson.build	1970-01-01 03:00:00
++++ b/src/misc/unix/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_sysurl.c')
+diff -ruN a/src/misc/windows/meson.build b/src/misc/windows/meson.build
+--- a/src/misc/windows/meson.build	1970-01-01 03:00:00
++++ b/src/misc/windows/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_sysurl.c')
+diff -ruN a/src/power/linux/meson.build b/src/power/linux/meson.build
+--- a/src/power/linux/meson.build	1970-01-01 03:00:00
++++ b/src/power/linux/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_syspower.c')
+diff -ruN a/src/power/macos/meson.build b/src/power/macos/meson.build
+--- a/src/power/macos/meson.build	1970-01-01 03:00:00
++++ b/src/power/macos/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_syspower.c')
+diff -ruN a/src/power/meson.build b/src/power/meson.build
+--- a/src/power/meson.build	1970-01-01 03:00:00
++++ b/src/power/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,9 @@
++if host_machine.system() == 'windows'
++  subdir('windows')
++elif host_machine.system() == 'darwin'
++  subdir('macos')
++else
++  subdir('linux')
++endif
++
++sources += files('SDL_power.c')
+diff -ruN a/src/power/uikit/meson.build b/src/power/uikit/meson.build
+--- a/src/power/uikit/meson.build	1970-01-01 03:00:00
++++ b/src/power/uikit/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files()
+diff -ruN a/src/power/windows/meson.build b/src/power/windows/meson.build
+--- a/src/power/windows/meson.build	1970-01-01 03:00:00
++++ b/src/power/windows/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_syspower.c')
+diff -ruN a/src/process/dummy/meson.build b/src/process/dummy/meson.build
+--- a/src/process/dummy/meson.build	1970-01-01 03:00:00
++++ b/src/process/dummy/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_dummyprocess.c')
+diff -ruN a/src/process/meson.build b/src/process/meson.build
+--- a/src/process/meson.build	1970-01-01 03:00:00
++++ b/src/process/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,7 @@
++if host_machine.system() == 'windows'
++  subdir('windows')
++else
++  subdir('posix')
++endif
++
++sources += files('SDL_process.c')
+diff -ruN a/src/process/posix/meson.build b/src/process/posix/meson.build
+--- a/src/process/posix/meson.build	1970-01-01 03:00:00
++++ b/src/process/posix/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_posixprocess.c')
+diff -ruN a/src/process/windows/meson.build b/src/process/windows/meson.build
+--- a/src/process/windows/meson.build	1970-01-01 03:00:00
++++ b/src/process/windows/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_windowsprocess.c')
+diff -ruN a/src/render/direct3d/meson.build b/src/render/direct3d/meson.build
+--- a/src/render/direct3d/meson.build	1970-01-01 03:00:00
++++ b/src/render/direct3d/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_render_d3d.c', 'SDL_shaders_d3d.c')
+diff -ruN a/src/render/direct3d11/meson.build b/src/render/direct3d11/meson.build
+--- a/src/render/direct3d11/meson.build	1970-01-01 03:00:00
++++ b/src/render/direct3d11/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_render_d3d11.c', 'SDL_shaders_d3d11.c')
+diff -ruN a/src/render/direct3d12/meson.build b/src/render/direct3d12/meson.build
+--- a/src/render/direct3d12/meson.build	1970-01-01 03:00:00
++++ b/src/render/direct3d12/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_render_d3d12.c', 'SDL_shaders_d3d12.c')
+diff -ruN a/src/render/gpu/meson.build b/src/render/gpu/meson.build
+--- a/src/render/gpu/meson.build	1970-01-01 03:00:00
++++ b/src/render/gpu/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_pipeline_gpu.c', 'SDL_render_gpu.c', 'SDL_shaders_gpu.c')
+diff -ruN a/src/render/gpu/shaders/meson.build b/src/render/gpu/shaders/meson.build
+--- a/src/render/gpu/shaders/meson.build	1970-01-01 03:00:00
++++ b/src/render/gpu/shaders/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files()
+diff -ruN a/src/render/meson.build b/src/render/meson.build
+--- a/src/render/meson.build	1970-01-01 03:00:00
++++ b/src/render/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,16 @@
++subdir('gpu')
++subdir('software')
++
++if host_machine.system() == 'windows'
++  subdir('direct3d12')
++  subdir('opengl')
++  subdir('vulkan')
++elif host_machine.system() == 'darwin'
++  subdir('metal')
++  subdir('vulkan')
++else
++  subdir('opengl')
++  subdir('vulkan')
++endif
++
++sources += files('SDL_render.c', 'SDL_render_unsupported.c', 'SDL_yuv_sw.c')
+diff -ruN a/src/render/metal/meson.build b/src/render/metal/meson.build
+--- a/src/render/metal/meson.build	1970-01-01 03:00:00
++++ b/src/render/metal/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_render_metal.m')
+diff -ruN a/src/render/opengl/meson.build b/src/render/opengl/meson.build
+--- a/src/render/opengl/meson.build	1970-01-01 03:00:00
++++ b/src/render/opengl/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_render_gl.c', 'SDL_shaders_gl.c')
+diff -ruN a/src/render/opengles2/meson.build b/src/render/opengles2/meson.build
+--- a/src/render/opengles2/meson.build	1970-01-01 03:00:00
++++ b/src/render/opengles2/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_render_gles2.c', 'SDL_shaders_gles2.c')
+diff -ruN a/src/render/software/meson.build b/src/render/software/meson.build
+--- a/src/render/software/meson.build	1970-01-01 03:00:00
++++ b/src/render/software/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,9 @@
++sources += files(
++  'SDL_blendfillrect.c',
++  'SDL_blendline.c',
++  'SDL_blendpoint.c',
++  'SDL_drawline.c',
++  'SDL_drawpoint.c',
++  'SDL_render_sw.c',
++  'SDL_triangle.c',
++)
+diff -ruN a/src/render/vitagxm/meson.build b/src/render/vitagxm/meson.build
+--- a/src/render/vitagxm/meson.build	1970-01-01 03:00:00
++++ b/src/render/vitagxm/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,5 @@
++sources += files(
++  'SDL_render_vita_gxm.c',
++  'SDL_render_vita_gxm_memory.c',
++  'SDL_render_vita_gxm_tools.c',
++)
+diff -ruN a/src/render/vitagxm/shader_src/meson.build b/src/render/vitagxm/shader_src/meson.build
+--- a/src/render/vitagxm/shader_src/meson.build	1970-01-01 03:00:00
++++ b/src/render/vitagxm/shader_src/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files()
+diff -ruN a/src/render/vulkan/meson.build b/src/render/vulkan/meson.build
+--- a/src/render/vulkan/meson.build	1970-01-01 03:00:00
++++ b/src/render/vulkan/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_render_vulkan.c', 'SDL_shaders_vulkan.c')
+diff -ruN a/src/sensor/coremotion/meson.build b/src/sensor/coremotion/meson.build
+--- a/src/sensor/coremotion/meson.build	1970-01-01 03:00:00
++++ b/src/sensor/coremotion/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files()
+diff -ruN a/src/sensor/dummy/meson.build b/src/sensor/dummy/meson.build
+--- a/src/sensor/dummy/meson.build	1970-01-01 03:00:00
++++ b/src/sensor/dummy/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_dummysensor.c')
+diff -ruN a/src/sensor/meson.build b/src/sensor/meson.build
+--- a/src/sensor/meson.build	1970-01-01 03:00:00
++++ b/src/sensor/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,7 @@
++if host_machine.system() == 'windows'
++  subdir('windows')
++else
++  subdir('dummy')
++endif
++
++sources += files('SDL_sensor.c')
+diff -ruN a/src/sensor/windows/meson.build b/src/sensor/windows/meson.build
+--- a/src/sensor/windows/meson.build	1970-01-01 03:00:00
++++ b/src/sensor/windows/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_windowssensor.c')
+diff -ruN a/src/stdlib/meson.build b/src/stdlib/meson.build
+--- a/src/stdlib/meson.build	1970-01-01 03:00:00
++++ b/src/stdlib/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,17 @@
++sources += files(
++  'SDL_crc16.c',
++  'SDL_crc32.c',
++  'SDL_getenv.c',
++  'SDL_iconv.c',
++  'SDL_malloc.c',
++  'SDL_memcpy.c',
++  'SDL_memmove.c',
++  'SDL_memset.c',
++  'SDL_mslibc.c',
++  'SDL_murmur3.c',
++  'SDL_qsort.c',
++  'SDL_random.c',
++  'SDL_stdlib.c',
++  'SDL_string.c',
++  'SDL_strtokr.c',
++)
+diff -ruN a/src/storage/generic/meson.build b/src/storage/generic/meson.build
+--- a/src/storage/generic/meson.build	1970-01-01 03:00:00
++++ b/src/storage/generic/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_genericstorage.c')
+diff -ruN a/src/storage/meson.build b/src/storage/meson.build
+--- a/src/storage/meson.build	1970-01-01 03:00:00
++++ b/src/storage/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,3 @@
++subdir('generic')
++
++sources += files('SDL_storage.c')
+diff -ruN a/src/storage/steam/meson.build b/src/storage/steam/meson.build
+--- a/src/storage/steam/meson.build	1970-01-01 03:00:00
++++ b/src/storage/steam/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_steamstorage.c')
+diff -ruN a/src/test/meson.build b/src/test/meson.build
+--- a/src/test/meson.build	1970-01-01 03:00:00
++++ b/src/test/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,12 @@
++sources += files(
++  'SDL_test_assert.c',
++  'SDL_test_common.c',
++  'SDL_test_compare.c',
++  'SDL_test_crc32.c',
++  'SDL_test_font.c',
++  'SDL_test_fuzzer.c',
++  'SDL_test_harness.c',
++  'SDL_test_log.c',
++  'SDL_test_md5.c',
++  'SDL_test_memory.c',
++)
+diff -ruN a/src/thread/generic/meson.build b/src/thread/generic/meson.build
+--- a/src/thread/generic/meson.build	1970-01-01 03:00:00
++++ b/src/thread/generic/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,8 @@
++sources += files(
++  'SDL_syscond.c',
++  'SDL_sysmutex.c',
++  'SDL_sysrwlock.c',
++  'SDL_syssem.c',
++  'SDL_systhread.c',
++  'SDL_systls.c',
++)
+diff -ruN a/src/thread/meson.build b/src/thread/meson.build
+--- a/src/thread/meson.build	1970-01-01 03:00:00
++++ b/src/thread/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,9 @@
++#subdir('generic')
++
++if host_machine.system() == 'windows'
++  subdir('windows')
++else
++  subdir('pthread')
++endif
++
++sources += files('SDL_thread.c')
+diff -ruN a/src/thread/pthread/meson.build b/src/thread/pthread/meson.build
+--- a/src/thread/pthread/meson.build	1970-01-01 03:00:00
++++ b/src/thread/pthread/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,8 @@
++sources += files(
++  'SDL_syscond.c',
++  'SDL_sysmutex.c',
++  'SDL_sysrwlock.c',
++  'SDL_syssem.c',
++  'SDL_systhread.c',
++  'SDL_systls.c',
++)
+diff -ruN a/src/thread/windows/meson.build b/src/thread/windows/meson.build
+--- a/src/thread/windows/meson.build	1970-01-01 03:00:00
++++ b/src/thread/windows/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,10 @@
++sources += files(
++  '../generic/SDL_syscond.c',
++  '../generic/SDL_sysrwlock.c',
++  'SDL_syscond_cv.c',
++  'SDL_sysmutex.c',
++  'SDL_sysrwlock_srw.c',
++  'SDL_syssem.c',
++  'SDL_systhread.c',
++  'SDL_systls.c',
++)
+diff -ruN a/src/time/meson.build b/src/time/meson.build
+--- a/src/time/meson.build	1970-01-01 03:00:00
++++ b/src/time/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,9 @@
++if host_machine.system() == 'windows'
++  cdata.set('SDL_TIME_WINDOWS', 1)
++  subdir('windows')
++else
++  cdata.set('SDL_TIME_UNIX', 1)
++  subdir('unix')
++endif
++
++sources += files('SDL_time.c')
+diff -ruN a/src/time/unix/meson.build b/src/time/unix/meson.build
+--- a/src/time/unix/meson.build	1970-01-01 03:00:00
++++ b/src/time/unix/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_systime.c')
+diff -ruN a/src/time/windows/meson.build b/src/time/windows/meson.build
+--- a/src/time/windows/meson.build	1970-01-01 03:00:00
++++ b/src/time/windows/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_systime.c')
+diff -ruN a/src/timer/meson.build b/src/timer/meson.build
+--- a/src/timer/meson.build	1970-01-01 03:00:00
++++ b/src/timer/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,7 @@
++if host_machine.system() == 'windows'
++  subdir('windows')
++else
++  subdir('unix')
++endif
++
++sources += files('SDL_timer.c')
+diff -ruN a/src/timer/unix/meson.build b/src/timer/unix/meson.build
+--- a/src/timer/unix/meson.build	1970-01-01 03:00:00
++++ b/src/timer/unix/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_systimer.c')
+diff -ruN a/src/timer/windows/meson.build b/src/timer/windows/meson.build
+--- a/src/timer/windows/meson.build	1970-01-01 03:00:00
++++ b/src/timer/windows/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_systimer.c')
+diff -ruN a/src/tray/cocoa/meson.build b/src/tray/cocoa/meson.build
+--- a/src/tray/cocoa/meson.build	1970-01-01 03:00:00
++++ b/src/tray/cocoa/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_tray.m')
+diff -ruN a/src/tray/dummy/meson.build b/src/tray/dummy/meson.build
+--- a/src/tray/dummy/meson.build	1970-01-01 03:00:00
++++ b/src/tray/dummy/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_tray.c')
+diff -ruN a/src/tray/meson.build b/src/tray/meson.build
+--- a/src/tray/meson.build	1970-01-01 03:00:00
++++ b/src/tray/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,9 @@
++if host_machine.system() == 'windows'
++  subdir('windows')
++elif host_machine.system() == 'darwin'
++  subdir('cocoa')
++else
++  subdir('unix')
++endif
++
++sources += files('SDL_tray_utils.c')
+diff -ruN a/src/tray/unix/meson.build b/src/tray/unix/meson.build
+--- a/src/tray/unix/meson.build	1970-01-01 03:00:00
++++ b/src/tray/unix/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_tray.c')
+diff -ruN a/src/tray/windows/meson.build b/src/tray/windows/meson.build
+--- a/src/tray/windows/meson.build	1970-01-01 03:00:00
++++ b/src/tray/windows/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_tray.c')
+diff -ruN a/src/video/cocoa/meson.build b/src/video/cocoa/meson.build
+--- a/src/video/cocoa/meson.build	1970-01-01 03:00:00
++++ b/src/video/cocoa/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,16 @@
++sources += files(
++  'SDL_cocoaclipboard.m',
++  'SDL_cocoaevents.m',
++  'SDL_cocoakeyboard.m',
++  'SDL_cocoamessagebox.m',
++  'SDL_cocoametalview.m',
++  'SDL_cocoamodes.m',
++  'SDL_cocoamouse.m',
++  'SDL_cocoaopengl.m',
++  'SDL_cocoaopengles.m',
++  'SDL_cocoapen.m',
++  'SDL_cocoashape.m',
++  'SDL_cocoavideo.m',
++  'SDL_cocoavulkan.m',
++  'SDL_cocoawindow.m',
++)
+diff -ruN a/src/video/directx/meson.build b/src/video/directx/meson.build
+--- a/src/video/directx/meson.build	1970-01-01 03:00:00
++++ b/src/video/directx/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files()
+diff -ruN a/src/video/dummy/meson.build b/src/video/dummy/meson.build
+--- a/src/video/dummy/meson.build	1970-01-01 03:00:00
++++ b/src/video/dummy/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_nullevents.c', 'SDL_nullframebuffer.c', 'SDL_nullvideo.c')
+diff -ruN a/src/video/gdk/meson.build b/src/video/gdk/meson.build
+--- a/src/video/gdk/meson.build	1970-01-01 03:00:00
++++ b/src/video/gdk/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files()
+diff -ruN a/src/video/khronos/EGL/meson.build b/src/video/khronos/EGL/meson.build
+--- a/src/video/khronos/EGL/meson.build	1970-01-01 03:00:00
++++ b/src/video/khronos/EGL/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files()
+diff -ruN a/src/video/khronos/GLES2/meson.build b/src/video/khronos/GLES2/meson.build
+--- a/src/video/khronos/GLES2/meson.build	1970-01-01 03:00:00
++++ b/src/video/khronos/GLES2/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files()
+diff -ruN a/src/video/khronos/GLES3/meson.build b/src/video/khronos/GLES3/meson.build
+--- a/src/video/khronos/GLES3/meson.build	1970-01-01 03:00:00
++++ b/src/video/khronos/GLES3/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files()
+diff -ruN a/src/video/khronos/KHR/meson.build b/src/video/khronos/KHR/meson.build
+--- a/src/video/khronos/KHR/meson.build	1970-01-01 03:00:00
++++ b/src/video/khronos/KHR/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files()
+diff -ruN a/src/video/khronos/meson.build b/src/video/khronos/meson.build
+--- a/src/video/khronos/meson.build	1970-01-01 03:00:00
++++ b/src/video/khronos/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files()
+diff -ruN a/src/video/khronos/vk_video/meson.build b/src/video/khronos/vk_video/meson.build
+--- a/src/video/khronos/vk_video/meson.build	1970-01-01 03:00:00
++++ b/src/video/khronos/vk_video/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files()
+diff -ruN a/src/video/khronos/vulkan/meson.build b/src/video/khronos/vulkan/meson.build
+--- a/src/video/khronos/vulkan/meson.build	1970-01-01 03:00:00
++++ b/src/video/khronos/vulkan/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files()
+diff -ruN a/src/video/kmsdrm/meson.build b/src/video/kmsdrm/meson.build
+--- a/src/video/kmsdrm/meson.build	1970-01-01 03:00:00
++++ b/src/video/kmsdrm/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,8 @@
++sources += files(
++  'SDL_kmsdrmdyn.c',
++  'SDL_kmsdrmevents.c',
++  'SDL_kmsdrmmouse.c',
++  'SDL_kmsdrmopengles.c',
++  'SDL_kmsdrmvideo.c',
++  'SDL_kmsdrmvulkan.c',
++)
+diff -ruN a/src/video/meson.build b/src/video/meson.build
+--- a/src/video/meson.build	1970-01-01 03:00:00
++++ b/src/video/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,67 @@
++subdir('yuv2rgb')
++
++if host_machine.system() == 'windows'
++  cdata.set('SDL_VIDEO_DRIVER_WINDOWS', 1)
++  subdir('windows')
++elif host_machine.system() == 'darwin'
++  cdata.set('SDL_VIDEO_DRIVER_COCOA', 1)
++  subdir('cocoa')
++else
++  cdata.set('SDL_VIDEO_DRIVER_WAYLAND', 1)
++  subdir('wayland')
++  x11_dep = dependency(
++    'x11',
++    required: false,
++  )
++  xext_dep = dependency(
++    'xext',
++    required: false,
++  )
++  # xproto is required for some XInput2 functions
++  xproto_dep = dependency(
++    'xproto',
++    required: false,
++  )
++  # SDL3 assumes XInput2 is always available
++  xi_dep = dependency(
++    'xi',
++    required: false,
++  )
++
++
++  if x11_dep.found() and xext_dep.found() and xproto_dep.found() and xi_dep.found()
++    cdata.set('SDL_VIDEO_DRIVER_X11', 1)
++    cdata.set('SDL_VIDEO_DRIVER_X11_XINPUT2', 1)
++    sdl_deps += x11_dep
++    sdl_deps += xext_dep
++    sdl_deps += xproto_dep
++    sdl_deps += xi_dep
++    subdir('x11')
++  endif
++endif
++
++sources += files(
++  'SDL_blit.c',
++  'SDL_blit_0.c',
++  'SDL_blit_1.c',
++  'SDL_blit_A.c',
++  'SDL_blit_auto.c',
++  'SDL_blit_copy.c',
++  'SDL_blit_N.c',
++  'SDL_blit_slow.c',
++  'SDL_bmp.c',
++  'SDL_clipboard.c',
++  'SDL_egl.c',
++  'SDL_fillrect.c',
++  'SDL_pixels.c',
++  'SDL_rect.c',
++  'SDL_RLEaccel.c',
++  'SDL_rotate.c',
++  'SDL_stb.c',
++  'SDL_stretch.c',
++  'SDL_surface.c',
++  'SDL_video.c',
++  'SDL_video_unsupported.c',
++  'SDL_vulkan_utils.c',
++  'SDL_yuv.c',
++)
+diff -ruN a/src/video/offscreen/meson.build b/src/video/offscreen/meson.build
+--- a/src/video/offscreen/meson.build	1970-01-01 03:00:00
++++ b/src/video/offscreen/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,8 @@
++sources += files(
++  'SDL_offscreenevents.c',
++  'SDL_offscreenframebuffer.c',
++  'SDL_offscreenopengles.c',
++  'SDL_offscreenvideo.c',
++  'SDL_offscreenvulkan.c',
++  'SDL_offscreenwindow.c',
++)
+diff -ruN a/src/video/openvr/meson.build b/src/video/openvr/meson.build
+--- a/src/video/openvr/meson.build	1970-01-01 03:00:00
++++ b/src/video/openvr/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_openvrvideo.c')
+diff -ruN a/src/video/qnx/meson.build b/src/video/qnx/meson.build
+--- a/src/video/qnx/meson.build	1970-01-01 03:00:00
++++ b/src/video/qnx/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('SDL_qnxgl.c', 'SDL_qnxkeyboard.c', 'SDL_qnxvideo.c')
+diff -ruN a/src/video/raspberry/meson.build b/src/video/raspberry/meson.build
+--- a/src/video/raspberry/meson.build	1970-01-01 03:00:00
++++ b/src/video/raspberry/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,6 @@
++sources += files(
++  'SDL_rpievents.c',
++  'SDL_rpimouse.c',
++  'SDL_rpiopengles.c',
++  'SDL_rpivideo.c',
++)
+diff -ruN a/src/video/uikit/meson.build b/src/video/uikit/meson.build
+--- a/src/video/uikit/meson.build	1970-01-01 03:00:00
++++ b/src/video/uikit/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files()
+diff -ruN a/src/video/vivante/meson.build b/src/video/vivante/meson.build
+--- a/src/video/vivante/meson.build	1970-01-01 03:00:00
++++ b/src/video/vivante/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,6 @@
++sources += files(
++  'SDL_vivanteopengles.c',
++  'SDL_vivanteplatform.c',
++  'SDL_vivantevideo.c',
++  'SDL_vivantevulkan.c',
++)
+diff -ruN a/src/video/wayland/meson.build b/src/video/wayland/meson.build
+--- a/src/video/wayland/meson.build	1970-01-01 03:00:00
++++ b/src/video/wayland/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,27 @@
++sources += files(
++  'SDL_waylandclipboard.c',
++  'SDL_waylandcolor.c',
++  'SDL_waylanddatamanager.c',
++  'SDL_waylanddyn.c',
++  'SDL_waylandevents.c',
++  'SDL_waylandkeyboard.c',
++  'SDL_waylandmessagebox.c',
++  'SDL_waylandmouse.c',
++  'SDL_waylandopengles.c',
++  'SDL_waylandshmbuffer.c',
++  'SDL_waylandutil.c',
++  'SDL_waylandvideo.c',
++  'SDL_waylandvulkan.c',
++  'SDL_waylandwindow.c',
++)
++
++# parse XKB version to avoid issues within SDL3 config
++xkdbcommon_version = xkbcommon_dep.version().split('.')
++
++xkdbcommon_major = xkdbcommon_version[0].to_int()
++xkdbcommon_minor = xkdbcommon_version[1].to_int()
++xkdbcommon_patch = xkdbcommon_version[2].to_int()
++
++cdata.set('SDL_XKBCOMMON_VERSION_MAJOR', xkdbcommon_major)
++cdata.set('SDL_XKBCOMMON_VERSION_MINOR', xkdbcommon_minor)
++cdata.set('SDL_XKBCOMMON_VERSION_PATCH', xkdbcommon_patch)
+diff -ruN a/src/video/windows/meson.build b/src/video/windows/meson.build
+--- a/src/video/windows/meson.build	1970-01-01 03:00:00
++++ b/src/video/windows/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,17 @@
++sources += files(
++  'SDL_windowsclipboard.c',
++  'SDL_windowsevents.c',
++  'SDL_windowsframebuffer.c',
++  'SDL_windowsgameinput.cpp',
++  'SDL_windowskeyboard.c',
++  'SDL_windowsmessagebox.c',
++  'SDL_windowsmodes.c',
++  'SDL_windowsmouse.c',
++  'SDL_windowsopengl.c',
++  'SDL_windowsopengles.c',
++  'SDL_windowsrawinput.c',
++  'SDL_windowsshape.c',
++  'SDL_windowsvideo.c',
++  'SDL_windowsvulkan.c',
++  'SDL_windowswindow.c',
++)
+diff -ruN a/src/video/x11/meson.build b/src/video/x11/meson.build
+--- a/src/video/x11/meson.build	1970-01-01 03:00:00
++++ b/src/video/x11/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,162 @@
++
++sources += files(
++  'edid-parse.c',
++  'SDL_x11clipboard.c',
++  'SDL_x11dyn.c',
++  'SDL_x11events.c',
++  'SDL_x11framebuffer.c',
++  'SDL_x11keyboard.c',
++  'SDL_x11messagebox.c',
++  'SDL_x11modes.c',
++  'SDL_x11mouse.c',
++  'SDL_x11opengl.c',
++  'SDL_x11opengles.c',
++  'SDL_x11pen.c',
++  'SDL_x11settings.c',
++  'SDL_x11shape.c',
++  'SDL_x11toolkit.c',
++  'SDL_x11touch.c',
++  'SDL_x11video.c',
++  'SDL_x11vulkan.c',
++  'SDL_x11window.c',
++  'SDL_x11xfixes.c',
++  'SDL_x11xinput2.c',
++  'SDL_x11xsync.c',
++  'SDL_x11xtest.c',
++  'xsettings-client.c',
++)
++
++
++xfixes_dep = dependency(
++  'xfixes',
++  required: false,
++)
++xcursor_dep = dependency(
++  'xcursor',
++  required: false,
++)
++xrandr_dep = dependency(
++  'xrandr',
++  required: false,
++)
++
++if xfixes_dep.found()
++  sdl_deps += xfixes_dep
++endif
++if xcursor_dep.found()
++  cdata.set('SDL_VIDEO_DRIVER_X11_XCURSOR', 1)
++  sdl_deps += xcursor_dep
++endif
++if xrandr_dep.found()
++  cdata.set('SDL_VIDEO_DRIVER_X11_XRANDR', 1)
++  sdl_deps += xrandr_dep
++endif
++
++
++have_XSYNC_header = cc.has_header('X11/extensions/sync.h')
++have_XSS_header = cc.has_header('X11/extensions/scrnsaver.h')
++have_XSHAPE_header = cc.has_header('X11/extensions/shape.h')
++have_XTEST_header = cc.has_header('X11/extensions/XTest.h')
++have_XDBE_header = cc.has_header('X11/extensions/Xdbe.h')
++have_XEXT_header = cc.has_header('X11/extensions/Xext.h')
++
++have_shmat_in_libc_code = '''
++  #include <sys/shm.h>
++  int main(int argc, char **argv) { shmat;}
++'''
++have_shmat_in_libc = cc.compiles(
++  have_shmat_in_libc_code,
++  name: 'have shmat in libc',
++)
++
++if not have_shmat_in_libc
++  cdata.set('NO_SHARED_MEMORY', 1)
++endif
++
++have_X11_genericevent_code = '''
++  #include <X11/Xlib.h>
++  int main(int argc, char **argv) {
++  Display *display;
++  XEvent event;
++  XGenericEventCookie *cookie = &event.xcookie;
++  XNextEvent(display, &event);
++  XGetEventData(display, cookie);
++  XFreeEventData(display, cookie);
++  return 0; }
++'''
++have_X11_genericevent = cc.compiles(
++  have_X11_genericevent_code,
++  name: 'have OpenGL genericevent support',
++)
++
++if have_X11_genericevent
++  cdata.set('SDL_VIDEO_DRIVER_X11_SUPPORTS_GENERIC_EVENTS', 1)
++endif
++
++
++# X11/XKBlib is not used within CMake script
++
++
++# X11 scroll info
++have_XInput2_ScrollInfo_code = '''
++  #include <X11/Xlib.h>
++  #include <X11/Xproto.h>
++  #include <X11/extensions/XInput2.h>
++  XIScrollClassInfo *s;
++  int main(int argc, char **argv) {}
++'''
++have_XInput2_ScrollInfo = cc.compiles(
++  have_XInput2_ScrollInfo_code,
++  name: 'have XInput2 scrollinfo',
++)
++
++if have_XInput2_ScrollInfo
++  cdata.set('SDL_VIDEO_DRIVER_X11_XINPUT2_SUPPORTS_SCROLLINFO', 1)
++endif
++
++
++# X11 multitouch
++
++have_XInput2_multitouch_code = '''
++  #include <X11/Xlib.h>
++  #include <X11/Xproto.h>
++  #include <X11/extensions/XInput2.h>
++  int event_type = XI_TouchBegin;
++  XITouchClassInfo *t;
++  Status XIAllowTouchEvents(Display *a,int b,unsigned int c,Window d,int f) {
++    return (Status)0;
++  }
++  int main(int argc, char **argv) { return 0; }
++'''
++have_XInput2_multitouch = cc.compiles(
++  have_XInput2_multitouch_code,
++  name: 'have XInput2 multi-touch',
++)
++
++if have_XInput2_multitouch
++  cdata.set('SDL_VIDEO_DRIVER_X11_XINPUT2_SUPPORTS_MULTITOUCH', 1)
++endif
++
++
++# X11 touch gestures
++
++have_XInput2_gesture_code = '''
++  #include <X11/Xlib.h>
++  #include <X11/Xproto.h>
++  #include <X11/extensions/XInput2.h>
++  int event_type = XI_GesturePinchBegin;
++  XITouchClassInfo *t;
++  Status XIAllowTouchEvents(Display *a,int b,unsigned int c,Window d,int f) {
++    return (Status)0;
++  }
++  int main(int argc, char **argv) { return 0; }
++'''
++have_XInput2_gesture = cc.compiles(
++  have_XInput2_gesture_code,
++  name: 'have XInput2 touch gesture',
++)
++
++if have_XInput2_gesture
++  cdata.set('SDL_VIDEO_DRIVER_X11_XINPUT2_SUPPORTS_GESTURE', 1)
++endif
++
+diff -ruN a/src/video/yuv2rgb/meson.build b/src/video/yuv2rgb/meson.build
+--- a/src/video/yuv2rgb/meson.build	1970-01-01 03:00:00
++++ b/src/video/yuv2rgb/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1 @@
++sources += files('yuv_rgb_lsx.c', 'yuv_rgb_sse.c', 'yuv_rgb_std.c')
+diff -ruN a/wayland-protocols/meson.build b/wayland-protocols/meson.build
+--- a/wayland-protocols/meson.build	1970-01-01 03:00:00
++++ b/wayland-protocols/meson.build	2026-11-19 23:19:25
+@@ -0,0 +1,42 @@
++files = [
++  'alpha-modifier-v1.xml',
++  'color-management-v1.xml',
++  'cursor-shape-v1.xml',
++  'fractional-scale-v1.xml',
++  'frog-color-management-v1.xml',
++  'idle-inhibit-unstable-v1.xml',
++  'input-timestamps-unstable-v1.xml',
++  'keyboard-shortcuts-inhibit-unstable-v1.xml',
++  'pointer-constraints-unstable-v1.xml',
++  'pointer-gestures-unstable-v1.xml',
++  'pointer-warp-v1.xml',
++  'primary-selection-unstable-v1.xml',
++  'relative-pointer-unstable-v1.xml',
++  'tablet-v2.xml',
++  'text-input-unstable-v3.xml',
++  'viewporter.xml',
++  'wayland.xml',
++  'xdg-activation-v1.xml',
++  'xdg-decoration-unstable-v1.xml',
++  'xdg-dialog-v1.xml',
++  'xdg-foreign-unstable-v2.xml',
++  'xdg-output-unstable-v1.xml',
++  'xdg-shell.xml',
++  'xdg-toplevel-icon-v1.xml',
++]
++
++wlheadergen = generator(
++  wayland_scanner,
++  arguments: ['client-header', '@INPUT@', '@OUTPUT@'],
++  output: '@BASENAME@-client-protocol.h',
++)
++wlcodegen = generator(
++  wayland_scanner,
++  arguments: ['private-code', '@INPUT@', '@OUTPUT@'],
++  output: '@BASENAME@-client-protocol.c',
++)
++
++wlheaders = wlheadergen.process(files)
++wlsources = wlcodegen.process(files)
++sources += wlheaders
++sources += wlsources
