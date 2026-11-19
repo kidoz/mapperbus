@@ -11,6 +11,7 @@
 #include "core/mappers/datach.hpp"
 #include "core/mappers/decathlon.hpp"
 #include "core/mappers/discrete.hpp"
+#include "core/mappers/ffe_super_magic_card.hpp"
 #include "core/mappers/flash_boards.hpp"
 #include "core/mappers/g0151.hpp"
 #include "core/mappers/golden_game.hpp"
@@ -71,6 +72,8 @@ namespace {
         return Sl1632::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 15U)
         return Mapper015::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 17U)
+        return FfeSuperMagicCard::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 30U || header.mapper_number == 111U)
         return FlashBoards::validate_geometry(header, prg_size, chr_size);
     if (JyCompany::supports_mapper(header.mapper_number))
@@ -958,6 +961,7 @@ void register_builtin_mappers() {
     registry.register_mapper(12, make_factory<Mapper012>());
     registry.register_mapper(14, make_factory<Sl1632>());
     registry.register_mapper(15, make_factory<Mapper015>());
+    registry.register_mapper(17, make_factory<FfeSuperMagicCard>());
 }
 
 } // namespace mapperbus::core
