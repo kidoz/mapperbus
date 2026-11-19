@@ -4944,7 +4944,7 @@ or another registered cartridge ID.
 | 122 | Board-specific specification | Registered: Jy043 | [r22366](https://www.nesdev.org/w/index.php?oldid=22366) |
 | 123 | Kasheng H2288 / UNL-H2288 | New implementation: Mmc3 | [r4940](https://www.nesdev.org/w/index.php?oldid=4940) |
 | 124 | Board-specific specification | Registered: SuperGameMegaTypeIII | [r4941](https://www.nesdev.org/w/index.php?oldid=4941) |
-| 125 | Board-specific specification | Not registered | [r4945](https://www.nesdev.org/w/index.php?oldid=4945) |
+| 125 | Board-specific specification | Registered: Lh32 | [r4945](https://www.nesdev.org/w/index.php?oldid=4945) |
 | 126 | Board-specific specification | Not registered | [r22468](https://www.nesdev.org/w/index.php?oldid=22468) |
 | 127 | Board-specific specification | Not registered | [r4951](https://www.nesdev.org/w/index.php?oldid=4951) |
 | 128 | Board-specific specification | Not registered | [r21955](https://www.nesdev.org/w/index.php?oldid=21955) |
