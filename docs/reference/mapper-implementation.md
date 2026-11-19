@@ -5303,7 +5303,7 @@ or another registered cartridge ID.
 | 512 | Sachen Zhongguo Daheng | New implementation: Mmc3 | [r8073](https://www.nesdev.org/w/index.php?oldid=8073) |
 | 513 | Sachen SA-9602B / Princess Maker | New implementation: Mmc3 | [r8077](https://www.nesdev.org/w/index.php?oldid=8077) |
 | 514 | Board-specific specification | Registered: Mapper514 | [r22322](https://www.nesdev.org/w/index.php?oldid=22322) |
-| 515 | Board-specific specification | Not registered | [r22771](https://www.nesdev.org/w/index.php?oldid=22771) |
+| 515 | Board-specific specification | Registered: Mapper515 | [r22771](https://www.nesdev.org/w/index.php?oldid=22771) |
 | 516 | Board-specific specification | Not registered | [r8088](https://www.nesdev.org/w/index.php?oldid=8088) |
 | 517 | Board-specific specification | Not registered | [r8090](https://www.nesdev.org/w/index.php?oldid=8090) |
 | 518 | Subor / Dance 2000 | Not registered | [r22909](https://www.nesdev.org/w/index.php?oldid=22909) |
