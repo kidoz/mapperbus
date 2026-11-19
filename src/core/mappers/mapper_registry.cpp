@@ -283,6 +283,7 @@
 #include "core/mappers/multicart233.hpp"
 #include "core/mappers/multicart242.hpp"
 #include "core/mappers/multicart51_53.hpp"
+#include "core/mappers/multicart_latches.hpp"
 #include "core/mappers/n32_mapper050.hpp"
 #include "core/mappers/namco108.hpp"
 #include "core/mappers/namco163.hpp"
@@ -873,6 +874,10 @@ namespace {
         return DiscreteMapper::validate_fixed_rom_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 178U || header.mapper_number == 551U)
         return Fs305::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 204U || header.mapper_number == 428U ||
+        header.mapper_number == 459U || header.mapper_number == 462U ||
+        header.mapper_number == 541U)
+        return MulticartLatches::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 329U)
         return TransformerKeyboard::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 440U || header.mapper_number == 442U)
@@ -1799,6 +1804,7 @@ void register_builtin_mappers() {
     registry.register_mapper(197, make_factory<Mmc3>());
     registry.register_mapper(198, make_factory<Mmc3>());
     registry.register_mapper(199, make_factory<Mmc3>());
+    registry.register_mapper(204, make_factory<MulticartLatches>());
     registry.register_mapper(205, make_factory<Mmc3>());
     registry.register_mapper(208, make_factory<Mmc3>());
     registry.register_mapper(214, make_factory<DiscreteMapper>());
@@ -1870,6 +1876,7 @@ void register_builtin_mappers() {
     registry.register_mapper(207, make_factory<TaitoX1005>());
     registry.register_mapper(82, make_factory<TaitoX1017>());
     registry.register_mapper(531, make_factory<Mmc3>());
+    registry.register_mapper(541, make_factory<MulticartLatches>());
     registry.register_mapper(551, make_factory<Fs305>());
     registry.register_mapper(552, make_factory<TaitoX1017>());
     registry.register_mapper(18, make_factory<JalecoSs88006>());
@@ -2106,6 +2113,7 @@ void register_builtin_mappers() {
     registry.register_mapper(416, make_factory<Mapper416>());
     registry.register_mapper(417, make_factory<Mapper417>());
     registry.register_mapper(422, make_factory<Mapper422>());
+    registry.register_mapper(428, make_factory<MulticartLatches>());
     registry.register_mapper(429, make_factory<Mapper429>());
     registry.register_mapper(430, make_factory<Mapper430>());
     registry.register_mapper(431, make_factory<Mapper431>());
@@ -2134,8 +2142,10 @@ void register_builtin_mappers() {
     registry.register_mapper(456, make_factory<Mapper456>());
     registry.register_mapper(457, make_factory<Mapper457>());
     registry.register_mapper(458, make_factory<Mapper458>());
+    registry.register_mapper(459, make_factory<MulticartLatches>());
     registry.register_mapper(460, make_factory<Mapper460>());
     registry.register_mapper(461, make_factory<Mapper461>());
+    registry.register_mapper(462, make_factory<MulticartLatches>());
     registry.register_mapper(463, make_factory<Mapper463>());
     registry.register_mapper(467, make_factory<Mapper467>());
     registry.register_mapper(468, make_factory<Mapper468>());

@@ -62,6 +62,67 @@ void replay(Cartridge& cart) {
     REQUIRE(after.data() == restored.data());
 }
 
+TEST_CASE("Mapper 204 routes address pins to ROM, mirroring and menu straps", "[mapper204]") {
+    for (auto size : {4, 8}) {
+        auto c = board(204, size, size == 4 ? 4 : 7);
+        REQUIRE(c.configure_board_profile("menu-4660"));
+        c.write_prg(0xF004, 0);
+        CHECK(c.read_prg(0xC000) == (size == 4 ? 0x34 : 8));
+        c.write_prg(0xF008, 0);
+        CHECK(c.read_prg(0x8000) == 0x12);
+        c.write_prg(0x8033, 0);
+        CHECK(c.read_prg(0x8000) == 4);
+        CHECK(c.read_prg(0xC000) == 6);
+        CHECK(c.read_chr(0) == 8);
+        CHECK(c.mirror_mode() == MirrorMode::Horizontal);
+        c.write_prg(0x8003, 0x10);
+        CHECK(c.read_prg(0x8000) == 6);
+        CHECK(c.read_prg(0xC000) == 6);
+        CHECK(c.mirror_mode() == MirrorMode::Vertical);
+        CHECK(c.read_chr(0) == 12);
+        replay(c);
+    }
+}
+
+TEST_CASE("KB-46 menu jumpers and CNROM latch share the low register window", "[mapper428]") {
+    auto c = board(428, 8, 8);
+    REQUIRE(c.configure_board_jumpers(3));
+    CHECK(c.prg_read_mask(0x6000) == 3);
+    CHECK(c.read_prg(0x7FFF) == 3);
+    c.write_prg(0x7FFD, 0xBF);
+    c.write_prg(0x6002, 0xC0);
+    c.write_prg(0xFFFF, 2);
+    CHECK(c.read_chr(0) == 24);
+    CHECK(c.read_prg(0x8000) == 8);
+    CHECK(c.read_prg(0xC000) == 10);
+    CHECK(c.mirror_mode() == MirrorMode::Horizontal);
+    replay(c);
+}
+TEST_CASE("VQ-168 switches between NROM and fixed-upper PRG", "[mapper459]") {
+    auto c = board(459, 16, 16);
+    c.write_prg(0x8191, 0);
+    CHECK(c.read_prg(0x8000) == 16);
+    CHECK(c.read_prg(0xC000) == 30);
+    CHECK(c.read_chr(0) == 52);
+    CHECK(c.mirror_mode() == MirrorMode::Horizontal);
+    c.write_prg(0x8095, 0);
+    CHECK(c.read_prg(0xC000) == 18);
+    replay(c);
+}
+TEST_CASE("971107-00G alternates between UNROM and AxROM", "[mapper462]") {
+    auto c = board(462, 32, 0, 0, 7);
+    c.write_prg(0xA000, 0x30);
+    c.write_prg(0xC123, 3);
+    CHECK(c.read_prg(0x8000) == 22);
+    CHECK(c.read_prg(0xC000) == 30);
+    CHECK(c.mirror_mode() == MirrorMode::Vertical);
+    c.write_prg(0xBFFF, 0x40);
+    c.write_prg(0x8000, 0x11);
+    CHECK(c.read_prg(0x8000) == 36);
+    CHECK(c.read_prg(0xC000) == 38);
+    CHECK(c.mirror_mode() == MirrorMode::SingleUpper);
+    replay(c);
+}
 TEST_CASE("LittleCom PC-95 exposes two outer bank ports and active-low keyboard rows",
           "[mapper531]") {
     auto c = board(531, 64, 0, 7, 7);
@@ -76,4 +137,19 @@ TEST_CASE("LittleCom PC-95 exposes two outer bank ports and active-low keyboard 
     CHECK(c.read_expansion(0x4C03) == 0);
     replay(c);
     CHECK(c.read_expansion(0x4906) == 0x7E);
+}
+TEST_CASE("LittleCom 160 uses address pins for PRG and CIRAM", "[mapper541]") {
+    auto c = board(541, 64, 0, 0, 7);
+    c.write_prg(0xBFFF, 255);
+    CHECK(c.read_prg(0x8000) == 0);
+    CHECK(c.read_prg(0xC000) == 2);
+    c.write_prg(0xC0FF, 0);
+    CHECK(c.read_prg(0x8000) == 126);
+    CHECK(c.read_prg(0xC000) == 126);
+    CHECK(c.mirror_mode() == MirrorMode::Vertical);
+    c.write_prg(0xD0FC, 0);
+    CHECK(c.read_prg(0x8000) == 124);
+    CHECK(c.read_prg(0xC000) == 126);
+    CHECK(c.mirror_mode() == MirrorMode::Horizontal);
+    replay(c);
 }
