@@ -5011,7 +5011,7 @@ or another registered cartridge ID.
 | 185 | CNROM CHR-disable protection | Registered: Cnrom185 | [r24346](https://www.nesdev.org/w/index.php?oldid=24346) |
 | 186 | Fukutake Study Box convention | Not registered | [r19026](https://www.nesdev.org/w/index.php?oldid=19026) |
 | 187 | Board-specific specification | Registered: Mapper187 | [r23904](https://www.nesdev.org/w/index.php?oldid=23904) |
-| 188 | Bandai Karaoke Studio | Not registered | [r22386](https://www.nesdev.org/w/index.php?oldid=22386) |
+| 188 | Bandai Karaoke Studio | Registered: KaraokeStudio188 | [r22386](https://www.nesdev.org/w/index.php?oldid=22386) |
 | 189 | Board-specific specification | Not registered | [r22901](https://www.nesdev.org/w/index.php?oldid=22901) |
 | 190 | Board-specific specification | Not registered | [r22728](https://www.nesdev.org/w/index.php?oldid=22728) |
 | 191 | Board-specific specification | Not registered | [r23949](https://www.nesdev.org/w/index.php?oldid=23949) |
