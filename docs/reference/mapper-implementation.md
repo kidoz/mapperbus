@@ -4824,7 +4824,7 @@ or another registered cartridge ID.
 | 005 | MMC5 / ExROM | Existing registration: Mmc5 | [r24329](https://www.nesdev.org/w/index.php?oldid=24329) |
 | 006 | FFE Magic Card | Registered: FfeMagicCard | [r18921](https://www.nesdev.org/w/index.php?oldid=18921) |
 | 007 | AxROM | Existing registration: Axrom | [r24152](https://www.nesdev.org/w/index.php?oldid=24152) |
-| 008 | FFE Magic Card alias | Not registered | [r18921](https://www.nesdev.org/w/index.php?oldid=18921) |
+| 008 | FFE Magic Card alias | Registered: FfeMagicCard | [r18921](https://www.nesdev.org/w/index.php?oldid=18921) |
 | 009 | MMC2 / PxROM | Existing registration: Mmc2 | [r22483](https://www.nesdev.org/w/index.php?oldid=22483) |
 | 010 | MMC4 / FxROM | New implementation: Mmc4 | [r6620](https://www.nesdev.org/w/index.php?oldid=6620) |
 | 011 | Color Dreams | Existing registration: ColorDreams | [r24575](https://www.nesdev.org/w/index.php?oldid=24575) |
