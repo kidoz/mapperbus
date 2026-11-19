@@ -37,11 +37,11 @@ void SerialEeprom::receive_byte() {
             next_ = State::Ignore;
             return;
         } else {
-            stage_ = Stage::Address;
+            stage_ = Stage::WordAddress;
         }
         if (reading)
             next_ = State::Send;
-    } else if (stage_ == Stage::Address) {
+    } else if (stage_ == Stage::WordAddress) {
         address_ = shift_;
         stage_ = Stage::Data;
     } else {

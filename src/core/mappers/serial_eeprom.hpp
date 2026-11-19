@@ -31,7 +31,7 @@ class SerialEeprom {
 
   private:
     enum class State : Byte { Idle, Receive, Ack, Send, HostAck, Ignore };
-    enum class Stage : Byte { Header, Address, Data };
+    enum class Stage : Byte { Header, WordAddress, Data };
     void receive_byte();
     void drive_read_bit();
     [[nodiscard]] unsigned size() const;
