@@ -5131,7 +5131,7 @@ some historical aliases share a factory with another ID.
 | 308 | Board-specific specification | Registered: Mapper308 | [r7793](https://www.nesdev.org/w/index.php?oldid=7793) |
 | 309 | Board-specific specification | Registered: Mapper309 | [r7795](https://www.nesdev.org/w/index.php?oldid=7795) |
 | 310 | Board-specific specification | Registered: Mapper310 | [r19316](https://www.nesdev.org/w/index.php?oldid=19316) |
-| 311 | Board-specific specification | Not registered | [r7798](https://www.nesdev.org/w/index.php?oldid=7798) |
+| 311 | SMB2JX | Registered: Mapper043 | [r7798](https://www.nesdev.org/w/index.php?oldid=7798) |
 | 312 | Board-specific specification | Registered: Mapper312 | [r7801](https://www.nesdev.org/w/index.php?oldid=7801) |
 | 313 | Board-specific specification | Registered: Mapper313 | [r7804](https://www.nesdev.org/w/index.php?oldid=7804) |
 | 314 | Board-specific specification | Registered: Mapper314 | [r23247](https://www.nesdev.org/w/index.php?oldid=23247) |
