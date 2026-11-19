@@ -133,6 +133,7 @@ core_sources = files(
     'mappers/mapper257.cpp',
     'mappers/hp_multicart260.cpp',
     'mappers/city_fighter266.cpp',
+    'mappers/mapper267.cpp',
     'mappers/vs_system.cpp',
     'mappers/mapper222_ctc31.cpp',
     'fds/fds.cpp',

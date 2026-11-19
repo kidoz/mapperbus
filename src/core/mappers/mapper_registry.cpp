@@ -74,6 +74,7 @@
 #include "core/mappers/mapper222_ctc31.hpp"
 #include "core/mappers/mapper224.hpp"
 #include "core/mappers/mapper257.hpp"
+#include "core/mappers/mapper267.hpp"
 #include "core/mappers/maxi15.hpp"
 #include "core/mappers/mmc1.hpp"
 #include "core/mappers/mmc1a.hpp"
@@ -268,6 +269,8 @@ namespace {
         return HpMulticart260::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 266U)
         return CityFighter266::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 267U)
+        return Mapper267::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 99U)
         return VsSystem::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 222U)
@@ -1228,6 +1231,7 @@ void register_builtin_mappers() {
     registry.register_mapper(257, make_factory<Mapper257>());
     registry.register_mapper(260, make_factory<HpMulticart260>());
     registry.register_mapper(266, make_factory<CityFighter266>());
+    registry.register_mapper(267, make_factory<Mapper267>());
 }
 
 } // namespace mapperbus::core
