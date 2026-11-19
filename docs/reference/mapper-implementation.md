@@ -5097,10 +5097,10 @@ some historical aliases share a factory with another ID.
 | 274 | Board-specific specification | Registered: CartridgeStory274 | [r7708](https://www.nesdev.org/w/index.php?oldid=7708) |
 | 275 | Board-specific specification | Not registered | [r7709](https://www.nesdev.org/w/index.php?oldid=7709) |
 | 276 | Board-specific specification | Not registered | [r7710](https://www.nesdev.org/w/index.php?oldid=7710) |
-| 277 | Board-specific specification | Not registered | [r24389](https://www.nesdev.org/w/index.php?oldid=24389) |
+| 277 | Fudou Myouou Den 3-in-1 | Registered: ChrRamMulticarts | [r24389](https://www.nesdev.org/w/index.php?oldid=24389) |
 | 278 | Board-specific specification | Not registered | [r7712](https://www.nesdev.org/w/index.php?oldid=7712) |
 | 279 | Board-specific specification | Not registered | [r23180](https://www.nesdev.org/w/index.php?oldid=23180) |
-| 280 | Board-specific specification | Not registered | [r7714](https://www.nesdev.org/w/index.php?oldid=7714) |
+| 280 | K-3017 | Registered: ChrRamMulticarts | [r7714](https://www.nesdev.org/w/index.php?oldid=7714) |
 | 281 | J.Y. Company multicart | New implementation: JyCompany | [r18938](https://www.nesdev.org/w/index.php?oldid=18938) |
 | 282 | J.Y. Company multicart | New implementation: JyCompany | [r23351](https://www.nesdev.org/w/index.php?oldid=23351) |
 | 283 | Board-specific specification | Registered: BlockFamily283 | [r7724](https://www.nesdev.org/w/index.php?oldid=7724) |
@@ -5121,7 +5121,7 @@ some historical aliases share a factory with another ID.
 | 298 | Board-specific specification | Registered: UnlTf1201 | [r7772](https://www.nesdev.org/w/index.php?oldid=7772) |
 | 299 | Board-specific specification | Registered: Mapper299 | [r22947](https://www.nesdev.org/w/index.php?oldid=22947) |
 | 300 | Board-specific specification | Registered: Mapper300 | [r7775](https://www.nesdev.org/w/index.php?oldid=7775) |
-| 301 | Board-specific specification | Not registered | [r19709](https://www.nesdev.org/w/index.php?oldid=19709) |
+| 301 | 8157 | Registered: ChrRamMulticarts | [r19709](https://www.nesdev.org/w/index.php?oldid=19709) |
 | 302 | Board-specific specification | Registered: KaiserKs7057 | [r22779](https://www.nesdev.org/w/index.php?oldid=22779) |
 | 303 | Board-specific specification | Not registered | [r7779](https://www.nesdev.org/w/index.php?oldid=7779) |
 | 304 | Board-specific specification | Registered: Mapper304 | [r7785](https://www.nesdev.org/w/index.php?oldid=7785) |
@@ -5163,7 +5163,7 @@ some historical aliases share a factory with another ID.
 | 340 | Board-specific specification | Registered: Mapper340 | [r7874](https://www.nesdev.org/w/index.php?oldid=7874) |
 | 341 | Board-specific specification | Registered: Mapper341 | [r7876](https://www.nesdev.org/w/index.php?oldid=7876) |
 | 342 | Board-specific specification | Not registered | [r22755](https://www.nesdev.org/w/index.php?oldid=22755) |
-| 343 | Board-specific specification | Not registered | [r7885](https://www.nesdev.org/w/index.php?oldid=7885) |
+| 343 | GD / Sheng Tian multicarts | Registered: ChrRamMulticarts | [r7885](https://www.nesdev.org/w/index.php?oldid=7885) |
 | 344 | Board-specific specification | Registered: Mapper344 | [r19185](https://www.nesdev.org/w/index.php?oldid=19185) |
 | 345 | Board-specific specification | Registered: Mapper345 | [r7895](https://www.nesdev.org/w/index.php?oldid=7895) |
 | 346 | Board-specific specification | Registered: Mapper346 | [r7898](https://www.nesdev.org/w/index.php?oldid=7898) |
@@ -5183,7 +5183,7 @@ some historical aliases share a factory with another ID.
 | 360 | Board-specific specification | Registered: Mapper360 | [r7948](https://www.nesdev.org/w/index.php?oldid=7948) |
 | 361 | Board-specific specification | Registered: Mapper361 | [r7951](https://www.nesdev.org/w/index.php?oldid=7951) |
 | 362 | Board-specific specification | Registered: Mapper362 | [r7956](https://www.nesdev.org/w/index.php?oldid=7956) |
-| 363 | Board-specific specification | Not registered | [r18941](https://www.nesdev.org/w/index.php?oldid=18941) |
+| 363 | 5069 | Registered: ChrRamMulticarts | [r18941](https://www.nesdev.org/w/index.php?oldid=18941) |
 | 364 | Board-specific specification | Registered: Mapper364 | [r21441](https://www.nesdev.org/w/index.php?oldid=21441) |
 | 365 | Asder PC-95 | Registered: Mapper365 | [r7963](https://www.nesdev.org/w/index.php?oldid=7963) |
 | 366 | Board-specific specification | Registered: Mapper366 | [r7967](https://www.nesdev.org/w/index.php?oldid=7967) |
@@ -5292,7 +5292,7 @@ some historical aliases share a factory with another ID.
 | 472 | Board-specific specification | Registered: Mapper472 | [r23358](https://www.nesdev.org/w/index.php?oldid=23358) |
 | 473 | Board-specific specification | Registered: Mapper473 | [r23359](https://www.nesdev.org/w/index.php?oldid=23359) |
 | 474 | Board-specific specification | Registered: Mapper474 | [r23360](https://www.nesdev.org/w/index.php?oldid=23360) |
-| 476 | Board-specific specification | Not registered | [r22133](https://www.nesdev.org/w/index.php?oldid=22133) |
+| 476 | Croaky Karaoke | Registered: ChrRamMulticarts | [r22133](https://www.nesdev.org/w/index.php?oldid=22133) |
 | 479 | Board-specific specification | Not registered | [r21982](https://www.nesdev.org/w/index.php?oldid=21982) |
 | 481 | Board-specific specification | Registered: Mapper481 | [r22323](https://www.nesdev.org/w/index.php?oldid=22323) |
 | 487 | Board-specific specification | Registered: Mapper487 | [r23361](https://www.nesdev.org/w/index.php?oldid=23361) |
