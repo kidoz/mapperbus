@@ -137,6 +137,7 @@
 #include "core/mappers/teletubbies.hpp"
 #include "core/mappers/txc.hpp"
 #include "core/mappers/txc189.hpp"
+#include "core/mappers/unl_tf1201.hpp"
 #include "core/mappers/uxrom.hpp"
 #include "core/mappers/vrc6.hpp"
 #include "core/mappers/vrc7.hpp"
@@ -338,6 +339,8 @@ namespace {
         return Vt3x::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 297U)
         return Mapper297::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 298U)
+        return UnlTf1201::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 30U || header.mapper_number == 111U)
         return FlashBoards::validate_geometry(header, prg_size, chr_size);
     if (JyCompany::supports_mapper(header.mapper_number))
@@ -1313,6 +1316,7 @@ void register_builtin_mappers() {
     registry.register_mapper(293, make_factory<Mapper293>());
     registry.register_mapper(294, make_factory<Mapper294>());
     registry.register_mapper(284, make_factory<Drip>());
+    registry.register_mapper(298, make_factory<UnlTf1201>());
 }
 
 } // namespace mapperbus::core
