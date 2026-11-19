@@ -5088,7 +5088,7 @@ or another registered cartridge ID.
 | 264 | Board-specific specification | Registered: ConyYoko | [r24580](https://www.nesdev.org/w/index.php?oldid=24580) |
 | 265 | Board-specific specification | Registered: Mapper128 | [r21955](https://www.nesdev.org/w/index.php?oldid=21955) |
 | 266 | Board-specific specification | Registered: CityFighter266 | [r7660](https://www.nesdev.org/w/index.php?oldid=7660) |
-| 267 | Board-specific specification | Not registered | [r7663](https://www.nesdev.org/w/index.php?oldid=7663) |
+| 267 | Board-specific specification | Registered: Mapper267 | [r7663](https://www.nesdev.org/w/index.php?oldid=7663) |
 | 268 | Coolboy / Mindkids | Not registered | [r24626](https://www.nesdev.org/w/index.php?oldid=24626) |
 | 269 | Board-specific specification | Not registered | [r24351](https://www.nesdev.org/w/index.php?oldid=24351) |
 | 270 | OneBus outer banking | Not registered | [r23373](https://www.nesdev.org/w/index.php?oldid=23373) |
