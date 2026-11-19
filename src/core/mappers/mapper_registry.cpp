@@ -30,6 +30,7 @@
 #include "core/mappers/mapper042.hpp"
 #include "core/mappers/mapper043.hpp"
 #include "core/mappers/mapper044.hpp"
+#include "core/mappers/mapper045.hpp"
 #include "core/mappers/maxi15.hpp"
 #include "core/mappers/mmc1.hpp"
 #include "core/mappers/mmc2.hpp"
@@ -82,6 +83,8 @@ namespace {
         return Mapper043::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 44U)
         return Mapper044::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 45U)
+        return Mapper045::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 12U)
         return Mapper012::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 14U)
@@ -986,6 +989,7 @@ void register_builtin_mappers() {
     registry.register_mapper(42, make_factory<Mapper042>());
     registry.register_mapper(43, make_factory<Mapper043>());
     registry.register_mapper(44, make_factory<Mapper044>());
+    registry.register_mapper(45, make_factory<Mapper045>());
     registry.register_mapper(12, make_factory<Mapper012>());
     registry.register_mapper(14, make_factory<Sl1632>());
     registry.register_mapper(15, make_factory<Mapper015>());
