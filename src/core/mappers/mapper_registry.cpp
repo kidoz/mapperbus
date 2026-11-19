@@ -84,6 +84,7 @@
 #include "core/mappers/sunsoft34.hpp"
 #include "core/mappers/sunsoft5b.hpp"
 #include "core/mappers/super_game_mega_type_iii.hpp"
+#include "core/mappers/t4a54a.hpp"
 #include "core/mappers/taito_tc.hpp"
 #include "core/mappers/taito_x1005.hpp"
 #include "core/mappers/taito_x1017.hpp"
@@ -143,6 +144,8 @@ namespace {
         return Lh15::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 122U)
         return Jy043::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 134U)
+        return T4a54a::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 12U)
         return Mapper012::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 14U)
@@ -1095,6 +1098,7 @@ void register_builtin_mappers() {
     registry.register_mapper(112, make_factory<Mapper112>());
     registry.register_mapper(120, make_factory<Lh15>());
     registry.register_mapper(122, make_factory<Jy043>());
+    registry.register_mapper(134, make_factory<T4a54a>());
     registry.register_mapper(12, make_factory<Mapper012>());
     registry.register_mapper(14, make_factory<Sl1632>());
     registry.register_mapper(15, make_factory<Mapper015>());

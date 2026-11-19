@@ -83,6 +83,7 @@ core_sources = files(
     'mappers/n32_mapper050.cpp',
     'mappers/nes_event.cpp',
     'mappers/oeka_kids.cpp',
+    'mappers/t4a54a.cpp',
     'mappers/mapper120_lh15.cpp',
     'mappers/mapper012.cpp',
     'mappers/sl1632.cpp',
