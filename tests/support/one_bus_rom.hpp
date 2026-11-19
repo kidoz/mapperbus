@@ -8,8 +8,7 @@
 #include "core/types.hpp"
 
 namespace mapperbus::tests {
-// Component-only fixture: an MMC3 header is a test transport. Its factory is
-// temporarily replaced with OneBus, then restored. This is not a mapper-256 ROM.
+// Synthetic mapper 256 firmware for the native VT02 banking and IRQ paths.
 inline std::vector<core::Byte> make_one_bus_component_rom(bool shared, bool vertical = true) {
     using core::Address;
     using core::Byte;
@@ -20,8 +19,10 @@ inline std::vector<core::Byte> make_one_bus_component_rom(bool shared, bool vert
     image[3] = 0x1AU;
     image[4] = 8U;
     image[5] = shared ? 0U : 16U;
-    image[6] = static_cast<Byte>(0x40U | (vertical ? 1U : 0U));
-    image[7] = 8U;
+    image[6] = static_cast<Byte>(vertical ? 1U : 0U);
+    image[7] = 11U;
+    image[8] = 1U;
+    image[13] = 6U;
     for (unsigned i = 0U; i < 131072U; ++i)
         image[16U + i] = static_cast<Byte>(i / (shared ? 1024U : 8192U));
     if (!shared)

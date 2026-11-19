@@ -296,6 +296,7 @@
 #include "core/mappers/ntdec_2722.hpp"
 #include "core/mappers/ntdec_n625092.hpp"
 #include "core/mappers/oeka_kids.hpp"
+#include "core/mappers/one_bus.hpp"
 #include "core/mappers/racermate168.hpp"
 #include "core/mappers/rambo1.hpp"
 #include "core/mappers/realtec_multicart.hpp"
@@ -329,6 +330,12 @@ namespace {
 [[nodiscard]] Result<void> validate_geometry(const INesHeader& header,
                                              std::size_t prg_size,
                                              std::size_t chr_size) {
+    if ((header.mapper_number == 256U || header.mapper_number == 270U ||
+         header.mapper_number == 436U) &&
+        (header.console_type != 6U || header.has_trainer || header.misc_rom_count))
+        return std::unexpected("This OneBus board requires a NES 2.0 VT02 console profile");
+    if (header.mapper_number == 256U)
+        return OneBus::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 31 && prg_size < 4096) {
         return std::unexpected("Mapper 31 requires at least a 4 KiB PRG ROM");
     }
@@ -1980,12 +1987,14 @@ void register_builtin_mappers() {
     registry.register_mapper(188, make_factory<KaraokeStudio188>());
     registry.register_mapper(222, make_factory<Ctc31>());
     registry.register_mapper(224, make_factory<Kt008>());
+    registry.register_mapper(256, make_factory<OneBus>());
     registry.register_mapper(257, make_factory<Mapper257>());
     registry.register_mapper(260, make_factory<HpMulticart260>());
     registry.register_mapper(266, make_factory<CityFighter266>());
     registry.register_mapper(267, make_factory<Mapper267>());
     registry.register_mapper(268, make_factory<Coolboy>());
     registry.register_mapper(269, make_factory<Mapper269>());
+    registry.register_mapper(270, make_factory<Mapper270>());
     registry.register_mapper(271, make_factory<Bmc22026>());
     registry.register_mapper(272, make_factory<Mapper272>());
     registry.register_mapper(273, make_factory<Mapper273>());
@@ -2122,6 +2131,7 @@ void register_builtin_mappers() {
     registry.register_mapper(433, make_factory<Mapper433>());
     registry.register_mapper(434, make_factory<Mapper434>());
     registry.register_mapper(435, make_factory<Mapper435>());
+    registry.register_mapper(436, make_factory<Mapper436>());
     registry.register_mapper(437, make_factory<Mapper437>());
     registry.register_mapper(438, make_factory<Mapper438>());
     registry.register_mapper(439, make_factory<Mapper439>());

@@ -340,7 +340,8 @@ TEST_CASE("OneBus state stages small fields and rejects truncation corruption an
     REQUIRE(r.remaining() == 0U);
     REQUIRE(state(m) == saved);
 }
-TEST_CASE("OneBus component bounds inputs while mapper 256 remains unregistered", "[one-bus]") {
+TEST_CASE("OneBus component bounds inputs and restricts the loader to the VT02 profile",
+          "[one-bus]") {
     for (unsigned prg :
          {32768U, 65536U, 131072U, 262144U, 524288U, 1048576U, 2097152U, 4194304U, 8388608U})
         for (unsigned chr : {0U, 8192U, 65536U, 1048576U, 4194304U})
@@ -387,18 +388,12 @@ TEST_CASE("OneBus component bounds inputs while mapper 256 remains unregistered"
     register_builtin_mappers();
     auto unsupported = MapperRegistry::instance().create(header(), std::vector<Byte>(32768U), {});
     REQUIRE_FALSE(unsupported);
-    REQUIRE(unsupported.error() == "Unsupported mapper: 256");
+    REQUIRE(unsupported.error().find("VT02") != std::string::npos);
 }
 Cartridge component_cartridge(bool shared, bool vertical = true) {
     register_builtin_mappers();
-    // Mapper 4 is only a test transport; no new ID or production load path is installed.
-    MapperRegistry::instance().register_mapper(
-        4U, [](const INesHeader&, std::vector<Byte> prg, std::vector<Byte> chr) {
-            return std::make_unique<OneBus>(header(), std::move(prg), std::move(chr));
-        });
     auto result =
         Cartridge::from_data(mapperbus::tests::make_one_bus_component_rom(shared, vertical));
-    register_builtin_mappers();
     REQUIRE(result);
     return std::move(*result);
 }
@@ -502,3 +497,31 @@ TEST_CASE("OneBus machine snapshots replay while either native IRQ source is act
     }
 }
 } // namespace
+
+TEST_CASE("VT02 profiles select cartridge memory through the NES 2.0 loader", "[one-bus]") {
+    register_builtin_mappers();
+    for (auto id : {270U, 436U}) {
+        auto image = mapperbus::tests::make_one_bus_component_rom(true);
+        image[6] = static_cast<Byte>(id << 4U);
+        image[7] = (id & 0xF0U) | 11U;
+        image[8] = id >> 8U;
+        if (id == 270) {
+            image[10] = 7;
+            image[11] = 7;
+        }
+        auto c = Cartridge::from_data(image);
+        REQUIRE(c);
+        if (id == 270) {
+            c->write_prg(0x6000, 0x6A);
+            CHECK(c->read_prg(0x6000) == 0x6A);
+            c->write_expansion(0x4242, 1);
+            c->write_chr(0xFFF, 0x5C);
+            CHECK(c->read_chr(0xFFF) == 0x5C);
+        } else {
+            c->write_expansion(0x4107, 1);
+            CHECK(c->read_prg(0x8000) == 8);
+        }
+        image[13] = 10;
+        CHECK_FALSE(Cartridge::from_data(image));
+    }
+}

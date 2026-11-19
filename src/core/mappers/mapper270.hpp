@@ -18,6 +18,9 @@ class Mapper270 final : public Mapper {
                                           std::size_t chr_size);
 
     Byte read_prg(Address addr) override;
+    bool maps_prg(Address addr) const override {
+        return addr >= 0x8000U || (!wram_.empty() && addr >= 0x6000U);
+    }
     void write_prg(Address addr, Byte value) override;
     Byte read_chr(Address addr) override;
     void write_chr(Address addr, Byte value) override;
@@ -74,6 +77,8 @@ class Mapper270 final : public Mapper {
     Registers registers_;
     std::vector<Byte> prg_rom_;
     std::array<Byte, 0x2000> chr_ram_{};
+    std::vector<Byte> wram_;
+    const bool has_chr_ram_;
     Byte submapper_ = 0U;
     bool jumper_inserted_ = false;
 };

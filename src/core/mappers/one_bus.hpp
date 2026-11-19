@@ -9,7 +9,7 @@
 namespace mapperbus::core {
 
 /// Unencrypted, normal-register OneBus banking component (2bpp, no EVA).
-/// Not registered as mapper 256 until console capabilities are integrated.
+/// The cartridge registry accepts this model for NES 2.0 VT02 only.
 class OneBus final : public Mapper {
   public:
     OneBus(const INesHeader& header, std::vector<Byte> prg, std::vector<Byte> chr);

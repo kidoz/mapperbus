@@ -11,7 +11,7 @@
 namespace mapperbus::core {
 
 /// NES 2.0 mapper 436: ZLX-08 OneBus banking with rewired PRG A23/A24.
-/// Enhanced VT02 video, audio and other console peripherals are outside this
+/// Extended VT02 graphics, audio and other console peripherals are outside this
 /// cartridge component.
 class Mapper436 final : public Mapper {
   public:
