@@ -82,6 +82,7 @@
 #include "core/mappers/mapper271.hpp"
 #include "core/mappers/mapper272.hpp"
 #include "core/mappers/mapper273.hpp"
+#include "core/mappers/mapper283.hpp"
 #include "core/mappers/maxi15.hpp"
 #include "core/mappers/mmc1.hpp"
 #include "core/mappers/mmc1a.hpp"
@@ -200,6 +201,8 @@ namespace {
         return Ntdec2746::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 274U)
         return CartridgeStory274::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 283U)
+        return BlockFamily283::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 12U)
         return Mapper012::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 14U)
@@ -1213,6 +1216,7 @@ void register_builtin_mappers() {
     registry.register_mapper(191, make_factory<Mapper191>());
     registry.register_mapper(261, make_factory<Ntdec2746>());
     registry.register_mapper(274, make_factory<CartridgeStory274>());
+    registry.register_mapper(283, make_factory<BlockFamily283>());
     registry.register_mapper(12, make_factory<Mapper012>());
     registry.register_mapper(14, make_factory<Sl1632>());
     registry.register_mapper(15, make_factory<Mapper015>());
