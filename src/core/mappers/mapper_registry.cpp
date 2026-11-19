@@ -33,6 +33,7 @@
 #include "core/mappers/mapper045.hpp"
 #include "core/mappers/mapper047.hpp"
 #include "core/mappers/mapper049.hpp"
+#include "core/mappers/mapper052.hpp"
 #include "core/mappers/maxi15.hpp"
 #include "core/mappers/mmc1.hpp"
 #include "core/mappers/mmc2.hpp"
@@ -92,6 +93,8 @@ namespace {
         return Mmc3Multicart47::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 50U)
         return N32Mapper050::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 52U)
+        return Realtec8213::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 12U)
         return Mapper012::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 14U)
@@ -1001,6 +1004,7 @@ void register_builtin_mappers() {
     registry.register_mapper(45, make_factory<Mapper045>());
     registry.register_mapper(47, make_factory<Mmc3Multicart47>());
     registry.register_mapper(50, make_factory<N32Mapper050>());
+    registry.register_mapper(52, make_factory<Realtec8213>());
     registry.register_mapper(12, make_factory<Mapper012>());
     registry.register_mapper(14, make_factory<Sl1632>());
     registry.register_mapper(15, make_factory<Mapper015>());
