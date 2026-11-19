@@ -6,6 +6,7 @@
 #include "core/mappers/action52.hpp"
 #include "core/mappers/axrom.hpp"
 #include "core/mappers/bandai_fcg.hpp"
+#include "core/mappers/blazepro_fds.hpp"
 #include "core/mappers/bmc_t3h53.hpp"
 #include "core/mappers/bxrom_wram.hpp"
 #include "core/mappers/caltron_041.hpp"
@@ -912,6 +913,8 @@ namespace {
         return Mmc3::validate_a971210(header, prg_size, chr_size);
     if (header.mapper_number == 440U || header.mapper_number == 442U)
         return Education440442::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 469U)
+        return BlazeProFds::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 531U)
         return Mmc3::validate_littlecom(header, prg_size, chr_size);
     if (header.mapper_number == 545U)
@@ -2215,6 +2218,7 @@ void register_builtin_mappers() {
     registry.register_mapper(463, make_factory<Mapper463>());
     registry.register_mapper(467, make_factory<Mapper467>());
     registry.register_mapper(468, make_factory<Mapper468>());
+    registry.register_mapper(469, make_factory<BlazeProFds>());
     registry.register_mapper(470, make_factory<Mapper470>());
     registry.register_mapper(471, make_factory<Mapper471>());
     registry.register_mapper(472, make_factory<Mapper472>());

@@ -62,6 +62,49 @@ void replay(Cartridge& cart) {
     REQUIRE(after.data() == restored.data());
 }
 
+TEST_CASE("BlazePro reads packed disk sides through the FPGA and arbitrates its two IRQs",
+          "[mapper469]") {
+    constexpr unsigned prg_size = 8U * 1024U * 1024U;
+    std::vector<Byte> image(16U + prg_size);
+    const std::array<Byte, 12> header{'N', 'E', 'S', 0x1A, 0, 0, 0x50, 0xD8, 1, 2, 9, 7};
+    std::ranges::copy(header, image.begin());
+    for (unsigned offset = 0; offset < prg_size; ++offset)
+        image[16U + offset] = static_cast<Byte>((offset >> 18U) * 7U + (offset >> 13U));
+    register_builtin_mappers();
+    auto result = Cartridge::from_data(image);
+    REQUIRE(result);
+    auto& c = *result;
+    CHECK(c.read_prg(0x8000) == static_cast<Byte>(31U * 7U + 1020U));
+    c.write_expansion(0x5701, 2);
+    CHECK(c.read_prg(0x8000) == 8);
+    c.write_expansion(0x5700, 0x40);
+    CHECK(c.read_prg(0xE000) == 85);
+    c.write_prg(0xDFFF, 0x6A);
+    CHECK(c.read_prg(0xDFFF) == 0x6A);
+    c.write_expansion(0x5110, 3);
+    c.write_expansion(0x5100, 0);
+    CHECK(c.read_expansion(0x5103) == static_cast<Byte>(3U * 7U + 127U));
+    for (unsigned i = 0; i < 5; ++i)
+        c.write_expansion(0x5102, 0);
+    CHECK(c.read_expansion(0x5103) == static_cast<Byte>(2U * 7U + 92U));
+    c.write_expansion(0x5025, 0x88);
+    CHECK(c.mirror_mode() == MirrorMode::Horizontal);
+    for (unsigned i = 0; i < 149; ++i)
+        c.clock_cpu();
+    CHECK_FALSE(c.irq_pending());
+    c.clock_cpu();
+    CHECK(c.irq_pending());
+    c.write_expansion(0x5020, 1);
+    c.write_expansion(0x5022, 2);
+    c.clock_cpu();
+    c.clock_cpu();
+    CHECK(c.read_expansion(0x5030) == 1);
+    CHECK_FALSE(c.irq_pending());
+    replay(c);
+    image[10] = 0;
+    CHECK_FALSE(Cartridge::from_data(image));
+}
+
 TEST_CASE("Mapper 204 routes address pins to ROM, mirroring and menu straps", "[mapper204]") {
     for (auto size : {4, 8}) {
         auto c = board(204, size, size == 4 ? 4 : 7);

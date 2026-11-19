@@ -483,6 +483,46 @@ TEST_CASE("Keyboard Transformer latches make and break codes and acknowledges re
     CHECK(bus.read(0x5001) == 1);
     CHECK(c->read_prg(0x6123) == 42);
 }
+TEST_CASE("BlazePro maps its ROM disk sides and clocks its FDS-compatible IRQs",
+          "[mapper469][cartridge]") {
+    register_builtin_mappers();
+    auto rom = image(469, 0, 0, 9, 7);
+    rom[9] = 2;
+    rom.resize(16 + 8 * 1024 * 1024);
+    rom[16 + 0x7F8000] = 0x85;
+    rom[16 + 0x38000] = 0x41;
+    rom[16 + 0x7FFFB] = 0x65;
+    auto c = Cartridge::from_data(rom);
+    REQUIRE(c);
+    CHECK(c->read_prg(0x8000) == 0x85);
+    CHECK_FALSE(c->maps_prg(0x6000));
+    c->write_expansion(0x5700, 0x40);
+    c->write_expansion(0x5110, 2);
+    c->write_expansion(0x5100, 0);
+    CHECK(c->read_expansion(0x5103) == 0x65);
+    for (int i = 0; i < 5; ++i)
+        c->write_expansion(0x5102, 0);
+    CHECK(c->read_expansion(0x5103) == 0x41);
+    c->write_prg(0xDFFF, 0x54);
+    CHECK(c->read_prg(0xDFFF) == 0x54);
+    c->write_expansion(0x5025, 0x88);
+    CHECK(c->mirror_mode() == MirrorMode::Horizontal);
+    for (int i = 0; i < 149; ++i)
+        c->clock_cpu();
+    CHECK_FALSE(c->irq_pending());
+    c->write_expansion(0x5020, 0);
+    c->write_expansion(0x5022, 2);
+    c->clock_cpu();
+    CHECK(c->irq_pending());
+    CHECK(c->read_expansion(0x5030) == 1);
+    CHECK_FALSE(c->irq_pending());
+    for (int i = 0; i < 149; ++i)
+        c->clock_cpu();
+    CHECK(c->read_expansion(0x5030) == 2);
+    c->write_expansion(0x5110, 255);
+    CHECK(c->expansion_read_mask(0x5103) == 0);
+}
+
 TEST_CASE("SMB2JX preserves the historical 311 ROM packing and one-shot IRQ",
           "[mapper311][cartridge]") {
     register_builtin_mappers();

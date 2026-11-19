@@ -328,6 +328,7 @@ core_sources = files(
     'mappers/mapper528.cpp',
     'mappers/mapper529.cpp',
     'mappers/mapper530.cpp',
+    'mappers/blazepro_fds.cpp',
     'mappers/chr_ram_multicarts.cpp',
     'mappers/education_440_442.cpp',
     'mappers/fs305.cpp',
