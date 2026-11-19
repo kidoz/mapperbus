@@ -334,6 +334,7 @@ core_sources = files(
     'mappers/mapper127.cpp',
     'mappers/yh001.cpp',
     'mappers/nesticle_mmc3.cpp',
+    'mappers/mapper303.cpp',
     'mappers/multicart51_53.cpp',
     'mappers/multicart_latches.cpp',
     'mappers/shanghai158b.cpp',

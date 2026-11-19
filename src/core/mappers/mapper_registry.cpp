@@ -104,6 +104,7 @@
 #include "core/mappers/mapper300.hpp"
 #include "core/mappers/mapper301.hpp"
 #include "core/mappers/mapper302_ks7057.hpp"
+#include "core/mappers/mapper303.hpp"
 #include "core/mappers/mapper304.hpp"
 #include "core/mappers/mapper305.hpp"
 #include "core/mappers/mapper306.hpp"
@@ -894,6 +895,8 @@ namespace {
     if (header.mapper_number == 277U || header.mapper_number == 280U ||
         header.mapper_number == 343U || header.mapper_number == 476U)
         return ChrRamMulticarts::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 303U)
+        return Mapper303::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 329U)
         return TransformerKeyboard::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 420U)
@@ -2033,6 +2036,7 @@ void register_builtin_mappers() {
     registry.register_mapper(300, make_factory<Mapper300>());
     registry.register_mapper(301, make_factory<ChrRamMulticarts>());
     registry.register_mapper(302, make_factory<KaiserKs7057>());
+    registry.register_mapper(303, make_factory<Mapper303>());
     registry.register_mapper(304, make_factory<Mapper304>());
     registry.register_mapper(305, make_factory<Mapper305>());
     registry.register_mapper(306, make_factory<Mapper306>());

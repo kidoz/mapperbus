@@ -48,6 +48,53 @@ TEST_CASE("Mapper 297 registry routes the expansion mode bit to both ROM chips",
     CHECK(cart->mirror_mode() == MirrorMode::Vertical);
 }
 
+TEST_CASE("KS-7017 stages each PRG selector and clocks its one-shot IRQ",
+          "[mapper303][cartridge]") {
+    register_builtin_mappers();
+    const auto rom = image(303, 8, 0, 7, 7);
+    auto cart = Cartridge::from_data(rom);
+    REQUIRE(cart);
+    for (unsigned page = 0; page < 8; ++page) {
+        cart->write_expansion(static_cast<Address>(0x4A00 | ((page & 4) << 4) | ((page & 3) << 2)),
+                              0);
+        if (page)
+            REQUIRE(cart->read_prg(0x8000) == page - 1);
+        cart->write_expansion(0x51FF, 0);
+        CHECK(cart->read_prg(0xBFFF) == page);
+        CHECK(cart->read_prg(0xFFFF) == 2);
+    }
+    cart->write_chr(0x1FFF, 78);
+    cart->write_prg(0x7FFF, 31);
+    cart->write_expansion(0x4025, 8);
+    CHECK(cart->mirror_mode() == MirrorMode::Horizontal);
+    cart->write_expansion(0x4020, 3);
+    cart->write_expansion(0x4021, 0);
+    cart->clock_cpu();
+    StateWriter writer;
+    cart->save_state(writer);
+    auto saved = writer.take();
+    for (int attempt = 0; attempt < 2; ++attempt) {
+        cart->clock_cpu();
+        REQUIRE_FALSE(cart->irq_pending());
+        cart->clock_cpu();
+        REQUIRE(cart->irq_pending());
+        CHECK(cart->read_expansion(0x4030) == 1);
+        CHECK_FALSE(cart->irq_pending());
+        cart->power_on();
+        StateReader reader(saved);
+        cart->load_state(reader);
+        REQUIRE(reader.ok());
+        CHECK(cart->read_prg(0x7FFF) == 31);
+        CHECK(cart->read_chr(0x1FFF) == 78);
+        CHECK(cart->read_prg(0x8000) == 7);
+    }
+    saved.resize(saved.size() - 1);
+    StateReader truncated(saved);
+    cart->load_state(truncated);
+    REQUIRE_FALSE(truncated.ok());
+    CHECK(cart->read_prg(0xBFFF) == 7);
+}
+
 TEST_CASE("Asder PC-95 returns active-low key rows through the cartridge port",
           "[mapper365][cartridge]") {
     register_builtin_mappers();
