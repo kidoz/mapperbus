@@ -4830,7 +4830,7 @@ or another registered cartridge ID.
 | 011 | Color Dreams | Existing registration: ColorDreams | [r24575](https://www.nesdev.org/w/index.php?oldid=24575) |
 | 012 | Gouder SL-5020B / FFE 4M | Registered: Mapper012 | [r18954](https://www.nesdev.org/w/index.php?oldid=18954) |
 | 013 | CPROM | New implementation: DiscreteMapper | [r1200](https://www.nesdev.org/w/index.php?oldid=1200) |
-| 014 | Board-specific specification | Not registered | [r19503](https://www.nesdev.org/w/index.php?oldid=19503) |
+| 014 | Board-specific specification | Registered: Sl1632 | [r19503](https://www.nesdev.org/w/index.php?oldid=19503) |
 | 015 | Board-specific specification | Not registered | [r19956](https://www.nesdev.org/w/index.php?oldid=19956) |
 | 016 | Bandai FCG / LZ93D50 | New implementation: BandaiFcg | [r3876](https://www.nesdev.org/w/index.php?oldid=3876) |
 | 017 | FFE Super Magic Card | Not registered | [r18933](https://www.nesdev.org/w/index.php?oldid=18933) |
