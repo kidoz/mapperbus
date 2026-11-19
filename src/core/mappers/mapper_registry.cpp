@@ -74,6 +74,7 @@
 #include "core/mappers/namco108.hpp"
 #include "core/mappers/namco163.hpp"
 #include "core/mappers/namco175340.hpp"
+#include "core/mappers/nanjing_fc001.hpp"
 #include "core/mappers/nes_event.hpp"
 #include "core/mappers/nrom.hpp"
 #include "core/mappers/ntdec_2722.hpp"
@@ -207,6 +208,8 @@ namespace {
         return DaouMapper156::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 162U)
         return Mapper162Fs304::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 163U)
+        return NanjingFc001::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 99U)
         return VsSystem::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 30U || header.mapper_number == 111U)
@@ -1144,6 +1147,7 @@ void register_builtin_mappers() {
     registry.register_mapper(144, make_factory<Mapper144>());
     registry.register_mapper(156, make_factory<DaouMapper156>());
     registry.register_mapper(162, make_factory<Mapper162Fs304>());
+    registry.register_mapper(163, make_factory<NanjingFc001>());
 }
 
 } // namespace mapperbus::core
