@@ -4925,7 +4925,7 @@ or another registered cartridge ID.
 | 103 | Board-specific specification | Registered: Mapper103 | [r4802](https://www.nesdev.org/w/index.php?oldid=4802) |
 | 104 | Codemasters Golden Five | Registered: Mapper104GoldenFive | [r9567](https://www.nesdev.org/w/index.php?oldid=9567) |
 | 105 | NES-EVENT / MMC1 | Registered: NesEvent | [r23388](https://www.nesdev.org/w/index.php?oldid=23388) |
-| 106 | Board-specific specification | Not registered | [r4815](https://www.nesdev.org/w/index.php?oldid=4815) |
+| 106 | Board-specific specification | Registered: Mapper106 | [r4815](https://www.nesdev.org/w/index.php?oldid=4815) |
 | 107 | Board-specific specification | New implementation: DiscreteMapper | [r24577](https://www.nesdev.org/w/index.php?oldid=24577) |
 | 108 | FDS-to-cartridge boards | Not registered | [r21237](https://www.nesdev.org/w/index.php?oldid=21237) |
 | 109 | Board-specific specification | Not registered | [r4825](https://www.nesdev.org/w/index.php?oldid=4825) |
