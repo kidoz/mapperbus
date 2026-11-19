@@ -4843,7 +4843,7 @@ or another registered cartridge ID.
 | 024 | VRC6a | Existing registration: Vrc6 | [r23687](https://www.nesdev.org/w/index.php?oldid=23687) |
 | 025 | VRC2c / VRC4 | New implementation: KonamiVrc | [r24169](https://www.nesdev.org/w/index.php?oldid=24169) |
 | 026 | VRC6b | Existing registration: Vrc6 | [r23687](https://www.nesdev.org/w/index.php?oldid=23687) |
-| 027 | Unlicensed VRC4 variant | Not registered | [r23209](https://www.nesdev.org/w/index.php?oldid=23209) |
+| 027 | Unlicensed VRC4 variant | Registered: Mapper027 | [r23209](https://www.nesdev.org/w/index.php?oldid=23209) |
 | 028 | Action 53 | New implementation: DiscreteMapper | [r21316](https://www.nesdev.org/w/index.php?oldid=21316) |
 | 029 | RET-CUFROM | Not registered | [r4093](https://www.nesdev.org/w/index.php?oldid=4093) |
 | 030 | UNROM 512 | New implementation: FlashBoards | [r23183](https://www.nesdev.org/w/index.php?oldid=23183) |
