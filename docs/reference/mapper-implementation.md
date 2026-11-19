@@ -5344,7 +5344,7 @@ some historical aliases share a factory with another ID.
 | 546 | 03-101 | Registered: Mmc1 | [r8169](https://www.nesdev.org/w/index.php?oldid=8169) |
 | 547 | Konami VRC5 / QTa | Registered: Mapper547 | [r23763](https://www.nesdev.org/w/index.php?oldid=23763) |
 | 548 | CTC-15 | Registered: Mapper548 | [r8186](https://www.nesdev.org/w/index.php?oldid=8186) |
-| 549 | Board-specific specification | Not registered | [r21240](https://www.nesdev.org/w/index.php?oldid=21240) |
+| 549 | Kaiser KS-7016B | Registered: Mapper306 | [r21240](https://www.nesdev.org/w/index.php?oldid=21240) |
 | 550 | JY820845C | Registered: Mmc1 | [r8188](https://www.nesdev.org/w/index.php?oldid=8188) |
 | 551 | Jncota | Registered: Fs305 | [r8189](https://www.nesdev.org/w/index.php?oldid=8189) |
 | 552 | Taito X1-017 wiring variant | New implementation: TaitoX1017 | [r24125](https://www.nesdev.org/w/index.php?oldid=24125) |
