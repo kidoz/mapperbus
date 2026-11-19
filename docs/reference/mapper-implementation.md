@@ -5334,7 +5334,7 @@ some historical aliases share a factory with another ID.
 | 537 | JY4M4 | Registered: Mmc3Multicart536537 | [r23952](https://www.nesdev.org/w/index.php?oldid=23952) |
 | 538 | Super Soccer Champion / 60-1064-16L | Registered: FdsConversion535 | [r8156](https://www.nesdev.org/w/index.php?oldid=8156) |
 | 539 | Kid Icarus FDS conversion | Registered: FdsConversion535 | [r8157](https://www.nesdev.org/w/index.php?oldid=8157) |
-| 540 | Board-specific specification | Not registered | [r8158](https://www.nesdev.org/w/index.php?oldid=8158) |
+| 540 | UNL-82112C | Registered: Mapper359 | [r8158](https://www.nesdev.org/w/index.php?oldid=8158) |
 | 541 | LittleCom 160-in-1 | Registered: MulticartLatches | [r8159](https://www.nesdev.org/w/index.php?oldid=8159) |
 | 542 | Board-specific specification | Not registered | [r8160](https://www.nesdev.org/w/index.php?oldid=8160) |
 | 543 | Board-specific specification | Not registered | [r8162](https://www.nesdev.org/w/index.php?oldid=8162) |
