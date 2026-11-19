@@ -274,6 +274,45 @@ TEST_CASE(
     CHECK_FALSE(c.irq_pending());
 }
 
+TEST_CASE("QTa selects adapter and cartridge chips, translates JIS and renders independent glyph "
+          "bitplanes",
+          "[mapper547]") {
+    auto c = cartridge(547, 640, 128, 2, 0x77, 7);
+    CHECK(c.read_prg(0xE000) == 79);
+    c.write_prg(0xD234, 0x42);
+    CHECK(c.read_prg(0x8000) == 18);
+    c.write_prg(0x6000, 0xA6);
+    c.write_prg(0xD000, 8);
+    CHECK(c.read_prg(0x6000) == 0);
+    CHECK(c.battery_ram()[0] == 0xA6);
+    c.write_prg(0xD000, 0);
+    CHECK(c.read_prg(0x6000) == 0xA6);
+    c.write_prg(0xDC00, 0x21);
+    c.write_prg(0xDD00, 0x21);
+    c.write_prg(0xDB00, 5);
+    CHECK(c.read_prg(0xDC00) == 0x85);
+    CHECK(c.read_prg(0xDD00) == 0xC0);
+    c.write_prg(0xDA00, 1);
+    REQUIRE(c.write_nametable(0x2005, 0xC2));
+    auto planes = c.background_pattern(0x2005, 0);
+    REQUIRE(planes);
+    CHECK((*planes)[0] == 4);
+    CHECK((*planes)[1] == 255);
+    c.write_chr(0x1000, 0x32);
+    REQUIRE(c.write_nametable(0x2005, 1));
+    CHECK((*c.background_pattern(0x2005, 0))[0] == 0x32);
+    c.write_prg(0xD600, 0xFE);
+    c.write_prg(0xD700, 0xFF);
+    c.write_prg(0xD900, 2);
+    c.clock_cpu();
+    CHECK_FALSE(c.irq_pending());
+    c.clock_cpu();
+    CHECK(c.irq_pending());
+    snapshot(c);
+    c.write_prg(0xD800, 0);
+    CHECK_FALSE(c.irq_pending());
+}
+
 TEST_CASE("NTDEC 2718 keeps CHR RAM fixed while N118 bank 5 changes CIRAM", "[mapper557]") {
     auto c = cartridge(557, 128, 0, 0, 7, 7);
     c.write_chr(0x1B23, 0xAC);
