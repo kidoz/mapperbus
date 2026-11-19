@@ -35,6 +35,7 @@ image. Mapper 355 requires one 1 KiB PIC firmware image. Mapper 413 requires one
 | FDS conversions (535, 538, 539) | Each cartridge has its own PRG decode and RAM windows. 535 includes the M2 timer and onboard RAM even when the header omits it. |
 | 534, 540, 542, 543 | Includes the inverted MMC3 IRQ latch, 2 KiB CHR-ROM banking, VRC4-controlled pattern-table CIRAM and the CH-501 serial PAL with two SRAM chips, respectively. |
 | 547, 555, 556, 560 | QTa background tile metadata, Campus Challenge timer and mixed graphics, JY-215 MMC3/VRC4 switching and BASIC bitplane routing are covered by synthetic cartridge tests. |
+| 594 | Talkman audio uses a held DAC value on FIFO underrun and nominal gain. Analog filtering and level calibration await hardware measurements. |
 
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
@@ -5358,7 +5359,7 @@ some historical aliases share a factory with another ID.
 | 560 | Chinese / English BASIC | Registered: Mapper560 | [r23154](https://www.nesdev.org/w/index.php?oldid=23154) |
 | 561 | Bung Super Game Doctor | Registered: GameDoctor | [r18925](https://www.nesdev.org/w/index.php?oldid=18925) |
 | 562 | Venus Turbo Game Doctor | Registered: GameDoctor | [r19971](https://www.nesdev.org/w/index.php?oldid=19971) |
-| 594 | Rinco Talkman | Not registered | [r22961](https://www.nesdev.org/w/index.php?oldid=22961) |
+| 594 | Rinco Talkman | Registered: Mapper594 | [r22961](https://www.nesdev.org/w/index.php?oldid=22961) |
 | 595 | NES-4MROM-512 | Not registered | [r22979](https://www.nesdev.org/w/index.php?oldid=22979) |
 | 600 | ABL UM6578 extended banking | Not registered | [r23398](https://www.nesdev.org/w/index.php?oldid=23398) |
 | 601 | dreamGEAR / Senario UM6578 | Not registered | [r23369](https://www.nesdev.org/w/index.php?oldid=23369) |
