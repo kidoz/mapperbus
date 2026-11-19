@@ -57,6 +57,7 @@
 #include "core/mappers/mapper144.hpp"
 #include "core/mappers/maxi15.hpp"
 #include "core/mappers/mmc1.hpp"
+#include "core/mappers/mmc1a.hpp"
 #include "core/mappers/mmc2.hpp"
 #include "core/mappers/mmc3.hpp"
 #include "core/mappers/mmc4.hpp"
@@ -196,6 +197,8 @@ namespace {
         return Tec9719::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 128U || header.mapper_number == 265U)
         return Mapper128::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 155U)
+        return Mmc1a::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 144U)
         return Mapper144::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 99U)
@@ -1130,6 +1133,7 @@ void register_builtin_mappers() {
     registry.register_mapper(126, make_factory<Tec9719>());
     for (const uint16_t id : {128U, 265U})
         registry.register_mapper(id, make_factory<Mapper128>());
+    registry.register_mapper(155, make_factory<Mmc1a>());
     registry.register_mapper(144, make_factory<Mapper144>());
 }
 
