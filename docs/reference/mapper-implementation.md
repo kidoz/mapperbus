@@ -4845,7 +4845,7 @@ or another registered cartridge ID.
 | 026 | VRC6b | Existing registration: Vrc6 | [r23687](https://www.nesdev.org/w/index.php?oldid=23687) |
 | 027 | Unlicensed VRC4 variant | Registered: Mapper027 | [r23209](https://www.nesdev.org/w/index.php?oldid=23209) |
 | 028 | Action 53 | New implementation: DiscreteMapper | [r21316](https://www.nesdev.org/w/index.php?oldid=21316) |
-| 029 | RET-CUFROM | Not registered | [r4093](https://www.nesdev.org/w/index.php?oldid=4093) |
+| 029 | RET-CUFROM | Registered: RetCufrom | [r4093](https://www.nesdev.org/w/index.php?oldid=4093) |
 | 030 | UNROM 512 | New implementation: FlashBoards | [r23183](https://www.nesdev.org/w/index.php?oldid=23183) |
 | 031 | NSF-subset cartridge | New implementation: DiscreteMapper | [r19421](https://www.nesdev.org/w/index.php?oldid=19421) |
 | 032 | Irem G-101 | New implementation: Irem | [r23869](https://www.nesdev.org/w/index.php?oldid=23869) |
