@@ -21,6 +21,7 @@
 #include "core/mappers/fs304.hpp"
 #include "core/mappers/g0151.hpp"
 #include "core/mappers/golden_game.hpp"
+#include "core/mappers/hp_multicart260.hpp"
 #include "core/mappers/irem.hpp"
 #include "core/mappers/irem_lrog017.hpp"
 #include "core/mappers/jaleco_discrete.hpp"
@@ -259,6 +260,8 @@ namespace {
         return Kt008::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 257U)
         return Mapper257::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 260U)
+        return HpMulticart260::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 99U)
         return VsSystem::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 222U)
@@ -1216,6 +1219,7 @@ void register_builtin_mappers() {
     registry.register_mapper(188, make_factory<KaraokeStudio188>());
     registry.register_mapper(224, make_factory<Kt008>());
     registry.register_mapper(257, make_factory<Mapper257>());
+    registry.register_mapper(260, make_factory<HpMulticart260>());
 }
 
 } // namespace mapperbus::core
