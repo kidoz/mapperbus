@@ -5000,7 +5000,7 @@ or another registered cartridge ID.
 | 174 | Board-specific specification | Registered: Ntdec174 | [r5296](https://www.nesdev.org/w/index.php?oldid=5296) |
 | 175 | Board-specific specification | Not registered | [r5297](https://www.nesdev.org/w/index.php?oldid=5297) |
 | 176 | FK23C | Registered: Fk23c | [r24008](https://www.nesdev.org/w/index.php?oldid=24008) |
-| 177 | Board-specific specification | Not registered | [r24245](https://www.nesdev.org/w/index.php?oldid=24245) |
+| 177 | Board-specific specification | Registered: Henggedianzi177 | [r24245](https://www.nesdev.org/w/index.php?oldid=24245) |
 | 178 | Waixing / Nanjing family | Not registered | [r22866](https://www.nesdev.org/w/index.php?oldid=22866) |
 | 179 | Board-specific specification | Not registered | [r5374](https://www.nesdev.org/w/index.php?oldid=5374) |
 | 180 | UxROM fixed-low-window variant | New implementation: DiscreteMapper | [r19264](https://www.nesdev.org/w/index.php?oldid=19264) |
