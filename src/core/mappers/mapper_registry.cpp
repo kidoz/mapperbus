@@ -43,6 +43,7 @@
 #include "core/mappers/multicart230.hpp"
 #include "core/mappers/multicart233.hpp"
 #include "core/mappers/multicart242.hpp"
+#include "core/mappers/n32_mapper050.hpp"
 #include "core/mappers/namco108.hpp"
 #include "core/mappers/namco163.hpp"
 #include "core/mappers/namco175340.hpp"
@@ -89,6 +90,8 @@ namespace {
         return Mapper045::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 47U)
         return Mmc3Multicart47::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 50U)
+        return N32Mapper050::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 12U)
         return Mapper012::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 14U)
@@ -997,6 +1000,7 @@ void register_builtin_mappers() {
     registry.register_mapper(44, make_factory<Mapper044>());
     registry.register_mapper(45, make_factory<Mapper045>());
     registry.register_mapper(47, make_factory<Mmc3Multicart47>());
+    registry.register_mapper(50, make_factory<N32Mapper050>());
     registry.register_mapper(12, make_factory<Mapper012>());
     registry.register_mapper(14, make_factory<Sl1632>());
     registry.register_mapper(15, make_factory<Mapper015>());
