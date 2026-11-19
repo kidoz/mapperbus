@@ -152,6 +152,24 @@ TEST_CASE("Asder PC-95 returns active-low key rows through the cartridge port",
     CHECK(cart->read_expansion(0x4906) == 0xAA);
 }
 
+TEST_CASE("LH42 banks program ROM while R5 controls CIRAM independently of CHR RAM",
+          "[mapper418][cartridge]") {
+    register_builtin_mappers();
+    auto cart = Cartridge::from_data(image(418, 8, 0, 0, 7));
+    REQUIRE(cart);
+    cart->write_chr(0x1FFF, 0xA5);
+    for (Byte page = 0; page < 16; ++page) {
+        cart->write_prg(0x9FFE, 6);
+        cart->write_prg(0x9FFF, page);
+        CHECK(cart->read_prg(0x8000) == page / 2U);
+        CHECK(cart->read_prg(0xFFFF) == 7);
+        cart->write_prg(0x8000, 5);
+        cart->write_prg(0x8001, page);
+        CHECK(cart->read_chr(0x1FFF) == 0xA5);
+        CHECK(cart->mirror_mode() == ((page & 1U) ? MirrorMode::Horizontal : MirrorMode::Vertical));
+    }
+}
+
 TEST_CASE("BATMAP reads and advances the serial ROM through both CPU windows",
           "[mapper413][cartridge]") {
     register_builtin_mappers();

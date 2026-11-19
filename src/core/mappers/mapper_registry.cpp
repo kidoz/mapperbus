@@ -906,6 +906,8 @@ namespace {
         return Multicart060::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 413U)
         return Mapper413::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 418U)
+        return Namco108::validate_418(header, prg_size, chr_size);
     if (header.mapper_number == 420U)
         return Mmc3::validate_a971210(header, prg_size, chr_size);
     if (header.mapper_number == 440U || header.mapper_number == 442U)
@@ -914,6 +916,8 @@ namespace {
         return Mmc3::validate_littlecom(header, prg_size, chr_size);
     if (header.mapper_number == 545U)
         return Mmc3::validate_st80(header, prg_size, chr_size);
+    if (header.mapper_number == 557U)
+        return Namco108::validate_ntdec2718(header, prg_size, chr_size);
     if (header.mapper_number == 30U || header.mapper_number == 111U)
         return FlashBoards::validate_geometry(header, prg_size, chr_size);
     if (JyCompany::supports_mapper(header.mapper_number))
@@ -2169,6 +2173,7 @@ void register_builtin_mappers() {
     registry.register_mapper(415, make_factory<Mapper415>());
     registry.register_mapper(416, make_factory<Mapper416>());
     registry.register_mapper(417, make_factory<Mapper417>());
+    registry.register_mapper(418, make_factory<Namco108>());
     registry.register_mapper(420, make_factory<Mmc3>());
     registry.register_mapper(422, make_factory<Mapper422>());
     registry.register_mapper(428, make_factory<MulticartLatches>());
@@ -2236,6 +2241,7 @@ void register_builtin_mappers() {
     registry.register_mapper(528, make_factory<Mapper528>());
     registry.register_mapper(529, make_factory<Mapper529>());
     registry.register_mapper(530, make_factory<Mapper530>());
+    registry.register_mapper(557, make_factory<Namco108>());
 }
 
 } // namespace mapperbus::core

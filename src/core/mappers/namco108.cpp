@@ -11,10 +11,30 @@ Namco108::Namco108(const INesHeader& header, std::vector<Byte> prg, std::vector<
     : prg_rom_(std::move(prg)), chr_rom_(std::move(chr)), mapper_(header.mapper_number),
       initial_mirror_(header.mirror_mode),
       fixed_prg_(mapper_ == 206U && header.is_nes2 && header.submapper == 1U),
-      has_ram_(mapper_ == 206U &&
-               (header.has_battery || header.prg_ram_size != 0U || header.prg_nvram_size != 0U)),
+      has_ram_(mapper_ == 557U ||
+               (mapper_ == 206U &&
+                (header.has_battery || header.prg_ram_size != 0U || header.prg_nvram_size != 0U))),
       mirror_(initial_mirror_) {
     reset();
+}
+
+Result<void> Namco108::validate_ntdec2718(const INesHeader& h, std::size_t prg, std::size_t chr) {
+    if (h.mapper_number != 557 || !h.is_nes2 || h.submapper || h.has_battery || h.has_trainer ||
+        prg != 131072 || chr || h.chr_ram_size != 8192 || h.prg_ram_size != 8192 ||
+        h.chr_nvram_size || h.prg_nvram_size ||
+        (h.mirror_mode != MirrorMode::Horizontal && h.mirror_mode != MirrorMode::Vertical))
+        return std::unexpected(
+            "NTDEC 2718 requires 128 KiB PRG ROM and 8 KiB each of work and pattern RAM");
+    return {};
+}
+
+Result<void> Namco108::validate_418(const INesHeader& h, std::size_t prg, std::size_t chr) {
+    if (!h.is_nes2 || h.mapper_number != 418U || h.submapper != 0U || prg != 128U * 1024U ||
+        chr != 0U || h.chr_ram_size != 8192U || h.prg_ram_size || h.prg_nvram_size ||
+        h.chr_nvram_size || h.has_battery || h.has_trainer ||
+        (h.mirror_mode != MirrorMode::Horizontal && h.mirror_mode != MirrorMode::Vertical))
+        return std::unexpected("Mapper 418 requires 128 KiB PRG ROM and 8 KiB of unbanked CHR RAM");
+    return {};
 }
 
 void Namco108::reset() {
@@ -57,7 +77,11 @@ void Namco108::write_prg(Address addr, Byte value) {
 }
 
 std::size_t Namco108::chr_offset(Address address) const {
+    if (mapper_ == 418U)
+        return address & 0x1FFFU;
     const auto addr = static_cast<unsigned>(address);
+    if (mapper_ == 557U)
+        return addr;
     if (mapper_ == 76U)
         return banks_[2U + (addr >> 11U)] * 0x800U + (addr & 0x07FFU);
     std::size_t bank = 0;
@@ -82,6 +106,10 @@ void Namco108::write_chr(Address addr, Byte value) {
 }
 
 MirrorMode Namco108::mirror_mode() const {
+    if (mapper_ == 557U)
+        return (banks_[5] & 0x20U) ? MirrorMode::Horizontal : MirrorMode::Vertical;
+    if (mapper_ == 418U)
+        return (banks_[5] & 1U) ? MirrorMode::Horizontal : MirrorMode::Vertical;
     return mirror_;
 }
 
@@ -94,6 +122,15 @@ std::optional<Address> Namco108::nametable_address(Address addr) const {
 }
 
 void Namco108::save_state(StateWriter& writer) const {
+    if (mapper_ == 557U)
+        writer.write<Word>(557);
+    if (mapper_ == 418U) {
+        writer.write<std::uint16_t>(0x4180U);
+        writer.write(select_);
+        writer.write_array(banks_);
+        writer.write_array(chr_ram_);
+        return;
+    }
     writer.write(select_);
     writer.write_array(banks_);
     writer.write(mirror_);
@@ -102,6 +139,43 @@ void Namco108::save_state(StateWriter& writer) const {
 }
 
 void Namco108::load_state(StateReader& reader) {
+    if (mapper_ == 557U) {
+        auto tag = reader.read<Word>();
+        auto select = reader.read<Byte>();
+        decltype(banks_) banks{};
+        reader.read_array(banks);
+        auto mirror = reader.read<MirrorMode>();
+        decltype(prg_ram_) wram{}, chr{};
+        reader.read_array(wram);
+        reader.read_array(chr);
+        if (!reader.ok() || tag != 557 || select > 7 || mirror != initial_mirror_ ||
+            std::ranges::any_of(banks, [](Byte b) { return b > 63; })) {
+            reader.fail();
+            return;
+        }
+        banks_ = banks;
+        select_ = select;
+        prg_ram_ = wram;
+        chr_ram_ = chr;
+        return;
+    }
+    if (mapper_ == 418U) {
+        const auto tag = reader.read<std::uint16_t>();
+        const auto select = reader.read<Byte>();
+        decltype(banks_) banks{};
+        decltype(chr_ram_) chr{};
+        reader.read_array(banks);
+        reader.read_array(chr);
+        if (!reader.ok() || tag != 0x4180U || select > 7U ||
+            std::ranges::any_of(banks, [](Byte bank) { return bank > 0x3FU; })) {
+            reader.fail();
+            return;
+        }
+        select_ = select;
+        banks_ = banks;
+        chr_ram_ = chr;
+        return;
+    }
     reader.read(select_);
     reader.read_array(banks_);
     reader.read(mirror_);
@@ -115,11 +189,11 @@ void Namco108::load_state(StateReader& reader) {
 }
 
 std::span<const Byte> Namco108::battery_ram() const {
-    return has_ram_ ? std::span<const Byte>(prg_ram_) : std::span<const Byte>{};
+    return has_ram_ && mapper_ != 557U ? std::span<const Byte>(prg_ram_) : std::span<const Byte>{};
 }
 
 void Namco108::set_battery_ram(std::span<const Byte> data) {
-    if (has_ram_)
+    if (has_ram_ && mapper_ != 557U)
         std::copy_n(data.begin(), std::min(data.size(), prg_ram_.size()), prg_ram_.begin());
 }
 

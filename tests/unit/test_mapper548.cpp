@@ -210,3 +210,20 @@ TEST_CASE("ST-80 routes MMC3 pins to the menu, the large chip and the small chip
     snapshot(c);
 }
 
+TEST_CASE("NTDEC 2718 keeps CHR RAM fixed while N118 bank 5 changes CIRAM", "[mapper557]") {
+    auto c = cartridge(557, 128, 0, 0, 7, 7);
+    c.write_chr(0x1B23, 0xAC);
+    c.write_prg(0x8000, 5);
+    c.write_prg(0x8001, 0x20);
+    CHECK(c.mirror_mode() == MirrorMode::Horizontal);
+    CHECK(c.read_chr(0x1B23) == 0xAC);
+    c.write_prg(0x8001, 5);
+    CHECK(c.mirror_mode() == MirrorMode::Vertical);
+    c.write_prg(0x8000, 6);
+    c.write_prg(0x8001, 10);
+    CHECK(c.read_prg(0x8000) == 10);
+    c.write_prg(0x7000, 0xB7);
+    snapshot(c);
+    CHECK(c.read_prg(0x7000) == 0xB7);
+}
+

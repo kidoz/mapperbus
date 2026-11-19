@@ -12,6 +12,8 @@ namespace mapperbus::core {
 class Namco108 final : public Mapper {
   public:
     Namco108(const INesHeader& header, std::vector<Byte> prg, std::vector<Byte> chr);
+    static Result<void> validate_ntdec2718(const INesHeader& h, std::size_t prg, std::size_t chr);
+    static Result<void> validate_418(const INesHeader&, std::size_t prg, std::size_t chr);
     Byte read_prg(Address addr) override;
     void write_prg(Address addr, Byte value) override;
     bool maps_prg(Address addr) const override;
