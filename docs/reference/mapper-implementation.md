@@ -5123,7 +5123,7 @@ or another registered cartridge ID.
 | 299 | Board-specific specification | Registered: Mapper299 | [r22947](https://www.nesdev.org/w/index.php?oldid=22947) |
 | 300 | Board-specific specification | Registered: Mapper300 | [r7775](https://www.nesdev.org/w/index.php?oldid=7775) |
 | 301 | Board-specific specification | Not registered | [r19709](https://www.nesdev.org/w/index.php?oldid=19709) |
-| 302 | Board-specific specification | Not registered | [r22779](https://www.nesdev.org/w/index.php?oldid=22779) |
+| 302 | Board-specific specification | Registered: KaiserKs7057 | [r22779](https://www.nesdev.org/w/index.php?oldid=22779) |
 | 303 | Board-specific specification | Not registered | [r7779](https://www.nesdev.org/w/index.php?oldid=7779) |
 | 304 | Board-specific specification | Not registered | [r7785](https://www.nesdev.org/w/index.php?oldid=7785) |
 | 305 | Board-specific specification | Not registered | [r7786](https://www.nesdev.org/w/index.php?oldid=7786) |
