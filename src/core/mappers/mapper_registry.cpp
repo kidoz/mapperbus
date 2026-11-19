@@ -16,6 +16,7 @@
 #include "core/mappers/cnrom.hpp"
 #include "core/mappers/cnrom185.hpp"
 #include "core/mappers/color_dreams.hpp"
+#include "core/mappers/coolx_lite.hpp"
 #include "core/mappers/datach.hpp"
 #include "core/mappers/decathlon.hpp"
 #include "core/mappers/discrete.hpp"
@@ -915,6 +916,8 @@ namespace {
         return Education440442::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 469U)
         return BlazeProFds::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 479U)
+        return CoolXLite::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 531U)
         return Mmc3::validate_littlecom(header, prg_size, chr_size);
     if (header.mapper_number == 545U)
@@ -2225,6 +2228,7 @@ void register_builtin_mappers() {
     registry.register_mapper(473, make_factory<Mapper473>());
     registry.register_mapper(474, make_factory<Mapper474>());
     registry.register_mapper(476, make_factory<ChrRamMulticarts>());
+    registry.register_mapper(479, make_factory<CoolXLite>());
     registry.register_mapper(481, make_factory<Mapper481>());
     registry.register_mapper(487, make_factory<Mapper487>());
     registry.register_mapper(493, make_factory<Mapper493>());

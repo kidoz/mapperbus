@@ -483,6 +483,54 @@ TEST_CASE("Keyboard Transformer latches make and break codes and acknowledges re
     CHECK(bus.read(0x5001) == 1);
     CHECK(c->read_prg(0x6123) == 42);
 }
+TEST_CASE("CoolX Lite board switches among MMC3, UNROM and NROM windows",
+          "[mapper479][cartridge]") {
+    register_builtin_mappers();
+    auto rom = image(479, 16, 16, 7);
+    rom[8] |= 0x10;
+    auto c = Cartridge::from_data(rom);
+    REQUIRE(c);
+    c->write_prg(0x8000, 6);
+    c->write_prg(0x8001, 4);
+    CHECK(c->read_prg(0x8000) == 2);
+    CHECK(c->read_prg(0xE000) == 15);
+    c->write_prg(0xA000, 1);
+    CHECK(c->mirror_mode() == MirrorMode::SingleUpper);
+    c->write_prg(0xA000, 2);
+    CHECK(c->mirror_mode() == MirrorMode::Vertical);
+    c->write_prg(0x8000, 2);
+    c->write_prg(0x8001, 24);
+    CHECK(c->read_chr(0x1000) == 3);
+    c->write_expansion(0x4FF3, 8);
+    c->write_prg(0xE000, 5);
+    CHECK(c->read_prg(0x8000) == 5);
+    CHECK(c->read_prg(0xC000) == 15);
+    c->write_expansion(0x4FF3, 6);
+    c->write_prg(0xC000, 0x12);
+    CHECK(c->read_prg(0x8000) == 4);
+    CHECK(c->mirror_mode() == MirrorMode::SingleUpper);
+    c->write_expansion(0x4FF3, 0);
+    c->write_prg(0x8000, 0x11);
+    CHECK(c->read_prg(0x8000) == 2);
+    c->write_prg(0x6000, 71);
+    StateWriter w;
+    c->save_state(w);
+    c->reset();
+    StateReader r(w.data());
+    c->load_state(r);
+    REQUIRE(r.ok());
+    CHECK(c->read_prg(0x8000) == 2);
+    CHECK(c->read_prg(0x6000) == 71);
+    rom = image(479, 16, 0, 0, 7);
+    rom[8] |= 0x20;
+    c = Cartridge::from_data(rom);
+    REQUIRE(c);
+    c->write_chr(0x1000, 0x5C);
+    c->write_expansion(0x4FF3, 1);
+    c->write_chr(0x1000, 0xAB);
+    CHECK(c->read_chr(0x1000) == 0x5C);
+}
+
 TEST_CASE("BlazePro maps its ROM disk sides and clocks its FDS-compatible IRQs",
           "[mapper469][cartridge]") {
     register_builtin_mappers();
