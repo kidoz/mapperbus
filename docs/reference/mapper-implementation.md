@@ -5227,7 +5227,7 @@ or another registered cartridge ID.
 | 403 | Board-specific specification | Registered: Mapper403 | [r18960](https://www.nesdev.org/w/index.php?oldid=18960) |
 | 404 | Board-specific specification | Registered: Mapper404 | [r18976](https://www.nesdev.org/w/index.php?oldid=18976) |
 | 405 | Board-specific specification | Not registered | [r23367](https://www.nesdev.org/w/index.php?oldid=23367) |
-| 406 | Haradius Zero | Not registered | [r22429](https://www.nesdev.org/w/index.php?oldid=22429) |
+| 406 | Haradius Zero | Registered: Mapper406 | [r22429](https://www.nesdev.org/w/index.php?oldid=22429) |
 | 407 | Board-specific specification | Not registered | [r24350](https://www.nesdev.org/w/index.php?oldid=24350) |
 | 408 | Board-specific specification | Not registered | [r24418](https://www.nesdev.org/w/index.php?oldid=24418) |
 | 409 | Board-specific specification | Not registered | [r20235](https://www.nesdev.org/w/index.php?oldid=20235) |
