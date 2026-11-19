@@ -129,6 +129,7 @@ core_sources = files(
     'mappers/mapper187.cpp',
     'mappers/karaoke_studio_188.cpp',
     'mappers/mapper224.cpp',
+    'mappers/mapper257.cpp',
     'mappers/vs_system.cpp',
     'mappers/mapper222_ctc31.cpp',
     'fds/fds.cpp',

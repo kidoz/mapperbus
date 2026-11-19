@@ -71,6 +71,7 @@
 #include "core/mappers/mapper191.hpp"
 #include "core/mappers/mapper222_ctc31.hpp"
 #include "core/mappers/mapper224.hpp"
+#include "core/mappers/mapper257.hpp"
 #include "core/mappers/maxi15.hpp"
 #include "core/mappers/mmc1.hpp"
 #include "core/mappers/mmc1a.hpp"
@@ -256,6 +257,8 @@ namespace {
         return KaraokeStudio188::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 224U)
         return Kt008::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 257U)
+        return Mapper257::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 99U)
         return VsSystem::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 222U)
@@ -1212,6 +1215,7 @@ void register_builtin_mappers() {
     registry.register_mapper(187, make_factory<Mapper187>());
     registry.register_mapper(188, make_factory<KaraokeStudio188>());
     registry.register_mapper(224, make_factory<Kt008>());
+    registry.register_mapper(257, make_factory<Mapper257>());
 }
 
 } // namespace mapperbus::core
