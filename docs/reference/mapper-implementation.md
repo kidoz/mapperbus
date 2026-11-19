@@ -5338,7 +5338,7 @@ some historical aliases share a factory with another ID.
 | 541 | LittleCom 160-in-1 | Registered: MulticartLatches | [r8159](https://www.nesdev.org/w/index.php?oldid=8159) |
 | 542 | VRC4 clone with switchable CIRAM | Registered: Mapper530 | [r8160](https://www.nesdev.org/w/index.php?oldid=8160) |
 | 543 | CH-501 | Registered: Mmc1 | [r8162](https://www.nesdev.org/w/index.php?oldid=8162) |
-| 544 | Board-specific specification | Not registered | [r24263](https://www.nesdev.org/w/index.php?oldid=24263) |
+| 544 | FS306 | Registered: KonamiVrc | [r24263](https://www.nesdev.org/w/index.php?oldid=24263) |
 | 545 | ST-80 | Registered: Mmc3 | [r23190](https://www.nesdev.org/w/index.php?oldid=23190) |
 | 546 | 03-101 | Registered: Mmc1 | [r8169](https://www.nesdev.org/w/index.php?oldid=8169) |
 | 547 | Konami VRC5 / QTa | Not registered | [r23763](https://www.nesdev.org/w/index.php?oldid=23763) |
