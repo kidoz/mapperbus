@@ -4951,7 +4951,7 @@ some historical aliases share a factory with another ID.
 | 124 | Board-specific specification | Registered: SuperGameMegaTypeIII | [r4941](https://www.nesdev.org/w/index.php?oldid=4941) |
 | 125 | Board-specific specification | Registered: Lh32 | [r4945](https://www.nesdev.org/w/index.php?oldid=4945) |
 | 126 | Board-specific specification | Registered: Tec9719 | [r22468](https://www.nesdev.org/w/index.php?oldid=22468) |
-| 127 | Board-specific specification | Not registered | [r4951](https://www.nesdev.org/w/index.php?oldid=4951) |
+| 127 | Double Dragon II pirate | Registered: Mapper127 | [r4951](https://www.nesdev.org/w/index.php?oldid=4951) |
 | 128 | Board-specific specification | Registered: Mapper128 | [r21955](https://www.nesdev.org/w/index.php?oldid=21955) |
 | 129 | WQ1905-B | Registered: Historical ID for mapper 58 | [r24633](https://www.nesdev.org/w/index.php?oldid=24633) |
 | 130 | NS03 | Registered: Historical ID for mapper 331 | [r24051](https://www.nesdev.org/w/index.php?oldid=24051) |
