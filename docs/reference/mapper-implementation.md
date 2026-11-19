@@ -5078,7 +5078,7 @@ some historical aliases share a factory with another ID.
 | 255 | New Star 128-in-1 | Registered: New Star 128-in-1 population of mapper 225 | [r20429](https://www.nesdev.org/w/index.php?oldid=20429) |
 | 256 | OneBus VT02 | Registered: OneBus | [r23934](https://www.nesdev.org/w/index.php?oldid=23934) |
 | 257 | Dongda / Hongda educational boards | Registered: Mapper257 | [r23118](https://www.nesdev.org/w/index.php?oldid=23118) |
-| 258 | Board-specific specification | Not registered | [r7627](https://www.nesdev.org/w/index.php?oldid=7627) |
+| 258 | Shanghai 158B | Registered: Shanghai158B | [r7627](https://www.nesdev.org/w/index.php?oldid=7627) |
 | 259 | Board-specific specification | Not registered | [r7628](https://www.nesdev.org/w/index.php?oldid=7628) |
 | 260 | Board-specific specification | Registered: HpMulticart260 | [r22170](https://www.nesdev.org/w/index.php?oldid=22170) |
 | 261 | Board-specific specification | Registered: Ntdec2746 | [r18984](https://www.nesdev.org/w/index.php?oldid=18984) |
