@@ -8,7 +8,7 @@
 
 namespace mapperbus::core {
 
-/// Mapper 164: Yancheng cy2000-3 / FS304 banking, 1 bpp CHR and 93C66 EEPROM.
+/// Yancheng cy2000-3 (164) and YC-03-09 (558) with 93C66 or battery WRAM.
 class Fs304 final : public Mapper {
   public:
     Fs304(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte> chr_rom);
@@ -73,6 +73,9 @@ class Fs304 final : public Mapper {
     void eeprom_load_state(StateReader& reader, EepromState& state) const;
 
     std::vector<Byte> prg_rom_;
+    const bool yc0309_;
+    const bool battery_wram_;
+    const MirrorMode fixed_mirror_;
     std::size_t wram_size_;
     std::array<Byte, 8192> wram_{};
     std::array<Byte, 8192> chr_ram_{};

@@ -966,6 +966,8 @@ namespace {
         return Mapper556::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 557U)
         return Namco108::validate_ntdec2718(header, prg_size, chr_size);
+    if (header.mapper_number == 558U)
+        return Fs304::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 30U || header.mapper_number == 111U)
         return FlashBoards::validate_geometry(header, prg_size, chr_size);
     if (JyCompany::supports_mapper(header.mapper_number))
@@ -2315,6 +2317,7 @@ void register_builtin_mappers() {
     registry.register_mapper(555, make_factory<Mapper555>());
     registry.register_mapper(556, make_factory<Mapper556>());
     registry.register_mapper(557, make_factory<Namco108>());
+    registry.register_mapper(558, make_factory<Fs304>());
 }
 
 } // namespace mapperbus::core

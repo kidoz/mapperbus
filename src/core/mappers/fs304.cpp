@@ -14,7 +14,9 @@ constexpr std::size_t kEepromSize = 512U;
 
 // NESdev mapper 164 r22865, cy2000-3 board trace 20835, and ST M93C66 Rev. 20.
 Fs304::Fs304(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte> chr_rom)
-    : prg_rom_(std::move(prg_rom)), wram_size_(header.is_nes2 ? header.prg_ram_size : 2048U) {
+    : prg_rom_(std::move(prg_rom)), yc0309_(header.mapper_number == 558U),
+      battery_wram_(yc0309_ && header.prg_nvram_size == 8192U), fixed_mirror_(header.mirror_mode),
+      wram_size_(battery_wram_ ? 8192U : (header.is_nes2 ? header.prg_ram_size : 2048U)) {
     (void)chr_rom;
     eeprom_.data.fill(0xFFU);
     power_on();
@@ -23,6 +25,19 @@ Fs304::Fs304(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<By
 Result<void> Fs304::validate_geometry(const INesHeader& header,
                                       std::size_t prg_size,
                                       std::size_t chr_size) {
+    if (header.mapper_number == 558U) {
+        const bool eeprom = header.prg_nvram_size == kEepromSize;
+        const bool wram = header.prg_nvram_size == 8192U && header.prg_ram_size == 0;
+        if (!header.is_nes2 || header.submapper || !header.has_battery || header.has_trainer ||
+            prg_size < 32768U || prg_size > 2097152U || !std::has_single_bit(prg_size) ||
+            chr_size || header.chr_ram_size != 8192U || header.chr_nvram_size ||
+            (!eeprom && !wram) || header.prg_ram_size > 8192U ||
+            (header.mirror_mode != MirrorMode::Horizontal &&
+             header.mirror_mode != MirrorMode::Vertical))
+            return std::unexpected(
+                "YC-03-09 requires banked PRG ROM, 8 KiB CHR RAM and 93C66 EEPROM or battery WRAM");
+        return {};
+    }
     if (header.is_nes2 && header.submapper != 0U)
         return std::unexpected("Mapper 164 supports submapper 0");
     if (prg_size < 32768U || prg_size > 2097152U || !std::has_single_bit(prg_size) ||
@@ -42,6 +57,10 @@ Result<void> Fs304::validate_geometry(const INesHeader& header,
 }
 
 std::size_t Fs304::prg_bank(Address addr) const {
+    if (yc0309_) {
+        const auto low = (mirror_control_ & 4U) ? bank_low_ : (bank_low_ | 3U);
+        return ((static_cast<std::size_t>(bank_high_) * 16U + low) << 1U) | ((addr >> 14U) & 1U);
+    }
     const std::size_t outer = static_cast<std::size_t>(bank_high_) << 5U;
     if ((bank_low_ & 0x10U) != 0U)
         return outer | (static_cast<std::size_t>(bank_low_ & 0x0FU) << 1U) | ((addr >> 14U) & 1U);
@@ -71,7 +90,7 @@ void Fs304::write_prg(Address addr, Byte value) {
 
 bool Fs304::maps_prg(Address addr) const {
     if (addr >= 0x8000U)
-        return (bank_low_ & 0x10U) == 0U || (bank_low_ & 0x40U) != 0U;
+        return yc0309_ || (bank_low_ & 0x10U) == 0U || (bank_low_ & 0x40U) != 0U;
     return addr >= 0x6000U && wram_size_ != 0U;
 }
 
@@ -92,6 +111,8 @@ void Fs304::write_chr(Address addr, Byte value) {
 }
 
 MirrorMode Fs304::mirror_mode() const {
+    if (yc0309_)
+        return fixed_mirror_;
     if ((bank_low_ & 0x10U) == 0U)
         return MirrorMode::Vertical;
     return (mirror_control_ & 0x80U) != 0U ? MirrorMode::Vertical : MirrorMode::Horizontal;
@@ -104,15 +125,35 @@ bool Fs304::maps_expansion(Address addr) const {
 
 Byte Fs304::read_expansion(Address addr) {
     if ((addr & 0xFF00U) == 0x5500U)
-        return eeprom_output() ? 0U : 0x04U;
+        return (yc0309_ ? !battery_wram_ && eeprom_output() : !eeprom_output()) ? 0x04U : 0U;
     return 0U;
 }
 
 Byte Fs304::expansion_read_mask(Address addr) const {
-    return (addr & 0xFF00U) == 0x5500U ? 0x04U : 0U;
+    return (addr & 0xFF00U) == 0x5500U && !battery_wram_ ? 0x04U : 0U;
 }
 
 void Fs304::write_expansion(Address addr, Byte value) {
+    if (yc0309_) {
+        // D0/D1 are permuted before latching, so changing the mode later
+        // does not reroute previously written bank or serial values.
+        if ((addr & 0xFF00U) == 0x5300U) {
+            mirror_control_ = value & 5U;
+            return;
+        }
+        if ((mirror_control_ & 1U) == 0U)
+            value =
+                static_cast<Byte>((value & 0xFCU) | ((value & 1U) << 1U) | ((value & 2U) >> 1U));
+        if ((addr & 0xFB00U) == 0x5100U) {
+            bank_high_ = value & 3U;
+        } else if ((addr & 0xFF00U) == 0x5000U) {
+            bank_low_ = value & 15U;
+        } else if ((addr & 0xFF00U) == 0x5200U && !battery_wram_) {
+            microwire_ = value & 7U;
+            eeprom_set_lines((value & 4U) != 0, (value & 2U) != 0, (value & 1U) != 0);
+        }
+        return;
+    }
     switch (addr & 0xFF00U) {
     case 0x5000U:
         bank_low_ = value;
@@ -135,12 +176,12 @@ void Fs304::write_expansion(Address addr, Byte value) {
 
 void Fs304::observe_cpu_read(Address addr, Byte data) {
     const auto page = addr & 0xFF00U;
-    if (page >= 0x5000U && page <= 0x5300U)
+    if (!yc0309_ && page >= 0x5000U && page <= 0x5300U)
         write_expansion(addr, data);
 }
 
 bool Fs304::observes_ppu_address() const {
-    return true;
+    return !yc0309_;
 }
 
 void Fs304::observe_ppu_address(Address addr) {
@@ -336,21 +377,34 @@ void Fs304::reset() {
 void Fs304::power_on() {
     eeprom_power_on();
     reset();
-    wram_.fill(0U);
+    if (!battery_wram_)
+        wram_.fill(0U);
     chr_ram_.fill(0U);
 }
 
 std::span<const Byte> Fs304::battery_ram() const {
+    if (battery_wram_)
+        return wram_;
     return eeprom_.data;
 }
 
 void Fs304::set_battery_ram(std::span<const Byte> data) {
+    if (battery_wram_) {
+        if (data.size() == wram_.size())
+            std::ranges::copy(data, wram_.begin());
+        return;
+    }
     if (data.size() == eeprom_.data.size())
         std::ranges::copy(data, eeprom_.data.begin());
 }
 
 uint16_t Fs304::state_tag() const {
     const auto geometry = std::bit_width(prg_rom_.size() / 32768U) - 1U;
+    if (yc0309_) {
+        const auto ram_shift = std::bit_width(wram_size_);
+        return static_cast<Word>(0x5800U | (geometry << 6U) | (battery_wram_ ? 32U : 0U) |
+                                 (fixed_mirror_ == MirrorMode::Vertical ? 16U : 0U) | ram_shift);
+    }
     const auto ram = wram_size_ == 0U ? 0U : (wram_size_ == 2048U ? 1U : 2U);
     return static_cast<uint16_t>(0xA400U | (geometry << 2U) | ram);
 }
@@ -430,7 +484,8 @@ void Fs304::save_state(StateWriter& writer) const {
     writer.write(static_cast<Byte>(previous_a13_));
     writer.write_array(wram_);
     writer.write_array(chr_ram_);
-    eeprom_save_state(writer);
+    if (!battery_wram_)
+        eeprom_save_state(writer);
 }
 
 void Fs304::load_state(StateReader& reader) {
@@ -447,9 +502,12 @@ void Fs304::load_state(StateReader& reader) {
     reader.read_array(wram);
     reader.read_array(chr_ram);
     EepromState eeprom{};
-    eeprom_load_state(reader, eeprom);
-    if (!reader.ok() || tag != state_tag() || bank_high > 3U || (microwire & 0xAAU) != 0U ||
-        (mirror_control & 0x7FU) != 0U || latched_a0 > 1U || latched_a9 > 1U || previous_a13 > 1U) {
+    if (!battery_wram_)
+        eeprom_load_state(reader, eeprom);
+    if (!reader.ok() || tag != state_tag() || bank_high > 3U ||
+        (yc0309_ ? bank_low > 15 || microwire > 7 || (mirror_control & ~5U) != 0U
+                 : (microwire & 0xAAU) != 0U || (mirror_control & 0x7FU) != 0U) ||
+        latched_a0 > 1U || latched_a9 > 1U || previous_a13 > 1U) {
         reader.fail();
         return;
     }

@@ -291,6 +291,35 @@ TEST_CASE("KS-7010 read strobes switch the low PRG window and CHR together", "[m
     snapshot(c);
 }
 
+TEST_CASE("YC-03-09 scrambles bank writes and selects EEPROM or persistent WRAM", "[mapper558]") {
+    for (Byte nvram : {0x30, 0x70}) {
+        auto c = cartridge(558, 2048, 0, 3, nvram, 7);
+        CHECK(c.read_prg(0x8000) == 12);
+        CHECK(c.mirror_mode() == MirrorMode::Vertical);
+        c.write_expansion(0x5300, 4);
+        c.write_expansion(0x5000, 1);
+        CHECK(c.read_prg(0x8000) == 8);
+        c.write_expansion(0x5300, 5);
+        CHECK(c.read_prg(0x8000) == 8);
+        c.write_expansion(0x55FF, 1);
+        CHECK(c.read_prg(0x8000) == 72);
+        if (nvram == 0x70) {
+            c.write_prg(0x6000, 0xB2);
+            c.power_on();
+            CHECK(c.read_prg(0x6000) == 0xB2);
+            CHECK(c.battery_ram().size() == 8192);
+            CHECK(c.expansion_read_mask(0x5500) == 0);
+        } else {
+            CHECK(c.battery_ram().size() == 512);
+            CHECK(c.expansion_read_mask(0x5500) == 4);
+            CHECK(c.read_expansion(0x5500) == 4);
+        }
+        c.write_chr(0x06AA, 0x3F);
+        CHECK(c.read_chr(0x06AA) == 0x3F);
+        snapshot(c);
+    }
+}
+
 TEST_CASE(
     "FS306 controls individual CIRAM quadrants, the third PRG slot and a shared CHR RAM window",
     "[mapper544]") {
