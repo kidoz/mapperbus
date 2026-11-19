@@ -77,6 +77,7 @@
 #include "core/mappers/mapper267.hpp"
 #include "core/mappers/mapper268_coolboy.hpp"
 #include "core/mappers/mapper269.hpp"
+#include "core/mappers/mapper270.hpp"
 #include "core/mappers/maxi15.hpp"
 #include "core/mappers/mmc1.hpp"
 #include "core/mappers/mmc1a.hpp"
@@ -281,6 +282,8 @@ namespace {
         return VsSystem::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 222U)
         return Ctc31::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 270U)
+        return Mapper270::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 30U || header.mapper_number == 111U)
         return FlashBoards::validate_geometry(header, prg_size, chr_size);
     if (JyCompany::supports_mapper(header.mapper_number))
