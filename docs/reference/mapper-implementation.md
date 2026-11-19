@@ -4994,12 +4994,12 @@ some historical aliases share a factory with another ID.
 | 167 | Board-specific specification | Registered: Mapper166 | [r22345](https://www.nesdev.org/w/index.php?oldid=22345) |
 | 168 | Racermate | Registered: Racermate168 | [r22805](https://www.nesdev.org/w/index.php?oldid=22805) |
 | 169 | Board-specific specification | Not registered | [r5247](https://www.nesdev.org/w/index.php?oldid=5247) |
-| 170 | Board-specific specification | Not registered | [r21130](https://www.nesdev.org/w/index.php?oldid=21130) |
+| 170 | Fujiya NROM | Registered: DiscreteMapper | [r21130](https://www.nesdev.org/w/index.php?oldid=21130) |
 | 171 | Board-specific specification | Not registered | [r22367](https://www.nesdev.org/w/index.php?oldid=22367) |
 | 172 | TXC/JV001 protection board | New implementation: Txc | [r5257](https://www.nesdev.org/w/index.php?oldid=5257) |
 | 173 | TXC/JV001 protection board | New implementation: Txc | [r5274](https://www.nesdev.org/w/index.php?oldid=5274) |
 | 174 | Board-specific specification | Registered: Ntdec174 | [r5296](https://www.nesdev.org/w/index.php?oldid=5296) |
-| 175 | Board-specific specification | Not registered | [r5297](https://www.nesdev.org/w/index.php?oldid=5297) |
+| 175 | Kaiser KS-7022 | Registered: DiscreteMapper | [r5297](https://www.nesdev.org/w/index.php?oldid=5297) |
 | 176 | FK23C | Registered: Fk23c | [r24008](https://www.nesdev.org/w/index.php?oldid=24008) |
 | 177 | Board-specific specification | Registered: Henggedianzi177 | [r24245](https://www.nesdev.org/w/index.php?oldid=24245) |
 | 178 | Waixing / Nanjing family | Not registered | [r22866](https://www.nesdev.org/w/index.php?oldid=22866) |
@@ -5038,10 +5038,10 @@ some historical aliases share a factory with another ID.
 | 211 | J.Y. Company ASIC | New implementation: JyCompany | [r24184](https://www.nesdev.org/w/index.php?oldid=24184) |
 | 212 | Board-specific specification | New implementation: DiscreteMapper | [r24309](https://www.nesdev.org/w/index.php?oldid=24309) |
 | 213 | Board-specific specification | New implementation: DiscreteMapper | [r5674](https://www.nesdev.org/w/index.php?oldid=5674) |
-| 214 | Super Gun 20-in-1 (identification only) | Not registered: register specification missing | [r5675](https://www.nesdev.org/w/index.php?oldid=5675) |
+| 214 | Super Gun 20-in-1 | Registered: DiscreteMapper | [r5675](https://www.nesdev.org/w/index.php?oldid=5675) |
 | 215 | Sugar Softec UNL-8237/8237A | New implementation: Mmc3 (submappers 0/1) | [r5704](https://www.nesdev.org/w/index.php?oldid=5704) |
-| 216 | RCM/Russian games (identification only) | Not registered: register specification missing | [r5705](https://www.nesdev.org/w/index.php?oldid=5705) |
-| 217 | 500/2000-in-1 (identification only) | Not registered: register specification missing | [r5706](https://www.nesdev.org/w/index.php?oldid=5706) |
+| 216 | RCM Magic Jewelry II | Registered: DiscreteMapper | [r5705](https://www.nesdev.org/w/index.php?oldid=5705) |
+| 217 | Unchained Melody / GI 9549 | Registered: DiscreteMapper | [r5706](https://www.nesdev.org/w/index.php?oldid=5706) |
 | 218 | Single Chip / Magic Floor | New implementation: SingleChip (all four CIRAM wirings) | [r22660](https://www.nesdev.org/w/index.php?oldid=22660) |
 | 219 | Kasheng A9461 / NT-8029 | New implementation: Mmc3 (ROM-only compatibility model) | [r21696](https://www.nesdev.org/w/index.php?oldid=21696) |
 | 220 | Gyruss / Boogerman II | Registered: KS-7057 on mapper 302 or Boogerman II on mapper 263 | [r23976](https://www.nesdev.org/w/index.php?oldid=23976) |
@@ -5077,7 +5077,7 @@ some historical aliases share a factory with another ID.
 | 252 | Waixing VRC4e / Sangokushi mixed CHR | New implementation: KonamiVrc | [r5906](https://www.nesdev.org/w/index.php?oldid=5906) |
 | 253 | Waixing VRC4 CHR4/5 / F009S relocation profile | New implementation: KonamiVrc | [r5910](https://www.nesdev.org/w/index.php?oldid=5910) |
 | 254 | Pikachu Y2K WRAM XOR protection | New implementation: Mmc3 | [r24273](https://www.nesdev.org/w/index.php?oldid=24273) |
-| 255 | 110-in-1 / apparent duplicate of 225 | Apparent duplicate; not registered | [r20429](https://www.nesdev.org/w/index.php?oldid=20429) |
+| 255 | New Star 128-in-1 | Registered: New Star 128-in-1 population of mapper 225 | [r20429](https://www.nesdev.org/w/index.php?oldid=20429) |
 | 256 | OneBus / VTxx native console registers | Not registered: normal banking/IRQ component implemented | [r23934](https://www.nesdev.org/w/index.php?oldid=23934) |
 | 257 | Dongda / Hongda educational boards | Registered: Mapper257 | [r23118](https://www.nesdev.org/w/index.php?oldid=23118) |
 | 258 | Board-specific specification | Not registered | [r7627](https://www.nesdev.org/w/index.php?oldid=7627) |
