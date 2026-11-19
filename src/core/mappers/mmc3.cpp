@@ -633,6 +633,12 @@ void Mmc3::write_a9461_bank(Byte value) {
     }
 }
 
+std::span<Byte> Mmc3::trainer_ram() {
+    if (mapper_ != 4U)
+        return {};
+    return std::span{prg_ram_}.subspan(0x1000U);
+}
+
 bool Mmc3::maps_prg(Address addr) const {
     if (mapper_ == 238U && addr >= 0x6000U)
         return true;

@@ -96,6 +96,10 @@ void BxromWram::write_prg(Address addr, Byte value) {
     else if (addr >= 0x6000U)
         wram_[addr & 0x1FFFU] = value;
 }
+std::span<Byte> BxromWram::trainer_ram() {
+    return std::span{wram_}.subspan(0x1000U);
+}
+
 bool BxromWram::maps_prg(Address addr) const {
     return addr >= 0x6000U;
 }

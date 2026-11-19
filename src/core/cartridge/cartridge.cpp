@@ -1,6 +1,7 @@
 #include "core/cartridge/cartridge.hpp"
 
 #include <algorithm>
+#include <array>
 
 #include "core/binary_file.hpp"
 #include "core/cartridge/rom_crc32.hpp"
@@ -13,6 +14,22 @@ namespace mapperbus::core {
 
 Cartridge::Cartridge(INesHeader header, std::unique_ptr<Mapper> mapper)
     : header_(header), mapper_(std::move(mapper)) {}
+
+void Cartridge::seed_trainer() {
+    if (!header_.has_trainer)
+        return;
+    const auto ram = mapper_->trainer_ram();
+    if (ram.size() >= trainer_.size())
+        std::ranges::copy(trainer_, ram.begin());
+}
+
+void Cartridge::power_on() {
+    mapper_->power_on();
+    // Persistent RAM was seeded on load and may have since been restored from
+    // a save file. Only volatile RAM needs reseeding after cold initialization.
+    if (!has_battery())
+        seed_trainer();
+}
 
 void Cartridge::save_state(StateWriter& writer) const {
     mapper_->save_state(writer);
@@ -53,7 +70,7 @@ Result<Cartridge> Cartridge::from_data_impl(std::span<const Byte> rom_data,
     const auto& header = *header_result;
     std::size_t offset = 16;
     if (header.has_trainer) {
-        offset += 512;
+        offset += kTrainerSize;
     }
 
     const std::size_t prg_size = header.prg_rom_size;
@@ -62,6 +79,10 @@ Result<Cartridge> Cartridge::from_data_impl(std::span<const Byte> rom_data,
     if (offset > rom_data.size() || prg_size > rom_data.size() - offset) {
         return std::unexpected("ROM data is smaller than declared in header");
     }
+
+    std::array<Byte, kTrainerSize> trainer{};
+    if (header.has_trainer)
+        std::ranges::copy_n(rom_data.begin() + 16, trainer.size(), trainer.begin());
 
     const auto chr_offset = offset + prg_size;
     if (chr_size > rom_data.size() - chr_offset) {
@@ -100,6 +121,8 @@ Result<Cartridge> Cartridge::from_data_impl(std::span<const Byte> rom_data,
     }
 
     Cartridge cartridge(header, std::move(*mapper_result));
+    cartridge.trainer_ = trainer;
+    cartridge.seed_trainer();
     cartridge.content_hash_ = reuse ? original_hash : rom_sha256(rom_data);
     cartridge.base_content_hash_ = cartridge.content_hash_;
     if (!dcs_option.empty()) {

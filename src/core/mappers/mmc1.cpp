@@ -81,6 +81,12 @@ void Mmc1::write_prg(Address addr, Byte value) {
     }
 }
 
+std::span<Byte> Mmc1::trainer_ram() {
+    if (!has_prg_ram_)
+        return {};
+    return std::span{prg_ram_}.subspan(0x1000U);
+}
+
 bool Mmc1::maps_prg(Address addr) const {
     if (addr >= 0x8000) {
         return true;

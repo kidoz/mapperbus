@@ -89,6 +89,11 @@ class Mapper {
     virtual bool write_nametable(Address /*addr*/, Byte /*value*/) {
         return false;
     }
+    /// Writable backing RAM beginning at CPU $7000, when available for an iNES
+    /// trainer. Initialization bypasses CPU register decoders and write gates.
+    virtual std::span<Byte> trainer_ram() {
+        return {};
+    }
     /// Cartridge power-on; ordinary boards retain their existing reset policy.
     virtual void power_on() {
         reset();

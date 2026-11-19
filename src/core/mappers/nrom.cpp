@@ -27,6 +27,10 @@ void Nrom::write_prg(Address addr, Byte value) {
     }
 }
 
+std::span<Byte> Nrom::trainer_ram() {
+    return std::span{prg_ram_}.subspan(0x1000U);
+}
+
 bool Nrom::maps_prg(Address addr) const {
     return addr >= 0x6000;
 }

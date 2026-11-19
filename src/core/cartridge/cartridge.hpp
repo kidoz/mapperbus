@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -112,9 +113,7 @@ class Cartridge {
     [[nodiscard]] const Sha256Digest& base_content_hash() const {
         return base_content_hash_;
     }
-    void power_on() {
-        mapper_->power_on();
-    }
+    void power_on();
     void reset() {
         mapper_->reset();
     }
@@ -206,7 +205,10 @@ class Cartridge {
                                                           std::span<const Byte> dcs_option,
                                                           std::vector<Byte>* owned_data);
     Cartridge(INesHeader header, std::unique_ptr<Mapper> mapper);
+    void seed_trainer();
 
+    static constexpr std::size_t kTrainerSize = 512U;
+    std::array<Byte, kTrainerSize> trainer_{};
     Sha256Digest content_hash_{};
     Sha256Digest base_content_hash_{};
     INesHeader header_;
