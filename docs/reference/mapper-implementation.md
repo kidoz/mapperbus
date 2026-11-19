@@ -5269,7 +5269,7 @@ or another registered cartridge ID.
 | 445 | Board-specific specification | Registered: Mapper445 | [r19271](https://www.nesdev.org/w/index.php?oldid=19271) |
 | 446 | Mindkids SMD172B FPGA | Registered: Mapper446 | [r22849](https://www.nesdev.org/w/index.php?oldid=22849) |
 | 447 | Board-specific specification | Registered: Mapper447 | [r19301](https://www.nesdev.org/w/index.php?oldid=19301) |
-| 448 | Board-specific specification | Not registered | [r19305](https://www.nesdev.org/w/index.php?oldid=19305) |
+| 448 | Board-specific specification | Registered: Mapper448 | [r19305](https://www.nesdev.org/w/index.php?oldid=19305) |
 | 449 | Board-specific specification | Not registered | [r19306](https://www.nesdev.org/w/index.php?oldid=19306) |
 | 450 | Board-specific specification | Not registered | [r19307](https://www.nesdev.org/w/index.php?oldid=19307) |
 | 451 | Haratyler HG/MP | Not registered | [r24353](https://www.nesdev.org/w/index.php?oldid=24353) |
