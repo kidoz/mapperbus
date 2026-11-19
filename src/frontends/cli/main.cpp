@@ -72,7 +72,8 @@ int main(int argc, char* argv[]) {
                     mapperbus::core::logger::error("{} requires a ROM path", argument);
                     return EXIT_FAILURE;
                 }
-                (argument == "--dcs-option" ? dcs_option : game_doctor_bios) = value;
+                (argument == "--dcs-option" ? dcs_option
+                                            : cartridge_options.game_doctor_bios_path) = value;
             } else if (argument == "--vs-dips") {
                 cartridge_options.vs_dips = mapperbus::app::parse_vs_dips(value);
                 if (!cartridge_options.vs_dips) {

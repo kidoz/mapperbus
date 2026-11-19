@@ -10,7 +10,9 @@
 #include <nk/platform/application.h>
 #include <nk/platform/window.h>
 #include <nk/style/theme_selection.h>
+#include <string>
 #include <string_view>
+#include <utility>
 
 #if defined(MAPPERBUS_HAVE_SDL3_AUDIO) || defined(MAPPERBUS_HAVE_SDL3_GAMEPAD)
 #include <SDL3/SDL.h>
@@ -22,13 +24,18 @@
 
 int main(int argc, char** argv) try {
     std::string_view rom_path;
-    std::string_view dcs_option_path;
+    std::string dcs_option_path;
     mapperbus::app::CartridgeLaunchOptions cartridge_options;
     for (int i = 1; i < argc; ++i) {
         const std::string_view argument(argv[i]);
-        if (argument == "--dcs-option" && i + 1 < argc && !std::string_view(argv[i + 1]).empty() &&
-            !std::string_view(argv[i + 1]).starts_with("--")) {
-            dcs_option_path = argv[++i];
+        if (argument == "--dcs-option" || argument == "--game-doctor-bios") {
+            if (i + 1 >= argc || std::string_view(argv[i + 1]).empty() ||
+                std::string_view(argv[i + 1]).starts_with("--")) {
+                mapperbus::core::logger::error("{} requires a ROM path", argument);
+                return EXIT_FAILURE;
+            }
+            (argument == "--dcs-option" ? dcs_option_path
+                                        : cartridge_options.game_doctor_bios_path) = argv[++i];
         } else if (argument == "--vs-dips") {
             cartridge_options.vs_dips =
                 i + 1 < argc ? mapperbus::app::parse_vs_dips(argv[++i]) : std::nullopt;
@@ -39,12 +46,15 @@ int main(int argc, char** argv) try {
         } else if (!argument.starts_with("--") && rom_path.empty()) {
             rom_path = argument;
         } else {
-            mapperbus::core::logger::error("Usage: mapperbus-gui [BASE_ROM [--dcs-option PATH]]");
+            mapperbus::core::logger::error("Usage: mapperbus-gui [ROM [--dcs-option PATH] "
+                                           "[--game-doctor-bios PATH] [--vs-dips BYTE]]");
             return EXIT_FAILURE;
         }
     }
-    if (!dcs_option_path.empty() && rom_path.empty()) {
-        mapperbus::core::logger::error("--dcs-option requires a base cartridge");
+    if (rom_path.empty() &&
+        (!dcs_option_path.empty() || !cartridge_options.game_doctor_bios_path.empty() ||
+         cartridge_options.vs_dips)) {
+        mapperbus::core::logger::error("Cartridge launch options require a ROM path");
         return EXIT_FAILURE;
     }
 #if defined(MAPPERBUS_HAVE_SDL3_AUDIO) || defined(MAPPERBUS_HAVE_SDL3_GAMEPAD)

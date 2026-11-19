@@ -143,6 +143,7 @@ int main(int argc, char* argv[]) {
         mapperbus::core::logger::info(
             "  --entry NAME          ROM member inside a .zip or .7z archive");
         mapperbus::core::logger::info("  --fds-bios PATH       8 KiB Famicom Disk System BIOS");
+        mapperbus::core::logger::info("  --game-doctor-bios PATH  8 KiB Turbo Game Doctor BIOS");
         mapperbus::core::logger::info("  --vs-dips BYTE        Vs. cabinet DIP mask (0–255)");
         mapperbus::core::logger::info("Vs. cabinet: hold F10 for Service");
         mapperbus::core::logger::info(
@@ -310,13 +311,15 @@ int main(int argc, char* argv[]) {
             fds_bios = argv[++i];
         } else if (std::strcmp(argv[i], "--entry") == 0 && i + 1 < argc) {
             rom_member = argv[++i];
-        } else if (std::strcmp(argv[i], "--dcs-option") == 0) {
+        } else if (const std::string_view argument(argv[i]);
+                   argument == "--dcs-option" || argument == "--game-doctor-bios") {
             if (i + 1 >= argc || std::string_view(argv[i + 1]).empty() ||
                 std::string_view(argv[i + 1]).starts_with("--")) {
-                mapperbus::core::logger::error("--dcs-option requires a ROM path");
+                mapperbus::core::logger::error("{} requires a ROM path", argument);
                 return EXIT_FAILURE;
             }
-            dcs_option = argv[++i];
+            (argument == "--dcs-option" ? dcs_option : cartridge_options.game_doctor_bios_path) =
+                argv[++i];
         } else if (std::strcmp(argv[i], "--vs-dips") == 0) {
             cartridge_options.vs_dips =
                 i + 1 < argc ? mapperbus::app::parse_vs_dips(argv[++i]) : std::nullopt;

@@ -779,6 +779,35 @@ TEST_CASE("GUI DCS startup requests preserve option identity through failure and
     REQUIRE(Access::snapshot(*fixture.gui).paused);
 }
 
+TEST_CASE("GUI Turbo Game Doctor startup keeps its firmware through retry", "[gui][mapper562]") {
+    Fixture fixture;
+    const auto cartridge = fixture.root / "turbo-game-doctor.nes";
+    const auto bios = fixture.root / "turbo-game-doctor.bin";
+    std::vector<core::Byte> rom(16 + 32768);
+    const std::array<core::Byte, 11> header{'N', 'E', 'S', 0x1A, 2, 0, 0x20, 0x38, 2, 0, 7};
+    std::ranges::copy(header, rom.begin());
+    rom[16] = 0x4C; // JMP $8000
+    rom[18] = 0x80;
+    for (int vector : {8192 - 6, 8192 - 4, 8192 - 2})
+        rom[16 + vector + 1] = 0x80;
+    REQUIRE(core::write_binary_file_atomic(cartridge.string(), rom, "Game Doctor ROM"));
+    const auto before = Access::state(*fixture.gui);
+    fixture.gui->open_initial_rom(cartridge.string(), {}, {.game_doctor_bios_path = bios.string()});
+    fixture.wait([&] { return Access::recovery(*fixture.gui) != nullptr; });
+    REQUIRE(contains(*Access::recovery(*fixture.gui), "Turbo Game Doctor BIOS"));
+    CHECK(Access::state(*fixture.gui) == before);
+
+    const std::vector<core::Byte> firmware(8192, 0xA5);
+    REQUIRE(core::write_binary_file_atomic(bios.string(), firmware, "Game Doctor BIOS"));
+    auto expected = core::Cartridge::from_data(rom);
+    REQUIRE(expected);
+    REQUIRE(expected->configure_game_doctor_bios(firmware));
+    click(*Access::recovery(*fixture.gui), "Retry");
+    fixture.wait([&] { return Access::identity(*fixture.gui) == expected->content_hash(); });
+    const std::lock_guard lock(fixture.work->mutex);
+    CHECK(fixture.work->requests.back().cartridge_options.game_doctor_bios_path == bios.string());
+}
+
 TEST_CASE("GUI session hotkeys yield to a keyboard cartridge and return after a ROM switch",
           "[gui][input][cartridge-keyboard]") {
     Fixture fixture(SettingsMode::Saved);

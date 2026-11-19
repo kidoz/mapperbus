@@ -331,6 +331,8 @@ core::Result<std::string> load_rom_source(core::Emulator& emulator,
         if (!game_doctor_bios_path.empty()) {
             auto bios = core::read_binary_file_capped(
                 game_doctor_bios_path, 8192, "Turbo Game Doctor BIOS");
+            if (control.stop.stop_requested())
+                return cancelled_error();
             if (!bios)
                 return std::unexpected(bios.error());
             if (auto configured = cartridge.configure_game_doctor_bios(*bios); !configured)
