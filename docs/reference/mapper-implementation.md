@@ -5095,7 +5095,7 @@ or another registered cartridge ID.
 | 271 | Board-specific specification | Registered: Bmc22026 | [r24533](https://www.nesdev.org/w/index.php?oldid=24533) |
 | 272 | Board-specific specification | Registered: Mapper272 | [r7701](https://www.nesdev.org/w/index.php?oldid=7701) |
 | 273 | Board-specific specification | Registered: Mapper273 | [r7703](https://www.nesdev.org/w/index.php?oldid=7703) |
-| 274 | Board-specific specification | Not registered | [r7708](https://www.nesdev.org/w/index.php?oldid=7708) |
+| 274 | Board-specific specification | Registered: CartridgeStory274 | [r7708](https://www.nesdev.org/w/index.php?oldid=7708) |
 | 275 | Board-specific specification | Not registered | [r7709](https://www.nesdev.org/w/index.php?oldid=7709) |
 | 276 | Board-specific specification | Not registered | [r7710](https://www.nesdev.org/w/index.php?oldid=7710) |
 | 277 | Board-specific specification | Not registered | [r24389](https://www.nesdev.org/w/index.php?oldid=24389) |
