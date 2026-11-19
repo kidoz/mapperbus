@@ -247,7 +247,7 @@ Byte MemoryBus::read_cycle(Address addr, Address cpu_address, bool dma) {
     // External memory still sees the DMA address, even when the internal APU
     // decoder selects a register. Its $4015 read never drives external open bus.
     Byte external = open_bus();
-    if (addr < 0x4000 || addr >= 0x4018)
+    if (addr < 0x4000 || addr == 0x4011 || addr >= 0x4018)
         external = (this->*(read_map_[static_cast<uint32_t>(addr) >> 10U]))(addr);
     if (internal == 0x4015 && apu_enabled) {
         if (cartridge_ != nullptr)
@@ -456,6 +456,8 @@ Byte MemoryBus::read_ppu(Address addr) {
 
 Byte MemoryBus::read_apu_io(Address addr) {
     if (addr < 0x4018) {
+        if (addr == 0x4011)
+            return read_expansion(addr);
         if (addr == 0x4016 || addr == 0x4017) {
             return read_controller(addr - 0x4016, open_bus(), false);
         }

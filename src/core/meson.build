@@ -353,6 +353,7 @@ core_sources = files(
     'mappers/mapper595.cpp',
     'mappers/multicart51_53.cpp',
     'mappers/multicart_latches.cpp',
+    'mappers/rainbow.cpp',
     'mappers/shanghai158b.cpp',
     'mappers/transformer_keyboard.cpp',
     'fds/fds.cpp',

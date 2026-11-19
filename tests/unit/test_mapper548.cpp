@@ -659,6 +659,159 @@ TEST_CASE("Game Doctor gameplay mode includes the startup trainer, mutable PRG a
         CHECK(c.read_prg(0x8000) == 0);
     }
 }
+TEST_CASE("Rainbow maps flash, FPGA and independent CPU/PPU memory at all granularities",
+          "[mapper682]") {
+    auto c = cartridge(682, 512, 256, 2, 0x70, 9);
+    CHECK(c.read_expansion(0x4160) == 0x21);
+    for (Byte mode = 0; mode <= 4; ++mode) {
+        c.write_expansion(0x4100, mode);
+        c.write_expansion(0x4118, 3);
+        const unsigned size = mode == 0 ? 32768 : mode <= 2 ? 16384 : mode == 3 ? 8192 : 4096;
+        CHECK(c.read_prg(0x8000) == 3 * size / 8192U);
+        c.write_expansion(0x4120, mode);
+        c.write_expansion(0x4141, 14);
+        c.write_expansion(0x4140, 12);
+        const unsigned chrsize = 8192U >> mode;
+        CHECK(c.read_chr(0) == 12 * chrsize / 1024U);
+        if (mode)
+            CHECK(c.read_chr(chrsize) == 14 * chrsize / 1024U);
+    }
+    c.write_expansion(0x4106, 0xC0);
+    c.write_prg(0x7803, 0x71);
+    CHECK(c.read_expansion(0x4803) == 0x71);
+    c.write_expansion(0x415C, 0x1F);
+    c.write_expansion(0x415D, 0xFE);
+    c.write_expansion(0x415E, 2);
+    c.write_expansion(0x415F, 0xAB);
+    c.write_expansion(0x415F, 0xCE);
+    CHECK(c.read_expansion(0x4FFE) == 0xAB);
+    CHECK(c.read_expansion(0x5000) == 0xCE);
+    c.write_expansion(0x4108, 0x80);
+    c.write_prg(0x8100, 0xE2);
+    CHECK(c.read_prg(0x8100) == 0xE2);
+    c.write_expansion(0x4108, 0);
+    c.write_expansion(0x4118, 32);
+    c.write_prg(0x8AAA, 0xAA);
+    c.write_prg(0x8555, 0x55);
+    c.write_prg(0x8AAA, 0xA0);
+    c.write_prg(0x8100, 0x0F);
+    CHECK(c.read_prg(0x8100) == 0);
+    CHECK(c.battery_ram().size() == (512 + 256 + 8) * 1024);
+    c.write_expansion(0x4126, 1);
+    CHECK(c.ciram_address(0x2002) == 1026);
+    c.write_expansion(0x412A, 0x80);
+    REQUIRE(c.write_nametable(0x2002, 0xB3));
+    CHECK(c.read_expansion(0x5402) == 0xB3);
+    c.write_expansion(0x4120, 0x40);
+    c.write_chr(3, 0x5C);
+    CHECK(c.read_chr(3) == 0x5C);
+    c.write_expansion(0x4120, 0xC0);
+    CHECK(c.ciram_address(0x1807) == 7);
+    snapshot(c);
+}
+TEST_CASE("Rainbow restores a console snapshot with both 8 MiB flash chips rewritten",
+          "[mapper682][state]") {
+    register_builtin_mappers();
+    constexpr std::size_t flash_bytes = 16U * 1024 * 1024;
+    std::vector<Byte> image(16 + flash_bytes);
+    const std::array<Byte, 16> header{
+        'N', 'E', 'S', 0x1A, 0, 0, 0xA2, 0xA8, 2, 0x42, 0xC0, 12, 0, 0, 0, 0};
+    std::ranges::copy(header, image.begin());
+    auto board = Cartridge::from_data(image);
+    REQUIRE(board);
+    board->set_battery_ram(std::vector<Byte>(board->battery_ram().size(), 0xBD));
+    Emulator emu;
+    REQUIRE(emu.load_cartridge(std::move(*board), {}));
+    emu.power_on();
+    const auto state = emu.save_state();
+    REQUIRE(state.size() > flash_bytes);
+    auto clean = Cartridge::from_data(image);
+    REQUIRE(clean);
+    REQUIRE(emu.load_cartridge(std::move(*clean), {}));
+    emu.power_on();
+    REQUIRE(emu.read_cpu(0x8000) == 0);
+    REQUIRE(emu.load_state(state));
+    CHECK(emu.read_cpu(0x8000) == 0xBD);
+    CHECK(emu.save_state() == state);
+}
+
+TEST_CASE("Rainbow splits the window, fetches extended tiles and sprites and synthesizes OAM code",
+          "[mapper682]") {
+    auto c = cartridge(682, 512, 256, 0, 0, 0);
+    c.write_expansion(0x4120, 0x30);
+    c.write_expansion(0x412A, 3);
+    c.write_expansion(0x5003, 0xC6);
+    auto tile = c.background_fetch(0x2003, 0, 5, 4);
+    REQUIRE(tile);
+    CHECK(tile->palette == 3);
+    REQUIRE(tile->planes);
+    CHECK((*tile->planes)[0] == 24);
+    c.write_expansion(0x4170, 1);
+    c.write_expansion(0x4171, 3);
+    c.write_expansion(0x4172, 0);
+    c.write_expansion(0x4173, 7);
+    c.write_expansion(0x4174, 2);
+    c.write_expansion(0x4175, 7);
+    c.write_expansion(0x412E, 1);
+    c.write_expansion(0x5424, 4);
+    auto window = c.background_fetch(0x2003, 0, 2, 2);
+    REQUIRE(window);
+    CHECK(window->pattern == 65);
+    c.write_expansion(0x4205, 3);
+    auto sprite = c.sprite_pattern(5, 7, false);
+    REQUIRE(sprite);
+    CHECK((*sprite)[0] == 12);
+    c.write_expansion(0x4243, 0);
+    c.write_expansion(0x4242, 0);
+    c.write_expansion(0x4800, 0xB3);
+    CHECK(c.read_expansion(0x4282) == 0xA9);
+    CHECK(c.read_expansion(0x4283) == 0xB3);
+    CHECK(c.read_expansion(0x4285) == 0);
+    CHECK(c.read_expansion(0x4286) == 0x42);
+    CHECK(c.read_expansion(0x4287) == 0x60);
+    c.observe_cpu_read(0x4287, 0x60);
+    CHECK_FALSE(c.maps_expansion(0x4283));
+    snapshot(c);
+}
+TEST_CASE("Rainbow IRQ sources run independently and IPCM observes the unmixed volume",
+          "[mapper682]") {
+    auto c = cartridge(682, 512, 256, 0, 0, 0);
+    c.write_expansion(0x416B, 3);
+    c.write_expansion(0x416C, 0x86);
+    c.write_expansion(0x416D, 0x23);
+    CHECK(c.read_prg(0xFFFA) == 0x23);
+    CHECK(c.read_prg(0xFFFB) == 0x86);
+    c.write_expansion(0x4159, 3);
+    c.write_expansion(0x415A, 5);
+    c.clock_cpu_falling_edge();
+    c.clock_cpu_falling_edge();
+    CHECK_FALSE(c.irq_pending());
+    c.clock_cpu_falling_edge();
+    CHECK(c.read_expansion(0x4161) == 64);
+    CHECK(c.read_expansion(0x4157) == 128);
+    c.write_expansion(0x4150, 0);
+    c.write_expansion(0x4151, 0);
+    c.write_expansion(0x4153, 2);
+    c.on_render_dot(0, 1, true);
+    c.on_render_dot(0, 3, true);
+    CHECK(c.read_expansion(0x4161) == 192);
+    CHECK(c.read_expansion(0x4150) == 0);
+    c.clock_cpu_falling_edge();
+    CHECK(c.read_expansion(0x4154) == 1);
+    c.write_expansion(0x41A0, 0x8A);
+    c.write_expansion(0x41A2, 0x80);
+    c.write_expansion(0x41A9, 5);
+    CHECK(c.audio_output() > 0);
+    CHECK(c.read_expansion(0x4011) == 20);
+    c.write_expansion(0x41AA, 0);
+    CHECK(c.audio_output() == 0);
+    CHECK(c.read_expansion(0x4011) == 20);
+    c.observe_cpu_read(0x4011, 20);
+    CHECK(c.read_expansion(0x4161) == 128);
+    CHECK(c.read_expansion(0x4151) == 64);
+    CHECK_FALSE(c.irq_pending());
+    snapshot(c);
+}
 TEST_CASE("The console executes a Game Doctor trainer then fetches the game's reset vector",
           "[mapper561][mapper562]") {
     for (Word mapper : {561, 562}) {

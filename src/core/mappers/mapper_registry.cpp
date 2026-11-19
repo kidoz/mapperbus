@@ -315,6 +315,7 @@
 #include "core/mappers/oeka_kids.hpp"
 #include "core/mappers/one_bus.hpp"
 #include "core/mappers/racermate168.hpp"
+#include "core/mappers/rainbow.hpp"
 #include "core/mappers/rambo1.hpp"
 #include "core/mappers/realtec_multicart.hpp"
 #include "core/mappers/ret_cufrom.hpp"
@@ -978,6 +979,8 @@ namespace {
         return Mapper594::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 595U)
         return Mapper595::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 682U)
+        return Rainbow::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 30U || header.mapper_number == 111U)
         return FlashBoards::validate_geometry(header, prg_size, chr_size);
     if (JyCompany::supports_mapper(header.mapper_number))
@@ -2333,6 +2336,7 @@ void register_builtin_mappers() {
     registry.register_mapper(562, GameDoctor::create);
     registry.register_mapper(594, make_factory<Mapper594>());
     registry.register_mapper(595, make_factory<Mapper595>());
+    registry.register_mapper(682, make_factory<Rainbow>());
 }
 
 } // namespace mapperbus::core

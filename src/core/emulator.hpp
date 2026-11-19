@@ -101,9 +101,8 @@ class Emulator {
     /// A rejected blob leaves the running machine unchanged.
     [[nodiscard]] bool load_state(std::span<const Byte> data, bool allow_legacy = false);
 
-    /// Largest accepted save-state blob. Above the biggest honest state (a
-    /// 16-side FDS image plus mapper RAM) and below an unbounded allocation.
-    static constexpr std::size_t kMaxStateBytes = 4 * 1024 * 1024;
+    /// Includes two fully rewritten 8 MiB Rainbow flash chips, chip RAM and console state.
+    static constexpr std::size_t kMaxStateBytes = 32 * 1024 * 1024;
 
     [[nodiscard]] Result<void> save_state_to_file(const std::string& path) const;
     [[nodiscard]] Result<void> load_state_from_file(const std::string& path,
@@ -232,6 +231,7 @@ class Emulator {
     }
 
   private:
+    [[nodiscard]] std::size_t state_size_limit() const;
     void reset_machine(bool cold_start);
     void wire_apu();
     void retain_shared_nvram();

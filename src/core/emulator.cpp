@@ -186,7 +186,8 @@ Result<void> Emulator::load_cartridge(Cartridge cartridge,
             if (!data)
                 return std::unexpected(data.error());
             if (data->size() != cartridge.battery_ram().size())
-                return std::unexpected("Flash save must contain a complete 512 KiB chip image");
+                return std::unexpected(
+                    "Flash save size does not match this cartridge's persistent storage");
             cartridge.set_battery_ram(*data);
         }
     }
@@ -565,8 +566,14 @@ bool Emulator::restore_state(std::span<const Byte> data, bool allow_legacy) {
     return true;
 }
 
+std::size_t Emulator::state_size_limit() const {
+    // Rainbow can modify both of its 8 MiB flash chips. Existing board payloads fit in 4 MiB.
+    return cartridge_ && cartridge_->header().mapper_number == 682 ? kMaxStateBytes
+                                                                   : 4U * 1024U * 1024U;
+}
+
 bool Emulator::load_state(std::span<const Byte> data, bool allow_legacy) {
-    if (data.size() > kMaxStateBytes) {
+    if (data.size() > state_size_limit()) {
         logger::warn("Save-state rejected: exceeds maximum size");
         return false;
     }
@@ -595,7 +602,7 @@ Result<void> Emulator::save_state_to_file(const std::string& path) const {
 }
 
 Result<void> Emulator::load_state_from_file(const std::string& path, bool allow_legacy) {
-    auto blob = read_binary_file_capped(path, kMaxStateBytes, "save-state file");
+    auto blob = read_binary_file_capped(path, state_size_limit(), "save-state file");
     if (!blob) {
         return std::unexpected(blob.error());
     }
@@ -625,7 +632,8 @@ Result<void> Emulator::load_battery_ram(const std::string& path) {
         return std::unexpected(data.error());
     }
     if (cartridge_->has_flash_storage() && data->size() != cartridge_->battery_ram().size())
-        return std::unexpected("Flash save must contain a complete 512 KiB chip image");
+        return std::unexpected(
+            "Flash save size does not match this cartridge's persistent storage");
     cartridge_->set_battery_ram(*data);
     return {};
 }
