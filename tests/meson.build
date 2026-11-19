@@ -587,6 +587,13 @@ test_mapper296 = executable('test-mapper296',
 )
 test('mapper296', test_mapper296, timeout : mapper_test_timeout)
 
+# The exhaustive MMC3 alias matrix exceeds the ordinary mapper budget.
+test_mapper351 = executable('test-mapper351',
+    'unit/test_mapper351.cpp',
+    dependencies : [mapperbus_core_dep, catch2_dep],
+)
+test('mapper351', test_mapper351, timeout : mapper_test_timeout * 3)
+
 test_one_bus = executable('test-one-bus',
     'unit/test_one_bus.cpp',
     dependencies : [mapperbus_core_dep, catch2_dep],
