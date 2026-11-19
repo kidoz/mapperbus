@@ -77,6 +77,7 @@
 #include "core/mappers/uxrom.hpp"
 #include "core/mappers/vrc6.hpp"
 #include "core/mappers/vrc7.hpp"
+#include "core/mappers/vs_system.hpp"
 
 namespace mapperbus::core {
 namespace {
@@ -143,6 +144,8 @@ namespace {
         return JalecoJf13::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 91U)
         return Mapper091::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 99U)
+        return VsSystem::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 30U || header.mapper_number == 111U)
         return FlashBoards::validate_geometry(header, prg_size, chr_size);
     if (JyCompany::supports_mapper(header.mapper_number))
