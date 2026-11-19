@@ -93,6 +93,7 @@ core_sources = files(
     'mappers/jaleco_jf13.cpp',
     'mappers/mapper091.cpp',
     'mappers/mapper103.cpp',
+    'mappers/mapper104_golden_five.cpp',
     'mappers/vs_system.cpp',
     'fds/fds.cpp',
     'fds/fds_mapper.cpp',
