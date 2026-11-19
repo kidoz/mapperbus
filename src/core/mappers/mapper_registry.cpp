@@ -59,6 +59,7 @@
 #include "core/mappers/namco108.hpp"
 #include "core/mappers/namco163.hpp"
 #include "core/mappers/namco175340.hpp"
+#include "core/mappers/nes_event.hpp"
 #include "core/mappers/nrom.hpp"
 #include "core/mappers/ntdec_2722.hpp"
 #include "core/mappers/ntdec_n625092.hpp"
@@ -120,6 +121,8 @@ namespace {
         return ConyYoko::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 96U)
         return OekaKids::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 105U)
+        return NesEvent::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 12U)
         return Mapper012::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 14U)
@@ -1051,6 +1054,7 @@ void register_builtin_mappers() {
     for (const uint16_t id : {83U, 264U})
         registry.register_mapper(id, make_factory<ConyYoko>());
     registry.register_mapper(96, make_factory<OekaKids>());
+    registry.register_mapper(105, make_factory<NesEvent>());
     registry.register_mapper(12, make_factory<Mapper012>());
     registry.register_mapper(14, make_factory<Sl1632>());
     registry.register_mapper(15, make_factory<Mapper015>());
