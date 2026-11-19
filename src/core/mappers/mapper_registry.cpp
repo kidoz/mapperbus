@@ -933,7 +933,7 @@ namespace {
         return Maxi15::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 237U)
         return Teletubbies::validate_geometry(header, prg_size, chr_size);
-    if (header.mapper_number == 236U)
+    if (header.mapper_number == 236U || header.mapper_number == 390U)
         return RealtecMulticart::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 235U)
         return GoldenGame::validate_geometry(header, prg_size, chr_size);
@@ -2132,6 +2132,7 @@ void register_builtin_mappers() {
     registry.register_mapper(384, make_factory<Mapper384>());
     registry.register_mapper(385, make_factory<Mapper385>());
     registry.register_mapper(389, make_factory<Mapper389>());
+    registry.register_mapper(390, make_factory<RealtecMulticart>());
     registry.register_mapper(391, make_factory<Mapper391>());
     registry.register_mapper(392, make_factory<Mapper392>());
     registry.register_mapper(393, make_factory<Mapper393>());

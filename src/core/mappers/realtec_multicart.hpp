@@ -35,6 +35,7 @@ class RealtecMulticart final : public Mapper {
     std::vector<Byte> prg_rom_;
     std::vector<Byte> chr_;
     bool chr_ram_;
+    bool historical_8031_;
     Byte lower_ = 0U;
     Byte upper_ = 0U;
     Byte pads_ = 0U;

@@ -370,6 +370,23 @@ TEST_CASE("5069 locks its outer PRG and mirroring while retaining an inner regis
     CHECK(c->read_prg(0x8000) == 0);
     CHECK(c->mirror_mode() == MirrorMode::Vertical);
 }
+TEST_CASE("Historical Realtec 8031 latches CHR and PRG independently", "[mapper390][cartridge]") {
+    register_builtin_mappers();
+    auto rom = image(390, 8, 8);
+    rom[16 + 3] = 67;
+    auto c = Cartridge::from_data(rom);
+    REQUIRE(c);
+    c->write_prg(0x8026, 0);
+    CHECK(c->mirror_mode() == MirrorMode::Horizontal);
+    CHECK(c->read_chr(0) == 6);
+    c->write_prg(0xC025, 0);
+    CHECK(c->read_prg(0x8000) == 4);
+    CHECK(c->read_prg(0xC001) == 5);
+    REQUIRE(c->configure_board_jumpers(1));
+    c->write_prg(0xC010, 0);
+    CHECK(c->read_prg(0x8002) == 67);
+}
+
 TEST_CASE("Keyboard Transformer latches make and break codes and acknowledges read IRQs",
           "[mapper329][cartridge]") {
     register_builtin_mappers();

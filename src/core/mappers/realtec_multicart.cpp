@@ -12,16 +12,19 @@ namespace mapperbus::core {
 // Original address-pin decoding from NESdev mapper 236 r18875.
 // Accept the three documented populations. Reset-zero and cold RAM clearing
 // are deterministic policies; electrical reset/power-up is not specified.
-RealtecMulticart::RealtecMulticart(const INesHeader&,
+RealtecMulticart::RealtecMulticart(const INesHeader& h,
                                    std::vector<Byte> prg_rom,
                                    std::vector<Byte> chr_rom)
     : prg_rom_(std::move(prg_rom)),
       chr_(chr_rom.empty() ? std::vector<Byte>(8192U) : std::move(chr_rom)),
-      chr_ram_(prg_rom_.size() == 524288U) {}
+      chr_ram_(prg_rom_.size() == 524288U), historical_8031_(h.mapper_number == 390) {}
 
 Result<void> RealtecMulticart::validate_geometry(const INesHeader& h,
                                                  std::size_t prg_size,
                                                  std::size_t chr_size) {
+    if (h.mapper_number == 390 &&
+        (!h.is_nes2 || h.has_trainer || prg_size != 131072 || chr_size != 65536))
+        return std::unexpected("Historical mapper 390 requires the 128/64 KiB Realtec 8031 board");
     if (h.is_nes2 && h.submapper != 0U)
         return std::unexpected("Mapper 236 supports submapper 0");
     const bool ram = prg_size == 524288U && chr_size == 0U;
@@ -53,7 +56,7 @@ Byte RealtecMulticart::read_prg(Address addr) {
     bank &= static_cast<unsigned>(prg_rom_.size() / 16384U - 1U);
     unsigned offset = bank * 16384U + (addr & 0x3FFFU);
     if (mode == 1U)
-        offset = (offset & ~15U) | pads_;
+        offset = (historical_8031_ ? offset : offset & ~15U) | pads_;
     return prg_rom_[offset];
 }
 
@@ -109,7 +112,8 @@ void RealtecMulticart::reset() {
 }
 uint16_t RealtecMulticart::state_tag() const {
     const unsigned population = chr_ram_ ? 2U : (prg_rom_.size() == 262144U ? 1U : 0U);
-    return static_cast<uint16_t>(0xEC00U | (pads_ << 4U) | population);
+    return static_cast<uint16_t>((historical_8031_ ? 0xED00U : 0xEC00U) | (pads_ << 4U) |
+                                 population);
 }
 void RealtecMulticart::save_state(StateWriter& writer) const {
     writer.write(state_tag());
