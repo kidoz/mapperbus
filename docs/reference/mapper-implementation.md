@@ -4905,7 +4905,7 @@ or another registered cartridge ID.
 | 083 | Cony / Yoko | Registered: ConyYoko | [r24580](https://www.nesdev.org/w/index.php?oldid=24580) |
 | 084 | Board-specific specification | Not registered | [r24088](https://www.nesdev.org/w/index.php?oldid=24088) |
 | 085 | VRC7 | Existing registration: Vrc7 | [r22102](https://www.nesdev.org/w/index.php?oldid=22102) |
-| 086 | Jaleco JF-13 | Not registered | [r24513](https://www.nesdev.org/w/index.php?oldid=24513) |
+| 086 | Jaleco JF-13 | Registered: JalecoJf13 | [r24513](https://www.nesdev.org/w/index.php?oldid=24513) |
 | 087 | Jaleco / Konami J87 | New implementation: DiscreteMapper | [r23104](https://www.nesdev.org/w/index.php?oldid=23104) |
 | 088 | Namco 118 variant | New implementation: Namco108 | [r23903](https://www.nesdev.org/w/index.php?oldid=23903) |
 | 089 | Sunsoft 2 | New implementation: DiscreteMapper | [r24544](https://www.nesdev.org/w/index.php?oldid=24544) |
