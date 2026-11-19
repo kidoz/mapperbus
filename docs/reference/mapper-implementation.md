@@ -5086,7 +5086,7 @@ or another registered cartridge ID.
 | 262 | Sachen Street Heroes / UNL-SHERO | New implementation: Mmc3 | [r7640](https://www.nesdev.org/w/index.php?oldid=7640) |
 | 263 | Rex Soft UNL-KOF97 | New implementation: Mmc3 | [r7642](https://www.nesdev.org/w/index.php?oldid=7642) |
 | 264 | Board-specific specification | Registered: ConyYoko | [r24580](https://www.nesdev.org/w/index.php?oldid=24580) |
-| 265 | Board-specific specification | Not registered | [r21955](https://www.nesdev.org/w/index.php?oldid=21955) |
+| 265 | Board-specific specification | Registered: Mapper128 | [r21955](https://www.nesdev.org/w/index.php?oldid=21955) |
 | 266 | Board-specific specification | Not registered | [r7660](https://www.nesdev.org/w/index.php?oldid=7660) |
 | 267 | Board-specific specification | Not registered | [r7663](https://www.nesdev.org/w/index.php?oldid=7663) |
 | 268 | Coolboy / Mindkids | Not registered | [r24626](https://www.nesdev.org/w/index.php?oldid=24626) |
