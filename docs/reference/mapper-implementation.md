@@ -5123,7 +5123,7 @@ some historical aliases share a factory with another ID.
 | 300 | Board-specific specification | Registered: Mapper300 | [r7775](https://www.nesdev.org/w/index.php?oldid=7775) |
 | 301 | 8157 | Registered: ChrRamMulticarts | [r19709](https://www.nesdev.org/w/index.php?oldid=19709) |
 | 302 | Board-specific specification | Registered: KaiserKs7057 | [r22779](https://www.nesdev.org/w/index.php?oldid=22779) |
-| 303 | Board-specific specification | Not registered | [r7779](https://www.nesdev.org/w/index.php?oldid=7779) |
+| 303 | Kaiser KS-7017 | Registered: Mapper303 | [r7779](https://www.nesdev.org/w/index.php?oldid=7779) |
 | 304 | Board-specific specification | Registered: Mapper304 | [r7785](https://www.nesdev.org/w/index.php?oldid=7785) |
 | 305 | Board-specific specification | Registered: Mapper305 | [r7786](https://www.nesdev.org/w/index.php?oldid=7786) |
 | 306 | Board-specific specification | Registered: Mapper306 | [r7788](https://www.nesdev.org/w/index.php?oldid=7788) |
