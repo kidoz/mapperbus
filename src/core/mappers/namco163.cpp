@@ -87,8 +87,7 @@ Byte Namco163::read_chr(Address addr) {
     if (use_chr_ram_)
         return chr_ram_[addr % 0x2000];
     uint8_t bank_idx = (addr / 0x0400) & 0x07;
-    uint32_t offset = static_cast<uint32_t>(chr_banks_[bank_idx]) * 0x0400 + (addr % 0x0400);
-    return chr_rom_[offset % chr_rom_.size()];
+    return chr_rom_byte(chr_banks_[bank_idx], addr);
 }
 
 void Namco163::write_chr(Address addr, Byte value) {

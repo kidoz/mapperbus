@@ -224,3 +224,39 @@ TEST_CASE("LittleCom 160 uses address pins for PRG and CIRAM", "[mapper541]") {
     CHECK(c.mirror_mode() == MirrorMode::Horizontal);
     replay(c);
 }
+TEST_CASE("CHINA_ER_SAN2 uses its font ROM for the translation overlay", "[mapper532]") {
+    register_builtin_mappers();
+    constexpr auto font_offset = 16U + 2U * 262144U;
+    std::vector<Byte> image(font_offset + 29920U);
+    constexpr std::array<Byte, 16> h{
+        'N', 'E', 'S', 26, 16, 32, 0x42, 0x18, 2, 0, 0x70, 0, 0, 0, 1, 1};
+    std::ranges::copy(h, image.begin());
+    image[font_offset + 32] = 0x80; // group 6, glyph 1, top left pixel
+    auto cart = Cartridge::from_data(image);
+    REQUIRE(cart);
+    cart->write_prg(0x6002, 0xFF);
+    REQUIRE(cart->read_prg(0x6002) == 0);
+    cart->write_prg(0xF800, 0x40);
+    cart->write_prg(0x6002, 0x58);
+    REQUIRE(cart->read_prg(0x6002) == 0x58);
+    Ppu ppu;
+    ppu.connect_cartridge(&*cart);
+    const auto put = [&](Address a, Byte b) {
+        ppu.write_register(6, a >> 8);
+        ppu.write_register(6, a & 255);
+        ppu.write_register(7, b);
+    };
+    put(0x3F00, 0x30);
+    put(0x2420, 6); // scene 6 uses second physical name table
+    put(0x2421, 16);
+    std::array<Byte, kRamSize> ram{};
+    REQUIRE(&cart->translated_frame(ppu, ram) == &ppu.frame_buffer());
+    ram[0x60] = 6;
+    ram[0xBA] = 8;
+    const auto& frame = cart->translated_frame(ppu, ram);
+    REQUIRE(frame.pixels[6 * kScreenWidth] == ppu.palette_color(0x30));
+    REQUIRE(frame.pixels[6 * kScreenWidth + 1] == ppu.frame_buffer().pixels[6 * kScreenWidth + 1]);
+    replay(*cart);
+    image.pop_back();
+    REQUIRE_FALSE(Cartridge::from_data(image));
+}

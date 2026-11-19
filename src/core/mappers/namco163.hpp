@@ -40,6 +40,11 @@ class Namco163 : public Mapper {
     std::span<const Byte> battery_ram() const override;
     void set_battery_ram(std::span<const Byte> data) override;
 
+  protected:
+    Byte chr_rom_byte(Byte bank, Address address) const {
+        return chr_rom_[(bank * 1024U + (address & 1023U)) % chr_rom_.size()];
+    }
+
   private:
     std::vector<Byte> prg_rom_;
     std::vector<Byte> chr_rom_;

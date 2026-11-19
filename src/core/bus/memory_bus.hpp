@@ -21,6 +21,9 @@ class MemoryBus {
   public:
     MemoryBus();
 
+    const std::array<Byte, kRamSize>& internal_ram() const {
+        return ram_;
+    }
     Byte read(Address addr);
     /// Timed CPU access, with controller output-enable edges.
     Byte read_cpu(Address addr);

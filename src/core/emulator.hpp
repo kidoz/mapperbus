@@ -120,6 +120,8 @@ class Emulator {
     [[nodiscard]] Result<void> load_battery_ram(const std::string& path);
 
     [[nodiscard]] const FrameBuffer& frame_buffer() const {
+        if (cartridge_ && cartridge_->header().mapper_number == 532U)
+            return cartridge_->translated_frame(ppu_, bus_.internal_ram());
         return ppu_.frame_buffer();
     }
     [[nodiscard]] const Ppu& ppu() const {

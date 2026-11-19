@@ -307,6 +307,7 @@
 #include "core/mappers/realtec_multicart.hpp"
 #include "core/mappers/ret_cufrom.hpp"
 #include "core/mappers/sachen.hpp"
+#include "core/mappers/san2.hpp"
 #include "core/mappers/shanghai158b.hpp"
 #include "core/mappers/single_chip.hpp"
 #include "core/mappers/sl1632.hpp"
@@ -1916,6 +1917,7 @@ void register_builtin_mappers() {
     registry.register_mapper(207, make_factory<TaitoX1005>());
     registry.register_mapper(82, make_factory<TaitoX1017>());
     registry.register_mapper(531, make_factory<Mmc3>());
+    registry.register_mapper(532, San2::create);
     registry.register_mapper(541, make_factory<MulticartLatches>());
     registry.register_mapper(545, make_factory<Mmc3>());
     registry.register_mapper(551, make_factory<Fs305>());

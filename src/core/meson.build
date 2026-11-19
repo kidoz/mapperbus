@@ -332,6 +332,7 @@ core_sources = files(
     'mappers/chr_ram_multicarts.cpp',
     'mappers/coolx_lite.cpp',
     'mappers/education_440_442.cpp',
+    'mappers/san2.cpp',
     'mappers/fs305.cpp',
     'mappers/mapper127.cpp',
     'mappers/yh001.cpp',
