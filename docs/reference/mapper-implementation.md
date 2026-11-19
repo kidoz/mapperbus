@@ -5006,7 +5006,7 @@ or another registered cartridge ID.
 | 180 | UxROM fixed-low-window variant | New implementation: DiscreteMapper | [r19264](https://www.nesdev.org/w/index.php?oldid=19264) |
 | 181 | Board-specific specification | Not registered | [r24634](https://www.nesdev.org/w/index.php?oldid=24634) |
 | 182 | Historical duplicate of 114 | Duplicate; not registered | [r4858](https://www.nesdev.org/w/index.php?oldid=4858) |
-| 183 | Board-specific specification | Not registered | [r24192](https://www.nesdev.org/w/index.php?oldid=24192) |
+| 183 | Board-specific specification | Registered: Mapper183 | [r24192](https://www.nesdev.org/w/index.php?oldid=24192) |
 | 184 | Sunsoft CHR banking | New implementation: DiscreteMapper | [r23872](https://www.nesdev.org/w/index.php?oldid=23872) |
 | 185 | CNROM CHR-disable protection | Not registered | [r24346](https://www.nesdev.org/w/index.php?oldid=24346) |
 | 186 | Fukutake Study Box convention | Not registered | [r19026](https://www.nesdev.org/w/index.php?oldid=19026) |
