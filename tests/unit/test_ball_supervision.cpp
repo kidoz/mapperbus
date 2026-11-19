@@ -46,6 +46,56 @@ void verify_state(Cartridge& cart) {
     CHECK(restored.data() == saved.data());
 }
 } // namespace
+TEST_CASE("Ball Games selects 8/16/32 KiB windows for both board wirings", "[ball-supervision]") {
+    register_builtin_mappers();
+    for (Byte sub : {0U, 1U}) {
+        auto cart = Cartridge::from_data(image(51, 32, 0, sub));
+        REQUIRE(cart);
+        CHECK(cart->read_prg(0x6000) == 35U);
+        CHECK(cart->read_prg(0x8000) == 0U);
+        cart->write_prg(0x8000, 0x55U);
+        CHECK(cart->read_prg(0x6000) == (sub ? 43U : 55U));
+        CHECK(cart->read_prg(0x8000) == (sub ? 40U : 20U));
+        cart->write_prg(0x7FFF, 0x10U);
+        CHECK(cart->mirror_mode() == MirrorMode::Horizontal);
+        CHECK(cart->read_prg(0x6000) == (sub ? 43U : 63U));
+        CHECK(cart->read_prg(0x8000) == (sub ? 58U : 22U));
+        CHECK(cart->read_prg(0xC000) == (sub ? 62U : 30U));
+        cart->write_chr(0x1234, 0x89);
+        verify_state(*cart);
+        CHECK(cart->read_chr(0x1234) == 0x89U);
+        CHECK_FALSE(cart->maps_prg(0x5FFF));
+    }
+}
+TEST_CASE("Supervision accepts menu-first or separate EPROM and locks the game selection",
+          "[ball-supervision]") {
+    register_builtin_mappers();
+    auto combined = image(53, 130, 0);
+    auto separate = combined;
+    separate[4] = 128;
+    separate[14] = 1;
+    std::rotate(separate.begin() + 16, separate.begin() + 16 + 32768, separate.end());
+    for (const auto& data : {combined, separate}) {
+        auto cart = Cartridge::from_data(data);
+        REQUIRE(cart);
+        CHECK(cart->read_prg(0x8000) == 0);
+        CHECK(cart->read_prg(0xFFFF) == 3);
+        CHECK(cart->read_prg(0x6000) == 19);
+        cart->write_prg(0x6000, 0x32);
+        cart->write_prg(0x7FFF, 0);
+        cart->write_prg(0x8000, 3);
+        CHECK(cart->read_prg(0x8000) == 42U);
+        CHECK(cart->read_prg(0xC000) == 50U);
+        CHECK(cart->read_prg(0x6000) == 51U);
+        REQUIRE(cart->mirror_mode() == MirrorMode::Horizontal);
+        verify_state(*cart);
+        cart->reset();
+        CHECK(cart->read_prg(0xFFFF) == 3);
+    }
+    separate.pop_back();
+    CHECK_FALSE(Cartridge::from_data(separate));
+}
+
 TEST_CASE("Historical mapper IDs dispatch to their boards and retain image identity",
           "[legacy-alias]") {
     register_builtin_mappers();

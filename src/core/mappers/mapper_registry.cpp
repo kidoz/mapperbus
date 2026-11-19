@@ -280,6 +280,7 @@
 #include "core/mappers/multicart230.hpp"
 #include "core/mappers/multicart233.hpp"
 #include "core/mappers/multicart242.hpp"
+#include "core/mappers/multicart51_53.hpp"
 #include "core/mappers/n32_mapper050.hpp"
 #include "core/mappers/namco108.hpp"
 #include "core/mappers/namco163.hpp"
@@ -854,6 +855,8 @@ namespace {
         return Mapper529::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 530U)
         return Mapper530::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 51U || header.mapper_number == 53U)
+        return Multicart51_53::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 329U)
         return TransformerKeyboard::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 440U || header.mapper_number == 442U)
@@ -1877,7 +1880,9 @@ void register_builtin_mappers() {
     registry.register_mapper(45, make_factory<Mapper045>());
     registry.register_mapper(47, make_factory<Mmc3Multicart47>());
     registry.register_mapper(50, make_factory<N32Mapper050>());
+    registry.register_mapper(51, make_factory<Multicart51_53>());
     registry.register_mapper(52, make_factory<Realtec8213>());
+    registry.register_mapper(53, Multicart51_53::create_with_menu);
     registry.register_mapper(55, make_factory<Mario1Malee2>());
     registry.register_mapper(59, make_factory<BmcT3h53>());
     registry.register_mapper(60, make_factory<Multicart060>());

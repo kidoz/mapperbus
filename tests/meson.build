@@ -703,6 +703,19 @@ foreach mapper_id : [
     test('mapper' + mapper_id, test_mapper, timeout : mapper_test_timeout)
 endforeach
 
+    'unit/test_fs305.cpp',
+    dependencies : [mapperbus_core_dep, catch2_dep],
+), timeout : mapper_test_timeout)
+
+    'unit/test_middle_boards.cpp',
+    dependencies : [mapperbus_core_dep, catch2_dep],
+), timeout : mapper_test_timeout)
+
+test('ball-supervision', executable('test-ball-supervision',
+    'unit/test_ball_supervision.cpp',
+    dependencies : [mapperbus_core_dep, catch2_dep],
+), timeout : mapper_test_timeout)
+
 test_mapper296 = executable('test-mapper296',
     'unit/test_vt3x.cpp',
     dependencies : [mapperbus_core_dep, catch2_dep],
