@@ -333,6 +333,7 @@ core_sources = files(
     'mappers/coolx_lite.cpp',
     'mappers/education_440_442.cpp',
     'mappers/san2.cpp',
+    'mappers/fds_conversion_535.cpp',
     'mappers/fs305.cpp',
     'mappers/mapper127.cpp',
     'mappers/yh001.cpp',

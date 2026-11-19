@@ -234,6 +234,56 @@ TEST_CASE("ING-022 inverts the MMC3 IRQ reload byte", "[mapper534]") {
     c.write_prg(0x8001, 5);
     CHECK(c.read_prg(0x8000) == 5);
 }
+TEST_CASE("LH53 overlays WRAM on PRG and counts M2 cycles", "[mapper535]") {
+    auto c = board(535, 8, 0, 0, 7);
+    c.write_prg(0xFF00, 10);
+    CHECK(c.read_prg(0x6000) == 10);
+    c.write_prg(0xB800, 77);
+    c.write_prg(0xD7FF, 99);
+    CHECK(c.read_prg(0xB7FF) == 13);
+    CHECK(c.read_prg(0xB800) == 77);
+    CHECK(c.read_prg(0xD7FF) == 99);
+    CHECK(c.read_prg(0xD800) == 14);
+    c.write_prg(0xEFFF, 2);
+    for (int i = 0; i < 7559; ++i)
+        c.clock_cpu();
+    CHECK_FALSE(c.irq_pending());
+    replay(c);
+    c.clock_cpu();
+    CHECK(c.irq_pending());
+    c.write_prg(0xE000, 0);
+    CHECK_FALSE(c.irq_pending());
+}
+TEST_CASE("Super Soccer Champion maps an asymmetric pair at 6000 and 8000", "[mapper538]") {
+    auto c = board(538, 8, 0, 0, 7);
+    constexpr std::array<Byte, 16> low{0, 10, 2, 10, 4, 10, 6, 10, 8, 8, 10, 10, 12, 12, 14, 14};
+    for (Byte i = 0; i < 16; ++i) {
+        c.write_prg(0xDFFF, i);
+        CHECK(c.read_prg(0x6000) == (i | 1));
+        CHECK(c.read_prg(0x8000) == low[i]);
+        CHECK(c.read_prg(0xA000) == 13);
+    }
+    CHECK(c.mirror_mode() == MirrorMode::Vertical);
+    c.write_chr(0x1FFF, 0xA5);
+    replay(c);
+    CHECK(c.read_chr(0x1FFF) == 0xA5);
+}
+TEST_CASE("Kid Icarus conversion decodes disjoint RAM windows", "[mapper539]") {
+    auto c = board(539, 8, 0, 7, 7);
+    constexpr std::array<Address, 6> cells{0x6000, 0x6200, 0x6500, 0x8200, 0xC000, 0xDF00};
+    for (Byte i = 0; i < cells.size(); ++i)
+        c.write_prg(cells[i], 0xF0 + i);
+    c.write_prg(0xA000, 6);
+    c.write_prg(0xFFFF, 8);
+    replay(c);
+    for (Byte i = 0; i < cells.size(); ++i)
+        CHECK(c.read_prg(cells[i]) == 0xF0 + i);
+    CHECK(c.read_prg(0x6100) == 13);
+    CHECK(c.read_prg(0xA000) == 6);
+    CHECK(c.mirror_mode() == MirrorMode::Horizontal);
+    c.write_prg(0xFFFF, 0);
+    CHECK(c.mirror_mode() == MirrorMode::Vertical);
+}
 TEST_CASE("LittleCom 160 uses address pins for PRG and CIRAM", "[mapper541]") {
     auto c = board(541, 64, 0, 0, 7);
     c.write_prg(0xBFFF, 255);

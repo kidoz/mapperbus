@@ -22,6 +22,7 @@
 #include "core/mappers/discrete.hpp"
 #include "core/mappers/education_440_442.hpp"
 #include "core/mappers/fds_conversion108.hpp"
+#include "core/mappers/fds_conversion_535.hpp"
 #include "core/mappers/ffe_super_magic_card.hpp"
 #include "core/mappers/fk23c.hpp"
 #include "core/mappers/flash_boards.hpp"
@@ -923,6 +924,9 @@ namespace {
         return Mmc3::validate_littlecom(header, prg_size, chr_size);
     if (header.mapper_number == 534U)
         return Mapper422::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 535U || header.mapper_number == 538U ||
+        header.mapper_number == 539U)
+        return FdsConversion535::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 545U)
         return Mmc3::validate_st80(header, prg_size, chr_size);
     if (header.mapper_number == 557U)
@@ -1922,6 +1926,9 @@ void register_builtin_mappers() {
     registry.register_mapper(532, San2::create);
     registry.register_mapper(533, make_factory<Sachen>());
     registry.register_mapper(534, make_factory<Mapper422>());
+    registry.register_mapper(535, make_factory<FdsConversion535>());
+    registry.register_mapper(538, make_factory<FdsConversion535>());
+    registry.register_mapper(539, make_factory<FdsConversion535>());
     registry.register_mapper(541, make_factory<MulticartLatches>());
     registry.register_mapper(545, make_factory<Mmc3>());
     registry.register_mapper(551, make_factory<Fs305>());
