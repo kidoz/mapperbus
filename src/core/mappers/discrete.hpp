@@ -13,6 +13,9 @@ namespace mapperbus::core {
 class DiscreteMapper final : public Mapper {
   public:
     DiscreteMapper(const INesHeader& header, std::vector<Byte> prg, std::vector<Byte> chr);
+    static Result<void> validate_fixed_rom_geometry(const INesHeader& header,
+                                                    std::size_t prg,
+                                                    std::size_t chr);
     Byte read_prg(Address addr) override;
     void write_prg(Address addr, Byte value) override;
     bool maps_prg(Address addr) const override;
@@ -24,6 +27,7 @@ class DiscreteMapper final : public Mapper {
     Byte prg_read_mask(Address addr) const override;
     Byte expansion_read_mask(Address addr) const override;
     MirrorMode mirror_mode() const override;
+    void power_on() override;
     void reset() override;
     void save_state(StateWriter& writer) const override;
     void load_state(StateReader& reader) override;

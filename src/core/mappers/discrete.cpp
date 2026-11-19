@@ -21,7 +21,7 @@ DiscreteMapper::DiscreteMapper(const INesHeader& header,
       holy_diver_(submapper_ == 3U ||
                   (submapper_ == 0U && header.mirror_mode == MirrorMode::FourScreen)),
       mirror_(initial_mirror_) {
-    reset();
+    power_on();
     if (mapper_ == 28U) {
         registers_[3U] = 0xFFU;
         mirror_ = MirrorMode::SingleLower;
@@ -30,9 +30,53 @@ DiscreteMapper::DiscreteMapper(const INesHeader& header,
     }
 }
 
+Result<void> DiscreteMapper::validate_fixed_rom_geometry(const INesHeader& h,
+                                                         std::size_t prg,
+                                                         std::size_t chr) {
+    bool known_population = false;
+    switch (h.mapper_number) {
+    case 255U:
+        known_population = prg == 1048576U && chr == 524288U;
+        break;
+    case 170U:
+        known_population = prg == 32768U && chr == 8192U;
+        break;
+    case 175U:
+        known_population = prg == 262144U && chr == 131072U;
+        break;
+    case 214U:
+        known_population = prg == 65536U && chr == 32768U;
+        break;
+    case 216U:
+        // The CHR-ROM Bonza boards require a separate payment-card interface.
+        known_population = prg == 65536U && chr == 0U;
+        break;
+    case 217U:
+        known_population = (prg == 65536U && chr == 32768U) ||
+                           (prg == 131072U && (chr == 65536U || chr == 131072U));
+        break;
+    }
+    if (!known_population || h.submapper != 0U || h.has_trainer || h.has_battery ||
+        (h.is_nes2 && h.prg_ram_size != 0U) || h.prg_nvram_size != 0U ||
+        h.chr_ram_size != (h.mapper_number == 216U ? 8192U : 0U) || h.chr_nvram_size != 0U ||
+        (h.mirror_mode != MirrorMode::Vertical && h.mirror_mode != MirrorMode::Horizontal))
+        return std::unexpected("Unsupported discrete PRG/CHR ROM population");
+    return {};
+}
+
+void DiscreteMapper::power_on() {
+    if (mapper_ == 255U) {
+        address_latch_ = 0;
+        nibble_ram_.fill(0);
+        mirror_ = MirrorMode::Vertical;
+    } else {
+        reset();
+    }
+}
+
 void DiscreteMapper::reset() {
     // These homebrew boards have power-up defaults but no reset input.
-    if (mapper_ == 28U || mapper_ == 31U)
+    if (mapper_ == 28U || mapper_ == 31U || mapper_ == 255U)
         return;
     registers_.fill(0U);
     address_latch_ = 0U;
@@ -54,6 +98,7 @@ void DiscreteMapper::reset() {
     case 58U:
     case 61U:
     case 62U:
+    case 175U:
     case 200U:
     case 202U:
     case 212U:
@@ -76,7 +121,8 @@ bool DiscreteMapper::has_prg_ram() const {
 }
 
 bool DiscreteMapper::maps_prg(Address addr) const {
-    return addr >= 0x8000U || ((has_prg_ram() || mapper_ == 212U) && addr >= 0x6000U);
+    return addr >= 0x8000U || (mapper_ == 170U && (addr == 0x7001U || addr == 0x7777U)) ||
+           ((has_prg_ram() || mapper_ == 212U) && addr >= 0x6000U);
 }
 
 std::size_t DiscreteMapper::prg_offset(Address address) const {
@@ -88,6 +134,14 @@ std::size_t DiscreteMapper::prg_offset(Address address) const {
     std::size_t bank = 0U;
     bool bank_16k = false;
     switch (mapper_) {
+    case 214U:
+        return value * 0x4000U + (addr & 0x3FFFU);
+    case 216U:
+        return value * 0x8000U + (addr & 0x7FFFU);
+    case 217U:
+        return (value >> 2U) * 0x8000U + (addr & 0x7FFFU);
+    case 175U:
+        return value * 0x4000U + (addr & 0x3FFFU);
     case 28U: {
         const auto mode = (static_cast<unsigned>(registers_[2U]) >> 2U) & 3U;
         const auto size = (static_cast<unsigned>(registers_[2U]) >> 4U) & 3U;
@@ -159,6 +213,7 @@ std::size_t DiscreteMapper::prg_offset(Address address) const {
         if ((latched_address & 0x4000U) != 0U)
             bank = (bank & ~std::size_t{1U}) | ((addr >> 14U) & 1U);
         return bank * 0x4000U + (addr & 0x3FFFU);
+    case 255U:
     case 225U:
         bank = ((latched_address >> 6U) & 0x3FU) | ((latched_address >> 8U) & 0x40U);
         if ((latched_address & 0x1000U) == 0U)
@@ -241,6 +296,10 @@ std::size_t DiscreteMapper::prg_offset(Address address) const {
 }
 
 Byte DiscreteMapper::read_prg(Address addr) {
+    if (mapper_ == 175U && addr == 0xFFFCU)
+        registers_[0] = registers_[1]; // The reset-vector fetch itself sees the newly selected ROM.
+    if (mapper_ == 170U && addr < 0x8000U)
+        return maps_prg(addr) ? registers_[0] : 0U;
     if (mapper_ == 212U && addr >= 0x6000U && addr < 0x8000U)
         return (addr & 0x10U) == 0U ? 0x80U : 0U;
     if (addr < 0x8000U)
@@ -252,6 +311,18 @@ void DiscreteMapper::write_prg(Address addr, Byte data) {
     auto value = static_cast<unsigned>(data);
     if (addr < 0x6000U)
         return;
+    if (mapper_ == 170U) {
+        if (addr == 0x6502U || addr == 0x7000U)
+            registers_[0] = static_cast<Byte>((value & 0x40U) << 1U);
+        return;
+    }
+    if (mapper_ == 175U) {
+        if (addr == 0x8000U)
+            mirror_ = (value & 4U) != 0U ? MirrorMode::Horizontal : MirrorMode::Vertical;
+        if (addr == 0xA000U)
+            registers_[1] = value & 15U;
+        return;
+    }
     if (mapper_ == 31U)
         return;
     if (mapper_ == 28U) {
@@ -320,6 +391,17 @@ void DiscreteMapper::write_prg(Address addr, Byte data) {
     if (addr < 0x8000U)
         return;
     switch (mapper_) {
+    case 214U:
+        // The dumper uses $8000 plus the bank on A2/A3; also decode $Fxxx as in MAME.
+        if ((addr & 0xF000U) == 0x8000U || (addr & 0xF000U) == 0xF000U)
+            registers_[0] = (addr >> 2U) & 3U;
+        return;
+    case 216U:
+        registers_[0] = addr & 1U;
+        return;
+    case 217U:
+        registers_[0] = addr & 15U;
+        return;
     case 202U:
         address_latch_ = addr & 15U;
         mirror_ = (addr & 1U) != 0U ? MirrorMode::Horizontal : MirrorMode::Vertical;
@@ -337,6 +419,7 @@ void DiscreteMapper::write_prg(Address addr, Byte data) {
     case 201U:
     case 212U:
     case 213U:
+    case 255U:
     case 225U:
     case 229U:
     case 231U: {
@@ -350,7 +433,7 @@ void DiscreteMapper::write_prg(Address addr, Byte data) {
             mirror_bit = submapper_ == 1U ? 4U : 8U;
         else if (mapper_ == 212U)
             mirror_bit = 8U;
-        else if (mapper_ == 225U)
+        else if (mapper_ == 225U || mapper_ == 255U)
             mirror_bit = 0x2000U;
         else if (mapper_ == 229U)
             mirror_bit = 0x20U;
@@ -407,7 +490,7 @@ void DiscreteMapper::write_prg(Address addr, Byte data) {
 bool DiscreteMapper::maps_expansion(Address addr) const {
     if (mapper_ == 28U || mapper_ == 31U)
         return addr >= 0x5000U && addr < 0x6000U;
-    if (mapper_ == 225U)
+    if (mapper_ == 225U || mapper_ == 255U)
         return addr >= 0x5800U && addr < 0x6000U;
     if (mapper_ == 240U)
         return (addr & 0xE800U) == 0x4800U || (addr & 0xE100U) == 0x4100U;
@@ -415,14 +498,19 @@ bool DiscreteMapper::maps_expansion(Address addr) const {
 }
 
 Byte DiscreteMapper::read_expansion(Address addr) {
-    return mapper_ == 225U && maps_expansion(addr) ? nibble_ram_[addr & 3U] : 0U;
+    return (mapper_ == 225U || mapper_ == 255U) && maps_expansion(addr) ? nibble_ram_[addr & 3U]
+                                                                        : 0U;
 }
 
 Byte DiscreteMapper::prg_read_mask(Address addr) const {
+    if (mapper_ == 170U && addr < 0x8000U)
+        return maps_prg(addr) ? 0x80U : 0U;
     return mapper_ == 212U && addr < 0x8000U ? 0x8FU : 0xFFU;
 }
 
-Byte DiscreteMapper::expansion_read_mask(Address) const {
+Byte DiscreteMapper::expansion_read_mask(Address addr) const {
+    if (mapper_ == 255U && maps_expansion(addr))
+        return 0xFFU;
     return mapper_ == 225U ? 0x0FU : 0U;
 }
 
@@ -436,7 +524,7 @@ void DiscreteMapper::write_expansion(Address addr, Byte value) {
             registers_[addr & 7U] = value;
             return;
         }
-        if (mapper_ == 225U) {
+        if (mapper_ == 225U || mapper_ == 255U) {
             nibble_ram_[addr & 3U] = value & 15U;
             return;
         }
@@ -454,6 +542,11 @@ std::size_t DiscreteMapper::chr_offset(Address address) const {
     const std::size_t value = registers_[0U];
     std::size_t bank = 0U;
     switch (mapper_) {
+    case 214U:
+    case 217U:
+    case 175U:
+        bank = value;
+        break;
     case 28U:
         bank = registers_[0U];
         break;
@@ -508,6 +601,7 @@ std::size_t DiscreteMapper::chr_offset(Address address) const {
     case 212U:
         bank = latched_address & 7U;
         break;
+    case 255U:
     case 225U:
         bank = (latched_address & 0x3FU) | ((latched_address >> 8U) & 0x40U);
         break;
@@ -579,6 +673,27 @@ MirrorMode DiscreteMapper::mirror_mode() const {
 }
 
 void DiscreteMapper::save_state(StateWriter& writer) const {
+    if (mapper_ == 255U) {
+        writer.write(mapper_);
+        writer.write(address_latch_);
+        writer.write_array(nibble_ram_);
+        return;
+    }
+    if (mapper_ == 216U) {
+        writer.write(mapper_);
+        writer.write(registers_[0]);
+        writer.write_bytes(std::span(chr_ram_).first(8192U));
+        return;
+    }
+    if (mapper_ == 170U || mapper_ == 175U || mapper_ == 214U || mapper_ == 217U) {
+        writer.write(mapper_);
+        writer.write(registers_[0]);
+        if (mapper_ == 175U) {
+            writer.write(registers_[1]);
+            writer.write(static_cast<Byte>(mirror_ == MirrorMode::Horizontal));
+        }
+        return;
+    }
     if (mapper_ == 202U) {
         writer.write(kMapper202StateTag);
         writer.write(static_cast<Byte>(address_latch_));
@@ -594,6 +709,52 @@ void DiscreteMapper::save_state(StateWriter& writer) const {
 }
 
 void DiscreteMapper::load_state(StateReader& reader) {
+    if (mapper_ == 255U) {
+        const auto tag = reader.read<Word>();
+        const auto latch = reader.read<Address>();
+        decltype(nibble_ram_) scratch{};
+        reader.read_array(scratch);
+        if (!reader.ok() || tag != mapper_ || (latch != 0 && latch < 0x8000U) ||
+            std::ranges::any_of(scratch, [](Byte value) { return value > 15U; })) {
+            reader.fail();
+            return;
+        }
+        address_latch_ = latch;
+        nibble_ram_ = scratch;
+        mirror_ = (latch & 0x2000U) != 0U ? MirrorMode::Horizontal : MirrorMode::Vertical;
+        return;
+    }
+    if (mapper_ == 216U) {
+        const auto tag = reader.read<uint16_t>();
+        const auto bank = reader.read<Byte>();
+        std::vector<Byte> chr;
+        reader.read_bytes(chr, 8192U);
+        if (!reader.ok() || tag != mapper_ || bank > 1U || chr.size() != 8192U) {
+            reader.fail();
+            return;
+        }
+        registers_[0] = bank;
+        std::ranges::copy(chr, chr_ram_.begin());
+        return;
+    }
+    if (mapper_ == 170U || mapper_ == 175U || mapper_ == 214U || mapper_ == 217U) {
+        const auto tag = reader.read<uint16_t>();
+        const auto active = reader.read<Byte>();
+        const auto pending = mapper_ == 175U ? reader.read<Byte>() : 0U;
+        const auto horizontal = mapper_ == 175U ? reader.read<Byte>() : 0U;
+        const bool invalid_latch =
+            mapper_ == 170U ? (active & 0x7FU) != 0U : active > (mapper_ == 214U ? 3U : 15U);
+        if (!reader.ok() || tag != mapper_ || invalid_latch || pending > 15U || horizontal > 1U) {
+            reader.fail();
+            return;
+        }
+        registers_[0] = active;
+        if (mapper_ == 175U) {
+            registers_[1] = static_cast<Byte>(pending);
+            mirror_ = horizontal != 0U ? MirrorMode::Horizontal : MirrorMode::Vertical;
+        }
+        return;
+    }
     if (mapper_ == 202U) {
         const auto tag = reader.read<uint16_t>();
         const auto latch = reader.read<Byte>();

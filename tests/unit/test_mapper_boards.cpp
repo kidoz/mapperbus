@@ -719,8 +719,7 @@ TEST_CASE("Mapper 225 nibble RAM mirrors preserve the undriven CPU bus bits",
         }
 }
 
-TEST_CASE("Mapper 255 is an apparent duplicate and requires explicit unsupported ID errors",
-          "[mappers][mapper225][mapper255]") {
+TEST_CASE("New Star 128-in-1 rejects unfitted ROM populations", "[mappers][mapper225][mapper255]") {
     register_builtin_mappers();
     for (bool legacy : {false, true})
         for (bool vertical : {false, true}) {
@@ -729,7 +728,7 @@ TEST_CASE("Mapper 255 is an apparent duplicate and requires explicit unsupported
             bytes[7] |= 0x10U;
             auto result = Cartridge::from_data(bytes);
             REQUIRE_FALSE(result);
-            REQUIRE(result.error() == "Unsupported mapper: 255");
+            REQUIRE(result.error() == "Unsupported discrete PRG/CHR ROM population");
             for (bool battery : {false, true}) {
                 auto h = board_header(255U);
                 h.is_nes2 = !legacy;
@@ -737,11 +736,53 @@ TEST_CASE("Mapper 255 is an apparent duplicate and requires explicit unsupported
                 auto unsupported = MapperRegistry::instance().create(
                     h, bank_rom(32768U, 16384U), bank_rom(8192U, 8192U));
                 REQUIRE_FALSE(unsupported);
-                REQUIRE(unsupported.error() == "Unsupported mapper: 255");
+                REQUIRE(unsupported.error() == "Unsupported discrete PRG/CHR ROM population");
             }
         }
 }
 
+TEST_CASE("New Star 128-in-1 decodes all address pins and retains its latches across reset",
+          "[mappers][mapper255]") {
+    register_builtin_mappers();
+    auto result = MapperRegistry::instance().create(
+        board_header(255), bank_rom(1048576, 16384), bank_rom(524288, 8192));
+    REQUIRE(result);
+    auto& m = **result;
+    for (unsigned addr = 0x8000; addr <= 0xFFFF; ++addr) {
+        m.write_prg(static_cast<Address>(addr), 0);
+        const unsigned prg = (addr >> 6) & 63;
+        const bool narrow = addr & 0x1000;
+        REQUIRE(m.read_prg(0x8000) == (narrow ? prg : prg & 62));
+        REQUIRE(m.read_prg(0xC000) == (narrow ? prg : prg | 1));
+        REQUIRE(m.read_chr(0) == (addr & 63));
+        REQUIRE(m.mirror_mode() ==
+                ((addr & 0x2000) ? MirrorMode::Horizontal : MirrorMode::Vertical));
+    }
+    REQUIRE_FALSE(m.maps_expansion(0x57FF));
+    for (unsigned port = 0; port < 4; ++port) {
+        m.write_expansion(0x5800 + port, static_cast<Byte>(0xDC + port));
+        REQUIRE(m.expansion_read_mask(0x5FFC + port) == 0xFF);
+        REQUIRE(m.read_expansion(0x5FFC + port) == 12 + port);
+    }
+    StateWriter writer;
+    m.save_state(writer);
+    m.reset();
+    REQUIRE(m.read_prg(0x8000) == 63);
+    REQUIRE(m.read_expansion(0x5800) == 12);
+    m.power_on();
+    REQUIRE(m.read_prg(0x8000) == 0);
+    REQUIRE(m.read_expansion(0x5800) == 0);
+    StateReader reader(writer.data());
+    m.load_state(reader);
+    REQUIRE(reader.ok());
+    REQUIRE(m.read_chr(0) == 63);
+    auto bad = writer.data();
+    bad.back() = 16;
+    StateReader invalid(bad);
+    m.load_state(invalid);
+    REQUIRE_FALSE(invalid.ok());
+    REQUIRE(m.read_expansion(0x5803) == 15);
+}
 TEST_CASE("Mapper 225 original CPU firmware switches both PRG halves from console RAM",
           "[mappers][mapper225]") {
     register_builtin_mappers();

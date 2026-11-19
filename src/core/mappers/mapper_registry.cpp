@@ -863,6 +863,10 @@ namespace {
         return NesticleMmc3::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 127U)
         return Mapper127::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 170U || header.mapper_number == 175U ||
+        header.mapper_number == 214U || header.mapper_number == 216U ||
+        header.mapper_number == 217U || header.mapper_number == 255U)
+        return DiscreteMapper::validate_fixed_rom_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 329U)
         return TransformerKeyboard::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 440U || header.mapper_number == 442U)
@@ -1790,7 +1794,10 @@ void register_builtin_mappers() {
     registry.register_mapper(199, make_factory<Mmc3>());
     registry.register_mapper(205, make_factory<Mmc3>());
     registry.register_mapper(208, make_factory<Mmc3>());
+    registry.register_mapper(214, make_factory<DiscreteMapper>());
     registry.register_mapper(215, make_factory<Mmc3>());
+    registry.register_mapper(216, make_factory<DiscreteMapper>());
+    registry.register_mapper(217, make_factory<DiscreteMapper>());
     registry.register_mapper(218, make_factory<SingleChip>());
     registry.register_mapper(219, make_factory<Mmc3>());
     registry.register_mapper(221, make_factory<NtdecN625092>());
@@ -1812,6 +1819,7 @@ void register_builtin_mappers() {
     registry.register_mapper(250, make_factory<Mmc3>());
     registry.register_mapper(252, make_factory<KonamiVrc>());
     registry.register_mapper(253, make_factory<KonamiVrc>());
+    registry.register_mapper(255, make_factory<DiscreteMapper>());
     registry.register_mapper(254, make_factory<Mmc3>());
     registry.register_mapper(262, make_factory<Mmc3>());
     registry.register_mapper(263, make_factory<Mmc3>());
@@ -1908,6 +1916,7 @@ void register_builtin_mappers() {
     registry.register_mapper(164, make_factory<Fs304>());
     for (const uint16_t id : {166U, 167U})
         registry.register_mapper(id, make_factory<Mapper166>());
+    registry.register_mapper(170, make_factory<DiscreteMapper>());
     registry.register_mapper(174, make_factory<Ntdec174>());
     registry.register_mapper(183, make_factory<Mapper183>());
     registry.register_mapper(189, make_factory<Txc189>());
@@ -1947,6 +1956,7 @@ void register_builtin_mappers() {
     registry.register_mapper(163, make_factory<NanjingFc001>());
     registry.register_mapper(165, make_factory<Mapper165>());
     registry.register_mapper(168, make_factory<Racermate168>());
+    registry.register_mapper(175, make_factory<DiscreteMapper>());
     registry.register_mapper(176, make_factory<Fk23c>());
     registry.register_mapper(177, make_factory<Henggedianzi177>());
     registry.register_mapper(185, make_factory<Cnrom185>());

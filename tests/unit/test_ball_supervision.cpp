@@ -96,6 +96,37 @@ TEST_CASE("Supervision accepts menu-first or separate EPROM and locks the game s
     CHECK_FALSE(Cartridge::from_data(separate));
 }
 
+TEST_CASE(
+    "Fujiya returns one protection bit on the CPU bus and Kaiser switches during vector fetch",
+    "[ball-supervision]") {
+    register_builtin_mappers();
+    auto fujiya = Cartridge::from_data(image(170, 2, 1));
+    REQUIRE(fujiya);
+    MemoryBus bus;
+    bus.connect_cartridge(&*fujiya);
+    bus.write(0x6502, 0x40);
+    bus.write(0x0000, 0x2C);
+    REQUIRE(bus.read(0x7777) == 0xAC);
+    bus.write(0x0000, 0x2C);
+    REQUIRE(bus.read(0x7776) == 0x2C);
+    verify_state(*fujiya);
+    bus.write(0x7000, 0);
+    bus.write(0x0000, 0xFF);
+    REQUIRE(bus.read(0x7001) == 0x7FU);
+    auto kaiser = Cartridge::from_data(image(175, 16, 16));
+    REQUIRE(kaiser);
+    kaiser->write_prg(0xA000, 0xF5);
+    REQUIRE(kaiser->read_prg(0xFFFD) == 1);
+    REQUIRE(kaiser->read_prg(0x8000) == 0);
+    verify_state(*kaiser);
+    REQUIRE(kaiser->read_prg(0xFFFC) == 11);
+    REQUIRE(kaiser->read_prg(0xC000) == 10);
+    REQUIRE(kaiser->read_prg(0x8000) == 10);
+    REQUIRE(kaiser->read_chr(0x1FFF) == 37);
+    kaiser->write_prg(0x8000, 4);
+    REQUIRE(kaiser->mirror_mode() == MirrorMode::Horizontal);
+}
+
 TEST_CASE("Double Dragon II bootleg independently banks PRG, CHR and CIRAM and times a CPU IRQ",
           "[ball-supervision]") {
     register_builtin_mappers();
@@ -131,6 +162,46 @@ TEST_CASE("Double Dragon II bootleg independently banks PRG, CHR and CIRAM and t
     cart->clock_cpu();
     REQUIRE(cart->irq_pending());
     verify_state(*cart);
+}
+
+TEST_CASE("Super Gun and Unchained Melody take their banks from CPU address pins",
+          "[ball-supervision]") {
+    register_builtin_mappers();
+    auto supergun = Cartridge::from_data(image(214, 4, 4));
+    REQUIRE(supergun);
+    for (unsigned game = 0; game < 4U; ++game) {
+        supergun->write_prg(0x8000U + game * 4U, 0);
+        REQUIRE(supergun->read_prg(0x8000) == 2U * game);
+        REQUIRE(supergun->read_prg(0xFFFF) == 2U * game + 1U);
+        REQUIRE(supergun->read_chr(0x1FFF) == 8U + game);
+    }
+    supergun->write_prg(0xA000, 0);
+    REQUIRE(supergun->read_chr(0x1FFF) == 11U);
+    verify_state(*supergun);
+    auto melody = Cartridge::from_data(image(217, 8, 8));
+    REQUIRE(melody);
+    for (unsigned latch = 0; latch < 16U; ++latch) {
+        melody->write_prg(0x9000U + latch, 0xFFU);
+        REQUIRE(melody->read_prg(0x8000) == (latch & 12U));
+        REQUIRE(melody->read_prg(0xFFFF) == (latch & 12U) + 3U);
+        REQUIRE(melody->read_chr(0x1FFF) == 16U + (latch & 7U));
+    }
+    verify_state(*melody);
+}
+
+TEST_CASE("Magic Jewelry II switches by CPU A0 with fixed CHR RAM", "[ball-supervision]") {
+    register_builtin_mappers();
+    auto jewel = Cartridge::from_data(image(216, 4, 0));
+    REQUIRE(jewel);
+    jewel->write_chr(0x1FFE, 0x3A);
+    jewel->write_prg(0x8001, 0);
+    CHECK(jewel->read_prg(0x8000) == 4U);
+    CHECK(jewel->read_prg(0xFFFF) == 7U);
+    verify_state(*jewel);
+    jewel->write_prg(0xFFFE, 0xFF);
+    CHECK(jewel->read_prg(0x8000) == 0U);
+    CHECK(jewel->read_chr(0x1FFE) == 0x3AU);
+    REQUIRE_FALSE(Cartridge::from_data(image(216, 4, 8)));
 }
 
 TEST_CASE("Historical mapper IDs dispatch to their boards and retain image identity",
