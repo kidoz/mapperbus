@@ -5309,7 +5309,7 @@ or another registered cartridge ID.
 | 517 | Board-specific specification | Registered: Mapper517 | [r8090](https://www.nesdev.org/w/index.php?oldid=8090) |
 | 518 | Subor / Dance 2000 | Registered: Mapper518 | [r22909](https://www.nesdev.org/w/index.php?oldid=22909) |
 | 519 | Board-specific specification | Registered: Mapper519 | [r8101](https://www.nesdev.org/w/index.php?oldid=8101) |
-| 520 | Board-specific specification | Not registered | [r8107](https://www.nesdev.org/w/index.php?oldid=8107) |
+| 520 | Board-specific specification | Registered: Mapper520 | [r8107](https://www.nesdev.org/w/index.php?oldid=8107) |
 | 521 | Board-specific specification | Not registered | [r22137](https://www.nesdev.org/w/index.php?oldid=22137) |
 | 522 | Board-specific specification | Not registered | [r8112](https://www.nesdev.org/w/index.php?oldid=8112) |
 | 523 | Board-specific specification | Not registered | [r23888](https://www.nesdev.org/w/index.php?oldid=23888) |
