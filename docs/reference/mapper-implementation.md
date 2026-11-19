@@ -4871,7 +4871,7 @@ or another registered cartridge ID.
 | 052 | Board-specific specification | Registered: Realtec8213 | [r21408](https://www.nesdev.org/w/index.php?oldid=21408) |
 | 053 | Board-specific specification | Not registered | [r4320](https://www.nesdev.org/w/index.php?oldid=4320) |
 | 054 | Board-specific specification | Not registered | [r4322](https://www.nesdev.org/w/index.php?oldid=4322) |
-| 055 | Board-specific specification | Not registered | [r4324](https://www.nesdev.org/w/index.php?oldid=4324) |
+| 055 | Board-specific specification | Registered: Mario1Malee2 | [r4324](https://www.nesdev.org/w/index.php?oldid=4324) |
 | 056 | Board-specific specification | Not registered | [r4330](https://www.nesdev.org/w/index.php?oldid=4330) |
 | 057 | Board-specific specification | Not registered | [r4333](https://www.nesdev.org/w/index.php?oldid=4333) |
 | 058 | Board-specific specification | New implementation: DiscreteMapper | [r4340](https://www.nesdev.org/w/index.php?oldid=4340) |
