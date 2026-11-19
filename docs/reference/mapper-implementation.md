@@ -4833,7 +4833,7 @@ or another registered cartridge ID.
 | 014 | Board-specific specification | Registered: Sl1632 | [r19503](https://www.nesdev.org/w/index.php?oldid=19503) |
 | 015 | Board-specific specification | Registered: Mapper015 | [r19956](https://www.nesdev.org/w/index.php?oldid=19956) |
 | 016 | Bandai FCG / LZ93D50 | New implementation: BandaiFcg | [r3876](https://www.nesdev.org/w/index.php?oldid=3876) |
-| 017 | FFE Super Magic Card | Not registered | [r18933](https://www.nesdev.org/w/index.php?oldid=18933) |
+| 017 | FFE Super Magic Card | Registered: FfeSuperMagicCard | [r18933](https://www.nesdev.org/w/index.php?oldid=18933) |
 | 018 | Jaleco SS88006 | New implementation: JalecoSs88006 (external speech unsupported) | [r3918](https://www.nesdev.org/w/index.php?oldid=3918) |
 | 019 | Namco 129/163 | Existing registration: Namco163 | [r24377](https://www.nesdev.org/w/index.php?oldid=24377) |
 | 020 | Famicom Disk System | Separate FDS subsystem | [r23632](https://www.nesdev.org/w/index.php?oldid=23632) |
