@@ -8,6 +8,7 @@
 #include "core/mappers/bmc_t3h53.hpp"
 #include "core/mappers/bxrom_wram.hpp"
 #include "core/mappers/caltron_041.hpp"
+#include "core/mappers/city_fighter266.hpp"
 #include "core/mappers/cnrom.hpp"
 #include "core/mappers/cnrom185.hpp"
 #include "core/mappers/color_dreams.hpp"
@@ -265,6 +266,8 @@ namespace {
         return Mapper257::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 260U)
         return HpMulticart260::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 266U)
+        return CityFighter266::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 99U)
         return VsSystem::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 222U)
@@ -1224,6 +1227,7 @@ void register_builtin_mappers() {
     registry.register_mapper(224, make_factory<Kt008>());
     registry.register_mapper(257, make_factory<Mapper257>());
     registry.register_mapper(260, make_factory<HpMulticart260>());
+    registry.register_mapper(266, make_factory<CityFighter266>());
 }
 
 } // namespace mapperbus::core
