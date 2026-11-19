@@ -5296,7 +5296,7 @@ some historical aliases share a factory with another ID.
 | 473 | Board-specific specification | Registered: Mapper473 | [r23359](https://www.nesdev.org/w/index.php?oldid=23359) |
 | 474 | Board-specific specification | Registered: Mapper474 | [r23360](https://www.nesdev.org/w/index.php?oldid=23360) |
 | 476 | Croaky Karaoke | Registered: ChrRamMulticarts | [r22133](https://www.nesdev.org/w/index.php?oldid=22133) |
-| 479 | Board-specific specification | Not registered | [r21982](https://www.nesdev.org/w/index.php?oldid=21982) |
+| 479 | CoolX Lite | Registered: CoolXLite | [r21982](https://www.nesdev.org/w/index.php?oldid=21982) |
 | 481 | Board-specific specification | Registered: Mapper481 | [r22323](https://www.nesdev.org/w/index.php?oldid=22323) |
 | 487 | Board-specific specification | Registered: Mapper487 | [r23361](https://www.nesdev.org/w/index.php?oldid=23361) |
 | 493 | Board-specific specification | Registered: Mapper493 | [r24546](https://www.nesdev.org/w/index.php?oldid=24546) |
