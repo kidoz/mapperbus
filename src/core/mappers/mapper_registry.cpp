@@ -44,6 +44,7 @@
 #include "core/mappers/mmc3.hpp"
 #include "core/mappers/mmc4.hpp"
 #include "core/mappers/mmc5.hpp"
+#include "core/mappers/multicart060.hpp"
 #include "core/mappers/multicart227.hpp"
 #include "core/mappers/multicart230.hpp"
 #include "core/mappers/multicart233.hpp"
@@ -103,6 +104,8 @@ namespace {
         return Mario1Malee2::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 59U)
         return BmcT3h53::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 60U)
+        return Multicart060::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 12U)
         return Mapper012::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 14U)
@@ -1019,6 +1022,7 @@ void register_builtin_mappers() {
     registry.register_mapper(52, make_factory<Realtec8213>());
     registry.register_mapper(55, make_factory<Mario1Malee2>());
     registry.register_mapper(59, make_factory<BmcT3h53>());
+    registry.register_mapper(60, make_factory<Multicart060>());
     registry.register_mapper(12, make_factory<Mapper012>());
     registry.register_mapper(14, make_factory<Sl1632>());
     registry.register_mapper(15, make_factory<Mapper015>());
