@@ -5213,7 +5213,7 @@ or another registered cartridge ID.
 | 389 | Board-specific specification | Registered: Mapper389 | [r8004](https://www.nesdev.org/w/index.php?oldid=8004) |
 | 390 | Board-specific specification | Not registered | [r18875](https://www.nesdev.org/w/index.php?oldid=18875) |
 | 391 | Board-specific specification | Registered: Mapper391 | [r8012](https://www.nesdev.org/w/index.php?oldid=8012) |
-| 392 | Board-specific specification | Not registered | [r19172](https://www.nesdev.org/w/index.php?oldid=19172) |
+| 392 | Board-specific specification | Registered: Mapper392 | [r19172](https://www.nesdev.org/w/index.php?oldid=19172) |
 | 393 | Board-specific specification | Not registered | [r8014](https://www.nesdev.org/w/index.php?oldid=8014) |
 | 394 | Board-specific specification | Not registered | [r22930](https://www.nesdev.org/w/index.php?oldid=22930) |
 | 395 | Board-specific specification | Not registered | [r8017](https://www.nesdev.org/w/index.php?oldid=8017) |
