@@ -291,6 +291,7 @@ core_sources = files(
     'mappers/mapper451.cpp',
     'mappers/mapper452.cpp',
     'mappers/mapper453.cpp',
+    'mappers/mapper454.cpp',
     'fds/fds.cpp',
     'fds/fds_mapper.cpp',
     'input/controller.cpp',
