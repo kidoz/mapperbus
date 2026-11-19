@@ -40,6 +40,7 @@
 #include "core/mappers/mapper056_ks202.hpp"
 #include "core/mappers/mapper057.hpp"
 #include "core/mappers/mapper083.hpp"
+#include "core/mappers/mapper091.hpp"
 #include "core/mappers/maxi15.hpp"
 #include "core/mappers/mmc1.hpp"
 #include "core/mappers/mmc2.hpp"
@@ -137,6 +138,8 @@ namespace {
         return Mapper057::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 86U)
         return JalecoJf13::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 91U)
+        return Mapper091::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 30U || header.mapper_number == 111U)
         return FlashBoards::validate_geometry(header, prg_size, chr_size);
     if (JyCompany::supports_mapper(header.mapper_number))
@@ -1047,6 +1050,7 @@ void register_builtin_mappers() {
     registry.register_mapper(56, make_factory<Mapper056Ks202>());
     registry.register_mapper(57, make_factory<Mapper057>());
     registry.register_mapper(86, make_factory<JalecoJf13>());
+    registry.register_mapper(91, make_factory<Mapper091>());
 }
 
 } // namespace mapperbus::core
