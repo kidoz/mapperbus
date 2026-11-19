@@ -142,7 +142,8 @@ core::Result<ArchiveContents> scan_archive(const std::string& path,
         }
         if (candidate && name == selected) {
             if (std::cmp_greater(declared_size, core::kMaxRomBytes)) {
-                return std::unexpected("Archived ROM exceeds maximum size (16 MiB)");
+                return std::unexpected(
+                    "Archived ROM exceeds maximum size (128 MiB payload plus header and trainer)");
             }
             std::array<core::Byte, 64UZ * 1024> buffer{};
             while (true) {
@@ -159,7 +160,9 @@ core::Result<ArchiveContents> scan_archive(const std::string& path,
                 }
                 const auto bytes = static_cast<std::size_t>(count);
                 if (bytes > core::kMaxRomBytes - contents.data.size()) {
-                    return std::unexpected("Archived ROM exceeds maximum size (16 MiB)");
+                    return std::unexpected(
+                        "Archived ROM exceeds maximum size (128 MiB payload plus "
+                        "header and trainer)");
                 }
                 contents.data.insert(contents.data.end(), buffer.begin(), buffer.begin() + bytes);
             }

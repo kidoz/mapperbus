@@ -373,7 +373,7 @@ TEST_CASE("Archives enforce ROM size, archive size, and entry limits", "[app][ar
     write_archive(path, {{"large.nes", std::vector<Byte>(core::kMaxRomBytes + 1)}});
     auto large = load_rom_source(emulator, path.string());
     REQUIRE_FALSE(large);
-    CHECK(large.error().find("16 MiB") != std::string::npos);
+    CHECK(large.error().find("128 MiB") != std::string::npos);
     std::vector<Member> members;
     for (std::size_t index = 0; index <= kMaxArchiveEntries; ++index) {
         members.push_back({std::to_string(index) + ".txt", {}});
@@ -3160,7 +3160,7 @@ TEST_CASE("Pikachu 254 loading preserves protected raw WRAM across archives and 
             }
 }
 
-TEST_CASE("App loading rejects apparent duplicate 255 without replacing a running mapper 225",
+TEST_CASE("App loading rejects unfitted New Star ROM sizes without replacing a running mapper 225",
           "[rom-source][mapper225][mapper255]") {
     core::register_builtin_mappers();
     ArchiveFixture fixture;
@@ -3195,14 +3195,16 @@ TEST_CASE("App loading rejects apparent duplicate 255 without replacing a runnin
                 const auto member = format == 0U ? "" : "duplicate.nes";
                 auto loaded = load_rom_source(live, path.string(), member);
                 REQUIRE_FALSE(loaded);
-                REQUIRE(loaded.error().find("Unsupported mapper: 255") != std::string::npos);
+                REQUIRE(loaded.error().find("Unsupported discrete PRG/CHR ROM population") !=
+                        std::string::npos);
                 REQUIRE(live.save_state() == before);
                 RomLoadRequest request;
                 request.path = path.string();
                 request.member = member;
                 auto prepared = prepare_rom(request);
                 REQUIRE_FALSE(prepared);
-                REQUIRE(prepared.error().find("Unsupported mapper: 255") != std::string::npos);
+                REQUIRE(prepared.error().find("Unsupported discrete PRG/CHR ROM population") !=
+                        std::string::npos);
                 REQUIRE(live.save_state() == before);
                 REQUIRE(core::read_binary_file_capped(path.string(), 4194304U, "source") ==
                         original);

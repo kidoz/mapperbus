@@ -19,7 +19,8 @@ class StateReader;
 
 /// Largest accepted iNES/NES 2.0 image, including header, trainer, PRG, and CHR.
 /// The cap applies before allocation and to both linear and exponent/multiplier sizes.
-inline constexpr std::size_t kMaxRomBytes = 16 * 1024 * 1024;
+inline constexpr std::size_t kMaxRomBytes =
+    128 * 1024 * 1024 + 16 + 512; // ROM payload plus header and trainer.
 inline constexpr std::size_t kMaxDcsOptionBytes = 128UZ * 1024UZ;
 
 class Cartridge {
