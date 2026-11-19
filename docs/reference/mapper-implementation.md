@@ -19,6 +19,7 @@ image. Mapper 355 requires one 1 KiB PIC firmware image. Mapper 413 requires one
 
 | Board or family | Supported profile and limits |
 |---|---|
+| Identified historical ROMs | 39 supports the English and Arabic Study & Game multicarts. The separate Subor keyboard is outside this cartridge profile. 54 distinguishes two Novel Diamond circuits. 181 uses the Seicross V2 CHR enable pins. 220 recognizes KS-7057 Gyruss and Boogerman II. |
 
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
@@ -1803,11 +1804,9 @@ no commercial-title or physical-board certification is claimed.
 
 [Mapper 248 revision 23288](https://www.nesdev.org/w/index.php?oldid=23288)
 identifies 248 as a mistaken assignment for games handled by mapper 115,
-including Bao Qing Tian. Its private-use reassignment is described as a proposal,
-not a separate documented cartridge circuit. The inventory therefore classifies
-248 as an obsolete duplicate and leaves it unregistered. Both core and CLI tests
-require an explicit unsupported-ID error; ROM headers are not rewritten or
-silently treated as 115.
+including Bao Qing Tian. The current registry recognizes the catalogued Bao
+Qing Tian chip pair and dispatches it to mapper 115. Other 248 images still
+require identification.
 
 Validation passed the build, all 52 MapperBus test targets and eight serial
 ASan/UBSan suites with the macOS `detect_leaks=0` exception. The mapper executable
@@ -4861,7 +4860,7 @@ some historical aliases share a factory with another ID.
 | 036 | TXC/JV001 protection board | New implementation: Txc | [r4196](https://www.nesdev.org/w/index.php?oldid=4196) |
 | 037 | Board-specific specification | Registered: Mmc3Multicart37 | [r4204](https://www.nesdev.org/w/index.php?oldid=4204) |
 | 038 | Board-specific specification | New implementation: DiscreteMapper | [r23289](https://www.nesdev.org/w/index.php?oldid=23289) |
-| 039 | Board-specific specification | Not registered | [r4217](https://www.nesdev.org/w/index.php?oldid=4217) |
+| 039 | Subor Study & Game | Registered: Study & Game ROMs on mapper 241 | [r4217](https://www.nesdev.org/w/index.php?oldid=4217) |
 | 040 | Board-specific specification | Registered: Ntdec2722 | [r19687](https://www.nesdev.org/w/index.php?oldid=19687) |
 | 041 | Board-specific specification | Registered: Caltron041 | [r24572](https://www.nesdev.org/w/index.php?oldid=24572) |
 | 042 | Board-specific specification | Registered: Mapper042 | [r4239](https://www.nesdev.org/w/index.php?oldid=4239) |
@@ -4876,7 +4875,7 @@ some historical aliases share a factory with another ID.
 | 051 | Board-specific specification | Not registered | [r4311](https://www.nesdev.org/w/index.php?oldid=4311) |
 | 052 | Board-specific specification | Registered: Realtec8213 | [r21408](https://www.nesdev.org/w/index.php?oldid=21408) |
 | 053 | Board-specific specification | Not registered | [r4320](https://www.nesdev.org/w/index.php?oldid=4320) |
-| 054 | Board-specific specification | Not registered | [r4322](https://www.nesdev.org/w/index.php?oldid=4322) |
+| 054 | Novel Diamond 9999999-in-1 | Registered: Identified ROMs on mapper 58 or 201 | [r4322](https://www.nesdev.org/w/index.php?oldid=4322) |
 | 055 | Board-specific specification | Registered: Mario1Malee2 | [r4324](https://www.nesdev.org/w/index.php?oldid=4324) |
 | 056 | Board-specific specification | Registered: Mapper056Ks202 | [r4330](https://www.nesdev.org/w/index.php?oldid=4330) |
 | 057 | Board-specific specification | Registered: Mapper057 | [r4333](https://www.nesdev.org/w/index.php?oldid=4333) |
@@ -4924,15 +4923,15 @@ some historical aliases share a factory with another ID.
 | 099 | Vs. System board | Not registered | [r23485](https://www.nesdev.org/w/index.php?oldid=23485) |
 | 100 | Emulator tool use | Not registered | [r23979](https://www.nesdev.org/w/index.php?oldid=23979) |
 | 101 | JF-10 legacy dump ordering | New implementation: JalecoDiscrete | [r21360](https://www.nesdev.org/w/index.php?oldid=21360) |
-| 102 | Board-specific specification | Not registered | [r4801](https://www.nesdev.org/w/index.php?oldid=4801) |
+| 102 | Drip Game | Registered: Historical ID for mapper 284 | [r4801](https://www.nesdev.org/w/index.php?oldid=4801) |
 | 103 | Board-specific specification | Registered: Mapper103 | [r4802](https://www.nesdev.org/w/index.php?oldid=4802) |
 | 104 | Codemasters Golden Five | Registered: Mapper104GoldenFive | [r9567](https://www.nesdev.org/w/index.php?oldid=9567) |
 | 105 | NES-EVENT / MMC1 | Registered: NesEvent | [r23388](https://www.nesdev.org/w/index.php?oldid=23388) |
 | 106 | Board-specific specification | Registered: Mapper106 | [r4815](https://www.nesdev.org/w/index.php?oldid=4815) |
 | 107 | Board-specific specification | New implementation: DiscreteMapper | [r24577](https://www.nesdev.org/w/index.php?oldid=24577) |
 | 108 | FDS-to-cartridge boards | Registered: FdsConversion108 | [r21237](https://www.nesdev.org/w/index.php?oldid=21237) |
-| 109 | Board-specific specification | Not registered | [r4825](https://www.nesdev.org/w/index.php?oldid=4825) |
-| 110 | Board-specific specification | Not registered | [r4826](https://www.nesdev.org/w/index.php?oldid=4826) |
+| 109 | Sachen 8259D | Registered: Historical ID for mapper 137 | [r4825](https://www.nesdev.org/w/index.php?oldid=4825) |
+| 110 | Sachen 74LS374N | Registered: Historical ID for mapper 243 | [r4826](https://www.nesdev.org/w/index.php?oldid=4826) |
 | 111 | GTROM / earlier MMC1 variant | New implementation: FlashBoards / Mmc1 | [r24005](https://www.nesdev.org/w/index.php?oldid=24005) |
 | 112 | Board-specific specification | Registered: Mapper112 | [r23867](https://www.nesdev.org/w/index.php?oldid=23867) |
 | 113 | Board-specific specification | New implementation: DiscreteMapper | [r20481](https://www.nesdev.org/w/index.php?oldid=20481) |
@@ -4951,9 +4950,9 @@ some historical aliases share a factory with another ID.
 | 126 | Board-specific specification | Registered: Tec9719 | [r22468](https://www.nesdev.org/w/index.php?oldid=22468) |
 | 127 | Board-specific specification | Not registered | [r4951](https://www.nesdev.org/w/index.php?oldid=4951) |
 | 128 | Board-specific specification | Registered: Mapper128 | [r21955](https://www.nesdev.org/w/index.php?oldid=21955) |
-| 129 | Board-specific specification | Not registered | [r24633](https://www.nesdev.org/w/index.php?oldid=24633) |
-| 130 | Board-specific specification | Not registered | [r24051](https://www.nesdev.org/w/index.php?oldid=24051) |
-| 131 | Board-specific specification | Not registered | [r24052](https://www.nesdev.org/w/index.php?oldid=24052) |
+| 129 | WQ1905-B | Registered: Historical ID for mapper 58 | [r24633](https://www.nesdev.org/w/index.php?oldid=24633) |
+| 130 | NS03 | Registered: Historical ID for mapper 331 | [r24051](https://www.nesdev.org/w/index.php?oldid=24051) |
+| 131 | JC-016-2 | Registered: Historical ID for mapper 205 | [r24052](https://www.nesdev.org/w/index.php?oldid=24052) |
 | 132 | TXC/JV001 protection board | New implementation: Txc | [r4967](https://www.nesdev.org/w/index.php?oldid=4967) |
 | 133 | Sachen board | New implementation: Sachen | [r4977](https://www.nesdev.org/w/index.php?oldid=4977) |
 | 134 | Board-specific specification | Registered: T4a54a | [r20085](https://www.nesdev.org/w/index.php?oldid=20085) |
@@ -4983,7 +4982,7 @@ some historical aliases share a factory with another ID.
 | 158 | RAMBO-1 nametable variant | New implementation: Rambo1 | [r21299](https://www.nesdev.org/w/index.php?oldid=21299) |
 | 159 | Bandai X24C01 EEPROM | New implementation: BandaiFcg | [r5171](https://www.nesdev.org/w/index.php?oldid=5171) |
 | 160 | Obsolete mapper-90 alias | Registered: JyCompany | [r5173](https://www.nesdev.org/w/index.php?oldid=5173) |
-| 161 | Board-specific specification | Not registered | [r5175](https://www.nesdev.org/w/index.php?oldid=5175) |
+| 161 | Hanjuku Hero SNROM | Registered: Historical ID for mapper 1 | [r5175](https://www.nesdev.org/w/index.php?oldid=5175) |
 | 162 | Board-specific specification | Registered: Mapper162Fs304 | [r19013](https://www.nesdev.org/w/index.php?oldid=19013) |
 | 163 | Board-specific specification | Registered: NanjingFc001 | [r24182](https://www.nesdev.org/w/index.php?oldid=24182) |
 | 164 | Board-specific specification | Registered: Fs304 | [r22865](https://www.nesdev.org/w/index.php?oldid=22865) |
@@ -5001,9 +5000,9 @@ some historical aliases share a factory with another ID.
 | 176 | FK23C | Registered: Fk23c | [r24008](https://www.nesdev.org/w/index.php?oldid=24008) |
 | 177 | Board-specific specification | Registered: Henggedianzi177 | [r24245](https://www.nesdev.org/w/index.php?oldid=24245) |
 | 178 | Waixing / Nanjing family | Not registered | [r22866](https://www.nesdev.org/w/index.php?oldid=22866) |
-| 179 | Board-specific specification | Not registered | [r5374](https://www.nesdev.org/w/index.php?oldid=5374) |
+| 179 | Xinghe Zhanshi | Registered: Xinghe Zhanshi on mapper 176 | [r5374](https://www.nesdev.org/w/index.php?oldid=5374) |
 | 180 | UxROM fixed-low-window variant | New implementation: DiscreteMapper | [r19264](https://www.nesdev.org/w/index.php?oldid=19264) |
-| 181 | Board-specific specification | Not registered | [r24634](https://www.nesdev.org/w/index.php?oldid=24634) |
+| 181 | Seicross V2 | Registered: Seicross V2 on mapper 185.4 | [r24634](https://www.nesdev.org/w/index.php?oldid=24634) |
 | 182 | Historical duplicate of 114 | Duplicate; not registered | [r4858](https://www.nesdev.org/w/index.php?oldid=4858) |
 | 183 | Board-specific specification | Registered: Mapper183 | [r24192](https://www.nesdev.org/w/index.php?oldid=24192) |
 | 184 | Sunsoft CHR banking | New implementation: DiscreteMapper | [r23872](https://www.nesdev.org/w/index.php?oldid=23872) |
@@ -5042,10 +5041,10 @@ some historical aliases share a factory with another ID.
 | 217 | 500/2000-in-1 (identification only) | Not registered: register specification missing | [r5706](https://www.nesdev.org/w/index.php?oldid=5706) |
 | 218 | Single Chip / Magic Floor | New implementation: SingleChip (all four CIRAM wirings) | [r22660](https://www.nesdev.org/w/index.php?oldid=22660) |
 | 219 | Kasheng A9461 / NT-8029 | New implementation: Mmc3 (ROM-only compatibility model) | [r21696](https://www.nesdev.org/w/index.php?oldid=21696) |
-| 220 | Tool/debug assignment | Not registered: affected images require verified board identification | [r23976](https://www.nesdev.org/w/index.php?oldid=23976) |
+| 220 | Gyruss / Boogerman II | Registered: KS-7057 on mapper 302 or Boogerman II on mapper 263 | [r23976](https://www.nesdev.org/w/index.php?oldid=23976) |
 | 221 | NTDEC N625092 / BMC-N625092 | New implementation: NtdecN625092 | [r5744](https://www.nesdev.org/w/index.php?oldid=5744) |
 | 222 | CTC-31 / VRC2 plus discrete IRQ logic | Not registered: hardware/register evidence gap | [r5746](https://www.nesdev.org/w/index.php?oldid=5746) |
-| 223 | Obsolete apparent duplicate of 199 | Not registered: source directs mapper 199 | [r24635](https://www.nesdev.org/w/index.php?oldid=24635) |
+| 223 | Tom Sawyer | Registered: Tom Sawyer on mapper 199 | [r24635](https://www.nesdev.org/w/index.php?oldid=24635) |
 | 224 | Jncota KT-008 / mapper-268 chipset | Registered: Kt008 | [r5752](https://www.nesdev.org/w/index.php?oldid=5752) |
 | 225 | ET-4310 / K-1010 address-latched multicarts | New implementation: DiscreteMapper | [r18874](https://www.nesdev.org/w/index.php?oldid=18874) |
 | 226 | Board-specific specification | New implementation: DiscreteMapper | [r22261](https://www.nesdev.org/w/index.php?oldid=22261) |
@@ -5068,10 +5067,10 @@ some historical aliases share a factory with another ID.
 | 244 | C&E Decathlon / scrambled bank latches | New implementation: Decathlon | [r5862](https://www.nesdev.org/w/index.php?oldid=5862) |
 | 245 | Waixing F003 / CHR output drives PRG A19 | New implementation: Mmc3 | [r5871](https://www.nesdev.org/w/index.php?oldid=5871) |
 | 246 | G0151-1 / Feng Shen Bang | New implementation: G0151 | [r22048](https://www.nesdev.org/w/index.php?oldid=22048) |
-| 248 | Obsolete duplicate of 115; private-use reassignment proposed | Obsolete; not registered | [r23288](https://www.nesdev.org/w/index.php?oldid=23288) |
+| 248 | Bao Qing Tian | Registered: Bao Qing Tian on mapper 115 | [r23288](https://www.nesdev.org/w/index.php?oldid=23288) |
 | 249 | Waixing T9552, legacy file order | New implementation: Mmc3 | [r20254](https://www.nesdev.org/w/index.php?oldid=20254) |
 | 250 | Nitra L401 / Queen Bee V | New implementation: Mmc3 | [r21044](https://www.nesdev.org/w/index.php?oldid=21044) |
-| 251 | Obsolete Nestopia assignment duplicating mapper 45 | Obsolete; not registered | [r5898](https://www.nesdev.org/w/index.php?oldid=5898) |
+| 251 | Qilongzhu ES-1064 | Registered: Qilongzhu on mapper 253 | [r5898](https://www.nesdev.org/w/index.php?oldid=5898) |
 | 252 | Waixing VRC4e / Sangokushi mixed CHR | New implementation: KonamiVrc | [r5906](https://www.nesdev.org/w/index.php?oldid=5906) |
 | 253 | Waixing VRC4 CHR4/5 / F009S relocation profile | New implementation: KonamiVrc | [r5910](https://www.nesdev.org/w/index.php?oldid=5910) |
 | 254 | Pikachu Y2K WRAM XOR protection | New implementation: Mmc3 | [r24273](https://www.nesdev.org/w/index.php?oldid=24273) |
