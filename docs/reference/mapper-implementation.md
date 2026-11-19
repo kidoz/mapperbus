@@ -1,7 +1,7 @@
 # Mapper implementation coverage
 
 This ledger tracks NES/Famicom cartridge mapper support, including bootlegs and
-homebrew. The built-in registry has **411 cartridge IDs** as of 2026-11-19.
+homebrew. The built-in registry has **508 cartridge IDs** as of 2026-11-19.
 The inventory below identifies the factory for each registered ID and records
 separate FDS support under ID 020.
 
@@ -37,6 +37,26 @@ image. Mapper 355 requires one 1 KiB PIC firmware image. Mapper 413 requires one
 | 534, 540, 542, 543 | Includes the inverted MMC3 IRQ latch, 2 KiB CHR-ROM banking, VRC4-controlled pattern-table CIRAM and the CH-501 serial PAL with two SRAM chips, respectively. |
 | 547, 555, 556, 560 | QTa background tile metadata, Campus Challenge timer and mixed graphics, JY-215 MMC3/VRC4 switching and BASIC bitplane routing are covered by synthetic cartridge tests. |
 | 594 | Talkman audio uses a held DAC value on FIFO underrun and nominal gain. Analog filtering and level calibration await hardware measurements. |
+
+The inventory gives each remaining assignment its reason and its NESdev revision.
+Legacy 127, 175 and 557 follow published emulator board models where electrical pin
+measurements are unavailable. The 217 address wiring follows the traced GI 9549
+PCB. [Nintendulator board sources](https://github.com/FurblandChannel/Furbtendulator/tree/421b811e4cfa4c4c4ee89266fdbedef455ef7ada/src/src-mappers/src/iNES)
+and [GI 9549 board and dump discussion](https://www.emu-land.net/forum/index.php?topic=71165.780).
+
+Board identification also follows the [current Nintendulator NRS board sources](https://github.com/gmestanley/NintendulatorNRS-DBG/tree/b685625310ec026afa844340d94503f9767b72df/src-mappers/src/iNES), the [COOLGIRL CPLD](https://github.com/ClusterM/coolgirl-famicom-multicart), the [Rainbow register specification](https://github.com/BrokeStudio/rainbow-net/blob/master/NES/mapper-doc.md) and the [VirtuaNES EX translation renderer](https://github.com/pengan1987/VirtuaNESex/blob/master/DirectDraw.cpp). The current 536 and 537 assignments supersede the older mapper 195 redirects in the frozen wiki revision.
+
+Of the 24 unregistered IDs, 15 require machine or peripheral support beyond the
+cartridge. These are 169, 171, 186, 296, 405, 407, 419, 423–427 and 600–602.
+Nine have a reserved or conflicting assignment, or lack a verified register
+map. These are 84, 98, 275, 276, 278, 279 and 316–318. The inventory records the evidence
+for each ID. The Study Box, for example,
+uses page commands, 4800-bit/s data and a synchronized audio track. [Study Box hardware](https://www.nesdev.org/wiki/Fukutake_Study_Box) and [cassette format](https://www.nesdev.org/wiki/StudyBox_file_format).
+
+## Earlier implementation batches
+
+The following sections record the status and validation at the time of each
+batch. The inventory at the end reflects the current registry.
 
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
@@ -4628,7 +4648,7 @@ zero errors, 72 warnings and three infos across 193 documents.
 
 ## Mapper-256 first step: native PPU register routing
 
-Mapper 256 remains **unregistered**. The registry still contains 162 cartridge
+At this stage, mapper 256 was unregistered. The registry then contained 162 cartridge
 IDs; this step adds a prerequisite for OneBus support, not a working OneBus
 mapper or VTxx console. Unsupported images continue to fail explicitly.
 
@@ -4662,8 +4682,7 @@ unchanged. This is an integration change, not a performance improvement claim.
 
 Five `[native-ppu]` cases in `test-bus` use a synthetic device that temporarily
 replaces the NROM factory during fixture construction, then restores builtin
-factories before assertions. It is not registered as mapper 256 and adds no
-fake permanent mapper ID. Tests inspect every CPU address in $2000–$3FFF
+factories before assertions. The original fixture used a temporary factory registration. Tests inspect every CPU address in $2000–$3FFF
 through timed and untimed paths, partial bus drivers and cartridge pull-downs,
 zero-valued reads, independent read/write claims, exact-address selection,
 ordinary NROM/no-cartridge fallback and PPU-state preservation during vblank.
@@ -4676,7 +4695,8 @@ problem; the ordinary mirroring case already passed.
 
 The next implementation layer was native/MMC3 PRG and CHR banking plus IRQs,
 with a bounded atomic state contract; the component is described in the second
-step below. The remaining console capabilities still prevent registration. Sources are
+step below. The current VT02 profile is registered. Enhanced console profiles
+retain the additional requirements below. Sources include
 [PRG banking r12704](https://www.nesdev.org/w/index.php?oldid=12704),
 [CHR banking r12696](https://www.nesdev.org/w/index.php?oldid=12696),
 [MMC3 forwarding r23929](https://www.nesdev.org/w/index.php?oldid=23929) and
@@ -4695,13 +4715,9 @@ palette/4bpp modes, extended sound/DMA and console capability metadata.
 Submappers 0–5 describe register permutations; 11–15 add opcode-only scrambling
 and control ports. Those require a distinct instruction-fetch seam rather
 than transforming operand/data reads. VT369's extra CPU and embedded 4 KiB
-misc ROM are separate machine support. Larger OneBus populations also require
-an explicit allocation-cap decision: the documented address space reaches
-32 MiB while the current input cap is 16 MiB. These items are not implemented
-or inferred from this register-routing prerequisite. Keep 256 unregistered
-until the supported hardware profile and its limitations are explicit and
-validated; do not advance the registry count or claim game compatibility from
-these routing tests.
+misc ROM are separate machine support. The original register-routing tests ran under a 16 MiB input cap.
+The current cartridge and archive loaders accept up to 128 MiB of payload
+plus the iNES header and trainer.
 
 Validation on 2026-11-15 passed all 112 regular Meson targets with GPU checks
 required and nine focused ASan+UBSan targets (`bus`, `ppu`, `mapper-timing`,
@@ -4716,7 +4732,7 @@ documents. No OneBus title or enhanced-console fidelity is claimed.
 ## Mapper-256 second step: normal OneBus banking and IRQ component
 
 `OneBus` now implements the normal, unencrypted register set as an isolated
-core component. **Mapper 256 remains unregistered** and the registry count
+core component. Mapper 256 was still unregistered at this stage and the registry count
 remains 162. This step does not enable loading OneBus games or claim a VT02,
 VT03 or VT369 machine. Native PPU controls for enhanced video, sound, GPIO,
 opcode scrambling and console capability metadata still need integration.
@@ -4833,40 +4849,40 @@ some historical aliases share a factory with another ID.
 
 | ID | Specification identification | Implementation status | Source revision |
 |---:|---|---|---|
-| 000 | NROM | Existing registration: Nrom | [r23660](https://www.nesdev.org/w/index.php?oldid=23660) |
-| 001 | MMC1 / SxROM | Existing registration: Mmc1 | [r24550](https://www.nesdev.org/w/index.php?oldid=24550) |
-| 002 | UxROM | Existing registration: Uxrom | [r24147](https://www.nesdev.org/w/index.php?oldid=24147) |
-| 003 | CNROM | Existing registration: Cnrom | [r24346](https://www.nesdev.org/w/index.php?oldid=24346) |
-| 004 | MMC3 / MMC6, T9552 submapper 5 | Existing registration: Mmc3 (T9552 profile added) | [r24445](https://www.nesdev.org/w/index.php?oldid=24445) |
-| 005 | MMC5 / ExROM | Existing registration: Mmc5 | [r24329](https://www.nesdev.org/w/index.php?oldid=24329) |
+| 000 | NROM | Registered: Nrom | [r23660](https://www.nesdev.org/w/index.php?oldid=23660) |
+| 001 | MMC1 / SxROM | Registered: Mmc1 | [r24550](https://www.nesdev.org/w/index.php?oldid=24550) |
+| 002 | UxROM | Registered: Uxrom | [r24147](https://www.nesdev.org/w/index.php?oldid=24147) |
+| 003 | CNROM | Registered: Cnrom | [r24346](https://www.nesdev.org/w/index.php?oldid=24346) |
+| 004 | MMC3 / MMC6, T9552 submapper 5 | Registered: Mmc3 | [r24445](https://www.nesdev.org/w/index.php?oldid=24445) |
+| 005 | MMC5 / ExROM | Registered: Mmc5 | [r24329](https://www.nesdev.org/w/index.php?oldid=24329) |
 | 006 | FFE Magic Card | Registered: FfeMagicCard | [r18921](https://www.nesdev.org/w/index.php?oldid=18921) |
-| 007 | AxROM | Existing registration: Axrom | [r24152](https://www.nesdev.org/w/index.php?oldid=24152) |
+| 007 | AxROM | Registered: Axrom | [r24152](https://www.nesdev.org/w/index.php?oldid=24152) |
 | 008 | FFE Magic Card alias | Registered: FfeMagicCard | [r18921](https://www.nesdev.org/w/index.php?oldid=18921) |
-| 009 | MMC2 / PxROM | Existing registration: Mmc2 | [r22483](https://www.nesdev.org/w/index.php?oldid=22483) |
-| 010 | MMC4 / FxROM | New implementation: Mmc4 | [r6620](https://www.nesdev.org/w/index.php?oldid=6620) |
-| 011 | Color Dreams | Existing registration: ColorDreams | [r24575](https://www.nesdev.org/w/index.php?oldid=24575) |
+| 009 | MMC2 / PxROM | Registered: Mmc2 | [r22483](https://www.nesdev.org/w/index.php?oldid=22483) |
+| 010 | MMC4 / FxROM | Registered: Mmc4 | [r6620](https://www.nesdev.org/w/index.php?oldid=6620) |
+| 011 | Color Dreams | Registered: ColorDreams | [r24575](https://www.nesdev.org/w/index.php?oldid=24575) |
 | 012 | Gouder SL-5020B / FFE 4M | Registered: Mapper012 | [r18954](https://www.nesdev.org/w/index.php?oldid=18954) |
 | 013 | CPROM | New implementation: DiscreteMapper | [r1200](https://www.nesdev.org/w/index.php?oldid=1200) |
 | 014 | Board-specific specification | Registered: Sl1632 | [r19503](https://www.nesdev.org/w/index.php?oldid=19503) |
 | 015 | Board-specific specification | Registered: Mapper015 | [r19956](https://www.nesdev.org/w/index.php?oldid=19956) |
-| 016 | Bandai FCG / LZ93D50 | New implementation: BandaiFcg | [r3876](https://www.nesdev.org/w/index.php?oldid=3876) |
+| 016 | Bandai FCG / LZ93D50 | Registered: BandaiFcg | [r3876](https://www.nesdev.org/w/index.php?oldid=3876) |
 | 017 | FFE Super Magic Card | Registered: FfeSuperMagicCard | [r18933](https://www.nesdev.org/w/index.php?oldid=18933) |
-| 018 | Jaleco SS88006 | New implementation: JalecoSs88006 (external speech unsupported) | [r3918](https://www.nesdev.org/w/index.php?oldid=3918) |
-| 019 | Namco 129/163 | Existing registration: Namco163 | [r24377](https://www.nesdev.org/w/index.php?oldid=24377) |
+| 018 | Jaleco SS88006 | Registered: JalecoSs88006 | [r3918](https://www.nesdev.org/w/index.php?oldid=3918) |
+| 019 | Namco 129/163 | Registered: Namco163 | [r24377](https://www.nesdev.org/w/index.php?oldid=24377) |
 | 020 | Famicom Disk System | Separate FDS subsystem | [r23632](https://www.nesdev.org/w/index.php?oldid=23632) |
 | 021 | VRC4 | New implementation: KonamiVrc | [r24169](https://www.nesdev.org/w/index.php?oldid=24169) |
 | 022 | VRC2a | New implementation: KonamiVrc | [r24169](https://www.nesdev.org/w/index.php?oldid=24169) |
 | 023 | VRC2b / VRC4 | New implementation: KonamiVrc | [r24169](https://www.nesdev.org/w/index.php?oldid=24169) |
-| 024 | VRC6a | Existing registration: Vrc6 | [r23687](https://www.nesdev.org/w/index.php?oldid=23687) |
+| 024 | VRC6a | Registered: Vrc6 | [r23687](https://www.nesdev.org/w/index.php?oldid=23687) |
 | 025 | VRC2c / VRC4 | New implementation: KonamiVrc | [r24169](https://www.nesdev.org/w/index.php?oldid=24169) |
-| 026 | VRC6b | Existing registration: Vrc6 | [r23687](https://www.nesdev.org/w/index.php?oldid=23687) |
+| 026 | VRC6b | Registered: Vrc6 | [r23687](https://www.nesdev.org/w/index.php?oldid=23687) |
 | 027 | Unlicensed VRC4 variant | Registered: Mapper027 | [r23209](https://www.nesdev.org/w/index.php?oldid=23209) |
-| 028 | Action 53 | New implementation: DiscreteMapper | [r21316](https://www.nesdev.org/w/index.php?oldid=21316) |
+| 028 | Action 53 | Registered: DiscreteMapper | [r21316](https://www.nesdev.org/w/index.php?oldid=21316) |
 | 029 | RET-CUFROM | Registered: RetCufrom | [r4093](https://www.nesdev.org/w/index.php?oldid=4093) |
-| 030 | UNROM 512 | New implementation: FlashBoards | [r23183](https://www.nesdev.org/w/index.php?oldid=23183) |
-| 031 | NSF-subset cartridge | New implementation: DiscreteMapper | [r19421](https://www.nesdev.org/w/index.php?oldid=19421) |
-| 032 | Irem G-101 | New implementation: Irem | [r23869](https://www.nesdev.org/w/index.php?oldid=23869) |
-| 033 | Taito TC0190 / TC0350 subset | New implementation: TaitoTc | [r24359](https://www.nesdev.org/w/index.php?oldid=24359) |
+| 030 | UNROM 512 | Registered: FlashBoards | [r23183](https://www.nesdev.org/w/index.php?oldid=23183) |
+| 031 | NSF-subset cartridge | Registered: DiscreteMapper | [r19421](https://www.nesdev.org/w/index.php?oldid=19421) |
+| 032 | Irem G-101 | Registered: Irem | [r23869](https://www.nesdev.org/w/index.php?oldid=23869) |
+| 033 | Taito TC0190 / TC0350 subset | Registered: TaitoTc | [r24359](https://www.nesdev.org/w/index.php?oldid=24359) |
 | 034 | BNROM / NINA-001 | New implementation: DiscreteMapper | [r24073](https://www.nesdev.org/w/index.php?oldid=24073) |
 | 035 | J.Y. Company ASIC | New implementation: JyCompany | [r24184](https://www.nesdev.org/w/index.php?oldid=24184) |
 | 036 | TXC/JV001 protection board | New implementation: Txc | [r4196](https://www.nesdev.org/w/index.php?oldid=4196) |
@@ -4881,7 +4897,7 @@ some historical aliases share a factory with another ID.
 | 045 | Board-specific specification | Registered: Mapper045 | [r22818](https://www.nesdev.org/w/index.php?oldid=22818) |
 | 046 | Board-specific specification | New implementation: DiscreteMapper | [r4278](https://www.nesdev.org/w/index.php?oldid=4278) |
 | 047 | Board-specific specification | Registered: Mmc3Multicart47 | [r4284](https://www.nesdev.org/w/index.php?oldid=4284) |
-| 048 | Taito TC0690 | New implementation: TaitoTc | [r22585](https://www.nesdev.org/w/index.php?oldid=22585) |
+| 048 | Taito TC0690 | Registered: TaitoTc | [r22585](https://www.nesdev.org/w/index.php?oldid=22585) |
 | 049 | Board-specific specification | Registered: Mapper049 | [r4300](https://www.nesdev.org/w/index.php?oldid=4300) |
 | 050 | Board-specific specification | Registered: N32Mapper050 | [r4310](https://www.nesdev.org/w/index.php?oldid=4310) |
 | 051 | Ball Games 11-in-1 | Registered: Multicart51_53 | [r4311](https://www.nesdev.org/w/index.php?oldid=4311) |
@@ -4897,44 +4913,44 @@ some historical aliases share a factory with another ID.
 | 061 | Board-specific specification | New implementation: DiscreteMapper | [r22920](https://www.nesdev.org/w/index.php?oldid=22920) |
 | 062 | Board-specific specification | New implementation: DiscreteMapper | [r4357](https://www.nesdev.org/w/index.php?oldid=4357) |
 | 063 | Board-specific specification | Registered: Multicart063 | [r19134](https://www.nesdev.org/w/index.php?oldid=19134) |
-| 064 | Tengen RAMBO-1 | New implementation: Rambo1 | [r23936](https://www.nesdev.org/w/index.php?oldid=23936) |
-| 065 | Irem H3001 | New implementation: Irem | [r24119](https://www.nesdev.org/w/index.php?oldid=24119) |
+| 064 | Tengen RAMBO-1 | Registered: Rambo1 | [r23936](https://www.nesdev.org/w/index.php?oldid=23936) |
+| 065 | Irem H3001 | Registered: Irem | [r24119](https://www.nesdev.org/w/index.php?oldid=24119) |
 | 066 | GxROM / MxROM | New implementation: DiscreteMapper | [r24003](https://www.nesdev.org/w/index.php?oldid=24003) |
-| 067 | Sunsoft 3 | New implementation: Sunsoft34 | [r23676](https://www.nesdev.org/w/index.php?oldid=23676) |
-| 068 | Sunsoft 4 | New implementation: Sunsoft34 | [r23720](https://www.nesdev.org/w/index.php?oldid=23720) |
-| 069 | FME-7 / Sunsoft 5A/5B | Existing registration: Sunsoft5b | [r24262](https://www.nesdev.org/w/index.php?oldid=24262) |
+| 067 | Sunsoft 3 | Registered: Sunsoft34 | [r23676](https://www.nesdev.org/w/index.php?oldid=23676) |
+| 068 | Sunsoft 4 | Registered: Sunsoft34 | [r23720](https://www.nesdev.org/w/index.php?oldid=23720) |
+| 069 | FME-7 / Sunsoft 5A/5B | Registered: Sunsoft5b | [r24262](https://www.nesdev.org/w/index.php?oldid=24262) |
 | 070 | Bandai discrete board | New implementation: DiscreteMapper | [r24524](https://www.nesdev.org/w/index.php?oldid=24524) |
 | 071 | Camerica / Codemasters | New implementation: DiscreteMapper | [r21755](https://www.nesdev.org/w/index.php?oldid=21755) |
-| 072 | Jaleco JF-17 | New implementation: JalecoDiscrete (external speech unsupported) | [r24541](https://www.nesdev.org/w/index.php?oldid=24541) |
+| 072 | Jaleco JF-17 | Registered: JalecoDiscrete | [r24541](https://www.nesdev.org/w/index.php?oldid=24541) |
 | 073 | VRC3 | New implementation: KonamiVrc | [r21300](https://www.nesdev.org/w/index.php?oldid=21300) |
-| 074 | Waixing 43-393/43-406/860908C mixed CHR | New implementation: Mmc3 | [r24258](https://www.nesdev.org/w/index.php?oldid=24258) |
+| 074 | Waixing 43-393/43-406/860908C mixed CHR | Registered: Mmc3 | [r24258](https://www.nesdev.org/w/index.php?oldid=24258) |
 | 075 | Konami VRC1 and Vs. VRC1 | Registered: KonamiVrc / VsSystem | [r12313](https://www.nesdev.org/w/index.php?oldid=12313) |
 | 076 | Namco 109 variant | New implementation: Namco108 | [r21294](https://www.nesdev.org/w/index.php?oldid=21294) |
-| 077 | Irem Napoleon Senki / LROG017 | New implementation: IremLrog017 | [r24538](https://www.nesdev.org/w/index.php?oldid=24538) |
+| 077 | Irem Napoleon Senki / LROG017 | Registered: IremLrog017 | [r24538](https://www.nesdev.org/w/index.php?oldid=24538) |
 | 078 | Holy Diver / Cosmo Carrier | New implementation: DiscreteMapper | [r21584](https://www.nesdev.org/w/index.php?oldid=21584) |
 | 079 | NINA-03 / NINA-06 | New implementation: DiscreteMapper | [r22985](https://www.nesdev.org/w/index.php?oldid=22985) |
-| 080 | Taito X1-005 | New implementation: TaitoX1005 | [r24449](https://www.nesdev.org/w/index.php?oldid=24449) |
+| 080 | Taito X1-005 | Registered: TaitoX1005 | [r24449](https://www.nesdev.org/w/index.php?oldid=24449) |
 | 081 | Board-specific specification | New implementation: DiscreteMapper | [r4583](https://www.nesdev.org/w/index.php?oldid=4583) |
-| 082 | Taito X1-017 | New implementation: TaitoX1017 | [r24125](https://www.nesdev.org/w/index.php?oldid=24125) |
+| 082 | Taito X1-017 | Registered: TaitoX1017 | [r24125](https://www.nesdev.org/w/index.php?oldid=24125) |
 | 083 | Cony / Yoko | Registered: ConyYoko | [r24580](https://www.nesdev.org/w/index.php?oldid=24580) |
-| 084 | Board-specific specification | Not registered | [r24088](https://www.nesdev.org/w/index.php?oldid=24088) |
-| 085 | VRC7 | Existing registration: Vrc7 | [r22102](https://www.nesdev.org/w/index.php?oldid=22102) |
+| 084 | Pasofami / PC-SMB2J | Unregistered. Conflicting Pasofami and PC-SMB2J assignments lack a verified ROM and IRQ circuit. | [r24088](https://www.nesdev.org/w/index.php?oldid=24088) |
+| 085 | VRC7 | Registered: Vrc7 | [r22102](https://www.nesdev.org/w/index.php?oldid=22102) |
 | 086 | Jaleco JF-13 | Registered: JalecoJf13 | [r24513](https://www.nesdev.org/w/index.php?oldid=24513) |
 | 087 | Jaleco / Konami J87 | New implementation: DiscreteMapper | [r23104](https://www.nesdev.org/w/index.php?oldid=23104) |
 | 088 | Namco 118 variant | New implementation: Namco108 | [r23903](https://www.nesdev.org/w/index.php?oldid=23903) |
 | 089 | Sunsoft 2 | New implementation: DiscreteMapper | [r24544](https://www.nesdev.org/w/index.php?oldid=24544) |
 | 090 | J.Y. Company ASIC | New implementation: JyCompany | [r24184](https://www.nesdev.org/w/index.php?oldid=24184) |
 | 091 | Board-specific specification | Registered: Mapper091 | [r22474](https://www.nesdev.org/w/index.php?oldid=22474) |
-| 092 | Jaleco JF-19 | New implementation: JalecoDiscrete (external speech unsupported) | [r4687](https://www.nesdev.org/w/index.php?oldid=4687) |
+| 092 | Jaleco JF-19 | Registered: JalecoDiscrete | [r4687](https://www.nesdev.org/w/index.php?oldid=4687) |
 | 093 | Sunsoft 2 | New implementation: DiscreteMapper | [r24542](https://www.nesdev.org/w/index.php?oldid=24542) |
 | 094 | UxROM bit-layout variant | New implementation: DiscreteMapper | [r24548](https://www.nesdev.org/w/index.php?oldid=24548) |
 | 095 | Namco 118 nametable variant | New implementation: Namco108 | [r23892](https://www.nesdev.org/w/index.php?oldid=23892) |
 | 096 | Oeka Kids | Registered: OekaKids | [r24545](https://www.nesdev.org/w/index.php?oldid=24545) |
 | 097 | Irem TAM-S1 | New implementation: DiscreteMapper | [r22478](https://www.nesdev.org/w/index.php?oldid=22478) |
-| 098 | Reserved | Not registered | [r22148](https://www.nesdev.org/w/index.php?oldid=22148) |
+| 098 | Reserved | Unregistered. Reserved for a Game Boy Color port. No final specification. | [r22148](https://www.nesdev.org/w/index.php?oldid=22148) |
 | 099 | Vs. Unisystem | Registered: VsSystem | [r23485](https://www.nesdev.org/w/index.php?oldid=23485) |
 | 100 | Akira NESticle translation | Registered: NesticleMmc3 | [r23979](https://www.nesdev.org/w/index.php?oldid=23979) |
-| 101 | JF-10 legacy dump ordering | New implementation: JalecoDiscrete | [r21360](https://www.nesdev.org/w/index.php?oldid=21360) |
+| 101 | JF-10 legacy dump ordering | Registered: JalecoDiscrete | [r21360](https://www.nesdev.org/w/index.php?oldid=21360) |
 | 102 | Drip Game | Registered: Historical ID for mapper 284 | [r4801](https://www.nesdev.org/w/index.php?oldid=4801) |
 | 103 | Board-specific specification | Registered: Mapper103 | [r4802](https://www.nesdev.org/w/index.php?oldid=4802) |
 | 104 | Codemasters Golden Five | Registered: Mapper104GoldenFive | [r9567](https://www.nesdev.org/w/index.php?oldid=9567) |
@@ -4947,16 +4963,16 @@ some historical aliases share a factory with another ID.
 | 111 | GTROM / earlier MMC1 variant | New implementation: FlashBoards / Mmc1 | [r24005](https://www.nesdev.org/w/index.php?oldid=24005) |
 | 112 | Board-specific specification | Registered: Mapper112 | [r23867](https://www.nesdev.org/w/index.php?oldid=23867) |
 | 113 | Board-specific specification | New implementation: DiscreteMapper | [r20481](https://www.nesdev.org/w/index.php?oldid=20481) |
-| 114 | SuperGame/Hosenkan scrambled MMC3, submappers 0/1 | New implementation: Mmc3 | [r4858](https://www.nesdev.org/w/index.php?oldid=4858) |
-| 115 | Kasheng SFC-02B/-03/-004 | New implementation: Mmc3 | [r21614](https://www.nesdev.org/w/index.php?oldid=21614) |
+| 114 | SuperGame/Hosenkan scrambled MMC3, submappers 0/1 | Registered: Mmc3 | [r4858](https://www.nesdev.org/w/index.php?oldid=4858) |
+| 115 | Kasheng SFC-02B/-03/-004 | Registered: Mmc3 | [r21614](https://www.nesdev.org/w/index.php?oldid=21614) |
 | 116 | Board-specific specification | Registered: SomariP116 | [r22958](https://www.nesdev.org/w/index.php?oldid=22958) |
 | 117 | Board-specific specification | Registered: Mapper117 | [r4888](https://www.nesdev.org/w/index.php?oldid=4888) |
-| 118 | TxSROM / MMC3 | New implementation: Mmc3 variant | [r24058](https://www.nesdev.org/w/index.php?oldid=24058) |
-| 119 | TQROM / MMC3 | New implementation: Mmc3 variant | [r24251](https://www.nesdev.org/w/index.php?oldid=24251) |
+| 118 | TxSROM / MMC3 | Registered: Mmc3 | [r24058](https://www.nesdev.org/w/index.php?oldid=24058) |
+| 119 | TQROM / MMC3 | Registered: Mmc3 | [r24251](https://www.nesdev.org/w/index.php?oldid=24251) |
 | 120 | Board-specific specification | Registered: Lh15 | [r20571](https://www.nesdev.org/w/index.php?oldid=20571) |
 | 121 | Board-specific specification | Registered: Mapper121 | [r23905](https://www.nesdev.org/w/index.php?oldid=23905) |
 | 122 | Board-specific specification | Registered: Jy043 | [r22366](https://www.nesdev.org/w/index.php?oldid=22366) |
-| 123 | Kasheng H2288 / UNL-H2288 | New implementation: Mmc3 | [r4940](https://www.nesdev.org/w/index.php?oldid=4940) |
+| 123 | Kasheng H2288 / UNL-H2288 | Registered: Mmc3 | [r4940](https://www.nesdev.org/w/index.php?oldid=4940) |
 | 124 | Board-specific specification | Registered: SuperGameMegaTypeIII | [r4941](https://www.nesdev.org/w/index.php?oldid=4941) |
 | 125 | Board-specific specification | Registered: Lh32 | [r4945](https://www.nesdev.org/w/index.php?oldid=4945) |
 | 126 | Board-specific specification | Registered: Tec9719 | [r22468](https://www.nesdev.org/w/index.php?oldid=22468) |
@@ -4986,13 +5002,13 @@ some historical aliases share a factory with another ID.
 | 150 | Sachen board | New implementation: Sachen | [r5081](https://www.nesdev.org/w/index.php?oldid=5081) |
 | 151 | Vs. VRC1 | Registered: VsSystem | [r21586](https://www.nesdev.org/w/index.php?oldid=21586) |
 | 152 | Bandai discrete mirroring variant | New implementation: DiscreteMapper | [r21304](https://www.nesdev.org/w/index.php?oldid=21304) |
-| 153 | Bandai FCG + WRAM | New implementation: BandaiFcg | [r5112](https://www.nesdev.org/w/index.php?oldid=5112) |
+| 153 | Bandai FCG + WRAM | Registered: BandaiFcg | [r5112](https://www.nesdev.org/w/index.php?oldid=5112) |
 | 154 | Namcot-3453 | New implementation: Namco108 | [r23278](https://www.nesdev.org/w/index.php?oldid=23278) |
 | 155 | MMC1A | Registered: Mmc1a | [r24550](https://www.nesdev.org/w/index.php?oldid=24550) |
 | 156 | Board-specific specification | Registered: DaouMapper156 | [r22838](https://www.nesdev.org/w/index.php?oldid=22838) |
-| 157 | Bandai Datach | New implementation: Datach | [r21310](https://www.nesdev.org/w/index.php?oldid=21310) |
-| 158 | RAMBO-1 nametable variant | New implementation: Rambo1 | [r21299](https://www.nesdev.org/w/index.php?oldid=21299) |
-| 159 | Bandai X24C01 EEPROM | New implementation: BandaiFcg | [r5171](https://www.nesdev.org/w/index.php?oldid=5171) |
+| 157 | Bandai Datach | Registered: Datach | [r21310](https://www.nesdev.org/w/index.php?oldid=21310) |
+| 158 | RAMBO-1 nametable variant | Registered: Rambo1 | [r21299](https://www.nesdev.org/w/index.php?oldid=21299) |
+| 159 | Bandai X24C01 EEPROM | Registered: BandaiFcg | [r5171](https://www.nesdev.org/w/index.php?oldid=5171) |
 | 160 | Obsolete mapper-90 alias | Registered: JyCompany | [r5173](https://www.nesdev.org/w/index.php?oldid=5173) |
 | 161 | Hanjuku Hero SNROM | Registered: Historical ID for mapper 1 | [r5175](https://www.nesdev.org/w/index.php?oldid=5175) |
 | 162 | Board-specific specification | Registered: Mapper162Fs304 | [r19013](https://www.nesdev.org/w/index.php?oldid=19013) |
@@ -5002,9 +5018,9 @@ some historical aliases share a factory with another ID.
 | 166 | Board-specific specification | Registered: Mapper166 | [r22345](https://www.nesdev.org/w/index.php?oldid=22345) |
 | 167 | Board-specific specification | Registered: Mapper166 | [r22345](https://www.nesdev.org/w/index.php?oldid=22345) |
 | 168 | Racermate | Registered: Racermate168 | [r22805](https://www.nesdev.org/w/index.php?oldid=22805) |
-| 169 | Board-specific specification | Not registered | [r5247](https://www.nesdev.org/w/index.php?oldid=5247) |
+| 169 | Yuxing educational computer | Unregistered. Requires Yuxing banked CPU RAM, bitmap video, 14×8 keyboard and a 3.5-inch floppy controller. | [r5247](https://www.nesdev.org/w/index.php?oldid=5247) |
 | 170 | Fujiya NROM | Registered: DiscreteMapper | [r21130](https://www.nesdev.org/w/index.php?oldid=21130) |
-| 171 | Board-specific specification | Not registered | [r22367](https://www.nesdev.org/w/index.php?oldid=22367) |
+| 171 | BBK Floppy-1 / SC-98 | Unregistered. Requires BBK banked RAM, split-screen video and IRQs, NEC765 floppy drive, keyboard, mouse and BBK LPC speech. | [r22367](https://www.nesdev.org/w/index.php?oldid=22367) |
 | 172 | TXC/JV001 protection board | New implementation: Txc | [r5257](https://www.nesdev.org/w/index.php?oldid=5257) |
 | 173 | TXC/JV001 protection board | New implementation: Txc | [r5274](https://www.nesdev.org/w/index.php?oldid=5274) |
 | 174 | Board-specific specification | Registered: Ntdec174 | [r5296](https://www.nesdev.org/w/index.php?oldid=5296) |
@@ -5019,73 +5035,73 @@ some historical aliases share a factory with another ID.
 | 183 | Board-specific specification | Registered: Mapper183 | [r24192](https://www.nesdev.org/w/index.php?oldid=24192) |
 | 184 | Sunsoft CHR banking | New implementation: DiscreteMapper | [r23872](https://www.nesdev.org/w/index.php?oldid=23872) |
 | 185 | CNROM CHR-disable protection | Registered: Cnrom185 | [r24346](https://www.nesdev.org/w/index.php?oldid=24346) |
-| 186 | Fukutake Study Box convention | Not registered | [r19026](https://www.nesdev.org/w/index.php?oldid=19026) |
+| 186 | Fukutake Study Box SBX-01 | Unregistered. Requires 256 KiB SBX-01 firmware, cassette page seeking, timed data IRQs and synchronized tape audio. | [r19026](https://www.nesdev.org/w/index.php?oldid=19026) |
 | 187 | Board-specific specification | Registered: Mapper187 | [r23904](https://www.nesdev.org/w/index.php?oldid=23904) |
 | 188 | Bandai Karaoke Studio | Registered: KaraokeStudio188 | [r22386](https://www.nesdev.org/w/index.php?oldid=22386) |
 | 189 | Board-specific specification | Registered: Txc189 | [r22901](https://www.nesdev.org/w/index.php?oldid=22901) |
 | 190 | Board-specific specification | Registered: Mapper190 | [r22728](https://www.nesdev.org/w/index.php?oldid=22728) |
 | 191 | Board-specific specification | Registered: Mapper191 | [r23949](https://www.nesdev.org/w/index.php?oldid=23949) |
-| 192 | Waixing FS308 mixed CHR | New implementation: Mmc3 | [r23950](https://www.nesdev.org/w/index.php?oldid=23950) |
+| 192 | Waixing FS308 mixed CHR | Registered: Mmc3 | [r23950](https://www.nesdev.org/w/index.php?oldid=23950) |
 | 193 | Board-specific specification | New implementation: DiscreteMapper | [r21022](https://www.nesdev.org/w/index.php?oldid=21022) |
-| 194 | MMC3 mixed CHR, RAM starting at bank zero | New implementation: Mmc3 | [r23951](https://www.nesdev.org/w/index.php?oldid=23951) |
-| 195 | Waixing FS303, PPU-write-selected mixed CHR | New implementation: Mmc3 | [r23952](https://www.nesdev.org/w/index.php?oldid=23952) |
-| 196 | MRCM MMC3 register wiring and 32 KiB PRG override | New implementation: Mmc3 | [r22320](https://www.nesdev.org/w/index.php?oldid=22320) |
-| 197 | MMC3 larger CHR windows, submapper-3 PRG A17 mux | New implementation: Mmc3 | [r5527](https://www.nesdev.org/w/index.php?oldid=5527) |
-| 198 | TNROM640 two-chip PRG and separate volatile/NVRAM windows | New implementation: Mmc3 | [r23191](https://www.nesdev.org/w/index.php?oldid=23191) |
-| 199 | Waixing FS309, conventional oversized PRG and fixed CHR RAM | New implementation: Mmc3 | [r23199](https://www.nesdev.org/w/index.php?oldid=23199) |
+| 194 | MMC3 mixed CHR, RAM starting at bank zero | Registered: Mmc3 | [r23951](https://www.nesdev.org/w/index.php?oldid=23951) |
+| 195 | Waixing FS303, PPU-write-selected mixed CHR | Registered: Mmc3 | [r23952](https://www.nesdev.org/w/index.php?oldid=23952) |
+| 196 | MRCM MMC3 register wiring and 32 KiB PRG override | Registered: Mmc3 | [r22320](https://www.nesdev.org/w/index.php?oldid=22320) |
+| 197 | MMC3 larger CHR windows, submapper-3 PRG A17 mux | Registered: Mmc3 | [r5527](https://www.nesdev.org/w/index.php?oldid=5527) |
+| 198 | TNROM640 two-chip PRG and separate volatile/NVRAM windows | Registered: Mmc3 | [r23191](https://www.nesdev.org/w/index.php?oldid=23191) |
+| 199 | Waixing FS309, conventional oversized PRG and fixed CHR RAM | Registered: Mmc3 | [r23199](https://www.nesdev.org/w/index.php?oldid=23199) |
 | 200 | Board-specific specification | New implementation: DiscreteMapper | [r20921](https://www.nesdev.org/w/index.php?oldid=20921) |
 | 201 | Board-specific specification | New implementation: DiscreteMapper | [r24516](https://www.nesdev.org/w/index.php?oldid=24516) |
 | 202 | 150-in-1 address-latched multicart; 32 KiB alignment compatibility policy | New implementation: DiscreteMapper | [r5551](https://www.nesdev.org/w/index.php?oldid=5551) |
 | 203 | Board-specific specification | New implementation: DiscreteMapper | [r5555](https://www.nesdev.org/w/index.php?oldid=5555) |
 | 204 | CF-028 multicarts | Registered: MulticartLatches | [r5557](https://www.nesdev.org/w/index.php?oldid=5557) |
-| 205 | JC-016-2 MMC3 block pins with selectable block-1-to-3 solder pad | New implementation: Mmc3 | [r5566](https://www.nesdev.org/w/index.php?oldid=5566) |
+| 205 | JC-016-2 MMC3 block pins with selectable block-1-to-3 solder pad | Registered: Mmc3 | [r5566](https://www.nesdev.org/w/index.php?oldid=5566) |
 | 206 | Namco 108/118 / DxROM | New implementation: Namco108 | [r23830](https://www.nesdev.org/w/index.php?oldid=23830) |
-| 207 | Taito X1-005 nametable variant | New implementation: TaitoX1005 | [r24116](https://www.nesdev.org/w/index.php?oldid=24116) |
-| 208 | Gouder protected registers and JJ-01 R6-controlled PRG, submappers 0/1 | New implementation: Mmc3 | [r5614](https://www.nesdev.org/w/index.php?oldid=5614) |
+| 207 | Taito X1-005 nametable variant | Registered: TaitoX1005 | [r24116](https://www.nesdev.org/w/index.php?oldid=24116) |
+| 208 | Gouder protected registers and JJ-01 R6-controlled PRG, submappers 0/1 | Registered: Mmc3 | [r5614](https://www.nesdev.org/w/index.php?oldid=5614) |
 | 209 | J.Y. Company ASIC | New implementation: JyCompany | [r24184](https://www.nesdev.org/w/index.php?oldid=24184) |
-| 210 | Namco 175/340 | New implementation: Namco175340 (submappers 0/1/2) | [r23707](https://www.nesdev.org/w/index.php?oldid=23707) |
+| 210 | Namco 175/340 | Registered: Namco175340 | [r23707](https://www.nesdev.org/w/index.php?oldid=23707) |
 | 211 | J.Y. Company ASIC | New implementation: JyCompany | [r24184](https://www.nesdev.org/w/index.php?oldid=24184) |
 | 212 | Board-specific specification | New implementation: DiscreteMapper | [r24309](https://www.nesdev.org/w/index.php?oldid=24309) |
 | 213 | Board-specific specification | New implementation: DiscreteMapper | [r5674](https://www.nesdev.org/w/index.php?oldid=5674) |
 | 214 | Super Gun 20-in-1 | Registered: DiscreteMapper | [r5675](https://www.nesdev.org/w/index.php?oldid=5675) |
-| 215 | Sugar Softec UNL-8237/8237A | New implementation: Mmc3 (submappers 0/1) | [r5704](https://www.nesdev.org/w/index.php?oldid=5704) |
+| 215 | Sugar Softec UNL-8237/8237A | Registered: Mmc3 | [r5704](https://www.nesdev.org/w/index.php?oldid=5704) |
 | 216 | RCM Magic Jewelry II | Registered: DiscreteMapper | [r5705](https://www.nesdev.org/w/index.php?oldid=5705) |
 | 217 | Unchained Melody / GI 9549 | Registered: DiscreteMapper | [r5706](https://www.nesdev.org/w/index.php?oldid=5706) |
-| 218 | Single Chip / Magic Floor | New implementation: SingleChip (all four CIRAM wirings) | [r22660](https://www.nesdev.org/w/index.php?oldid=22660) |
-| 219 | Kasheng A9461 / NT-8029 | New implementation: Mmc3 (ROM-only compatibility model) | [r21696](https://www.nesdev.org/w/index.php?oldid=21696) |
+| 218 | Single Chip / Magic Floor | Registered: SingleChip | [r22660](https://www.nesdev.org/w/index.php?oldid=22660) |
+| 219 | Kasheng A9461 / NT-8029 | Registered: Mmc3 | [r21696](https://www.nesdev.org/w/index.php?oldid=21696) |
 | 220 | Gyruss / Boogerman II | Registered: KS-7057 on mapper 302 or Boogerman II on mapper 263 | [r23976](https://www.nesdev.org/w/index.php?oldid=23976) |
-| 221 | NTDEC N625092 / BMC-N625092 | New implementation: NtdecN625092 | [r5744](https://www.nesdev.org/w/index.php?oldid=5744) |
+| 221 | NTDEC N625092 / BMC-N625092 | Registered: NtdecN625092 | [r5744](https://www.nesdev.org/w/index.php?oldid=5744) |
 | 222 | CTC-31 | Registered: Ctc31 | [r5746](https://www.nesdev.org/w/index.php?oldid=5746) |
 | 223 | Tom Sawyer | Registered: Tom Sawyer on mapper 199 | [r24635](https://www.nesdev.org/w/index.php?oldid=24635) |
 | 224 | Jncota KT-008 / mapper-268 chipset | Registered: Kt008 | [r5752](https://www.nesdev.org/w/index.php?oldid=5752) |
 | 225 | ET-4310 / K-1010 address-latched multicarts | New implementation: DiscreteMapper | [r18874](https://www.nesdev.org/w/index.php?oldid=18874) |
 | 226 | Board-specific specification | New implementation: DiscreteMapper | [r22261](https://www.nesdev.org/w/index.php?oldid=22261) |
-| 227 | Address-latched multicart / RPG boards | New implementation: Multicart227 | [r23188](https://www.nesdev.org/w/index.php?oldid=23188) |
-| 228 | Action 52 / Active Enterprises | New implementation: Action52 | [r5784](https://www.nesdev.org/w/index.php?oldid=5784) |
+| 227 | Address-latched multicart / RPG boards | Registered: Multicart227 | [r23188](https://www.nesdev.org/w/index.php?oldid=23188) |
+| 228 | Action 52 / Active Enterprises | Registered: Action52 | [r5784](https://www.nesdev.org/w/index.php?oldid=5784) |
 | 229 | Board-specific specification | New implementation: DiscreteMapper | [r5785](https://www.nesdev.org/w/index.php?oldid=5785) |
-| 230 | Reset-driven 22-in-1 / Contra + multicart | New implementation: Multicart230 | [r5788](https://www.nesdev.org/w/index.php?oldid=5788) |
+| 230 | Reset-driven 22-in-1 / Contra + multicart | Registered: Multicart230 | [r5788](https://www.nesdev.org/w/index.php?oldid=5788) |
 | 231 | Board-specific specification | New implementation: DiscreteMapper | [r5791](https://www.nesdev.org/w/index.php?oldid=5791) |
 | 232 | Codemasters Quattro | New implementation: DiscreteMapper | [r5797](https://www.nesdev.org/w/index.php?oldid=5797) |
-| 233 | 42 Games / conflicting legacy models | New implementation: Multicart233 (profiled compatibility models) | [r5799](https://www.nesdev.org/w/index.php?oldid=5799) |
-| 234 | Maxi 15 / AVE and Australian HES wiring | New implementation: Maxi15 | [r24540](https://www.nesdev.org/w/index.php?oldid=24540) |
-| 235 | Golden Game / eight packed ROM socket populations | New implementation: GoldenGame | [r22514](https://www.nesdev.org/w/index.php?oldid=22514) |
-| 236 | Realtec 8031/8155, 8099 and CHR-RAM 8106 | New implementation: RealtecMulticart | [r18875](https://www.nesdev.org/w/index.php?oldid=18875) |
-| 237 | Teletubbies 420-in-1 / forced-A1 type wiring | New implementation: Teletubbies | [r5823](https://www.nesdev.org/w/index.php?oldid=5823) |
-| 238 | Contra Fighter / UNL-603-5052 protection compatibility model | New implementation: Mmc3 | [r5824](https://www.nesdev.org/w/index.php?oldid=5824) |
+| 233 | 42 Games / conflicting legacy models | Registered: Multicart233 | [r5799](https://www.nesdev.org/w/index.php?oldid=5799) |
+| 234 | Maxi 15 / AVE and Australian HES wiring | Registered: Maxi15 | [r24540](https://www.nesdev.org/w/index.php?oldid=24540) |
+| 235 | Golden Game / eight packed ROM socket populations | Registered: GoldenGame | [r22514](https://www.nesdev.org/w/index.php?oldid=22514) |
+| 236 | Realtec 8031/8155, 8099 and CHR-RAM 8106 | Registered: RealtecMulticart | [r18875](https://www.nesdev.org/w/index.php?oldid=18875) |
+| 237 | Teletubbies 420-in-1 / forced-A1 type wiring | Registered: Teletubbies | [r5823](https://www.nesdev.org/w/index.php?oldid=5823) |
+| 238 | Contra Fighter / UNL-603-5052 protection compatibility model | Registered: Mmc3 | [r5824](https://www.nesdev.org/w/index.php?oldid=5824) |
 | 240 | Board-specific specification | New implementation: DiscreteMapper | [r21944](https://www.nesdev.org/w/index.php?oldid=21944) |
-| 241 | BxROM with 8 KiB WRAM and optional LPC speech profile | New implementation: BxromWram | [r23728](https://www.nesdev.org/w/index.php?oldid=23728) |
-| 242 | 43272 multicart / battery Waixing RPG / ET-113 replacement menu | New implementation: Multicart242 | [r19709](https://www.nesdev.org/w/index.php?oldid=19709) |
+| 241 | BxROM with 8 KiB WRAM and optional LPC speech profile | Registered: BxromWram | [r23728](https://www.nesdev.org/w/index.php?oldid=23728) |
+| 242 | 43272 multicart / battery Waixing RPG / ET-113 replacement menu | Registered: Multicart242 | [r19709](https://www.nesdev.org/w/index.php?oldid=19709) |
 | 243 | Sachen board | New implementation: Sachen | [r5861](https://www.nesdev.org/w/index.php?oldid=5861) |
-| 244 | C&E Decathlon / scrambled bank latches | New implementation: Decathlon | [r5862](https://www.nesdev.org/w/index.php?oldid=5862) |
-| 245 | Waixing F003 / CHR output drives PRG A19 | New implementation: Mmc3 | [r5871](https://www.nesdev.org/w/index.php?oldid=5871) |
-| 246 | G0151-1 / Feng Shen Bang | New implementation: G0151 | [r22048](https://www.nesdev.org/w/index.php?oldid=22048) |
+| 244 | C&E Decathlon / scrambled bank latches | Registered: Decathlon | [r5862](https://www.nesdev.org/w/index.php?oldid=5862) |
+| 245 | Waixing F003 / CHR output drives PRG A19 | Registered: Mmc3 | [r5871](https://www.nesdev.org/w/index.php?oldid=5871) |
+| 246 | G0151-1 / Feng Shen Bang | Registered: G0151 | [r22048](https://www.nesdev.org/w/index.php?oldid=22048) |
 | 248 | Bao Qing Tian | Registered: Bao Qing Tian on mapper 115 | [r23288](https://www.nesdev.org/w/index.php?oldid=23288) |
-| 249 | Waixing T9552, legacy file order | New implementation: Mmc3 | [r20254](https://www.nesdev.org/w/index.php?oldid=20254) |
-| 250 | Nitra L401 / Queen Bee V | New implementation: Mmc3 | [r21044](https://www.nesdev.org/w/index.php?oldid=21044) |
+| 249 | Waixing T9552, legacy file order | Registered: Mmc3 | [r20254](https://www.nesdev.org/w/index.php?oldid=20254) |
+| 250 | Nitra L401 / Queen Bee V | Registered: Mmc3 | [r21044](https://www.nesdev.org/w/index.php?oldid=21044) |
 | 251 | Qilongzhu ES-1064 | Registered: Qilongzhu on mapper 253 | [r5898](https://www.nesdev.org/w/index.php?oldid=5898) |
-| 252 | Waixing VRC4e / Sangokushi mixed CHR | New implementation: KonamiVrc | [r5906](https://www.nesdev.org/w/index.php?oldid=5906) |
-| 253 | Waixing VRC4 CHR4/5 / F009S relocation profile | New implementation: KonamiVrc | [r5910](https://www.nesdev.org/w/index.php?oldid=5910) |
-| 254 | Pikachu Y2K WRAM XOR protection | New implementation: Mmc3 | [r24273](https://www.nesdev.org/w/index.php?oldid=24273) |
+| 252 | Waixing VRC4e / Sangokushi mixed CHR | Registered: KonamiVrc | [r5906](https://www.nesdev.org/w/index.php?oldid=5906) |
+| 253 | Waixing VRC4 CHR4/5 / F009S relocation profile | Registered: KonamiVrc | [r5910](https://www.nesdev.org/w/index.php?oldid=5910) |
+| 254 | Pikachu Y2K WRAM XOR protection | Registered: Mmc3 | [r24273](https://www.nesdev.org/w/index.php?oldid=24273) |
 | 255 | New Star 128-in-1 | Registered: New Star 128-in-1 population of mapper 225 | [r20429](https://www.nesdev.org/w/index.php?oldid=20429) |
 | 256 | OneBus VT02 | Registered: OneBus | [r23934](https://www.nesdev.org/w/index.php?oldid=23934) |
 | 257 | Dongda / Hongda educational boards | Registered: Mapper257 | [r23118](https://www.nesdev.org/w/index.php?oldid=23118) |
@@ -5093,8 +5109,8 @@ some historical aliases share a factory with another ID.
 | 259 | F-15 multicart | Registered: Mmc3 | [r7628](https://www.nesdev.org/w/index.php?oldid=7628) |
 | 260 | Board-specific specification | Registered: HpMulticart260 | [r22170](https://www.nesdev.org/w/index.php?oldid=22170) |
 | 261 | Board-specific specification | Registered: Ntdec2746 | [r18984](https://www.nesdev.org/w/index.php?oldid=18984) |
-| 262 | Sachen Street Heroes / UNL-SHERO | New implementation: Mmc3 | [r7640](https://www.nesdev.org/w/index.php?oldid=7640) |
-| 263 | Rex Soft UNL-KOF97 | New implementation: Mmc3 | [r7642](https://www.nesdev.org/w/index.php?oldid=7642) |
+| 262 | Sachen Street Heroes / UNL-SHERO | Registered: Mmc3 | [r7640](https://www.nesdev.org/w/index.php?oldid=7640) |
+| 263 | Rex Soft UNL-KOF97 | Registered: Mmc3 | [r7642](https://www.nesdev.org/w/index.php?oldid=7642) |
 | 264 | Board-specific specification | Registered: ConyYoko | [r24580](https://www.nesdev.org/w/index.php?oldid=24580) |
 | 265 | Board-specific specification | Registered: Mapper128 | [r21955](https://www.nesdev.org/w/index.php?oldid=21955) |
 | 266 | Board-specific specification | Registered: CityFighter266 | [r7660](https://www.nesdev.org/w/index.php?oldid=7660) |
@@ -5106,11 +5122,11 @@ some historical aliases share a factory with another ID.
 | 272 | Board-specific specification | Registered: Mapper272 | [r7701](https://www.nesdev.org/w/index.php?oldid=7701) |
 | 273 | Board-specific specification | Registered: Mapper273 | [r7703](https://www.nesdev.org/w/index.php?oldid=7703) |
 | 274 | Board-specific specification | Registered: CartridgeStory274 | [r7708](https://www.nesdev.org/w/index.php?oldid=7708) |
-| 275 | Board-specific specification | Not registered | [r7709](https://www.nesdev.org/w/index.php?oldid=7709) |
-| 276 | Board-specific specification | Not registered | [r7710](https://www.nesdev.org/w/index.php?oldid=7710) |
+| 275 | Unidentified Nestopia Plus assignment | Unregistered. Assignment only. Register wiring and fitted memory unidentified. | [r7709](https://www.nesdev.org/w/index.php?oldid=7709) |
+| 276 | Unidentified Nestopia Plus assignment | Unregistered. Assignment only. Register wiring and fitted memory unidentified. | [r7710](https://www.nesdev.org/w/index.php?oldid=7710) |
 | 277 | Fudou Myouou Den 3-in-1 | Registered: ChrRamMulticarts | [r24389](https://www.nesdev.org/w/index.php?oldid=24389) |
-| 278 | Board-specific specification | Not registered | [r7712](https://www.nesdev.org/w/index.php?oldid=7712) |
-| 279 | Board-specific specification | Not registered | [r23180](https://www.nesdev.org/w/index.php?oldid=23180) |
+| 278 | Unidentified Nestopia Plus assignment | Unregistered. Assignment only. Register wiring and fitted memory unidentified. | [r7712](https://www.nesdev.org/w/index.php?oldid=7712) |
+| 279 | PC2-P3127-01 | Unregistered. PC2-P3127-01. Board identified, register wiring unavailable. | [r23180](https://www.nesdev.org/w/index.php?oldid=23180) |
 | 280 | K-3017 | Registered: ChrRamMulticarts | [r7714](https://www.nesdev.org/w/index.php?oldid=7714) |
 | 281 | J.Y. Company multicart | New implementation: JyCompany | [r18938](https://www.nesdev.org/w/index.php?oldid=18938) |
 | 282 | J.Y. Company multicart | New implementation: JyCompany | [r23351](https://www.nesdev.org/w/index.php?oldid=23351) |
@@ -5127,7 +5143,7 @@ some historical aliases share a factory with another ID.
 | 293 | Board-specific specification | Registered: Mapper293 | [r7751](https://www.nesdev.org/w/index.php?oldid=7751) |
 | 294 | Board-specific specification | Registered: Mapper294 | [r19317](https://www.nesdev.org/w/index.php?oldid=19317) |
 | 295 | J.Y. Company multicart | New implementation: JyCompany | [r23352](https://www.nesdev.org/w/index.php?oldid=23352) |
-| 296 | VT3x | Not registered | [r23820](https://www.nesdev.org/w/index.php?oldid=23820) |
+| 296 | VT3x | Unregistered. All identified images require VT32 CPU, extended graphics and PCM. | [r23820](https://www.nesdev.org/w/index.php?oldid=23820) |
 | 297 | TXC Uzi | Registered: Mapper297 | [r7767](https://www.nesdev.org/w/index.php?oldid=7767) |
 | 298 | Board-specific specification | Registered: UnlTf1201 | [r7772](https://www.nesdev.org/w/index.php?oldid=7772) |
 | 299 | Board-specific specification | Registered: Mapper299 | [r22947](https://www.nesdev.org/w/index.php?oldid=22947) |
@@ -5147,9 +5163,9 @@ some historical aliases share a factory with another ID.
 | 313 | Board-specific specification | Registered: Mapper313 | [r7804](https://www.nesdev.org/w/index.php?oldid=7804) |
 | 314 | Board-specific specification | Registered: Mapper314 | [r23247](https://www.nesdev.org/w/index.php?oldid=23247) |
 | 315 | Board-specific specification | Registered: Mapper315 | [r7811](https://www.nesdev.org/w/index.php?oldid=7811) |
-| 316 | Board-specific specification | Not registered | [r23179](https://www.nesdev.org/w/index.php?oldid=23179) |
-| 317 | Board-specific specification | Not registered | [r23178](https://www.nesdev.org/w/index.php?oldid=23178) |
-| 318 | Board-specific specification | Not registered | [r23177](https://www.nesdev.org/w/index.php?oldid=23177) |
+| 316 | Dragon Ball Fighter 2-in-1 / JY104 | Unregistered. Nestopia Plus assignment. No published register decode or verified memory layout. | [r23179](https://www.nesdev.org/w/index.php?oldid=23179) |
+| 317 | 810344-C / 4350 | Unregistered. Nestopia Plus assignment. No published register decode or verified memory layout. | [r23178](https://www.nesdev.org/w/index.php?oldid=23178) |
+| 318 | UT-1245A / BJ-40 | Unregistered. Nestopia Plus assignment. No published register decode or verified memory layout. | [r23177](https://www.nesdev.org/w/index.php?oldid=23177) |
 | 319 | Board-specific specification | Registered: Mapper319 | [r22946](https://www.nesdev.org/w/index.php?oldid=22946) |
 | 320 | Board-specific specification | Registered: Mapper320 | [r20234](https://www.nesdev.org/w/index.php?oldid=20234) |
 | 321 | Board-specific specification | Registered: Mapper321 | [r19761](https://www.nesdev.org/w/index.php?oldid=19761) |
@@ -5236,9 +5252,9 @@ some historical aliases share a factory with another ID.
 | 402 | Board-specific specification | Registered: Mapper402 | [r18959](https://www.nesdev.org/w/index.php?oldid=18959) |
 | 403 | Board-specific specification | Registered: Mapper403 | [r18960](https://www.nesdev.org/w/index.php?oldid=18960) |
 | 404 | Board-specific specification | Registered: Mapper404 | [r18976](https://www.nesdev.org/w/index.php?oldid=18976) |
-| 405 | Board-specific specification | Not registered | [r23367](https://www.nesdev.org/w/index.php?oldid=23367) |
+| 405 | Board-specific specification | Unregistered. UM6578 requires its native 4 KiB bank registers, enhanced PPU and DMA. | [r23367](https://www.nesdev.org/w/index.php?oldid=23367) |
 | 406 | Haradius Zero | Registered: Mapper406 | [r22429](https://www.nesdev.org/w/index.php?oldid=22429) |
-| 407 | Board-specific specification | Not registered | [r24350](https://www.nesdev.org/w/index.php?oldid=24350) |
+| 407 | Board-specific specification | Unregistered. VT03 tablet requires encrypted opcode fetch and enhanced video. | [r24350](https://www.nesdev.org/w/index.php?oldid=24350) |
 | 408 | Board-specific specification | Registered: Mapper408 | [r24418](https://www.nesdev.org/w/index.php?oldid=24418) |
 | 409 | Board-specific specification | Registered: Mapper409 | [r20235](https://www.nesdev.org/w/index.php?oldid=20235) |
 | 410 | Board-specific specification | Registered: Mapper410 | [r18957](https://www.nesdev.org/w/index.php?oldid=18957) |
@@ -5250,15 +5266,15 @@ some historical aliases share a factory with another ID.
 | 416 | Board-specific specification | Registered: Mapper416 | [r8044](https://www.nesdev.org/w/index.php?oldid=8044) |
 | 417 | Board-specific specification | Registered: Mapper417 | [r19973](https://www.nesdev.org/w/index.php?oldid=19973) |
 | 418 | Taito / Namco 108 variant | Registered: Namco108 | [r8047](https://www.nesdev.org/w/index.php?oldid=8047) |
-| 419 | Board-specific specification | Not registered | [r23377](https://www.nesdev.org/w/index.php?oldid=23377) |
+| 419 | Board-specific specification | Unregistered. Requires VT03 graphics and a controller-port ADPCM handshake. | [r23377](https://www.nesdev.org/w/index.php?oldid=23377) |
 | 420 | Kasheng A971210 | Registered: Mmc3 | [r8052](https://www.nesdev.org/w/index.php?oldid=8052) |
 | 421 | J.Y. SC871115C | Registered: JyCompany | [r8053](https://www.nesdev.org/w/index.php?oldid=8053) |
 | 422 | Board-specific specification | Registered: Mapper422 | [r22468](https://www.nesdev.org/w/index.php?oldid=22468) |
-| 423 | Board-specific specification | Not registered | [r23378](https://www.nesdev.org/w/index.php?oldid=23378) |
-| 424 | Board-specific specification | Not registered | [r23379](https://www.nesdev.org/w/index.php?oldid=23379) |
-| 425 | Board-specific specification | Not registered | [r23380](https://www.nesdev.org/w/index.php?oldid=23380) |
-| 426 | Board-specific specification | Not registered | [r23381](https://www.nesdev.org/w/index.php?oldid=23381) |
-| 427 | Board-specific specification | Not registered | [r23382](https://www.nesdev.org/w/index.php?oldid=23382) |
+| 423 | Board-specific specification | Unregistered. VT369 console. Enhanced video, CPU and audio are incomplete. | [r23378](https://www.nesdev.org/w/index.php?oldid=23378) |
+| 424 | Board-specific specification | Unregistered. VT369 console. Enhanced video, CPU and audio are incomplete. | [r23379](https://www.nesdev.org/w/index.php?oldid=23379) |
+| 425 | Board-specific specification | Unregistered. VT369 console. Enhanced video, CPU and audio are incomplete. | [r23380](https://www.nesdev.org/w/index.php?oldid=23380) |
+| 426 | Board-specific specification | Unregistered. Requires the VT369 CPU, PPU and audio, plus a serial-media ASIC. | [r23381](https://www.nesdev.org/w/index.php?oldid=23381) |
+| 427 | Board-specific specification | Unregistered. VT369 console. Enhanced video, CPU and audio are incomplete. | [r23382](https://www.nesdev.org/w/index.php?oldid=23382) |
 | 428 | KB-46 | Registered: MulticartLatches | [r8060](https://www.nesdev.org/w/index.php?oldid=8060) |
 | 429 | Board-specific specification | Registered: Mapper429 | [r23470](https://www.nesdev.org/w/index.php?oldid=23470) |
 | 430 | Board-specific specification | Registered: Mapper430 | [r18979](https://www.nesdev.org/w/index.php?oldid=18979) |
@@ -5310,8 +5326,8 @@ some historical aliases share a factory with another ID.
 | 493 | Board-specific specification | Registered: Mapper493 | [r24546](https://www.nesdev.org/w/index.php?oldid=24546) |
 | 495 | Board-specific specification | Registered: Mapper495 | [r22800](https://www.nesdev.org/w/index.php?oldid=22800) |
 | 497 | Board-specific specification | Registered: Mapper497 | [r22873](https://www.nesdev.org/w/index.php?oldid=22873) |
-| 512 | Sachen Zhongguo Daheng | New implementation: Mmc3 | [r8073](https://www.nesdev.org/w/index.php?oldid=8073) |
-| 513 | Sachen SA-9602B / Princess Maker | New implementation: Mmc3 | [r8077](https://www.nesdev.org/w/index.php?oldid=8077) |
+| 512 | Sachen Zhongguo Daheng | Registered: Mmc3 | [r8073](https://www.nesdev.org/w/index.php?oldid=8073) |
+| 513 | Sachen SA-9602B / Princess Maker | Registered: Mmc3 | [r8077](https://www.nesdev.org/w/index.php?oldid=8077) |
 | 514 | Board-specific specification | Registered: Mapper514 | [r22322](https://www.nesdev.org/w/index.php?oldid=22322) |
 | 515 | Board-specific specification | Registered: Mapper515 | [r22771](https://www.nesdev.org/w/index.php?oldid=22771) |
 | 516 | Board-specific specification | Registered: Mapper516 | [r8088](https://www.nesdev.org/w/index.php?oldid=8088) |
@@ -5350,7 +5366,7 @@ some historical aliases share a factory with another ID.
 | 549 | Kaiser KS-7016B | Registered: Mapper306 | [r21240](https://www.nesdev.org/w/index.php?oldid=21240) |
 | 550 | JY820845C | Registered: Mmc1 | [r8188](https://www.nesdev.org/w/index.php?oldid=8188) |
 | 551 | Jncota | Registered: Fs305 | [r8189](https://www.nesdev.org/w/index.php?oldid=8189) |
-| 552 | Taito X1-017 wiring variant | New implementation: TaitoX1017 | [r24125](https://www.nesdev.org/w/index.php?oldid=24125) |
+| 552 | Taito X1-017 wiring variant | Registered: TaitoX1017 | [r24125](https://www.nesdev.org/w/index.php?oldid=24125) |
 | 553 | Sachen 3013 | Registered: Mapper553 | [r8192](https://www.nesdev.org/w/index.php?oldid=8192) |
 | 554 | Kaiser KS-7010 | Registered: Mapper554 | [r8195](https://www.nesdev.org/w/index.php?oldid=8195) |
 | 555 | Campus Challenge 1991 reproduction | Registered: Mapper555 | [r8198](https://www.nesdev.org/w/index.php?oldid=8198) |
@@ -5362,7 +5378,7 @@ some historical aliases share a factory with another ID.
 | 562 | Venus Turbo Game Doctor | Registered: GameDoctor | [r19971](https://www.nesdev.org/w/index.php?oldid=19971) |
 | 594 | Rinco Talkman | Registered: Mapper594 | [r22961](https://www.nesdev.org/w/index.php?oldid=22961) |
 | 595 | NES-4MROM-512 | Registered: Mapper595 | [r22979](https://www.nesdev.org/w/index.php?oldid=22979) |
-| 600 | ABL UM6578 extended banking | Not registered | [r23398](https://www.nesdev.org/w/index.php?oldid=23398) |
-| 601 | dreamGEAR / Senario UM6578 | Not registered | [r23369](https://www.nesdev.org/w/index.php?oldid=23369) |
-| 602 | Subor SB-2000 UM6576 | Not registered | [r23370](https://www.nesdev.org/w/index.php?oldid=23370) |
+| 600 | ABL UM6578 extended banking | Unregistered. ABL requires native UM6578 console support and an unidentified sound chip. | [r23398](https://www.nesdev.org/w/index.php?oldid=23398) |
+| 601 | dreamGEAR / Senario UM6578 | Unregistered. dreamGEAR / Senario requires native UM6578 console support. | [r23369](https://www.nesdev.org/w/index.php?oldid=23369) |
+| 602 | Subor SB-2000 UM6576 | Unregistered. Subor SB-2000 requires UM6576 hardware, DRAM, speech and an Intel 82077-compatible FDC. | [r23370](https://www.nesdev.org/w/index.php?oldid=23370) |
 | 682 | BrokeStudio Rainbow | Registered: Rainbow | [r24195](https://www.nesdev.org/w/index.php?oldid=24195) |

@@ -6,7 +6,7 @@ registered mapper is not a guarantee that every game or board variant works.
 ## Cartridge formats and mappers
 
 The cartridge loader parses iNES and NES 2.0 headers. The built-in registry
-contains the following mapper IDs:
+supports the cartridge families listed below. The complete ID list and per-board limits are in the [coverage inventory](mapper-implementation.md#every-documented-registry-slot).
 
 | Mapper ID | Implementation | Expansion audio |
 |---|---|---|
@@ -97,17 +97,12 @@ work. Coverage varies by board and includes synthetic banking, IRQ, CPU/PPU
 integration, and save-state tests.
 
 Unsupported IDs fail cartridge creation with an `Unsupported mapper` error.
-Mapper 256 (OneBus/VTxx) remains unregistered. Native PPU-register routing and
-a normal 2bpp banking/IRQ component are tested; enhanced-console integration
-and supported profile registration remain to be implemented. See the [OneBus integration status](mapper-implementation.md#mapper-256-first-step-native-ppu-register-routing).
-Obsolete mapper 248 remains unsupported; its documented cartridge behavior is
-covered under mapper 115, without automatic header rewriting.
-Apparent duplicate mapper 255 remains unregistered; its address-latched banking
-is already implemented by mapper 225. Mapper 225 currently models populated
-nibble RAM and deterministic reset; RAM-absent boards and physical startup
-remain unverified. See the [255 classification](mapper-implementation.md#mapper-255-classification-apparent-duplicate-of-225).
-Historical duplicate mapper 182 is likewise unregistered; its documented
-cartridge behavior is covered under mapper 114.
+Mappers 256, 270 and 436 accept the NES 2.0 VT02 profile for normal 2bpp graphics. Enhanced-console profiles still require additional hardware emulation. [Board profiles and media requirements](mapper-implementation.md#cartridge-coverage-follow-up).
+Mapper 182 implements the YH-001 multicart, and mapper 255 accepts the New
+Star 128-in-1 population. Historical IDs with conflicting assignments, including
+54 and 220, use the fitted ROM sizes and chip checksums to identify the circuit.
+Save states retain the identity of the supplied cartridge.
+
 Sunsoft DCS option cartridges load alongside a submapper 68:1 base using
 `--dcs-option PATH`; see [DCS loading and snapshot identity](../how-to/play-dcs-games.md).
 The registry also rejects invalid or unsupported ROM geometries.
@@ -125,10 +120,12 @@ a separate shared reader save, and optional 128-byte cartridge save. Barcode
 injection is available through the core API and headless CLI; graphical barcode
 controls and physical-reader validation remain open. See the mapper ledger.
 
-Self-flashable boards persist a complete 512 KiB chip image in a separate `.sav`;
-GTROM also saves when the battery flag is clear. Source ROM files and their
-content identities stay unchanged. Programming/erase timing is approximate, and
-cartridge LEDs are exposed in the core without a graphical indicator.
+Self-flashable boards persist their chip images in a separate `.sav`. Rainbow
+stores PRG flash, CHR flash and battery RAM in that order. Its 32 MiB save-state
+limit accommodates two fully rewritten 8 MiB chips. Other boards use a 4 MiB
+save-state limit. GTROM also saves when the battery flag is clear. Flash writes
+preserve the source ROM and its content identity. Programming and erase timing
+are approximate. Cartridge LEDs are exposed through the core API.
 
 Source: [Mapper registry](../../src/core/mappers/mapper_registry.cpp) and
 [header parser](../../src/core/cartridge/ines_header.cpp).
