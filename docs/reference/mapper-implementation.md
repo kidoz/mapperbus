@@ -4902,7 +4902,7 @@ or another registered cartridge ID.
 | 080 | Taito X1-005 | New implementation: TaitoX1005 | [r24449](https://www.nesdev.org/w/index.php?oldid=24449) |
 | 081 | Board-specific specification | New implementation: DiscreteMapper | [r4583](https://www.nesdev.org/w/index.php?oldid=4583) |
 | 082 | Taito X1-017 | New implementation: TaitoX1017 | [r24125](https://www.nesdev.org/w/index.php?oldid=24125) |
-| 083 | Cony / Yoko | Not registered | [r24580](https://www.nesdev.org/w/index.php?oldid=24580) |
+| 083 | Cony / Yoko | Registered: ConyYoko | [r24580](https://www.nesdev.org/w/index.php?oldid=24580) |
 | 084 | Board-specific specification | Not registered | [r24088](https://www.nesdev.org/w/index.php?oldid=24088) |
 | 085 | VRC7 | Existing registration: Vrc7 | [r22102](https://www.nesdev.org/w/index.php?oldid=22102) |
 | 086 | Jaleco JF-13 | Not registered | [r24513](https://www.nesdev.org/w/index.php?oldid=24513) |
