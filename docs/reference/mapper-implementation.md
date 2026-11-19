@@ -4882,7 +4882,7 @@ or another registered cartridge ID.
 | 060 | Board-specific specification | Registered: Multicart060 | [r22301](https://www.nesdev.org/w/index.php?oldid=22301) |
 | 061 | Board-specific specification | New implementation: DiscreteMapper | [r22920](https://www.nesdev.org/w/index.php?oldid=22920) |
 | 062 | Board-specific specification | New implementation: DiscreteMapper | [r4357](https://www.nesdev.org/w/index.php?oldid=4357) |
-| 063 | Board-specific specification | Not registered | [r19134](https://www.nesdev.org/w/index.php?oldid=19134) |
+| 063 | Board-specific specification | Registered: Multicart063 | [r19134](https://www.nesdev.org/w/index.php?oldid=19134) |
 | 064 | Tengen RAMBO-1 | New implementation: Rambo1 | [r23936](https://www.nesdev.org/w/index.php?oldid=23936) |
 | 065 | Irem H3001 | New implementation: Irem | [r24119](https://www.nesdev.org/w/index.php?oldid=24119) |
 | 066 | GxROM / MxROM | New implementation: DiscreteMapper | [r24003](https://www.nesdev.org/w/index.php?oldid=24003) |
