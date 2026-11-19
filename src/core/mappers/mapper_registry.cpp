@@ -83,6 +83,7 @@
 #include "core/mappers/ntdec_2722.hpp"
 #include "core/mappers/ntdec_n625092.hpp"
 #include "core/mappers/oeka_kids.hpp"
+#include "core/mappers/racermate168.hpp"
 #include "core/mappers/rambo1.hpp"
 #include "core/mappers/realtec_multicart.hpp"
 #include "core/mappers/ret_cufrom.hpp"
@@ -219,6 +220,8 @@ namespace {
         return NanjingFc001::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 165U)
         return Mapper165::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 168U)
+        return Racermate168::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 99U)
         return VsSystem::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 30U || header.mapper_number == 111U)
@@ -1161,6 +1164,7 @@ void register_builtin_mappers() {
     registry.register_mapper(162, make_factory<Mapper162Fs304>());
     registry.register_mapper(163, make_factory<NanjingFc001>());
     registry.register_mapper(165, make_factory<Mapper165>());
+    registry.register_mapper(168, make_factory<Racermate168>());
 }
 
 } // namespace mapperbus::core
