@@ -4868,7 +4868,7 @@ or another registered cartridge ID.
 | 049 | Board-specific specification | Registered: Mapper049 | [r4300](https://www.nesdev.org/w/index.php?oldid=4300) |
 | 050 | Board-specific specification | Registered: N32Mapper050 | [r4310](https://www.nesdev.org/w/index.php?oldid=4310) |
 | 051 | Board-specific specification | Not registered | [r4311](https://www.nesdev.org/w/index.php?oldid=4311) |
-| 052 | Board-specific specification | Not registered | [r21408](https://www.nesdev.org/w/index.php?oldid=21408) |
+| 052 | Board-specific specification | Registered: Realtec8213 | [r21408](https://www.nesdev.org/w/index.php?oldid=21408) |
 | 053 | Board-specific specification | Not registered | [r4320](https://www.nesdev.org/w/index.php?oldid=4320) |
 | 054 | Board-specific specification | Not registered | [r4322](https://www.nesdev.org/w/index.php?oldid=4322) |
 | 055 | Board-specific specification | Not registered | [r4324](https://www.nesdev.org/w/index.php?oldid=4324) |
