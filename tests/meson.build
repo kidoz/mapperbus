@@ -436,6 +436,7 @@ test('mapper254', test_mapper254, timeout : mapper_test_timeout)
 foreach mapper_id : [
     '006',
     '027',
+    '042',
     '012',
     '014',
     '015',
