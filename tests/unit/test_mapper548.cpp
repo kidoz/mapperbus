@@ -273,6 +273,24 @@ TEST_CASE("Sachen 3013 drives a constant lower PRG window", "[mapper553]") {
     snapshot(c);
 }
 
+TEST_CASE("KS-7010 read strobes switch the low PRG window and CHR together", "[mapper554]") {
+    auto c = cartridge(554, 128, 128, 1, 0, 0);
+    for (Address addr : {0xCAB6, 0xCAD6, 0xEE32, 0xEBE2, 0xFFFC}) {
+        c.observe_cpu_read(addr, c.read_prg(addr));
+        auto bank = (addr >> 2U) & 15U;
+        CHECK(c.read_prg(0x6000) == bank);
+        CHECK(c.read_chr(0) == bank * 8);
+        CHECK(c.read_prg(0x8000) == 10);
+        CHECK(c.read_prg(0xA000) == 11);
+        CHECK(c.read_prg(0xC000) == 6);
+        CHECK(c.read_prg(0xE000) == 7);
+    }
+    c.write_prg(0xEE32, 0);
+    c.observe_cpu_read(0xCAD7, 0);
+    CHECK(c.read_prg(0x6000) == 15);
+    snapshot(c);
+}
+
 TEST_CASE(
     "FS306 controls individual CIRAM quadrants, the third PRG slot and a shared CHR RAM window",
     "[mapper544]") {
