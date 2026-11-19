@@ -623,6 +623,7 @@ foreach mapper_id : [
     '407',
     '408',
     '409',
+    '410',
 ]
     test_mapper = executable('test-mapper' + mapper_id,
         'unit/test_mapper' + mapper_id + '.cpp',
