@@ -5008,7 +5008,7 @@ or another registered cartridge ID.
 | 182 | Historical duplicate of 114 | Duplicate; not registered | [r4858](https://www.nesdev.org/w/index.php?oldid=4858) |
 | 183 | Board-specific specification | Registered: Mapper183 | [r24192](https://www.nesdev.org/w/index.php?oldid=24192) |
 | 184 | Sunsoft CHR banking | New implementation: DiscreteMapper | [r23872](https://www.nesdev.org/w/index.php?oldid=23872) |
-| 185 | CNROM CHR-disable protection | Not registered | [r24346](https://www.nesdev.org/w/index.php?oldid=24346) |
+| 185 | CNROM CHR-disable protection | Registered: Cnrom185 | [r24346](https://www.nesdev.org/w/index.php?oldid=24346) |
 | 186 | Fukutake Study Box convention | Not registered | [r19026](https://www.nesdev.org/w/index.php?oldid=19026) |
 | 187 | Board-specific specification | Not registered | [r23904](https://www.nesdev.org/w/index.php?oldid=23904) |
 | 188 | Bandai Karaoke Studio | Not registered | [r22386](https://www.nesdev.org/w/index.php?oldid=22386) |
