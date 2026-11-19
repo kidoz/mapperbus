@@ -948,6 +948,8 @@ namespace {
         return Mapper547::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 548U)
         return Mapper548::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 549U)
+        return Mapper306::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 550U)
         return Mmc1::validate_jy820845c(header, prg_size, chr_size);
     if (header.mapper_number == 557U)
@@ -1961,6 +1963,7 @@ void register_builtin_mappers() {
     registry.register_mapper(546, make_factory<Mmc1>());
     registry.register_mapper(547, make_factory<Mapper547>());
     registry.register_mapper(548, make_factory<Mapper548>());
+    registry.register_mapper(549, make_factory<Mapper306>());
     registry.register_mapper(550, make_factory<Mmc1>());
     registry.register_mapper(551, make_factory<Fs305>());
     registry.register_mapper(552, make_factory<TaitoX1017>());

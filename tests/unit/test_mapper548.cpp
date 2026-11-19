@@ -341,6 +341,20 @@ TEST_CASE("QTa selects adapter and cartridge chips, translates JIS and renders i
     CHECK_FALSE(c.irq_pending());
 }
 
+TEST_CASE("Kaiser KS-7016B remaps address-latched PRG pins against fixed banks 8-11",
+          "[mapper549]") {
+    auto c = cartridge(549, 128, 0, 1, 0, 7);
+    for (unsigned i = 0; i < 16; ++i) {
+        c.write_prg(0x8000U + i * 4U, 0);
+        CHECK(c.read_prg(0x6000) == (i >= 8U ? i | 4U : i));
+    }
+    CHECK(c.read_prg(0x8000) == 8);
+    CHECK(c.read_prg(0xFFFF) == 11);
+    c.write_chr(0x1FFF, 0x65);
+    snapshot(c);
+    CHECK(c.read_chr(0x1FFF) == 0x65);
+}
+
 TEST_CASE("NTDEC 2718 keeps CHR RAM fixed while N118 bank 5 changes CIRAM", "[mapper557]") {
     auto c = cartridge(557, 128, 0, 0, 7, 7);
     c.write_chr(0x1B23, 0xAC);

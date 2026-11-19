@@ -29,6 +29,7 @@ class Mapper306 final : public Mapper {
     void load_state(StateReader& reader) override;
 
   private:
+    const bool ks7016b_;
     std::vector<Byte> prg_rom_;
     std::array<Byte, 8192> chr_ram_{};
     Byte prg_bank_ = 0U;
