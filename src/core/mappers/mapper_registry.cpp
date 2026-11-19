@@ -73,6 +73,7 @@
 #include "core/mappers/sachen.hpp"
 #include "core/mappers/single_chip.hpp"
 #include "core/mappers/sl1632.hpp"
+#include "core/mappers/somari_p_116.hpp"
 #include "core/mappers/sunsoft34.hpp"
 #include "core/mappers/sunsoft5b.hpp"
 #include "core/mappers/taito_tc.hpp"
@@ -162,6 +163,8 @@ namespace {
         return Mapper104GoldenFive::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 106U)
         return Mapper106::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 116U)
+        return SomariP116::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 99U)
         return VsSystem::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 30U || header.mapper_number == 111U)
@@ -1082,6 +1085,7 @@ void register_builtin_mappers() {
     registry.register_mapper(103, make_factory<Mapper103>());
     registry.register_mapper(104, make_factory<Mapper104GoldenFive>());
     registry.register_mapper(106, make_factory<Mapper106>());
+    registry.register_mapper(116, make_factory<SomariP116>());
 }
 
 } // namespace mapperbus::core

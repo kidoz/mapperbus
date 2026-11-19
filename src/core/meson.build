@@ -98,6 +98,7 @@ core_sources = files(
     'mappers/mapper103.cpp',
     'mappers/mapper104_golden_five.cpp',
     'mappers/mapper106.cpp',
+    'mappers/somari_p_116.cpp',
     'mappers/vs_system.cpp',
     'fds/fds.cpp',
     'fds/fds_mapper.cpp',
