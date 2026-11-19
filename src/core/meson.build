@@ -124,6 +124,7 @@ core_sources = files(
     'mappers/mapper177.cpp',
     'mappers/cnrom185.cpp',
     'mappers/mapper187.cpp',
+    'mappers/karaoke_studio_188.cpp',
     'mappers/vs_system.cpp',
     'fds/fds.cpp',
     'fds/fds_mapper.cpp',

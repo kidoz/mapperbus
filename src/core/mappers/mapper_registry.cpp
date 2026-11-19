@@ -27,6 +27,7 @@
 #include "core/mappers/jaleco_jf13.hpp"
 #include "core/mappers/jaleco_ss88006.hpp"
 #include "core/mappers/jy_company.hpp"
+#include "core/mappers/karaoke_studio_188.hpp"
 #include "core/mappers/konami_vrc.hpp"
 #include "core/mappers/mapper006.hpp"
 #include "core/mappers/mapper012.hpp"
@@ -240,6 +241,8 @@ namespace {
         return Cnrom185::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 187U)
         return Mapper187::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 188U)
+        return KaraokeStudio188::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 99U)
         return VsSystem::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 30U || header.mapper_number == 111U)
@@ -1189,6 +1192,7 @@ void register_builtin_mappers() {
     registry.register_mapper(177, make_factory<Henggedianzi177>());
     registry.register_mapper(185, make_factory<Cnrom185>());
     registry.register_mapper(187, make_factory<Mapper187>());
+    registry.register_mapper(188, make_factory<KaraokeStudio188>());
 }
 
 } // namespace mapperbus::core
