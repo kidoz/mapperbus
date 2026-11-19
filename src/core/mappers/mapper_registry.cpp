@@ -172,6 +172,7 @@
 #include "core/mappers/mapper383.hpp"
 #include "core/mappers/mapper384.hpp"
 #include "core/mappers/mapper385.hpp"
+#include "core/mappers/mapper389.hpp"
 #include "core/mappers/maxi15.hpp"
 #include "core/mappers/mmc1.hpp"
 #include "core/mappers/mmc1a.hpp"
@@ -572,6 +573,8 @@ namespace {
         return Mapper384::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 385U)
         return Mapper385::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 389U)
+        return Mapper389::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 30U || header.mapper_number == 111U)
         return FlashBoards::validate_geometry(header, prg_size, chr_size);
     if (JyCompany::supports_mapper(header.mapper_number))
@@ -1620,6 +1623,7 @@ void register_builtin_mappers() {
     registry.register_mapper(383, make_factory<Mapper383>());
     registry.register_mapper(384, make_factory<Mapper384>());
     registry.register_mapper(385, make_factory<Mapper385>());
+    registry.register_mapper(389, make_factory<Mapper389>());
 }
 
 } // namespace mapperbus::core
