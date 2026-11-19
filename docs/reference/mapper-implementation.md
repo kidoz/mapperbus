@@ -5120,7 +5120,7 @@ or another registered cartridge ID.
 | 296 | VT3x | Not registered | [r23820](https://www.nesdev.org/w/index.php?oldid=23820) |
 | 297 | Board-specific specification | Not registered | [r7767](https://www.nesdev.org/w/index.php?oldid=7767) |
 | 298 | Board-specific specification | Registered: UnlTf1201 | [r7772](https://www.nesdev.org/w/index.php?oldid=7772) |
-| 299 | Board-specific specification | Not registered | [r22947](https://www.nesdev.org/w/index.php?oldid=22947) |
+| 299 | Board-specific specification | Registered: Mapper299 | [r22947](https://www.nesdev.org/w/index.php?oldid=22947) |
 | 300 | Board-specific specification | Not registered | [r7775](https://www.nesdev.org/w/index.php?oldid=7775) |
 | 301 | Board-specific specification | Not registered | [r19709](https://www.nesdev.org/w/index.php?oldid=19709) |
 | 302 | Board-specific specification | Not registered | [r22779](https://www.nesdev.org/w/index.php?oldid=22779) |
