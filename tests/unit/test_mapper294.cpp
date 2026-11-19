@@ -256,7 +256,7 @@ TEST_CASE("Mapper 294 snapshots are bounded replayable and atomically rejected",
         REQUIRE_FALSE(truncated.ok());
         REQUIRE(state(*copy) == saved);
     }
-    for (const auto [offset, value] : std::array<std::pair<std::size_t, Byte>, 4U>{
+    for (const auto& [offset, value] : std::array<std::pair<std::size_t, Byte>, 4U>{
              {{0U, 1U}, {2U, 1U}, {6U, 0x20U}, {7U, 8U}}}) {
         auto invalid = saved;
         invalid[offset] = value;

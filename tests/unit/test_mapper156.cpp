@@ -312,7 +312,7 @@ TEST_CASE("Mapper 156 rejects truncated and invalid snapshots atomically", "[map
         REQUIRE_FALSE(reader.ok());
         REQUIRE(state(*mapper) == saved);
     }
-    for (const auto [offset, value] : std::array<std::pair<std::size_t, Byte>, 5>{{
+    for (const auto& [offset, value] : std::array<std::pair<std::size_t, Byte>, 5>{{
              {1U, 0U},
              {3U, 2U},
              {18U, 16U},

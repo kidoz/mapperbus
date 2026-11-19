@@ -115,7 +115,7 @@ TEST_CASE("Mapper 401 validates KC885 ROM and optional WRAM geometry", "[mapper4
         REQUIRE_FALSE(mapper->has_expansion_audio());
         REQUIRE(mapper->audio_output() == 0.0F);
     }
-    for (const auto [prg, chr] :
+    for (const auto& [prg, chr] :
          std::array<std::pair<std::size_t, std::size_t>, 5>{std::pair{0x8000UZ, 0x2000UZ},
                                                             std::pair{0x18000UZ, 0x6000UZ},
                                                             std::pair{0x40000UZ, 0x10000UZ},
@@ -509,7 +509,7 @@ TEST_CASE("Mapper 401 rejects malformed and incompatible states atomically", "[m
         reject(invalid);
     }
     constexpr std::size_t kBase = kWramSize + 10U;
-    for (const auto [offset, value] :
+    for (const auto& [offset, value] :
          std::array<std::pair<std::size_t, Byte>, 10>{std::pair{kBase, Byte{8U}},
                                                       std::pair{kBase + 1U, Byte{1U}},
                                                       std::pair{kBase + 8U, Byte{64U}},

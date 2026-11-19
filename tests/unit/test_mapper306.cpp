@@ -194,7 +194,7 @@ TEST_CASE("Mapper 306 snapshots are fixed-size, ROM-free and reject atomically",
         REQUIRE_FALSE(truncated.ok());
         REQUIRE(state(*m) == saved);
     }
-    for (const auto [offset, value] : std::array<std::pair<std::size_t, Byte>, 5>{
+    for (const auto& [offset, value] : std::array<std::pair<std::size_t, Byte>, 5>{
              {{0U, 0U}, {1U, 0U}, {2U, 0x0CU}, {2U, 0x0FU}, {2U, 0xFFU}}}) {
         auto bad = saved;
         bad[offset] = value;

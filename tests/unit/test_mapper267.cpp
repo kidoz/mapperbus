@@ -390,7 +390,7 @@ TEST_CASE("Mapper 267 state replay is bounded and all rejected imports are atomi
                                                       {15U, 4U}};
     for (unsigned index = 0U; index < 6U; ++index)
         invalid.emplace_back(4U + index, 0x80U);
-    for (const auto [offset, value] : invalid) {
+    for (const auto& [offset, value] : invalid) {
         auto corrupt = saved;
         corrupt[offset] = value;
         StateReader reader(corrupt);

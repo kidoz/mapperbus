@@ -218,7 +218,7 @@ TEST_CASE("Mapper 221 snapshots restore protected RAM and validate canonical add
         REQUIRE_FALSE(truncated.ok());
         REQUIRE(state(*m) == reset_ram);
     }
-    for (const auto [offset, value] : std::array<std::pair<std::size_t, Byte>, 5>{
+    for (const auto& [offset, value] : std::array<std::pair<std::size_t, Byte>, 5>{
              {{0U, 1U}, {1U, 0U}, {2U, 0x20U}, {3U, 4U}, {4U, 16U}}}) {
         auto bad = saved;
         bad[5U + 0x123U] ^= 0xFFU;

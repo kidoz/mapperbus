@@ -520,7 +520,7 @@ TEST_CASE("Mapper 400 rejects malformed and incompatible states atomically", "[m
         CAPTURE(offset);
         reject(invalid);
     }
-    for (const auto [offset, value] :
+    for (const auto& [offset, value] :
          std::array<std::pair<std::size_t, Byte>, 8>{std::pair{kInnerBankOffset, Byte{8U}},
                                                      std::pair{kLowerOuterOffset, Byte{0x20U}},
                                                      std::pair{kUpperOuterOffset, Byte{0xFFU}},

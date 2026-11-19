@@ -167,7 +167,7 @@ TEST_CASE("Mapper 230 snapshots retain mode and RAM without turning rejected loa
             REQUIRE_FALSE(truncated.ok());
             REQUIRE(state(*m) == saved);
         }
-        for (const auto [offset, value] : std::array<std::pair<std::size_t, Byte>, 4>{
+        for (const auto& [offset, value] : std::array<std::pair<std::size_t, Byte>, 4>{
                  {{0U, 1U}, {1U, 0U}, {2U, 2U}, {3U, static_cast<Byte>(multicart ? 128U : 8U)}}}) {
             auto bad = saved;
             bad[offset] = value;
@@ -288,7 +288,7 @@ TEST_CASE("Mapper 230 CPU and snapshots preserve reset phase independently from 
                 Controller{}.save_state(tail);
                 Controller{}.save_state(tail);
                 const auto start = early.size() - tail.data().size() - 8196U;
-                for (const auto [offset, value] : std::array<std::pair<std::size_t, Byte>, 4>{
+                for (const auto& [offset, value] : std::array<std::pair<std::size_t, Byte>, 4>{
                          {{0U, 1U},
                           {1U, 0U},
                           {2U, 2U},

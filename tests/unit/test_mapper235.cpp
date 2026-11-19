@@ -217,7 +217,7 @@ TEST_CASE("Mapper 235 snapshots validate socket wiring canonical pins and RAM be
             REQUIRE_FALSE(truncated.ok());
             REQUIRE(state(*m) == saved);
         }
-        for (const auto [offset, value] : std::array<std::pair<std::size_t, Byte>, 5>{
+        for (const auto& [offset, value] : std::array<std::pair<std::size_t, Byte>, 5>{
                  {{0U, static_cast<Byte>(kMasks[profile] ^ 2U)},
                   {1U, 0U},
                   {2U, 0x3FU},
@@ -370,7 +370,7 @@ void exercise_cpu(unsigned profile, bool legacy, bool floating) {
     REQUIRE(e.load_state(early));
     e.step_frame();
     REQUIRE(e.save_state() == future);
-    for (const auto [offset, value] : std::array<std::pair<std::size_t, Byte>, 4>{
+    for (const auto& [offset, value] : std::array<std::pair<std::size_t, Byte>, 4>{
              {{0U, static_cast<Byte>(kMasks[profile] ^ 2U)}, {1U, 0U}, {2U, 0x3FU}, {3U, 0x7FU}}}) {
         auto bad = early;
         bad[start + offset] = value;

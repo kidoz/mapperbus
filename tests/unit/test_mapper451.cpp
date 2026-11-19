@@ -694,7 +694,7 @@ TEST_CASE("Mapper 451 rejects damaged truncated and incompatible snapshots atomi
         CAPTURE(offset);
         reject(invalid);
     }
-    for (const auto [offset, value] : std::array<std::pair<std::size_t, Byte>, 22>{{
+    for (const auto& [offset, value] : std::array<std::pair<std::size_t, Byte>, 22>{{
              {kBankOffset, 4U},           {kMirrorOffset, 2U},       {kIrqFlagsOffset, 8U},
              {kIrqFlagsOffset, 4U},       {kFlashCommandOffset, 7U}, {kFlashOperationOffset, 4U},
              {kFlashOperationOffset, 1U}, {kFlashIdOffset, 2U},      {kFlashToggleOffset, 2U},

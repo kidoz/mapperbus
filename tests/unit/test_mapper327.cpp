@@ -469,7 +469,7 @@ TEST_CASE("Mapper 327 rejects malformed states atomically", "[mapper327][state]"
                                                       {25U, 8U},
                                                       {25U, 4U},
                                                       {26U, 1U}};
-    for (const auto [offset, value] : invalid) {
+    for (const auto& [offset, value] : invalid) {
         auto damaged = saved;
         damaged[offset] = value;
         CAPTURE(offset, value);

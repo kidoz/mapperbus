@@ -305,17 +305,17 @@ TEST_CASE("OneBus state stages small fields and rejects truncation corruption an
         REQUIRE_FALSE(r.ok());
         REQUIRE(state(m) == saved);
     }
-    for (const auto [offset, value] : std::array<std::pair<unsigned, Byte>, 11>{{{0U, 1U},
-                                                                                 {1U, 0U},
-                                                                                 {2U, 1U},
-                                                                                 {6U, 1U},
-                                                                                 {11U, 8U},
-                                                                                 {12U, 2U},
-                                                                                 {17U, 0x10U},
-                                                                                 {24U, 1U},
-                                                                                 {28U, 2U},
-                                                                                 {29U, 3U},
-                                                                                 {29U, 8U}}}) {
+    for (const auto& [offset, value] : std::array<std::pair<unsigned, Byte>, 11>{{{0U, 1U},
+                                                                                  {1U, 0U},
+                                                                                  {2U, 1U},
+                                                                                  {6U, 1U},
+                                                                                  {11U, 8U},
+                                                                                  {12U, 2U},
+                                                                                  {17U, 0x10U},
+                                                                                  {24U, 1U},
+                                                                                  {28U, 2U},
+                                                                                  {29U, 3U},
+                                                                                  {29U, 8U}}}) {
         INFO("invalid offset=" << offset << " value=" << +value);
         auto bad = saved;
         bad[10] ^= 0xFFU;

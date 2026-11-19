@@ -424,19 +424,19 @@ TEST_CASE("Mapper 121 snapshots replay all mutable state and reject atomically",
         REQUIRE_FALSE(truncated.ok());
         REQUIRE(state(*mapper) == saved);
     }
-    for (const auto [offset, value] : std::array<std::pair<std::size_t, Byte>, 13>{{{0U, 0U},
-                                                                                    {1U, 0U},
-                                                                                    {2U, 8U},
-                                                                                    {3U, 1U},
-                                                                                    {10U, 64U},
-                                                                                    {11U, 64U},
-                                                                                    {12U, 2U},
-                                                                                    {15U, 8U},
-                                                                                    {15U, 4U},
-                                                                                    {17U, 64U},
-                                                                                    {18U, 64U},
-                                                                                    {21U, 2U},
-                                                                                    {22U, 4U}}}) {
+    for (const auto& [offset, value] : std::array<std::pair<std::size_t, Byte>, 13>{{{0U, 0U},
+                                                                                     {1U, 0U},
+                                                                                     {2U, 8U},
+                                                                                     {3U, 1U},
+                                                                                     {10U, 64U},
+                                                                                     {11U, 64U},
+                                                                                     {12U, 2U},
+                                                                                     {15U, 8U},
+                                                                                     {15U, 4U},
+                                                                                     {17U, 64U},
+                                                                                     {18U, 64U},
+                                                                                     {21U, 2U},
+                                                                                     {22U, 4U}}}) {
         auto bad = saved;
         bad[offset] = value;
         StateReader invalid(bad);

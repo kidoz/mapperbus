@@ -517,17 +517,17 @@ TEST_CASE("Mapper 268 bounded state replays and rejects corruption or geometry c
         REQUIRE_FALSE(reader.ok());
         REQUIRE(state(*m) == saved);
     }
-    for (const auto [offset, value] : std::array<std::pair<unsigned, Byte>, 11>{{{0U, 0U},
-                                                                                 {6U, 0U},
-                                                                                 {10U, 0U},
-                                                                                 {13U, 0U},
-                                                                                 {17U, 0U},
-                                                                                 {26U, 8U},
-                                                                                 {35U, 4U},
-                                                                                 {38U, 8U},
-                                                                                 {38U, 4U},
-                                                                                 {39U, 1U},
-                                                                                 {41U, 0x40U}}}) {
+    for (const auto& [offset, value] : std::array<std::pair<unsigned, Byte>, 11>{{{0U, 0U},
+                                                                                  {6U, 0U},
+                                                                                  {10U, 0U},
+                                                                                  {13U, 0U},
+                                                                                  {17U, 0U},
+                                                                                  {26U, 8U},
+                                                                                  {35U, 4U},
+                                                                                  {38U, 8U},
+                                                                                  {38U, 4U},
+                                                                                  {39U, 1U},
+                                                                                  {41U, 0x40U}}}) {
         auto bad = saved;
         bad[offset] = value;
         StateReader reader(bad);

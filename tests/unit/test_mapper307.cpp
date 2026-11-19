@@ -417,7 +417,7 @@ TEST_CASE("Mapper 307 rejects every truncated or invalid state without mutation"
         invalid.emplace_back(offset, 16U);
         invalid.emplace_back(offset, 0xFFU);
     }
-    for (const auto [offset, value] : invalid) {
+    for (const auto& [offset, value] : invalid) {
         auto damaged = saved;
         damaged[offset] = value;
         CAPTURE(offset, value);

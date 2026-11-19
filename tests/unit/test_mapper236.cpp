@@ -230,7 +230,7 @@ TEST_CASE("Mapper 236 states bind geometry and pads and reject malformed latches
                 REQUIRE_FALSE(truncated.ok());
                 REQUIRE(state(*m) == saved);
             }
-            for (const auto [offset, value] : std::array<std::pair<std::size_t, Byte>, 4>{
+            for (const auto& [offset, value] : std::array<std::pair<std::size_t, Byte>, 4>{
                      {{0U, 0xFFU}, {1U, 0U}, {2U, 0xFFU}, {3U, 0xFFU}}}) {
                 auto bad = saved;
                 bad[offset] = value;
@@ -367,7 +367,7 @@ TEST_CASE("Mapper 236 RAM firmware verifies pad address substitution banks PPU r
                 REQUIRE(e.load_state(early));
                 e.step_frame();
                 REQUIRE(e.save_state() == future);
-                for (const auto [offset, value] : std::array<std::pair<std::size_t, Byte>, 4>{
+                for (const auto& [offset, value] : std::array<std::pair<std::size_t, Byte>, 4>{
                          {{0U, 0xFFU}, {1U, 0U}, {2U, 0xFFU}, {3U, 0xFFU}}}) {
                     auto bad = early;
                     bad[start + offset] = value;

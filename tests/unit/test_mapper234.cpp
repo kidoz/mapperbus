@@ -313,7 +313,7 @@ TEST_CASE("Mapper 234 snapshots retain lock gates and CIC latch with population 
             REQUIRE_FALSE(truncated.ok());
             REQUIRE(state(*m) == saved);
         }
-        for (const auto [offset, value] : std::array<std::pair<std::size_t, Byte>, 6>{
+        for (const auto& [offset, value] : std::array<std::pair<std::size_t, Byte>, 6>{
                  {{0U, 0x80U}, {1U, 0U}, {3U, 2U}, {3U, 8U}, {3U, 0x80U}, {4U, 4U}}}) {
             auto bad = saved;
             bad[offset] = value;
@@ -437,7 +437,7 @@ void exercise_cpu(unsigned population, Byte outer, bool write_outer, bool floati
     REQUIRE(e.load_state(early));
     e.step_frame();
     REQUIRE(e.save_state() == future);
-    for (const auto [offset, value] :
+    for (const auto& [offset, value] :
          std::array<std::pair<std::size_t, Byte>, 4>{{{0U, 0x80U}, {1U, 0U}, {3U, 2U}, {4U, 4U}}}) {
         auto bad = early;
         bad[start + offset] = value;

@@ -377,7 +377,7 @@ TEST_CASE("Mapper 219 snapshots retain both register files and validate every ca
             REQUIRE_FALSE(truncated.ok());
             REQUIRE(state(*m) == initial);
         }
-        for (const auto [offset, value] :
+        for (const auto& [offset, value] :
              std::array<std::pair<std::size_t, Byte>, 18>{{{0U, 8U},
                                                            {1U, 1U},
                                                            {2U, 128U},

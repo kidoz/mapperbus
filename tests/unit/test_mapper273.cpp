@@ -411,7 +411,7 @@ TEST_CASE("Mapper 273 snapshots replay partial IRQ phase and reject atomically",
         REQUIRE_FALSE(reader.ok());
         REQUIRE(state(*copy) == saved);
     }
-    for (const auto [offset, value] : std::array<std::pair<unsigned, Byte>, 6>{
+    for (const auto& [offset, value] : std::array<std::pair<unsigned, Byte>, 6>{
              {{10U, 32U}, {11U, 32U}, {20U, 2U}, {23U, 2U}, {24U, 2U}, {24U, 0xFFU}}}) {
         auto invalid = saved;
         invalid[offset] = value;

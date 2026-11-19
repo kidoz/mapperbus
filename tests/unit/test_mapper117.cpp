@@ -362,7 +362,7 @@ TEST_CASE("Mapper 117 accepts decoder-sized ROMs and rejects unsupported geometr
         for (bool vertical : {false, true})
             for (Region region : {Region::NTSC, Region::PAL, Region::Dendy, Region::Multi}) {
                 const auto h = header(legacy, vertical, region);
-                for (const auto [p, c] :
+                for (const auto& [p, c] :
                      std::array<std::pair<std::size_t, std::size_t>, 5>{{{0x8000U, 0x2000U},
                                                                          {0xA000U, 0x2C00U},
                                                                          {0x20000U, 0x10000U},

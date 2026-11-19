@@ -183,7 +183,7 @@ TEST_CASE("Mapper 257 snapshots restore registers, tape and RAM atomically", "[m
         REQUIRE_FALSE(truncated.ok());
         REQUIRE(state(*m) == saved);
     }
-    for (const auto [offset, value] : std::array<std::pair<std::size_t, Byte>, 5>{
+    for (const auto& [offset, value] : std::array<std::pair<std::size_t, Byte>, 5>{
              {{0U, 0U}, {1U, 0U}, {3U, 2U}, {4U, 8U}, {4U, 0xFFU}}}) {
         auto bad = saved;
         bad[offset] = value;

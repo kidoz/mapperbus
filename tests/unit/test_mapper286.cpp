@@ -309,7 +309,7 @@ TEST_CASE("Mapper 286 state replay is deterministic and rejection is atomic",
                                                           {15U, 255U},
                                                           {16U, 1U},
                                                           {19U, 255U}};
-    for (const auto [offset, value] : corruptions) {
+    for (const auto& [offset, value] : corruptions) {
         auto bad = saved;
         bad[offset] = value;
         CAPTURE(offset, value);

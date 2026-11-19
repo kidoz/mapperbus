@@ -731,7 +731,7 @@ TEST_CASE("Mapper 436 rejects truncated damaged and mismatched states atomically
         CAPTURE(bit);
         reject(invalid);
     }
-    for (const auto [offset, value] : std::array<std::pair<std::size_t, Byte>, 14>{{
+    for (const auto& [offset, value] : std::array<std::pair<std::size_t, Byte>, 14>{{
              {kControlOffset, 0x08U},
              {kControlOffset, 0x18U},
              {kMirrorOffset, 2U},

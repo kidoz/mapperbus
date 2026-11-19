@@ -549,7 +549,7 @@ TEST_CASE("Mapper 124 MMC3 IRQs progress in every mode but are visible only in M
 TEST_CASE("Mapper 124 reset follows the custom latch and discrete-core reset wiring",
           "[mapper124]") {
     auto m = board();
-    m->configure_board_jumpers(0xA5U);
+    REQUIRE(m->configure_board_jumpers(0xA5U));
     m->set_coin_inserted(true);
     control(*m, 0xFFU);
     mapping(*m, 0x7FU);
@@ -584,7 +584,7 @@ TEST_CASE("Mapper 124 state replay is bounded complete and rejection is atomic",
     control(*m, 0xFFU);
     mapping(*m, 0x7FU);
     m->write_expansion(0x5000U, 1U);
-    m->configure_board_jumpers(0xA5U);
+    REQUIRE(m->configure_board_jumpers(0xA5U));
     m->set_coin_inserted(true);
     m->write_prg(0x8000U, 7U);
     mmc1_write(*m, 0x8000U, 0x1FU);

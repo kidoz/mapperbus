@@ -345,7 +345,7 @@ TEST_CASE("Mapper 163 rejects truncated and invalid states without mutation",
         bad[bit / 8U] ^= static_cast<Byte>(1U << (bit & 7U));
         reject(bad);
     }
-    for (const auto [offset, value] :
+    for (const auto& [offset, value] :
          std::array<std::pair<std::size_t, Byte>, 12>{{{4U, 0U},
                                                        {4U, 1U},
                                                        {6U, 0x10U},

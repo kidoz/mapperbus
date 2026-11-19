@@ -342,7 +342,7 @@ TEST_CASE("Mapper 215 snapshots retain scrambling and pending IRQs and reject ma
             REQUIRE_FALSE(short_reader.ok());
             REQUIRE(state(*m) == initial);
         }
-        for (const auto [offset, value] :
+        for (const auto& [offset, value] :
              std::array<std::pair<std::size_t, Byte>, 11>{{{0U, 8U},
                                                            {1U, 1U},
                                                            {8U, 64U},

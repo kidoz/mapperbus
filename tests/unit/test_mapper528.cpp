@@ -577,7 +577,7 @@ TEST_CASE("Mapper 528 rejects truncated damaged and mismatched states atomically
         CAPTURE(offset);
         load_rejected(*mapper, invalid);
     }
-    for (const auto [offset, value] : std::array<std::pair<std::size_t, Byte>, 8>{{
+    for (const auto& [offset, value] : std::array<std::pair<std::size_t, Byte>, 8>{{
              {kGameOffset, 2U},
              {kMirrorOffset, 4U},
              {kIrqPrescalerOffset, 0U},

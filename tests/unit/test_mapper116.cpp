@@ -393,7 +393,7 @@ TEST_CASE("Mapper 116 state replays all ASICs and rejects corruption atomically"
         REQUIRE_FALSE(truncated.ok());
         REQUIRE(state(*mapper) == saved);
     }
-    for (const auto [offset, value] : std::array<std::pair<std::size_t, Byte>, 20>{
+    for (const auto& [offset, value] : std::array<std::pair<std::size_t, Byte>, 20>{
              {{0U, 0U},  {2U, 1U},   {6U, 1U},   {10U, 8U},  {11U, 32U}, {21U, 2U}, {22U, 2U},
               {23U, 8U}, {30U, 64U}, {31U, 64U}, {32U, 4U},  {35U, 8U},  {35U, 4U}, {36U, 1U},
               {37U, 0U}, {38U, 5U},  {39U, 32U}, {40U, 32U}, {41U, 32U}, {42U, 32U}}}) {
@@ -422,7 +422,7 @@ TEST_CASE("Mapper 116 state replays all ASICs and rejects corruption atomically"
 TEST_CASE("Mapper 116 validates geometry and explicitly rejects unspecified multicart wiring",
           "[mapper116]") {
     for (Byte submapper : {0U, 1U, 2U})
-        for (const auto [p, c] : std::array<std::pair<std::size_t, std::size_t>, 4>{
+        for (const auto& [p, c] : std::array<std::pair<std::size_t, std::size_t>, 4>{
                  {{32768U, 8192U}, {262144U, 262144U}, {524288U, 524288U}, {32768U, 524288U}}})
             REQUIRE(SomariP116::validate_geometry(header(submapper), p, c));
     REQUIRE(SomariP116::validate_geometry(header(0U, true), 262144U, 262144U));

@@ -175,7 +175,7 @@ TEST_CASE("Mapper 041 state replay is bounded and rejection is atomic", "[mapper
         REQUIRE_FALSE(truncated.ok());
         REQUIRE(state(*restored) == before);
     }
-    for (const auto [offset, value] : std::array<std::pair<std::size_t, Byte>, 5>{
+    for (const auto& [offset, value] : std::array<std::pair<std::size_t, Byte>, 5>{
              {{0U, 1U}, {1U, 0U}, {2U, 0x40U}, {2U, 0x80U}, {3U, 4U}}}) {
         auto invalid = saved;
         invalid[offset] = value;

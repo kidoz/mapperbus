@@ -182,10 +182,10 @@ TEST_CASE("MMC1A implements the measured fixed-bank A17 matrix", "[mapper155]") 
 
 TEST_CASE("MMC1 serial aliases reset semantics and RMW filtering match hardware", "[mapper155]") {
     auto mapper = board(262144U, 131072U, k8K);
-    for (const auto reg : std::array{std::pair{0x8000U, 0x9FFFU},
-                                     std::pair{0xA000U, 0xBFFFU},
-                                     std::pair{0xC000U, 0xDFFFU},
-                                     std::pair{0xE000U, 0xFFFFU}}) {
+    for (const auto& reg : std::array{std::pair{0x8000U, 0x9FFFU},
+                                      std::pair{0xA000U, 0xBFFFU},
+                                      std::pair{0xC000U, 0xDFFFU},
+                                      std::pair{0xE000U, 0xFFFFU}}) {
         mapper->write_prg(0x8000U, 0x80U);
         serial_write(*mapper, reg.first, 0U);
         mapper->write_prg(0x8123U, 1U);

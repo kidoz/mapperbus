@@ -172,7 +172,7 @@ TEST_CASE("Mapper 228 snapshots reject other populations, noncanonical latches a
             REQUIRE_FALSE(truncated.ok());
             REQUIRE(state(*m) == reset);
         }
-        for (const auto [offset, value] :
+        for (const auto& [offset, value] :
              std::array<std::pair<std::size_t, Byte>, 6>{{{0U, static_cast<Byte>(packed ? 0U : 1U)},
                                                           {1U, 0U},
                                                           {2U, 0xFFU},
@@ -451,7 +451,7 @@ TEST_CASE("Mapper 228 CPU fixtures verify banked fetches, PPUDATA, chip holes, r
                 Controller{}.save_state(tail);
                 Controller{}.save_state(tail);
                 const auto start = early.size() - tail.data().size() - 5U;
-                for (const auto [offset, value] : std::array<std::pair<std::size_t, Byte>, 5>{
+                for (const auto& [offset, value] : std::array<std::pair<std::size_t, Byte>, 5>{
                          {{0U, static_cast<Byte>(packed ? 0U : 1U)},
                           {1U, 0U},
                           {2U, 0xFFU},

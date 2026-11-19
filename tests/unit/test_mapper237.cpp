@@ -200,7 +200,7 @@ TEST_CASE("Mapper 237 snapshots retain latent inner bits type and lock and valid
                 REQUIRE_FALSE(truncated.ok());
                 REQUIRE(state(*m) == saved);
             }
-            for (const auto [offset, value] : std::array<std::pair<std::size_t, Byte>, 5>{
+            for (const auto& [offset, value] : std::array<std::pair<std::size_t, Byte>, 5>{
                      {{0U, 1U}, {1U, 0U}, {2U, 8U}, {2U, 0x80U}, {2U, 0xFFU}}}) {
                 auto bad = saved;
                 bad[offset] = value;
@@ -340,7 +340,7 @@ TEST_CASE("Mapper 237 RAM firmware proves banks type probes lock reset and full 
                     REQUIRE(e.load_state(early));
                     e.step_frame();
                     REQUIRE(e.save_state() == future);
-                    for (const auto [offset, value] : std::array<std::pair<std::size_t, Byte>, 4>{
+                    for (const auto& [offset, value] : std::array<std::pair<std::size_t, Byte>, 4>{
                              {{0U, 1U}, {1U, 0U}, {2U, 8U}, {2U, 0x80U}}}) {
                         auto bad = early;
                         bad[start + offset] = value;

@@ -253,16 +253,16 @@ TEST_CASE("Mapper 245 snapshots bind geometry and reset mirroring and reject cor
         REQUIRE_FALSE(r.ok());
         REQUIRE(state(*m) == saved);
     }
-    for (const auto [offset, bad] : std::array<std::pair<unsigned, Byte>, 10>{{{16384U, 8U},
-                                                                               {16385U, 1U},
-                                                                               {16392U, 64U},
-                                                                               {16393U, 64U},
-                                                                               {16394U, 9U},
-                                                                               {16397U, 8U},
-                                                                               {16398U, 1U},
-                                                                               {16399U, 0U},
-                                                                               {16400U, 0U},
-                                                                               {16401U, 4U}}}) {
+    for (const auto& [offset, bad] : std::array<std::pair<unsigned, Byte>, 10>{{{16384U, 8U},
+                                                                                {16385U, 1U},
+                                                                                {16392U, 64U},
+                                                                                {16393U, 64U},
+                                                                                {16394U, 9U},
+                                                                                {16397U, 8U},
+                                                                                {16398U, 1U},
+                                                                                {16399U, 0U},
+                                                                                {16400U, 0U},
+                                                                                {16401U, 4U}}}) {
         auto corrupt = saved;
         corrupt[offset] = bad;
         StateReader r(corrupt);

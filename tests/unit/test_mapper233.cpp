@@ -269,7 +269,7 @@ TEST_CASE("Mapper 233 snapshots bind profiles and reject malformed input without
             REQUIRE_FALSE(truncated.ok());
             REQUIRE(state(*m) == saved);
         }
-        for (const auto [offset, value] : std::array<std::pair<std::size_t, Byte>, 4>{
+        for (const auto& [offset, value] : std::array<std::pair<std::size_t, Byte>, 4>{
                  {{0U, static_cast<Byte>((profile + 1U) % 3U)}, {1U, 0U}, {3U, 1U}, {3U, 3U}}}) {
             auto bad = saved;
             bad[offset] = value;
@@ -429,7 +429,7 @@ TEST_CASE(
                     Controller{}.save_state(tail);
                     Controller{}.save_state(tail);
                     const auto start = early.size() - tail.data().size() - 8196U;
-                    for (const auto [offset, value] : std::array<std::pair<std::size_t, Byte>, 3>{
+                    for (const auto& [offset, value] : std::array<std::pair<std::size_t, Byte>, 3>{
                              {{0U, static_cast<Byte>((profile + 1U) % 3U)}, {1U, 0U}, {3U, 1U}}}) {
                         auto bad = early;
                         bad[start + offset] = value;

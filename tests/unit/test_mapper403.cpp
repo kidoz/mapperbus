@@ -437,7 +437,7 @@ TEST_CASE("Mapper 403 rejects malformed and incompatible states atomically", "[m
         CAPTURE(offset);
         reject(invalid);
     }
-    for (const auto [offset, value] :
+    for (const auto& [offset, value] :
          std::array<std::pair<std::size_t, Byte>, 9>{std::pair{kPrgBankOffset, Byte{0x80U}},
                                                      std::pair{kPrgBankOffset, Byte{0x01U}},
                                                      std::pair{kPrgBankOffset, Byte{0xFFU}},

@@ -219,16 +219,16 @@ TEST_CASE("Mapper 238 compact state restores protection and pending IRQ and reje
         REQUIRE_FALSE(short_state.ok());
         REQUIRE(state(*m) == saved);
     }
-    for (const auto [offset, value] : std::array<std::pair<std::size_t, Byte>, 10>{{{0U, 8U},
-                                                                                    {1U, 1U},
-                                                                                    {8U, 64U},
-                                                                                    {10U, 255U},
-                                                                                    {13U, 8U},
-                                                                                    {14U, 1U},
-                                                                                    {15U, 1U},
-                                                                                    {16U, 0U},
-                                                                                    {17U, 1U},
-                                                                                    {17U, 4U}}}) {
+    for (const auto& [offset, value] : std::array<std::pair<std::size_t, Byte>, 10>{{{0U, 8U},
+                                                                                     {1U, 1U},
+                                                                                     {8U, 64U},
+                                                                                     {10U, 255U},
+                                                                                     {13U, 8U},
+                                                                                     {14U, 1U},
+                                                                                     {15U, 1U},
+                                                                                     {16U, 0U},
+                                                                                     {17U, 1U},
+                                                                                     {17U, 4U}}}) {
         auto bad = saved;
         bad[offset] = value;
         StateReader invalid(bad);
@@ -342,7 +342,7 @@ TEST_CASE("Mapper 238 CPU firmware verifies protection bank modes CIRAM IRQs and
                 REQUIRE(e.load_state(early));
                 e.step_frame();
                 REQUIRE(e.save_state() == future);
-                for (const auto [offset, value] : std::array<std::pair<std::size_t, Byte>, 6>{
+                for (const auto& [offset, value] : std::array<std::pair<std::size_t, Byte>, 6>{
                          {{0U, 8U}, {1U, 1U}, {13U, 8U}, {15U, 1U}, {16U, 0U}, {17U, 1U}}}) {
                     auto bad = early;
                     bad[start + offset] = value;

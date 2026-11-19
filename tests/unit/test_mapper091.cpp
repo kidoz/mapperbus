@@ -414,7 +414,7 @@ TEST_CASE("Mapper 091 snapshots replay all state and reject damage atomically", 
             invalid.emplace_back(17U, 1U);
         else
             invalid.emplace_back(21U, static_cast<Byte>(saved[21] | 4U));
-        for (const auto [offset, value] : invalid) {
+        for (const auto& [offset, value] : invalid) {
             auto bad = saved;
             bad[offset] = value;
             StateReader reader(bad);

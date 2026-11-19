@@ -1061,7 +1061,7 @@ TEST_CASE("FDS rejects malformed watchdog counters and flags", "[fds][watchdog][
     Fds source;
     StateWriter writer;
     source.save_state(writer);
-    for (const auto [offset, value] :
+    for (const auto& [offset, value] :
          std::array<std::pair<unsigned, Byte>, 4>{{{1, 0x10}, {2, 128}, {3, 2}, {4, 2}}}) {
         auto invalid = writer.data();
         invalid[invalid.size() - 5 + offset] = value;

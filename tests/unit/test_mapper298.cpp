@@ -450,19 +450,19 @@ TEST_CASE("Mapper 298 snapshots are bounded ROM-free and reject malformed loads 
         REQUIRE(mapper_state(*mapper) == saved);
     }
 
-    for (const auto [offset, value] : std::array<std::pair<std::size_t, Byte>, 13>{{{0U, 0U},
-                                                                                    {4U, 0U},
-                                                                                    {8U, 0U},
-                                                                                    {10U, 3U},
-                                                                                    {11U, 2U},
-                                                                                    {12U, 32U},
-                                                                                    {13U, 32U},
-                                                                                    {30U, 2U},
-                                                                                    {30U, 5U},
-                                                                                    {31U, 4U},
-                                                                                    {36U, 8U},
-                                                                                    {37U, 2U},
-                                                                                    {37U, 1U}}}) {
+    for (const auto& [offset, value] : std::array<std::pair<std::size_t, Byte>, 13>{{{0U, 0U},
+                                                                                     {4U, 0U},
+                                                                                     {8U, 0U},
+                                                                                     {10U, 3U},
+                                                                                     {11U, 2U},
+                                                                                     {12U, 32U},
+                                                                                     {13U, 32U},
+                                                                                     {30U, 2U},
+                                                                                     {30U, 5U},
+                                                                                     {31U, 4U},
+                                                                                     {36U, 8U},
+                                                                                     {37U, 2U},
+                                                                                     {37U, 1U}}}) {
         auto bad = saved;
         if (offset == 37U && value == 1U) {
             bad[36U] = 0U;

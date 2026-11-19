@@ -462,7 +462,7 @@ TEST_CASE("Mapper 164 rejects malformed and cross-geometry states atomically",
         REQUIRE_FALSE(reader.ok());
         REQUIRE(state(*copy) == before);
     }
-    for (const auto [offset, value] : std::array<std::pair<std::size_t, Byte>, 9>{{
+    for (const auto& [offset, value] : std::array<std::pair<std::size_t, Byte>, 9>{{
              {0U, 0U},
              {3U, 4U},
              {4U, 0x80U},

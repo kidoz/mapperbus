@@ -494,7 +494,7 @@ TEST_CASE("Mapper 446 combines outer PRG pins before fitted-ROM wrapping",
 TEST_CASE("Mapper 446 banks CHR RAM for every inner family and honors masks",
           "[mapper446][banking][chr][ram]") {
     auto mapper = board();
-    for (const auto [code, inner_bank] : std::array<std::pair<Byte, unsigned>, 5>{
+    for (const auto& [code, inner_bank] : std::array<std::pair<Byte, unsigned>, 5>{
              {{3U, 2U}, {8U, 2U}, {0x0BU, 3U}, {0x10U, 2U}, {0x12U, 5U}}}) {
         select(*mapper, code);
         mapper->write_prg(0x8000U, static_cast<Byte>(inner_bank));
@@ -519,7 +519,7 @@ TEST_CASE("Mapper 446 banks CHR RAM for every inner family and honors masks",
 
     select(*mapper, 3U);
     mapper->write_prg(0x8000U, 2U);
-    for (const auto [flags, expected_bank] : std::array<std::pair<Byte, unsigned>, 4>{
+    for (const auto& [flags, expected_bank] : std::array<std::pair<Byte, unsigned>, 4>{
              {{0U, 2U}, {0x40U, 2U}, {0x80U, 0x12U}, {0xC0U, 0x16U}}}) {
         mapper->write_expansion(0x5004U, flags);
         mapper->write_expansion(0x5006U, 0x15U);
@@ -635,7 +635,7 @@ TEST_CASE("Mapper 446 routes fixed software single-screen and TxSROM CIRAM",
     REQUIRE(mapper->mirror_mode() == MirrorMode::SingleUpper);
 
     select(*mapper, 5U);
-    for (const auto [control, expected] :
+    for (const auto& [control, expected] :
          std::array<std::pair<Byte, MirrorMode>, 4>{{{0U, MirrorMode::SingleLower},
                                                      {1U, MirrorMode::SingleUpper},
                                                      {2U, MirrorMode::Vertical},
@@ -933,7 +933,7 @@ TEST_CASE("Mapper 446 rejects truncated damaged and mismatched states atomically
         CAPTURE(length);
         reject(std::span(active).first(length));
     }
-    for (const auto [offset, value] :
+    for (const auto& [offset, value] :
          std::array<std::pair<std::size_t, Byte>, 16>{{{0U, 0U},
                                                        {2U, 1U},
                                                        {6U, 1U},

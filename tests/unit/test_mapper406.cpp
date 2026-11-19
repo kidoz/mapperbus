@@ -631,7 +631,7 @@ TEST_CASE("Mapper 406 rejects truncated damaged and mismatched snapshots atomica
         CAPTURE(offset);
         reject(invalid);
     }
-    for (const auto [offset, value] : std::array<std::pair<std::size_t, Byte>, 11>{{
+    for (const auto& [offset, value] : std::array<std::pair<std::size_t, Byte>, 11>{{
              {kBankSelectOffset, 0x08U},
              {kBanksOffset + 6U, 0x40U},
              {kBanksOffset + 7U, 0xFFU},

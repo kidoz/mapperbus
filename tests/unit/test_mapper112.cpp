@@ -267,7 +267,7 @@ TEST_CASE("Mapper 112 accepts decoder-sized ROMs and rejects unsupported geometr
     for (bool legacy : {false, true})
         for (bool vertical : {false, true}) {
             const auto h = header(legacy, vertical);
-            for (const auto [p, c] :
+            for (const auto& [p, c] :
                  std::array<std::pair<std::size_t, std::size_t>, 5>{{{0x8000U, 0x2000U},
                                                                      {0xA000U, 0x3000U},
                                                                      {0x20000U, 0x10000U},

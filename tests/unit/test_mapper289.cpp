@@ -383,7 +383,7 @@ TEST_CASE("Mapper 289 snapshots replay bounded mutable state without ROM and rej
         REQUIRE_FALSE(reader.ok());
         REQUIRE(state(*copy) == saved);
     }
-    for (const auto [offset, value] : std::array<std::pair<unsigned, Byte>, 5>{
+    for (const auto& [offset, value] : std::array<std::pair<unsigned, Byte>, 5>{
              {{6U, 0x10U}, {6U, 0xFFU}, {7U, 0x80U}, {8U, 8U}, {8U, 0xFFU}}}) {
         auto invalid = saved;
         invalid[offset] = value;

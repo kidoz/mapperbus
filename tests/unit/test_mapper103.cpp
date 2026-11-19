@@ -221,7 +221,7 @@ TEST_CASE("Mapper 103 state replay is bounded and rejection is atomic",
         REQUIRE_FALSE(reader.ok());
         REQUIRE(state(*m) == saved);
     }
-    for (const auto [offset, value] : std::array<std::pair<std::size_t, Byte>, 7>{
+    for (const auto& [offset, value] : std::array<std::pair<std::size_t, Byte>, 7>{
              {{0U, 1U}, {1U, 1U}, {2U, 0U}, {3U, 16U}, {4U, 2U}, {5U, 2U}, {5U, 4U}}}) {
         auto bad = saved;
         bad[6U + 123U] ^= 0xFFU;

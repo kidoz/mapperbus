@@ -404,7 +404,7 @@ TEST_CASE("Mapper 027 rejects truncated corrupt and mismatched states atomically
         REQUIRE_FALSE(reader.ok());
         REQUIRE(state(*mapper) == saved);
     }
-    for (const auto [offset, value] : std::array<std::pair<std::size_t, Byte>, 9>{{
+    for (const auto& [offset, value] : std::array<std::pair<std::size_t, Byte>, 9>{{
              {0U, 0U},
              {4U, 1U},
              {8U, 1U},

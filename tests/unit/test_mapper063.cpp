@@ -232,7 +232,7 @@ TEST_CASE("Mapper 063 rejects malformed and mismatched states atomically", "[map
             REQUIRE_FALSE(reader.ok());
             REQUIRE(state(*mapper) == saved);
         }
-        for (const auto [offset, value] :
+        for (const auto& [offset, value] :
              std::array<std::pair<std::size_t, Byte>, 3>{{{0U, 0U}, {3U, 0U}, {5U, 0x08U}}}) {
             auto bad = saved;
             bad[offset] = value;

@@ -629,7 +629,7 @@ TEST_CASE("Emulator rejects malformed watchdog state and restores the running ma
     REQUIRE(emulator.fds().irq_pending());
     const auto original = emulator.save_state();
     constexpr std::size_t kMapperRamBytes = 32 * 1024 + 8 * 1024;
-    for (const auto [offset, value] :
+    for (const auto& [offset, value] :
          std::array<std::pair<unsigned, Byte>, 4>{{{1, 0x10}, {2, 128}, {3, 2}, {4, 2}}}) {
         auto invalid = original;
         invalid[invalid.size() - 10 - kMapperRamBytes - 5 + offset] = value;
