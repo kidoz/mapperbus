@@ -68,6 +68,7 @@ class Mapper422 final : public Mapper {
     std::vector<Byte> prg_ram_;
     std::vector<Byte> chr_ram_;
     Registers registers_;
+    const bool inverted_irq_reload_;
     const Byte submapper_;
     const MirrorMode initial_mirroring_;
     Byte sl0_ = 0U;

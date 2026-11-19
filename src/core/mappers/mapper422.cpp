@@ -32,7 +32,8 @@ bool valid_chr_ram_size(std::size_t size) {
 Mapper422::Mapper422(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte> chr_rom)
     : prg_rom_(std::move(prg_rom)), chr_rom_(std::move(chr_rom)),
       prg_ram_(header.prg_ram_size + header.prg_nvram_size),
-      chr_ram_(chr_rom_.empty() ? header.chr_ram_size : 0U), submapper_(header.submapper),
+      chr_ram_(chr_rom_.empty() ? header.chr_ram_size : 0U),
+      inverted_irq_reload_(header.mapper_number == 534U), submapper_(header.submapper),
       initial_mirroring_(header.mirror_mode), has_battery_(header.has_battery) {
     power_on();
 }
@@ -40,39 +41,40 @@ Mapper422::Mapper422(const INesHeader& header, std::vector<Byte> prg_rom, std::v
 Result<void> Mapper422::validate_geometry(const INesHeader& header,
                                           std::size_t prg_size,
                                           std::size_t chr_size) {
-    if (header.mapper_number != 422U) {
-        return std::unexpected("Mapper 422 requires mapper ID 422");
+    if (header.mapper_number != 422U && header.mapper_number != 534U) {
+        return std::unexpected("Expected mapper 422 or 534");
     }
     if (!header.is_nes2 || header.submapper > 2U) {
-        return std::unexpected("Mapper 422 requires NES 2.0 submapper 0, 1 or 2");
+        return std::unexpected("ING003C/ING-022 requires NES 2.0 submapper 0, 1 or 2");
     }
     if (header.submapper == 0U) {
-        if (prg_size < kMinPrgSize || prg_size > kMaxPrgSize || !std::has_single_bit(prg_size)) {
-            return std::unexpected(
-                "Mapper 422 submapper 0 requires power-of-two 32 KiB-4 MiB PRG ROM");
+        const auto minimum = header.mapper_number == 534U ? 16384U : kMinPrgSize;
+        if (prg_size < minimum || prg_size > kMaxPrgSize || !std::has_single_bit(prg_size)) {
+            return std::unexpected("ING003C/ING-022 submapper 0 requires a supported power-of-two "
+                                   "PRG ROM up to 4 MiB");
         }
     } else if (prg_size != 2U * kChipSize) {
-        return std::unexpected("Mapper 422 submappers 1/2 require two packed 1 MiB PRG chips");
+        return std::unexpected("ING003C/ING-022 submappers 1/2 require two packed 1 MiB PRG chips");
     }
     if (chr_size != 0U &&
         (chr_size < kMinChrSize || chr_size > kMaxChrSize || !std::has_single_bit(chr_size))) {
-        return std::unexpected("Mapper 422 requires power-of-two 8 KiB-2 MiB CHR ROM");
+        return std::unexpected("ING003C/ING-022 requires power-of-two 8 KiB-2 MiB CHR ROM");
     }
     if (header.mirror_mode != MirrorMode::Horizontal &&
         header.mirror_mode != MirrorMode::Vertical) {
-        return std::unexpected("Mapper 422 requires ordinary H/V initial CIRAM metadata");
+        return std::unexpected("ING003C/ING-022 requires ordinary H/V initial CIRAM metadata");
     }
     if (header.has_trainer || header.chr_nvram_size != 0U) {
-        return std::unexpected("Mapper 422 provides neither trainer storage nor CHR NVRAM");
+        return std::unexpected("ING003C/ING-022 provides neither trainer storage nor CHR NVRAM");
     }
     if (header.prg_nvram_size != (header.has_battery ? kWramSize : 0U) ||
         (header.has_battery && header.prg_ram_size != 0U) ||
         (!header.has_battery && header.prg_ram_size != 0U && header.prg_ram_size != kWramSize)) {
-        return std::unexpected("Mapper 422 supports zero or 8 KiB WRAM and battery NVRAM");
+        return std::unexpected("ING003C/ING-022 supports zero or 8 KiB WRAM and battery NVRAM");
     }
     if ((chr_size == 0U && !valid_chr_ram_size(header.chr_ram_size)) ||
         (chr_size != 0U && header.chr_ram_size != 0U)) {
-        return std::unexpected("Mapper 422 CHR RAM must be power-of-two 8-256 KiB");
+        return std::unexpected("ING003C/ING-022 CHR RAM must be power-of-two 8-256 KiB");
     }
     return {};
 }
@@ -233,7 +235,7 @@ void Mapper422::write_mmc3(Address addr, Byte value) {
         registers_.ram_flags = value & 0xC0U;
         break;
     case 0xC000U:
-        registers_.irq_reload = value;
+        registers_.irq_reload = inverted_irq_reload_ ? static_cast<Byte>(~value) : value;
         break;
     case 0xC001U:
         registers_.irq_counter = 0U;
@@ -296,7 +298,7 @@ MirrorMode Mapper422::mirror_mode() const {
 
 Result<void> Mapper422::configure_board_jumpers(Byte value) {
     if (value > 1U) {
-        return std::unexpected("Mapper 422 SL0 accepts values 0 and 1");
+        return std::unexpected("ING003C/ING-022 SL0 accepts values 0 and 1");
     }
     sl0_ = value;
     return {};
@@ -346,7 +348,7 @@ void Mapper422::clock_irq_counter() {
 }
 
 std::uint16_t Mapper422::state_tag() const {
-    return static_cast<std::uint16_t>(kStateBase | submapper_ |
+    return static_cast<std::uint16_t>((inverted_irq_reload_ ? 0x5340U : kStateBase) | submapper_ |
                                       (initial_mirroring_ == MirrorMode::Vertical ? 4U : 0U) |
                                       (sl0_ != 0U ? 8U : 0U) | (has_battery_ ? 0x10U : 0U));
 }

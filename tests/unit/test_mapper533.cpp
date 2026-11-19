@@ -220,6 +220,20 @@ TEST_CASE("Sachen 3014 conflicts on writes and drives the readback nibble at E00
     CHECK(c.read_prg(0xE000) == 0xB0);
     CHECK(c.read_chr(0) == 0);
 }
+TEST_CASE("ING-022 inverts the MMC3 IRQ reload byte", "[mapper534]") {
+    auto c = board(534, 16, 32);
+    c.write_prg(0xC000, 0xFE);
+    c.write_prg(0xC001, 0);
+    c.write_prg(0xE001, 0);
+    c.clock_irq_counter();
+    CHECK_FALSE(c.irq_pending());
+    replay(c);
+    c.clock_irq_counter();
+    CHECK(c.irq_pending());
+    c.write_prg(0x8000, 6);
+    c.write_prg(0x8001, 5);
+    CHECK(c.read_prg(0x8000) == 5);
+}
 TEST_CASE("LittleCom 160 uses address pins for PRG and CIRAM", "[mapper541]") {
     auto c = board(541, 64, 0, 0, 7);
     c.write_prg(0xBFFF, 255);
