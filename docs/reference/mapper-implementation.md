@@ -5242,7 +5242,7 @@ some historical aliases share a factory with another ID.
 | 418 | Taito / Namco 108 variant | Registered: Namco108 | [r8047](https://www.nesdev.org/w/index.php?oldid=8047) |
 | 419 | Board-specific specification | Not registered | [r23377](https://www.nesdev.org/w/index.php?oldid=23377) |
 | 420 | Kasheng A971210 | Registered: Mmc3 | [r8052](https://www.nesdev.org/w/index.php?oldid=8052) |
-| 421 | Board-specific specification | Not registered | [r8053](https://www.nesdev.org/w/index.php?oldid=8053) |
+| 421 | J.Y. SC871115C | Registered: JyCompany | [r8053](https://www.nesdev.org/w/index.php?oldid=8053) |
 | 422 | Board-specific specification | Registered: Mapper422 | [r22468](https://www.nesdev.org/w/index.php?oldid=22468) |
 | 423 | Board-specific specification | Not registered | [r23378](https://www.nesdev.org/w/index.php?oldid=23378) |
 | 424 | Board-specific specification | Not registered | [r23379](https://www.nesdev.org/w/index.php?oldid=23379) |
