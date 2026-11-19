@@ -75,6 +75,7 @@ core_sources = files(
     'mappers/mapper055.cpp',
     'mappers/bmc_t3h53.cpp',
     'mappers/multicart060.cpp',
+    'mappers/multicart063.cpp',
     'mappers/n32_mapper050.cpp',
     'mappers/mapper012.cpp',
     'mappers/sl1632.cpp',
