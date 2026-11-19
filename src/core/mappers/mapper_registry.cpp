@@ -9,6 +9,7 @@
 #include "core/mappers/bxrom_wram.hpp"
 #include "core/mappers/caltron_041.hpp"
 #include "core/mappers/cnrom.hpp"
+#include "core/mappers/cnrom185.hpp"
 #include "core/mappers/color_dreams.hpp"
 #include "core/mappers/datach.hpp"
 #include "core/mappers/decathlon.hpp"
@@ -234,6 +235,8 @@ namespace {
         return Fk23c::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 177U)
         return Henggedianzi177::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 185U)
+        return Cnrom185::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 99U)
         return VsSystem::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 30U || header.mapper_number == 111U)
@@ -1181,6 +1184,7 @@ void register_builtin_mappers() {
     registry.register_mapper(168, make_factory<Racermate168>());
     registry.register_mapper(176, make_factory<Fk23c>());
     registry.register_mapper(177, make_factory<Henggedianzi177>());
+    registry.register_mapper(185, make_factory<Cnrom185>());
 }
 
 } // namespace mapperbus::core

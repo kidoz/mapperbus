@@ -122,6 +122,7 @@ core_sources = files(
     'mappers/racermate168.cpp',
     'mappers/fk23c.cpp',
     'mappers/mapper177.cpp',
+    'mappers/cnrom185.cpp',
     'mappers/vs_system.cpp',
     'fds/fds.cpp',
     'fds/fds_mapper.cpp',
