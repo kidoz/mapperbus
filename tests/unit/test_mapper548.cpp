@@ -455,3 +455,32 @@ TEST_CASE("Campus Challenge RAM select and the timer are independent of MMC3 IRQ
     CHECK(c.read_expansion(0x5800) == 0x5C);
 }
 
+TEST_CASE("JY-215 switches to VRC4e, locks the game and restores a running VRC IRQ",
+          "[mapper556]") {
+    auto c = cartridge(556, 1024, 1024, 0, 7, 0);
+    for (Byte reg : {0x20, 0x40, 0x8F, 0xA0})
+        c.write_expansion(0x5000, reg);
+    c.write_prg(0x8000, 5);
+    CHECK(c.read_prg(0x8000) == 69);
+    CHECK(c.read_prg(0xC000) == 94);
+    c.write_prg(0x9008, 2);
+    CHECK(c.read_prg(0xC000) == 69);
+    c.write_prg(0x9000, 3);
+    CHECK(c.mirror_mode() == MirrorMode::SingleUpper);
+    c.write_prg(0xB008, 9);
+    c.write_prg(0xB00C, 1);
+    CHECK(c.read_chr(0x0400) == 0x39);
+    for (int i = 0; i < 4; ++i)
+        c.write_expansion(0x5000, 0);
+    CHECK(c.read_prg(0xC000) == 69);
+    c.write_prg(0xF000, 14);
+    c.write_prg(0xF004, 15);
+    c.write_prg(0xF008, 6);
+    c.clock_cpu();
+    CHECK_FALSE(c.irq_pending());
+    snapshot(c);
+    c.clock_cpu();
+    CHECK(c.irq_pending());
+    c.write_prg(0xF00C, 0);
+    CHECK_FALSE(c.irq_pending());
+}
