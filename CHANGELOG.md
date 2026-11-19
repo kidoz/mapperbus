@@ -5,6 +5,93 @@ All notable changes to MapperBus are documented in this file.
 The format is based on Keep a Changelog, and this project adheres to Semantic
 Versioning.
 
+## [0.4.0] - 2026-11-19
+
+### Added
+
+- Cartridge coverage for 508 registered IDs, up from 140, spanning Nintendo,
+  Konami VRC, Irem, Taito, Jaleco, Sunsoft, Namco, Bandai, Tengen, Sachen/TXC,
+  Waixing, Kasheng, Nitra, Rex Soft, J.Y. Company, Subor, and multicart and
+  flash boards, with per-board ledger entries and synthetic tests.
+
+- Vs. Unisystem cabinet support for mappers 75, 99 and 151, including coin,
+  service and DIP inputs, shared RAM, VRC1 four-screen mirroring, and RGB PPU
+  palettes for the 2C03, 2C04 and 2C05 revisions.
+
+- Educational keyboard cartridges 329, 365, 371, 440, 442 and 531, with
+  desktop keyboard typing, PEC and Subor matrix scanners, and Transformer
+  PC/AT set-1 scancode delivery.
+
+- Live microphone capture feeds the cartridge ADC models on mappers 515 and
+  517 with a six-bit level derived from each capture packet.
+
+- NES 2.0 miscellaneous ROM media support for the Supervision menu, mapper 355
+  PIC firmware, mapper 413 serial samples and the mapper 532 font ROM.
+
+- Cartridge identity matching for conflicting historical assignments, including
+  39, 54, 179, 181, 220, 223, 248 and 251, plus historical aliases 102, 109,
+  110, 129, 130, 131 and 161.
+
+- iNES trainer RAM seeding and execution, including the NESticle trainer entry.
+
+- OneBus VT02 profiles for mappers 256, 270 and 436, with native CPU and PPU
+  register transactions, CIRAM and IRQs.
+
+- Game Doctor 561 and 562 with RAM-loaded cartridge images, per-model bank
+  switching and an optional 8 KiB Turbo Game Doctor BIOS.
+
+- Rainbow 682 offline FPGA support with persistent flash, extended tiles and
+  sprites, independent IRQs and expansion audio.
+
+- Render-context hooks for cartridge-selected background planes, sprites,
+  per-tile palettes and redirected vectors, used by SAN2, Rainbow, QTa and
+  related boards.
+
+- Vs. cabinet service on F10 and a `--vs-dips` launch mask for SDL3, NodalKit
+  and the headless CLI.
+
+- Game Doctor BIOS startup option in SDL3 and NodalKit.
+
+- 128 MiB cartridge and archive payload limit, including libarchive member and
+  decompression checks.
+
+- New mapper families including Subor karaoke and microphone boards, FDS
+  conversions, 51/53 and other multicarts, Sachen/TXC/J.Y./Waixing variants,
+  Ka Sheng and Kaiser boards, COOLGIRL, BlazePro, SAN2, QTa, CoolX, Talkman,
+  and a broad range of MMC1/MMC3/VRC/Namco/latch boards.
+
+### Changed
+
+- Cartridge and archive payload limits increased from 16 MiB to 128 MiB, with
+  pre-allocation and decompression checks.
+
+- Save-state identity includes the complete supplied cartridge image. The
+  default state cap remains 4 MiB; Rainbow accepts up to 32 MiB for two fully
+  rewritten 8 MiB flash chips.
+
+- Flash persistence errors describe the cartridge's storage instead of a fixed
+  chip size.
+
+- Live capture now also starts for cartridge microphone ADCs, and GUI hotkeys
+  yield to cartridge keyboard typing.
+
+- Vs. System images are rejected when the mapper does not provide a cabinet.
+
+- Board-profile and Game Doctor BIOS validation is shared by CLI, SDL3 and
+  NodalKit startup paths.
+
+### Fixed
+
+- Rainbow redirected vectors are readable even when the underlying work-RAM
+  bank is absent.
+
+- Mapper corrections including mapper 012 mirroring, mapper 045 register
+  decoding, mapper 268 mirroring, mapper 342's native COOLGIRL loader, Super
+  Game Mega Type III CHR banking, mapper 355 firmware loading, and CTC-31
+  submapper handling.
+
+- Mapper test timeouts account for unoptimized builds as well as sanitizers.
+
 ## [0.3.0] - 2026-11-12
 
 ### Added
@@ -211,6 +298,7 @@ Versioning.
 - Initial release with the emulator core, SDL3 frontend, CPU and GPU FSR
   upscaling, and BlipBuffer-based audio output.
 
+[0.4.0]: https://github.com/kidoz/mapperbus/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/kidoz/mapperbus/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/kidoz/mapperbus/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/kidoz/mapperbus/releases/tag/v0.1.0
