@@ -36,6 +36,7 @@ struct CartridgeLaunchOptions {
     std::optional<core::Byte> vs_dips = std::nullopt;
 };
 
+[[nodiscard]] std::optional<core::Byte> parse_vs_dips(std::string_view value);
 [[nodiscard]] bool is_rom_archive(const std::filesystem::path& path);
 using FdsBiosRead = std::function<core::Result<std::vector<core::Byte>>(const std::string&)>;
 /// Reads a regular file capped at 8 KiB and requires exactly 8192 bytes.

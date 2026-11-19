@@ -563,8 +563,11 @@ void EmulationSession::sync_input() {
             controller.set_button_state(player % 2, button, pressed);
         }
     }
-    if (cabinet)
+    if (cabinet != nullptr) {
+        constexpr core::Byte kF10HidUsage = 0x43;
+        cabinet->set_service(input_->keyboard_key_down(kF10HidUsage));
         cabinet->set_coin(coin);
+    }
     emulator_->set_microphone_active(microphone);
 }
 

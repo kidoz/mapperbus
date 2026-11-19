@@ -29,12 +29,12 @@ int main(int argc, char* argv[]) {
     for (int index = 1; index < argc; ++index) {
         const std::string_view argument(argv[index]);
         if ((argument == "--entry" || argument == "--fds-bios" || argument == "--dcs-option" ||
-             argument == "--game-doctor-bios" || argument == "--frames" || argument == "--region" ||
-             argument == "--barcode" || argument == "--barcode-frame" ||
-             argument == "--barcode-cycles" || argument == "--datach-save" ||
-             argument == "--board-profile" || argument == "--controller-timing" ||
-             argument == "--controller-wiring" || argument == "--controller-mode" ||
-             argument == "--expansion-controllers") &&
+             argument == "--game-doctor-bios" || argument == "--vs-dips" ||
+             argument == "--frames" || argument == "--region" || argument == "--barcode" ||
+             argument == "--barcode-frame" || argument == "--barcode-cycles" ||
+             argument == "--datach-save" || argument == "--board-profile" ||
+             argument == "--controller-timing" || argument == "--controller-wiring" ||
+             argument == "--controller-mode" || argument == "--expansion-controllers") &&
             index + 1 < argc) {
             const std::string_view value(argv[++index]);
             if (argument == "--entry")
@@ -73,6 +73,12 @@ int main(int argc, char* argv[]) {
                     return EXIT_FAILURE;
                 }
                 (argument == "--dcs-option" ? dcs_option : game_doctor_bios) = value;
+            } else if (argument == "--vs-dips") {
+                cartridge_options.vs_dips = mapperbus::app::parse_vs_dips(value);
+                if (!cartridge_options.vs_dips) {
+                    mapperbus::core::logger::error("--vs-dips requires a byte value (0–255)");
+                    return EXIT_FAILURE;
+                }
             } else if (argument == "--region") {
                 region_override = mapperbus::app::parse_region_override(value);
                 if (!region_override) {
@@ -136,7 +142,8 @@ int main(int argc, char* argv[]) {
     if (path.empty()) {
         mapperbus::core::logger::error(
             "Usage: mapperbus-cli <rom-file|archive> [--entry NAME] "
-            "[--fds-bios PATH] [--game-doctor-bios PATH] [--dcs-option PATH] [--board-profile "
+            "[--fds-bios PATH] [--game-doctor-bios PATH] [--vs-dips BYTE] "
+            "[--dcs-option PATH] [--board-profile "
             "NAME] [--frames N] [--region "
             "ntsc|pal|hybrid] "
             "[--controller-timing nes-av-famicom|rf-famicom] "

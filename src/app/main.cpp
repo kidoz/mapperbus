@@ -143,6 +143,8 @@ int main(int argc, char* argv[]) {
         mapperbus::core::logger::info(
             "  --entry NAME          ROM member inside a .zip or .7z archive");
         mapperbus::core::logger::info("  --fds-bios PATH       8 KiB Famicom Disk System BIOS");
+        mapperbus::core::logger::info("  --vs-dips BYTE        Vs. cabinet DIP mask (0–255)");
+        mapperbus::core::logger::info("Vs. cabinet: hold F10 for Service");
         mapperbus::core::logger::info(
             "  --dcs-option PATH     Sunsoft DCS option ROM (16-128 KiB)");
         mapperbus::core::logger::info(
@@ -315,6 +317,13 @@ int main(int argc, char* argv[]) {
                 return EXIT_FAILURE;
             }
             dcs_option = argv[++i];
+        } else if (std::strcmp(argv[i], "--vs-dips") == 0) {
+            cartridge_options.vs_dips =
+                i + 1 < argc ? mapperbus::app::parse_vs_dips(argv[++i]) : std::nullopt;
+            if (!cartridge_options.vs_dips) {
+                mapperbus::core::logger::error("--vs-dips requires a byte value (0–255)");
+                return EXIT_FAILURE;
+            }
         } else if (std::strcmp(argv[i], "--live-microphone") == 0) {
             microphone_settings.enabled = true;
         } else if (std::strcmp(argv[i], "--no-live-microphone") == 0) {

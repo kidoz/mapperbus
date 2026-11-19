@@ -607,6 +607,38 @@ TEST_CASE("Keyboard Transformer receives host key presses and releases through t
     std::filesystem::remove(path);
 }
 
+TEST_CASE("Desktop Vs. cabinet applies launch DIP switches and follows the held service key",
+          "[app][session][vs]") {
+    core::register_builtin_mappers();
+    const auto path = std::filesystem::temp_directory_path() / "mapperbus-vs-cabinet-test.nes";
+    std::vector<core::Byte> rom(16 + 32768 + 8192);
+    const std::array<core::Byte, 11> header{'N', 'E', 'S', 0x1A, 2, 1, 0x38, 0x69, 0, 0, 5};
+    std::ranges::copy(header, rom.begin());
+    rom[16] = 0x4C; // JMP $8000
+    rom[18] = 0x80;
+    for (int vector : {32768 - 6, 32768 - 4, 32768 - 2})
+        rom[16 + vector + 1] = 0x80;
+    {
+        std::ofstream output(path, std::ios::binary);
+        output.write(reinterpret_cast<const char*>(rom.data()), rom.size());
+        REQUIRE(output.good());
+    }
+
+    auto input = std::make_unique<ActionInput>();
+    auto* host = input.get();
+    EmulationSession session(std::make_unique<platform::NullVideo>(),
+                             std::make_unique<TestAudioBackend>(),
+                             std::move(input));
+    REQUIRE(session.open_rom(path.string(), {}, {}, {}, {.vs_dips = 0x96U}));
+    CHECK(session.emulator().read_cpu(0x4017) == 0x94U);
+    for (const bool held : {true, false}) {
+        host->held_key = held ? 0x43U : 0U;
+        REQUIRE(session.step_frame() == TickResult::FrameAdvanced);
+        CHECK(session.emulator().read_cpu(0x4016) == (held ? 0x14U : 0x10U));
+    }
+    std::filesystem::remove(path);
+}
+
 TEST_CASE("Turbo generates frame-based NES signals independently for each player",
           "[app][session][turbo]") {
     core::register_builtin_mappers();

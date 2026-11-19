@@ -5,12 +5,14 @@
 #include <array>
 #include <bit>
 #include <cctype>
+#include <charconv>
 #include <memory>
 #include <set>
 #include <utility>
 
 #include "app/state_storage.hpp"
 #include "core/binary_file.hpp"
+#include "core/input/vs_cabinet.hpp"
 
 namespace mapperbus::app {
 namespace {
@@ -192,6 +194,23 @@ core::Result<ArchiveContents> scan_archive(const std::string& path,
 }
 } // namespace
 
+std::optional<core::Byte> parse_vs_dips(std::string_view value) {
+    int base = 10;
+    if (value.starts_with("0x") || value.starts_with("0X")) {
+        value.remove_prefix(2);
+        base = 16;
+    }
+    if (value.empty())
+        return std::nullopt;
+    unsigned switches = 0;
+    const auto* begin = value.data();
+    const auto* end = begin + value.size();
+    const auto parsed = std::from_chars(begin, end, switches, base);
+    if (parsed.ec != std::errc{} || parsed.ptr != end || switches > 0xFFU)
+        return std::nullopt;
+    return static_cast<core::Byte>(switches);
+}
+
 bool is_rom_archive(const std::filesystem::path& path) {
     const auto extension = lower_extension(path);
     return extension == ".zip" || extension == ".7z";
@@ -317,6 +336,12 @@ core::Result<std::string> load_rom_source(core::Emulator& emulator,
             if (auto configured = cartridge.configure_game_doctor_bios(*bios); !configured)
                 return configured;
         }
+        if (vs_dips) {
+            auto* cabinet = cartridge.vs_cabinet();
+            if (!cabinet)
+                return std::unexpected("--vs-dips requires a supported Vs. System cartridge");
+            cabinet->set_dips(*vs_dips);
+        }
         if (!board_profile.empty())
             return cartridge.configure_board_profile(board_profile);
         return {};
@@ -329,6 +354,8 @@ core::Result<std::string> load_rom_source(core::Emulator& emulator,
         if (lower_extension(path) == ".fds") {
             if (!game_doctor_bios_path.empty())
                 return std::unexpected("Turbo Game Doctor BIOS requires mapper 562");
+            if (vs_dips)
+                return std::unexpected("--vs-dips requires a supported Vs. System cartridge");
             if (!board_profile.empty())
                 return std::unexpected("Board profiles require a cartridge, not an FDS disk");
             if (!option.empty())
@@ -391,6 +418,8 @@ core::Result<std::string> load_rom_source(core::Emulator& emulator,
     if (lower_extension(selected) == ".fds") {
         if (!game_doctor_bios_path.empty())
             return std::unexpected("Turbo Game Doctor BIOS requires mapper 562");
+        if (vs_dips)
+            return std::unexpected("--vs-dips requires a supported Vs. System cartridge");
         if (!board_profile.empty())
             return std::unexpected("Board profiles require a cartridge, not an FDS disk");
         if (!option.empty())

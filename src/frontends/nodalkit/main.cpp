@@ -29,6 +29,13 @@ int main(int argc, char** argv) try {
         if (argument == "--dcs-option" && i + 1 < argc && !std::string_view(argv[i + 1]).empty() &&
             !std::string_view(argv[i + 1]).starts_with("--")) {
             dcs_option_path = argv[++i];
+        } else if (argument == "--vs-dips") {
+            cartridge_options.vs_dips =
+                i + 1 < argc ? mapperbus::app::parse_vs_dips(argv[++i]) : std::nullopt;
+            if (!cartridge_options.vs_dips) {
+                mapperbus::core::logger::error("--vs-dips requires a byte value (0–255)");
+                return EXIT_FAILURE;
+            }
         } else if (!argument.starts_with("--") && rom_path.empty()) {
             rom_path = argument;
         } else {
