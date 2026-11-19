@@ -20,6 +20,7 @@
 #include "core/mappers/irem.hpp"
 #include "core/mappers/irem_lrog017.hpp"
 #include "core/mappers/jaleco_discrete.hpp"
+#include "core/mappers/jaleco_jf13.hpp"
 #include "core/mappers/jaleco_ss88006.hpp"
 #include "core/mappers/jy_company.hpp"
 #include "core/mappers/konami_vrc.hpp"
@@ -134,6 +135,8 @@ namespace {
         return Mapper056Ks202::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 57U)
         return Mapper057::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 86U)
+        return JalecoJf13::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 30U || header.mapper_number == 111U)
         return FlashBoards::validate_geometry(header, prg_size, chr_size);
     if (JyCompany::supports_mapper(header.mapper_number))
@@ -1043,6 +1046,7 @@ void register_builtin_mappers() {
     registry.register_mapper(49, make_factory<Mapper049>());
     registry.register_mapper(56, make_factory<Mapper056Ks202>());
     registry.register_mapper(57, make_factory<Mapper057>());
+    registry.register_mapper(86, make_factory<JalecoJf13>());
 }
 
 } // namespace mapperbus::core

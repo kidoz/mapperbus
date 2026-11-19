@@ -89,6 +89,7 @@ core_sources = files(
     'mappers/mapper049.cpp',
     'mappers/mapper056_ks202.cpp',
     'mappers/mapper057.cpp',
+    'mappers/jaleco_jf13.cpp',
     'fds/fds.cpp',
     'fds/fds_mapper.cpp',
     'input/controller.cpp',
