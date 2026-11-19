@@ -5206,7 +5206,7 @@ or another registered cartridge ID.
 | 382 | Board-specific specification | Registered: Mapper382 | [r24536](https://www.nesdev.org/w/index.php?oldid=24536) |
 | 383 | Board-specific specification | Registered: Mapper383 | [r7997](https://www.nesdev.org/w/index.php?oldid=7997) |
 | 384 | Board-specific specification | Registered: Mapper384 | [r7998](https://www.nesdev.org/w/index.php?oldid=7998) |
-| 385 | Board-specific specification | Not registered | [r7999](https://www.nesdev.org/w/index.php?oldid=7999) |
+| 385 | Board-specific specification | Registered: Mapper385 | [r7999](https://www.nesdev.org/w/index.php?oldid=7999) |
 | 386 | J.Y. Company multicart | New implementation: JyCompany | [r23354](https://www.nesdev.org/w/index.php?oldid=23354) |
 | 387 | J.Y. Company multicart | New implementation: JyCompany | [r23355](https://www.nesdev.org/w/index.php?oldid=23355) |
 | 388 | J.Y. Company multicart | New implementation: JyCompany | [r18944](https://www.nesdev.org/w/index.php?oldid=18944) |
