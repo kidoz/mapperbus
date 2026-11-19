@@ -24,6 +24,7 @@ class Mapper043 final : public Mapper {
     Byte read_chr(Address addr) override;
     void write_chr(Address addr, Byte value) override;
     MirrorMode mirror_mode() const override;
+    void power_on() override;
     void reset() override;
     bool irq_pending() const override;
     void acknowledge_irq() override;
@@ -38,6 +39,7 @@ class Mapper043 final : public Mapper {
     std::vector<Byte> prg_rom_;
     std::vector<Byte> chr_rom_;
     const MirrorMode mirror_;
+    const bool smb2jx_;
     Byte prg_bank_ = 0U;
     uint16_t irq_counter_ = 0U;
     bool irq_enabled_ = false;

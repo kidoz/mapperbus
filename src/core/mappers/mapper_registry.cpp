@@ -897,6 +897,8 @@ namespace {
         return ChrRamMulticarts::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 303U)
         return Mapper303::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 311U)
+        return Mapper043::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 329U)
         return TransformerKeyboard::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 420U)
@@ -2044,6 +2046,7 @@ void register_builtin_mappers() {
     registry.register_mapper(308, make_factory<Mapper308>());
     registry.register_mapper(309, make_factory<Mapper309>());
     registry.register_mapper(310, make_factory<Mapper310>());
+    registry.register_mapper(311, make_factory<Mapper043>());
     registry.register_mapper(312, make_factory<Mapper312>());
     registry.register_mapper(313, make_factory<Mapper313>());
     registry.register_mapper(314, make_factory<Mapper314>());

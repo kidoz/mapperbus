@@ -362,6 +362,38 @@ TEST_CASE("Keyboard Transformer latches make and break codes and acknowledges re
     CHECK(bus.read(0x5001) == 1);
     CHECK(c->read_prg(0x6123) == 42);
 }
+TEST_CASE("SMB2JX preserves the historical 311 ROM packing and one-shot IRQ",
+          "[mapper311][cartridge]") {
+    register_builtin_mappers();
+    auto rom = image(311, 5, 1);
+    rom[16 + 17 * 4096] = 0x77;
+    rom[16 + 9 * 8192] = 0x85;
+    auto c = Cartridge::from_data(rom);
+    REQUIRE(c);
+    CHECK(c->read_expansion(0x5000) == 0x77);
+    CHECK(c->read_prg(0x6000) == 0x85);
+    CHECK(c->read_expansion(0x4042) == 0xFF);
+    CHECK(c->expansion_read_mask(0x4056) == 0);
+    c->write_expansion(0x4022, 1);
+    CHECK(c->read_prg(0x8000) == 2);
+    CHECK(c->read_prg(0xFFFF) == 3);
+    c->write_expansion(0x4122, 1);
+    for (unsigned i = 0; i < 4096; i++)
+        c->clock_cpu();
+    REQUIRE_FALSE(c->irq_pending());
+    StateWriter w;
+    c->save_state(w);
+    c->clock_cpu();
+    CHECK(c->irq_pending());
+    StateReader r(w.data());
+    c->load_state(r);
+    REQUIRE(r.ok());
+    c->clock_cpu();
+    CHECK(c->irq_pending());
+    c->write_expansion(0x4122, 0);
+    CHECK_FALSE(c->irq_pending());
+}
+
 TEST_CASE("Spanish PEC system-ROM-only population leaves the empty game socket undriven",
           "[mapper371][cartridge]") {
     register_builtin_mappers();
