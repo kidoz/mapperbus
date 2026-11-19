@@ -164,9 +164,18 @@ class Mapper {
         return {};
     }
     virtual void set_shared_nvram(std::span<const Byte> /*data*/) {}
+    /// Extra controller-port data lines driven by an educational computer.
+    virtual Byte controller_port_bits(int /*port*/, Byte bus) const {
+        return bus;
+    }
+    virtual void clock_controller_port(int /*port*/) {}
     virtual VsCabinet* vs_cabinet() {
         return nullptr;
     }
+    /// Parallel keyboard input for cartridge-integrated matrix scanners.
+    /// Completed PC/AT set-1 make or break byte from a keyboard receiver.
+    virtual void send_keyboard_scancode(Byte /*code*/) {}
+    virtual void set_keyboard_row(Byte /*row*/, Byte /*pressed_mask*/) {}
     virtual Result<void> scan_barcode(std::string_view /*digits*/, uint32_t /*module_cycles*/) {
         return std::unexpected("Barcode scanning requires a Datach cartridge (mapper 157)");
     }

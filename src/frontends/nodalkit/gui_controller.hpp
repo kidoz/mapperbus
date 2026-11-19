@@ -122,6 +122,7 @@ class MapperBusGuiController {
     void focus_game_surface();
     void toggle_fullscreen();
     void update_fullscreen_chrome();
+    [[nodiscard]] bool cartridge_keyboard_active() const;
     void update_native_menu();
     void update_native_toolbar();
     void browse_for_rom(bool recovering = false);
@@ -386,7 +387,8 @@ class MapperBusGuiController {
     std::chrono::nanoseconds frame_accumulator_{0};
     nk::CallbackHandle tick_handle_{};
     bool announced_fullscreen_ = false;
-    std::optional<int> native_menu_slot_;
+    std::optional<std::pair<int, bool>> native_menu_state_;
+    bool capture_preview_tab_ = false;
     std::optional<int> native_toolbar_state_;
 };
 

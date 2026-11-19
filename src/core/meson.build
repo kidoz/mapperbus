@@ -328,6 +328,8 @@ core_sources = files(
     'mappers/mapper528.cpp',
     'mappers/mapper529.cpp',
     'mappers/mapper530.cpp',
+    'mappers/education_440_442.cpp',
+    'mappers/transformer_keyboard.cpp',
     'fds/fds.cpp',
     'fds/fds_mapper.cpp',
     'input/controller.cpp',

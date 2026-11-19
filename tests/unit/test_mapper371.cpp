@@ -24,7 +24,7 @@ constexpr std::size_t kPinsOffset = 12UZ;
 constexpr std::size_t kTapeOffset = 13UZ;
 constexpr std::size_t kPrgRamOffset = 14UZ;
 constexpr std::size_t kChrRamOffset = kPrgRamOffset + kCartridgeRamSize;
-constexpr std::size_t kStateSize = kChrRamOffset + kCartridgeRamSize;
+constexpr std::size_t kStateSize = kChrRamOffset + kCartridgeRamSize + 16U;
 
 INesHeader header(MirrorMode mirror = MirrorMode::Vertical) {
     INesHeader result{};
@@ -110,7 +110,7 @@ TEST_CASE("Mapper 371 validates exact NES 2.0 ROM RAM and CIRAM geometry", "[map
         REQUIRE_FALSE(Mapper371::validate_geometry(h, kPrgSize, 0U));
     }
     for (const std::size_t size :
-         {0UZ, 1UZ, 0x2000UZ, kFirstChipSize, kPrgSize - 1U, kPrgSize + 1U, 0x100000UZ}) {
+         {0UZ, 1UZ, 0x2000UZ, kFirstChipSize - 1, kPrgSize - 1U, kPrgSize + 1U, 0x100000UZ}) {
         CAPTURE(size);
         REQUIRE_FALSE(Mapper371::validate_geometry(header(), size, 0U));
     }
@@ -439,7 +439,7 @@ TEST_CASE("Mapper 371 fixed bounded snapshots replay all mutable state without R
     write_main(*mapper, 0xD5U);
     const auto saved = state(*mapper);
     REQUIRE(saved.size() == kStateSize);
-    REQUIRE(saved.size() == 16398U);
+    REQUIRE(saved.size() == 16414U);
     REQUIRE(saved.size() < kPrgSize);
 
     auto copy = board(MirrorMode::Horizontal, 0x80U);

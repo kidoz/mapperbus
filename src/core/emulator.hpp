@@ -202,6 +202,17 @@ class Emulator {
     VsCabinet* vs_cabinet() {
         return cartridge_ ? cartridge_->vs_cabinet() : nullptr;
     }
+    /// Keep the Transformer's current IRQ byte latched until the guest reads it.
+    bool try_send_keyboard_scancode(Byte code) {
+        if (!cartridge_ || cartridge_->irq_pending())
+            return false;
+        cartridge_->send_keyboard_scancode(code);
+        return true;
+    }
+    void set_keyboard_row(Byte row, Byte pressed_mask) {
+        if (cartridge_)
+            cartridge_->set_keyboard_row(row, pressed_mask);
+    }
     void set_microphone_active(bool active) {
         bus_.set_microphone_active(active);
     }

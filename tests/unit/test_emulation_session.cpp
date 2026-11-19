@@ -515,6 +515,11 @@ TEST_CASE("SessionActions exposes audio queue watermarks", "[app][actions]") {
 namespace {
 class ActionInput : public platform::InputBackend {
   public:
+    bool keyboard_key_down(core::Byte usage) const override {
+        return usage != 0 && (usage == held_key || usage == second_held_key);
+    }
+    core::Byte held_key = 0;
+    core::Byte second_held_key = 0;
     void poll() override {
         ++poll_count;
     }
@@ -545,6 +550,62 @@ core::Byte read_controller(EmulationSession& session, int player) {
     return state;
 }
 } // namespace
+
+TEST_CASE("Keyboard Transformer receives host key presses and releases through the session",
+          "[session][mapper329]") {
+    core::register_builtin_mappers();
+    constexpr std::array<core::Byte, 3> spin{0x4C, 0, 0xC0};
+    const auto path = tests::build_ines_rom("session-transformer", 73, 2, 1, spin);
+    {
+        std::fstream file(path, std::ios::in | std::ios::out | std::ios::binary);
+        const std::array<char, 4> nes2{0x48, 1, 0, 7};
+        file.seekp(7);
+        file.write(nes2.data(), nes2.size());
+        REQUIRE(file);
+    }
+    auto input = std::make_unique<ActionInput>();
+    auto* host = input.get();
+    EmulationSession session(std::make_unique<platform::NullVideo>(),
+                             std::make_unique<TestAudioBackend>(),
+                             std::move(input));
+    REQUIRE(session.load_rom(path.string()));
+    CHECK(host->cartridge_keyboard_active());
+    for (bool pressed : {true, false}) {
+        host->held_key = pressed ? 4 : 0; // USB keyboard A
+        REQUIRE(session.step_frame() == TickResult::FrameAdvanced);
+        CHECK(session.emulator().read_cpu(0x5000) == 0x0E);
+        CHECK(session.emulator().read_cpu(0x5001) == (pressed ? 1 : 9));
+    }
+    // Shift and A can arrive on the same frame. A receiver IRQ stays latched
+    // through subsequent frames, even when both keys are released in between.
+    const auto byte = [&] {
+        return static_cast<core::Byte>(session.emulator().read_cpu(0x5000) |
+                                       (session.emulator().read_cpu(0x5001) << 4));
+    };
+    host->held_key = 4;
+    host->second_held_key = 225;
+    REQUIRE(session.step_frame() == TickResult::FrameAdvanced);
+    host->held_key = host->second_held_key = 0;
+    REQUIRE(session.step_frame() == TickResult::FrameAdvanced);
+    CHECK(byte() == 0x2A);
+    for (const auto code : {0x1E, 0x9E, 0xAA}) {
+        REQUIRE(session.step_frame() == TickResult::FrameAdvanced);
+        CHECK(byte() == code);
+    }
+    host->held_key = 82; // Up in the extended cursor cluster
+    for (const auto code : {0xE0, 0x48, 0xE0, 0xC8}) {
+        REQUIRE(session.step_frame() == TickResult::FrameAdvanced);
+        CHECK(byte() == code);
+        host->held_key = 0;
+    }
+    REQUIRE(session.open_rom(test_rom_path()));
+    CHECK_FALSE(host->cartridge_keyboard_active());
+    REQUIRE(session.open_rom(path.string()));
+    CHECK(host->cartridge_keyboard_active());
+    session.close_rom();
+    CHECK_FALSE(host->cartridge_keyboard_active());
+    std::filesystem::remove(path);
+}
 
 TEST_CASE("Turbo generates frame-based NES signals independently for each player",
           "[app][session][turbo]") {

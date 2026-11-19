@@ -101,6 +101,7 @@ class Sdl3Input : public platform::InputBackend {
     void poll() override;
     bool is_button_pressed(int player, core::Button button) const override;
     bool is_action_pressed(int player, platform::InputAction action) const override;
+    bool keyboard_key_down(core::Byte usage) const override;
     bool should_quit() const override;
     [[nodiscard]] Sdl3ScalerCommand consume_scaler_command();
     [[nodiscard]] static Sdl3ScalerCommand scaler_command_for_scancode(SDL_Scancode scancode);
@@ -138,6 +139,7 @@ class Sdl3Input : public platform::InputBackend {
 
     std::array<Sdl3InputConfig, platform::kInputProfileCount> configs_{};
     std::array<Sdl3KeyboardBindings, platform::kInputProfileCount> keyboard_bindings_{};
+    std::array<bool, SDL_SCANCODE_COUNT> host_shortcut_keys_{};
     int player_count_ = 1;
     bool quit_requested_ = false;
     bool gamepad_initialized_ = false;

@@ -182,9 +182,9 @@ TEST_CASE("Mapper 365 selects four independent eight-bit PRG banks", "[mapper365
     constexpr std::array<Address, 4> addresses{0x8123U, 0xA123U, 0xC123U, 0xE123U};
     for (unsigned selected = 0U; selected < 4U; ++selected) {
         for (unsigned value = 0U; value < 256U; ++value) {
-            mapper->reset();
+            mapper->power_on();
             mapper->write_prg(static_cast<Address>(0x8000U + selected), static_cast<Byte>(value));
-            std::array<Byte, 4> banks{0U, 0U, 0U, 1U};
+            std::array<Byte, 4> banks{0xFC, 0xFD, 0xFE, 0xFF};
             banks[selected] = static_cast<Byte>(selected == 3U ? value | 1U : value);
             for (unsigned slot = 0U; slot < 4U; ++slot) {
                 const auto offset = static_cast<std::size_t>(banks[slot]) * kPrgBankSize + 0x123U;
@@ -214,7 +214,8 @@ TEST_CASE("Mapper 365 selects and writes eight independent CHR RAM banks", "[map
     auto mapper = board();
     initialize_chr(*mapper, kChrRamSize);
     for (unsigned selected = 0U; selected < 8U; ++selected) {
-        mapper->reset();
+        for (unsigned slot = 0; slot < 8; ++slot)
+            mapper->write_prg(static_cast<Address>(0xA000 + slot), 0);
         for (unsigned value = 0U; value < 256U; ++value) {
             mapper->write_prg(static_cast<Address>(0xA000U + selected), static_cast<Byte>(value));
             for (unsigned slot = 0U; slot < 8U; ++slot) {
@@ -281,16 +282,18 @@ TEST_CASE("Mapper 365 exposes fixed PRG RAM and no persistent storage", "[mapper
     }
 }
 
-TEST_CASE("Mapper 365 retains expansion writes and drives only printer ready", "[mapper365][bus]") {
+TEST_CASE("Mapper 365 decodes the printer and keyboard data ports", "[mapper365][bus]") {
     auto mapper = board();
     for (unsigned raw = 0x4020U; raw < 0x6000U; ++raw) {
         const auto addr = static_cast<Address>(raw);
         const auto value = static_cast<Byte>(raw * 29U + (raw >> 8U));
         mapper->write_expansion(addr, value);
         CAPTURE(addr);
-        REQUIRE(mapper->maps_expansion(addr) == (addr == 0x4902U));
-        REQUIRE(mapper->expansion_read_mask(addr) == (addr == 0x4902U ? 0x80U : 0U));
-        REQUIRE(mapper->read_expansion(addr) == 0U);
+        REQUIRE(mapper->maps_expansion(addr) == (addr == 0x4902U || addr == 0x4906U));
+        REQUIRE(mapper->expansion_read_mask(addr) == (addr == 0x4906U   ? 0xFFU
+                                                      : addr == 0x4902U ? 0x80U
+                                                                        : 0U));
+        REQUIRE(mapper->read_expansion(addr) == (addr == 0x4906U ? 0xFFU : 0U));
     }
     mapper->write_expansion(0x4111U, 0x11U);
     mapper->write_expansion(0x4900U, 0U);
@@ -310,8 +313,7 @@ TEST_CASE("Mapper 365 retains expansion writes and drives only printer ready", "
     for (unsigned index = 0U; index < 16U; ++index) {
         REQUIRE(saved[kUnknown491xOffset + index] == 0x10U + index);
     }
-    for (const Address addr :
-         {0x4903U, 0x4906U, 0x4910U, 0x491FU, 0x5000U, 0x5003U, 0x5080U, 0x5083U}) {
+    for (const Address addr : {0x4903U, 0x4910U, 0x491FU, 0x5000U, 0x5003U, 0x5080U, 0x5083U}) {
         REQUIRE_FALSE(mapper->maps_expansion(addr));
         REQUIRE(mapper->expansion_read_mask(addr) == 0U);
     }
@@ -366,10 +368,9 @@ TEST_CASE("Mapper 365 has no documented IRQ audio or pin side effects", "[mapper
     REQUIRE(mapper->audio_output() == 0.0F);
 }
 
-TEST_CASE("Mapper 365 soft reset clears latches and cold power also clears RAM",
+TEST_CASE("Mapper 365 soft reset retains bank latches and cold power clears RAM",
           "[mapper365][reset]") {
     auto mapper = board(MirrorMode::Horizontal);
-    auto expected = board(MirrorMode::Horizontal);
     for (unsigned slot = 0U; slot < 4U; ++slot) {
         mapper->write_prg(static_cast<Address>(0x8000U + slot), static_cast<Byte>(0x80U + slot));
     }
@@ -383,20 +384,16 @@ TEST_CASE("Mapper 365 soft reset clears latches and cold power also clears RAM",
     mapper->write_expansion(0x491FU, 0x56U);
     mapper->write_prg(0x6123U, 0xA7U);
     mapper->write_chr(0x1FFFU, 0x5CU);
-    expected->write_prg(0x6123U, 0xA7U);
-    expected->write_prg(0xA007U, 0xF7U);
-    expected->write_chr(0x1FFFU, 0x5CU);
-    expected->reset();
-
+    const auto before = state(*mapper);
     mapper->reset();
-    REQUIRE(state(*mapper) == state(*expected));
+    REQUIRE(state(*mapper) == before);
     REQUIRE(mapper->mirror_mode() == MirrorMode::Horizontal);
     REQUIRE(mapper->read_prg(0x6123U) == 0xA7U);
     mapper->write_prg(0xA007U, 0xF7U);
     REQUIRE(mapper->read_chr(0x1FFFU) == 0x5CU);
-    REQUIRE(mapper->read_prg(0x8000U) == cell(0U));
-    REQUIRE(mapper->read_prg(0xE000U) == cell(kPrgBankSize));
-    REQUIRE(state(*mapper)[kPrgBanksOffset + 3U] == 1U);
+    REQUIRE(mapper->read_prg(0x8000U) == cell(0x80U * kPrgBankSize));
+    REQUIRE(mapper->read_prg(0xE000U) == cell(0x83U * kPrgBankSize));
+    REQUIRE(state(*mapper)[kPrgBanksOffset + 3U] == 0x83U);
 
     mapper->power_on();
     REQUIRE(state(*mapper) == state(*board(MirrorMode::Horizontal)));
@@ -434,8 +431,8 @@ TEST_CASE("Mapper 365 bounded snapshots replay RAM and latches without ROM", "[m
     }
 
     const auto saved = state(*mapper);
-    REQUIRE(saved.size() == kChrRamDataOffset + kChrRamSize);
-    REQUIRE(saved.size() == 270408U);
+    REQUIRE(saved.size() == kChrRamDataOffset + kChrRamSize + 13U);
+    REQUIRE(saved.size() == 270421U);
     REQUIRE(saved.size() < kPrgSize);
     REQUIRE(std::vector<Byte>(saved.begin() + kUnknownPrgOffset,
                               saved.begin() + kUnknownPrgOffset + 4U) ==
@@ -470,7 +467,7 @@ TEST_CASE("Mapper 365 bounded snapshots replay RAM and latches without ROM", "[m
     REQUIRE(state(*copy) == saved);
 
     auto small = board(MirrorMode::Vertical, 0x8000UZ, 0x2000UZ);
-    REQUIRE(state(*small).size() == kChrRamDataOffset + 0x2000UZ);
+    REQUIRE(state(*small).size() == kChrRamDataOffset + 0x2000UZ + 13U);
 }
 
 TEST_CASE("Mapper 365 rejects malformed and incompatible states atomically", "[mapper365][state]") {

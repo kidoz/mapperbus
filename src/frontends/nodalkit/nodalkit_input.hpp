@@ -39,6 +39,10 @@ class NodalKitPlayerInput {
         shutdown_gamepad_subsystem();
     }
 
+    bool keyboard_key_down(core::Byte usage) const {
+        return window_.is_key_pressed(static_cast<nk::KeyCode>(usage));
+    }
+
     void poll() {
         poll_gamepad();
     }
@@ -60,8 +64,10 @@ class NodalKitPlayerInput {
         }
     }
 
-    [[nodiscard]] bool is_action_pressed(platform::InputAction button) const {
-        return keyboard_button_pressed(binding(button)) || is_gamepad_button_pressed(button);
+    [[nodiscard]] bool is_action_pressed(platform::InputAction button,
+                                         bool use_keyboard = true) const {
+        return (use_keyboard && keyboard_button_pressed(binding(button))) ||
+               is_gamepad_button_pressed(button);
     }
 
     void set_binding(platform::InputAction button, nk::KeyCode key) {
@@ -170,7 +176,7 @@ class NodalKitPlayerInput {
 #endif
     }
 
-    [[nodiscard]] InputMonitorProfile monitor_profile() const {
+    [[nodiscard]] InputMonitorProfile monitor_profile(bool use_keyboard = true) const {
         InputMonitorProfile result;
         result.device_index = gamepad_config_.gamepad_index;
         result.device_name = gamepad_config_.identity.name;
@@ -188,7 +194,7 @@ class NodalKitPlayerInput {
         }
 #endif
         for (auto action : platform::input_actions())
-            result.held[button_index(action)] = is_action_pressed(action);
+            result.held[button_index(action)] = is_action_pressed(action, use_keyboard);
         return result;
     }
 
@@ -588,13 +594,13 @@ class NodalKitInput : public platform::InputBackend {
 
     bool is_action_pressed(int player, platform::InputAction action) const override {
         return !assignment_capture_ && player >= 0 && player < platform::kInputProfileCount &&
-               players_[player].is_action_pressed(action);
+               players_[player].is_action_pressed(action, !cartridge_keyboard_active());
     }
 
     [[nodiscard]] auto monitor_profiles() const {
         std::array<InputMonitorProfile, platform::kInputProfileCount> result;
         for (int player = 0; player < platform::kInputProfileCount; ++player) {
-            result[player] = players_[player].monitor_profile();
+            result[player] = players_[player].monitor_profile(!cartridge_keyboard_active());
             if (assignment_capture_)
                 result[player].held.fill(false);
         }
@@ -617,6 +623,10 @@ class NodalKitInput : public platform::InputBackend {
         for (auto& player : players_)
             changed |= player.consume_gamepad_inventory_changes();
         return changed;
+    }
+
+    bool keyboard_key_down(core::Byte usage) const override {
+        return !assignment_capture_ && players_[0].keyboard_key_down(usage);
     }
 
     bool should_quit() const override {

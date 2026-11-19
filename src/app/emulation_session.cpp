@@ -93,6 +93,7 @@ core::Result<void> EmulationSession::open_rom(const std::string& rom_path,
     emulator_->set_microphone_active(false);
     emulator_->power_on();
     turbo_input_.reset();
+    configure_cartridge_keyboard();
     // Go through set_paused() so a previously suspended audio device is
     // resumed; assigning paused_ directly would leave the new ROM silent.
     set_paused(false);
@@ -114,6 +115,7 @@ void EmulationSession::adopt_rom(PreparedRom media) {
     emulator_->set_persistence_enabled(true);
     suspend_live_microphone();
     turbo_input_.reset();
+    configure_cartridge_keyboard();
     set_paused(false);
     running_ = true;
     rom_loaded_ = true;
@@ -210,6 +212,7 @@ void EmulationSession::close_rom() {
     suspend_live_microphone();
     emulator_->set_microphone_active(false);
     turbo_input_.reset();
+    configure_cartridge_keyboard();
     rom_loaded_ = false;
     running_ = false;
     // Resume a suspended device as well as clearing the session flag.
@@ -297,6 +300,7 @@ void EmulationSession::reset() {
     suspend_live_microphone();
     emulator_->reset();
     turbo_input_.reset();
+    configure_cartridge_keyboard();
 }
 
 void EmulationSession::power_cycle() {
@@ -306,6 +310,7 @@ void EmulationSession::power_cycle() {
     suspend_live_microphone();
     emulator_->power_on();
     turbo_input_.reset();
+    configure_cartridge_keyboard();
     set_paused(false);
 }
 
@@ -465,6 +470,7 @@ core::Result<void> EmulationSession::load_state_data(std::span<const core::Byte>
         return std::unexpected("Save-state is invalid or does not match the loaded ROM");
     suspend_live_microphone();
     turbo_input_.reset();
+    configure_cartridge_keyboard();
     reset_audio_fill_ratio_history();
     return {};
 }
@@ -495,6 +501,7 @@ core::Result<void> EmulationSession::set_upscaler(std::unique_ptr<platform::Upsc
 }
 
 void EmulationSession::sync_input() {
+    sync_cartridge_keyboard();
     using core::Button;
     constexpr Button kButtons[] = {Button::A,
                                    Button::B,

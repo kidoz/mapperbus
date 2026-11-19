@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "core/cartridge/ines_header.hpp"
+#include "core/input/subor_keyboard.hpp"
 #include "core/mappers/mapper.hpp"
 
 namespace mapperbus::core {
@@ -34,12 +35,15 @@ class Mapper365 final : public Mapper {
 
     void power_on() override;
     void reset() override;
+    void set_keyboard_row(Byte row, Byte pressed_mask) override {
+        keyboard_.set_row(row, pressed_mask);
+    }
     void save_state(StateWriter& writer) const override;
     void load_state(StateReader& reader) override;
 
   private:
     struct Registers {
-        std::array<Byte, 4> prg_banks{0U, 0U, 0U, 1U};
+        std::array<Byte, 4> prg_banks{0xFC, 0xFD, 0xFE, 0xFF};
         std::array<Byte, 8> chr_banks{};
         std::array<Byte, 4> unknown_prg{};
         std::array<Byte, 2> printer_output{};
@@ -54,6 +58,7 @@ class Mapper365 final : public Mapper {
     std::vector<Byte> chr_ram_;
     MirrorMode initial_mirror_ = MirrorMode::Vertical;
     Registers registers_;
+    SuborKeyboard keyboard_;
 };
 
 } // namespace mapperbus::core

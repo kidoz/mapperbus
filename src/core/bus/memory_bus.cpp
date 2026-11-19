@@ -120,6 +120,8 @@ void MemoryBus::set_controller_oe(Byte port) {
         additional_expansion_controller_->clock(controller_oe_ - 1);
     if (controller_oe_ != port && controller_oe_ != 0)
         clock_adapter(controller_oe_ - 1);
+    if (controller_oe_ != port && controller_oe_ != 0 && cartridge_ != nullptr)
+        cartridge_->clock_controller_port(controller_oe_ - 1);
     controller_oe_ = port;
 }
 
@@ -193,7 +195,7 @@ Byte MemoryBus::read_controller(int player, Byte external, bool timed) {
     };
     if (controller_ == nullptr && controller_wiring_ == ControllerWiring::Nes &&
         expansion_ports_ == 0 && controller_mode_ == ControllerMode::Standard)
-        return external;
+        return computer_lines(external);
     auto bit = controller_ == nullptr ? Byte{0}
                : timed && ntsc_io()   ? controller_->peek(player)
                                       : controller_->read(player);
@@ -222,7 +224,7 @@ Byte MemoryBus::read_controller(int player, Byte external, bool timed) {
     const Byte floating =
         controller_wiring_ == ControllerWiring::RfFamicom && player == 0 ? 0xF8 : 0xE0;
     const Byte microphone = player == 0 && microphone_level() ? 4 : 0;
-    return static_cast<Byte>((external & floating) | bit | expansion | microphone);
+    return computer_lines(static_cast<Byte>((external & floating) | bit | expansion | microphone));
 }
 
 Byte MemoryBus::read_cpu(Address addr) {

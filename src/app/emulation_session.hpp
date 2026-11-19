@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <deque>
 #include <memory>
 #include <span>
 #include <string>
@@ -189,6 +190,13 @@ class EmulationSession {
 
   private:
     void sync_input();
+    enum class CartridgeKeyboard { None, Transformer, Subor, Pec, Golden };
+    void configure_cartridge_keyboard();
+    void sync_cartridge_keyboard();
+    CartridgeKeyboard cartridge_keyboard_ = CartridgeKeyboard::None;
+    void sync_transformer_keyboard();
+    std::array<bool, 256> sampled_keys_{};
+    std::deque<core::Byte> pending_scancodes_;
     core::Result<void> request_disk_save();
     void submit_current_frame();
     void suspend_live_microphone();

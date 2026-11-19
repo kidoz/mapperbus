@@ -6,12 +6,12 @@
 #include <vector>
 
 #include "core/cartridge/ines_header.hpp"
-#include "core/mappers/mapper.hpp"
+#include "core/mappers/pec_computer.hpp"
 
 namespace mapperbus::core {
 
 /// NES 2.0 mapper 371: Spanish PEC-586 main cartridge and 1bpp CHR-RAM mode.
-class Mapper371 final : public Mapper {
+class Mapper371 final : public PecComputer {
   public:
     Mapper371(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte> chr_rom);
 

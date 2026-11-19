@@ -34,7 +34,21 @@ class InputBackend {
             return false;
         }
     }
+    /// Direct typing to a keyboard-equipped cartridge while gamepads remain available.
+    void set_cartridge_keyboard_active(bool active) {
+        cartridge_keyboard_active_ = active;
+    }
+    [[nodiscard]] bool cartridge_keyboard_active() const {
+        return cartridge_keyboard_active_;
+    }
+    /// A physical keyboard key from USB HID usage page 0x07.
+    virtual bool keyboard_key_down(core::Byte /*usage*/) const {
+        return false;
+    }
     virtual bool should_quit() const = 0;
+
+  private:
+    bool cartridge_keyboard_active_ = false;
 };
 
 } // namespace mapperbus::platform

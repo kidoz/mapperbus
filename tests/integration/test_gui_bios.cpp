@@ -779,5 +779,39 @@ TEST_CASE("GUI DCS startup requests preserve option identity through failure and
     REQUIRE(Access::snapshot(*fixture.gui).paused);
 }
 
+TEST_CASE("GUI session hotkeys yield to a keyboard cartridge and return after a ROM switch",
+          "[gui][input][cartridge-keyboard]") {
+    Fixture fixture(SettingsMode::Saved);
+    const auto cartridge = fixture.root / "transformer.nes";
+    std::vector<core::Byte> rom(16 + 32768 + 8192);
+    const std::array<core::Byte, 11> header{'N', 'E', 'S', 0x1A, 2, 1, 0x91, 0x48, 1, 0, 7};
+    std::ranges::copy(header, rom.begin());
+    rom[16] = 0x4C; // JMP $8000
+    rom[18] = 0x80;
+    for (int vector : {32768 - 6, 32768 - 4, 32768 - 2})
+        rom[16 + vector + 1] = 0x80;
+    REQUIRE(core::write_binary_file_atomic(cartridge.string(), rom, "Keyboard ROM"));
+    fixture.gui->open_initial_rom(cartridge.string());
+    fixture.wait([&] { return Access::snapshot(*fixture.gui).mapper_number == 329; });
+    fixture.action("emu.pause");
+    REQUIRE(Access::snapshot(*fixture.gui).paused);
+    const auto before = Access::state(*fixture.gui);
+    const auto press = [&](nk::KeyCode key) {
+        fixture.window.dispatch_key_event({.type = nk::KeyEvent::Type::Press, .key = key});
+        fixture.window.dispatch_key_event({.type = nk::KeyEvent::Type::Release, .key = key});
+    };
+    for (auto key :
+         {nk::KeyCode::Tab, nk::KeyCode::Return, nk::KeyCode::P, nk::KeyCode::R, nk::KeyCode::F11})
+        press(key);
+    CHECK(Access::snapshot(*fixture.gui).paused);
+    CHECK(Access::state(*fixture.gui) == before);
+    CHECK_FALSE(fixture.window.is_fullscreen());
+    fixture.gui->open_initial_rom(fixture.current.string());
+    fixture.wait([&] { return Access::snapshot(*fixture.gui).mapper_number == 0; });
+    REQUIRE_FALSE(Access::snapshot(*fixture.gui).paused);
+    press(nk::KeyCode::P);
+    CHECK(Access::snapshot(*fixture.gui).paused);
+}
+
 } // namespace
 } // namespace mapperbus::frontend

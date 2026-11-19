@@ -17,6 +17,7 @@
 #include "core/mappers/datach.hpp"
 #include "core/mappers/decathlon.hpp"
 #include "core/mappers/discrete.hpp"
+#include "core/mappers/education_440_442.hpp"
 #include "core/mappers/fds_conversion108.hpp"
 #include "core/mappers/ffe_super_magic_card.hpp"
 #include "core/mappers/fk23c.hpp"
@@ -306,6 +307,7 @@
 #include "core/mappers/taito_x1005.hpp"
 #include "core/mappers/taito_x1017.hpp"
 #include "core/mappers/teletubbies.hpp"
+#include "core/mappers/transformer_keyboard.hpp"
 #include "core/mappers/txc.hpp"
 #include "core/mappers/txc189.hpp"
 #include "core/mappers/unl_tf1201.hpp"
@@ -852,6 +854,12 @@ namespace {
         return Mapper529::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 530U)
         return Mapper530::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 329U)
+        return TransformerKeyboard::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 440U || header.mapper_number == 442U)
+        return Education440442::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 531U)
+        return Mmc3::validate_littlecom(header, prg_size, chr_size);
     if (header.mapper_number == 30U || header.mapper_number == 111U)
         return FlashBoards::validate_geometry(header, prg_size, chr_size);
     if (JyCompany::supports_mapper(header.mapper_number))
@@ -1836,6 +1844,7 @@ void register_builtin_mappers() {
     registry.register_mapper(80, make_factory<TaitoX1005>());
     registry.register_mapper(207, make_factory<TaitoX1005>());
     registry.register_mapper(82, make_factory<TaitoX1017>());
+    registry.register_mapper(531, make_factory<Mmc3>());
     registry.register_mapper(552, make_factory<TaitoX1017>());
     registry.register_mapper(18, make_factory<JalecoSs88006>());
     registry.register_mapper(72, make_factory<JalecoDiscrete>());
@@ -1976,6 +1985,7 @@ void register_builtin_mappers() {
     registry.register_mapper(326, make_factory<Mapper326>());
     registry.register_mapper(327, make_factory<Mapper327>());
     registry.register_mapper(328, make_factory<Mapper328>());
+    registry.register_mapper(329, make_factory<TransformerKeyboard>());
     registry.register_mapper(330, make_factory<Mapper330>());
     registry.register_mapper(331, make_factory<Mapper331>());
     registry.register_mapper(332, make_factory<Mapper332>());
@@ -2018,11 +2028,13 @@ void register_builtin_mappers() {
     registry.register_mapper(361, make_factory<Mapper361>());
     registry.register_mapper(362, make_factory<Mapper362>());
     registry.register_mapper(364, make_factory<Mapper364>());
+    registry.register_mapper(365, make_factory<Mapper365>());
     registry.register_mapper(366, make_factory<Mapper366>());
     registry.register_mapper(367, make_factory<Mapper367>());
     registry.register_mapper(368, make_factory<Mapper368>());
     registry.register_mapper(369, make_factory<Mapper369>());
     registry.register_mapper(370, make_factory<Mapper370>());
+    registry.register_mapper(371, make_factory<Mapper371>());
     registry.register_mapper(372, make_factory<Mapper372>());
     registry.register_mapper(373, make_factory<Mapper373>());
     registry.register_mapper(374, make_factory<Mapper374>());
@@ -2072,7 +2084,9 @@ void register_builtin_mappers() {
     registry.register_mapper(437, make_factory<Mapper437>());
     registry.register_mapper(438, make_factory<Mapper438>());
     registry.register_mapper(439, make_factory<Mapper439>());
+    registry.register_mapper(440, make_factory<Education440442>());
     registry.register_mapper(441, make_factory<Mapper441>());
+    registry.register_mapper(442, make_factory<Education440442>());
     registry.register_mapper(443, make_factory<Mapper443>());
     registry.register_mapper(444, make_factory<Mapper444>());
     registry.register_mapper(445, make_factory<Mapper445>());

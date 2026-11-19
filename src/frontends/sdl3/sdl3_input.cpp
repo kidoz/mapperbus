@@ -241,7 +241,9 @@ void Sdl3Input::poll() {
 
     open_configured_gamepad();
     for (int player = 0; player < player_count_; ++player)
-        button_state_[player] = keyboard_state(keyboard_bindings_[player]) | gamepad_state(player);
+        button_state_[player] =
+            gamepad_state(player) |
+            (cartridge_keyboard_active() ? 0 : keyboard_state(keyboard_bindings_[player]));
 }
 
 void Sdl3Input::open_configured_gamepad() {
@@ -260,7 +262,17 @@ void Sdl3Input::handle_event(const SDL_Event& event) {
         return;
     }
 
-    if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat) {
+    if (event.type == SDL_EVENT_WINDOW_FOCUS_LOST) {
+        host_shortcut_keys_.fill(false);
+        return;
+    }
+    if (event.type == SDL_EVENT_KEY_UP) {
+        if (static_cast<unsigned>(event.key.scancode) < host_shortcut_keys_.size())
+            host_shortcut_keys_[event.key.scancode] = false;
+        return;
+    }
+    if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat &&
+        (!cartridge_keyboard_active() || (event.key.mod & SDL_KMOD_GUI))) {
         const bool shift = (event.key.mod & SDL_KMOD_SHIFT) != 0;
 
         const bool ctrl = (event.key.mod & SDL_KMOD_CTRL) != 0;
@@ -269,14 +281,17 @@ void Sdl3Input::handle_event(const SDL_Event& event) {
             if (cmd.kind == Sdl3SessionCommandKind::SlotSelect) {
                 set_active_slot(cmd.slot);
             }
+            host_shortcut_keys_[event.key.scancode] = cartridge_keyboard_active();
             pending_session_command_ = cmd;
             return;
         }
         if (auto cmd = scaler_command_for_scancode(event.key.scancode)) {
+            host_shortcut_keys_[event.key.scancode] = cartridge_keyboard_active();
             pending_scaler_command_ = cmd;
             return;
         }
         if (auto cmd = window_command_for_scancode(event.key.scancode)) {
+            host_shortcut_keys_[event.key.scancode] = cartridge_keyboard_active();
             pending_window_command_ = cmd;
             return;
         }
@@ -340,6 +355,12 @@ bool Sdl3Input::is_action_pressed(int player, platform::InputAction button) cons
     if (player < 0 || player >= player_count_)
         return false;
     return (button_state_[player] & (1U << platform::button_index(button))) != 0;
+}
+
+bool Sdl3Input::keyboard_key_down(core::Byte usage) const {
+    int count = 0;
+    const auto* keys = SDL_GetKeyboardState(&count);
+    return keys && usage < count && keys[usage] && !host_shortcut_keys_[usage];
 }
 
 bool Sdl3Input::should_quit() const {

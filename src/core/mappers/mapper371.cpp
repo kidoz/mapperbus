@@ -17,7 +17,7 @@ constexpr Address kRegisterMask = 0xFF00U;
 constexpr Address kMainRegister = 0x5000U;
 constexpr Address kAuxiliaryRegister = 0x5100U;
 constexpr Address kTapeRegister = 0x5500U;
-constexpr std::uint16_t kStateTag = 0x3710U;
+constexpr std::uint16_t kStateTag = 0x3711U;
 
 } // namespace
 
@@ -40,10 +40,11 @@ Result<void> Mapper371::validate_geometry(const INesHeader& header,
     if (!header.is_nes2 || header.submapper != 0U) {
         return std::unexpected("Mapper 371 requires NES 2.0 submapper 0");
     }
-    if (prg_size != kPrgSize || chr_size != 0U) {
-        return std::unexpected("Mapper 371 requires exactly 576 KiB PRG ROM and no CHR ROM");
+    if ((prg_size != kPrgSize && prg_size != kFirstChipSize) || chr_size != 0U) {
+        return std::unexpected("Mapper 371 requires a 64 KiB system ROM, optionally with the 512 "
+                               "KiB game ROM, and no CHR ROM");
     }
-    if (header.has_battery || header.prg_ram_size != kCartridgeRamSize ||
+    if (header.has_trainer || header.has_battery || header.prg_ram_size != kCartridgeRamSize ||
         header.prg_nvram_size != 0U || header.chr_ram_size != kCartridgeRamSize ||
         header.chr_nvram_size != 0U) {
         return std::unexpected(
@@ -68,8 +69,8 @@ Byte Mapper371::read_prg(Address addr) {
         return 0U;
     }
 
-    if (prg_source() == PrgSource::SecondChip && (registers_.auxiliary & 1U) == 0U &&
-        (addr & 0xFF00U) == 0xD100U) {
+    if (prg_rom_.size() == kPrgSize && prg_source() == PrgSource::SecondChip &&
+        (registers_.auxiliary & 1U) == 0U && (addr & 0xFF00U) == 0xD100U) {
         // The mapper interface has no console-reset request seam. Perform the
         // cartridge-local part of the documented protection reset here.
         reset();
@@ -82,6 +83,8 @@ Byte Mapper371::read_prg(Address addr) {
         return prg_rom_[bank * kPrgBankSize + within_bank];
     }
     case PrgSource::SecondChip: {
+        if (prg_rom_.size() != kPrgSize)
+            return 0;
         const unsigned bank =
             (registers_.main & 0x0FU) | ((registers_.auxiliary & 1U) != 0U ? 0x10U : 0U);
         return prg_rom_[kFirstChipSize + bank * kPrgBankSize + within_bank];
@@ -106,7 +109,8 @@ bool Mapper371::maps_prg(Address addr) const {
         return false;
     }
     const auto source = prg_source();
-    return source == PrgSource::FirstChip || source == PrgSource::SecondChip;
+    return source == PrgSource::FirstChip ||
+           (source == PrgSource::SecondChip && prg_rom_.size() == kPrgSize);
 }
 
 Byte Mapper371::prg_read_mask(Address addr) const {
@@ -181,6 +185,7 @@ void Mapper371::power_on() {
 
 void Mapper371::reset() {
     registers_ = Registers{};
+    keyboard_.reset();
 }
 
 void Mapper371::set_tape_input(bool active) {
@@ -201,6 +206,7 @@ void Mapper371::save_state(StateWriter& writer) const {
     writer.write<Byte>(tape_input_ ? 1U : 0U);
     writer.write_array(prg_ram_);
     writer.write_array(chr_ram_);
+    keyboard_.save_state(writer);
 }
 
 void Mapper371::load_state(StateReader& reader) {
@@ -216,6 +222,8 @@ void Mapper371::load_state(StateReader& reader) {
     std::array<Byte, kCartridgeRamSize> next_chr_ram{};
     reader.read_array(next_prg_ram);
     reader.read_array(next_chr_ram);
+    auto keyboard = keyboard_;
+    keyboard.load_state(reader);
 
     if (!reader.ok() || tag != kStateTag || prg_size != prg_rom_.size() || chr_size != 0U ||
         next.auxiliary > 3U || next.nametable_pins > 3U || tape_input > 1U) {
@@ -223,6 +231,7 @@ void Mapper371::load_state(StateReader& reader) {
         return;
     }
 
+    keyboard_ = keyboard;
     registers_ = next;
     tape_input_ = tape_input != 0U;
     prg_ram_ = next_prg_ram;

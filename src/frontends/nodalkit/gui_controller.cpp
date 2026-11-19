@@ -173,15 +173,15 @@ nk::NativeMenuShortcut command_shortcut(nk::KeyCode key) {
     };
 }
 
-nk::NativeMenuShortcut plain_shortcut(
-    nk::KeyCode key, nk::NativeMenuModifier modifiers = nk::NativeMenuModifier::None) {
-    return nk::NativeMenuShortcut{
-        .key = key,
-        .modifiers = modifiers,
+std::vector<nk::NativeMenu> build_native_menus(std::string_view app_name,
+                                               int active_slot,
+                                               bool cartridge_keyboard) {
+    const auto session_shortcut =
+        [cartridge_keyboard](nk::KeyCode key) -> std::optional<nk::NativeMenuShortcut> {
+        if (cartridge_keyboard)
+            return std::nullopt;
+        return nk::NativeMenuShortcut{.key = key};
     };
-}
-
-std::vector<nk::NativeMenu> build_native_menus(std::string_view app_name, int active_slot = 0) {
     std::vector<nk::NativeMenuItem> slots;
     slots.reserve(app::kSaveStateSlotCount + 3);
     for (int slot = 0; slot < app::kSaveStateSlotCount; ++slot) {
@@ -214,15 +214,15 @@ std::vector<nk::NativeMenu> build_native_menus(std::string_view app_name, int ac
         {"Emulation",
          {
              nk::NativeMenuItem::action(
-                 "Pause or Resume", "emu.pause", plain_shortcut(nk::KeyCode::P)),
-             nk::NativeMenuItem::action("Reset", "emu.reset", plain_shortcut(nk::KeyCode::R)),
+                 "Pause or Resume", "emu.pause", session_shortcut(nk::KeyCode::P)),
+             nk::NativeMenuItem::action("Reset", "emu.reset", session_shortcut(nk::KeyCode::R)),
              nk::NativeMenuItem::make_separator(),
              nk::NativeMenuItem::action("Save State — Slot " + std::to_string(active_slot + 1),
                                         "emu.save-state",
-                                        plain_shortcut(nk::KeyCode::F5)),
+                                        session_shortcut(nk::KeyCode::F5)),
              nk::NativeMenuItem::action("Load State — Slot " + std::to_string(active_slot + 1),
                                         "emu.load-state",
-                                        plain_shortcut(nk::KeyCode::F7)),
+                                        session_shortcut(nk::KeyCode::F7)),
              nk::NativeMenuItem::submenu("State Slot", std::move(slots)),
              nk::NativeMenuItem::make_separator(),
              nk::NativeMenuItem::action("Step Frame", "emu.step"),
@@ -230,10 +230,10 @@ std::vector<nk::NativeMenu> build_native_menus(std::string_view app_name, int ac
              nk::NativeMenuItem::make_separator(),
              nk::NativeMenuItem::action("Disk Controls…", "fds.controls"),
              nk::NativeMenuItem::action(
-                 "Next Disk Side", "fds.next", plain_shortcut(nk::KeyCode::F6)),
+                 "Next Disk Side", "fds.next", session_shortcut(nk::KeyCode::F6)),
              nk::NativeMenuItem::action("Eject or Insert Disk", "fds.eject"),
              nk::NativeMenuItem::action(
-                 "Toggle Disk Write Protection", "fds.protect", plain_shortcut(nk::KeyCode::F8)),
+                 "Toggle Disk Write Protection", "fds.protect", session_shortcut(nk::KeyCode::F8)),
          }},
 #if !defined(__APPLE__)
         {"Settings",
@@ -1458,7 +1458,10 @@ void MapperBusGuiController::build_ui() {
     // the key-controller fallback keeps older NodalKit revisions working.
 #if defined(MAPPERBUS_HAVE_NODALKIT_SHORTCUTS)
     auto& shortcuts = window_.shortcuts();
-    shortcuts.add_action("win.toggle-fullscreen", [this] { toggle_fullscreen(); });
+    shortcuts.add_action("win.toggle-fullscreen", [this] {
+        if (!cartridge_keyboard_active())
+            toggle_fullscreen();
+    });
     shortcuts.add_shortcut({nk::Shortcut{static_cast<int>(nk::KeyCode::F11), nk::Modifiers::None},
                             "win.toggle-fullscreen"});
 
@@ -1468,7 +1471,10 @@ void MapperBusGuiController::build_ui() {
     // the rebind sheet, which captures keys and must not also pause or reset.
     const auto bind_session_key =
         [this, &shortcuts](nk::KeyCode key, nk::Modifiers modifiers, std::string_view action) {
-            shortcuts.add_action(std::string(action), [this, a = std::string(action)] {
+            shortcuts.add_action(std::string(action), [this, modifiers, a = std::string(action)] {
+                if (cartridge_keyboard_active() &&
+                    (modifiers == nk::Modifiers::None || modifiers == nk::Modifiers::Shift))
+                    return;
                 if (modal_dialog_presented() && a != "file.quit") {
                     return;
                 }
@@ -1503,6 +1509,9 @@ void MapperBusGuiController::build_ui() {
                 !(key == nk::KeyCode::Q && mods == nk::Modifiers::Ctrl)) {
                 return;
             }
+            if (cartridge_keyboard_active() &&
+                (mods == nk::Modifiers::None || mods == nk::Modifiers::Shift))
+                return;
             if (key == nk::KeyCode::F11 && mods == nk::Modifiers::None) {
                 toggle_fullscreen();
             } else if (key == nk::KeyCode::P && mods == nk::Modifiers::None) {
@@ -1685,6 +1694,22 @@ void MapperBusGuiController::refresh_ui() {
     const app::SessionSnapshot snapshot = actions_->snapshot();
     const bool loaded = snapshot.has_cartridge;
     const bool paused = loaded && snapshot.paused;
+#if !defined(MAPPERBUS_HAVE_NODALKIT_SHORTCUTS)
+    // NodalKit traverses focus on Tab before widgets receive the event. Scope
+    // these bindings to the game surface so menus and dialogs keep traversal.
+    if (const bool typing = cartridge_keyboard_active(); typing != capture_preview_tab_) {
+        capture_preview_tab_ = typing;
+        window_.clear_shortcuts();
+        if (typing) {
+            for (auto mods : {nk::Modifiers::None, nk::Modifiers::Shift}) {
+                window_.add_shortcut({.shortcut = {.key_code = static_cast<int>(nk::KeyCode::Tab),
+                                                   .modifiers = mods},
+                                      .action_name = "cartridge.tab"},
+                                     preview_);
+            }
+        }
+    }
+#endif
     const std::string state_text = loaded ? (paused ? "Paused" : "Running") : "Ready";
     const std::string display_title =
         title_for_display(snapshot.rom_member.empty() ? snapshot.rom_path : snapshot.rom_member);
@@ -1768,16 +1793,21 @@ void MapperBusGuiController::refresh_ui() {
     update_native_toolbar();
 }
 
+bool MapperBusGuiController::cartridge_keyboard_active() const {
+    return input_backend_ && input_backend_->cartridge_keyboard_active();
+}
+
 void MapperBusGuiController::update_native_menu() {
     if (machine_worker_active())
         return;
-    if (!app_.supports_native_app_menu() || native_menu_slot_ == active_state_slot_) {
+    const auto state = std::pair{active_state_slot_, cartridge_keyboard_active()};
+    if (!app_.supports_native_app_menu() || native_menu_state_ == state) {
         return;
     }
     // Replacing AppKit's menu bar interrupts an open menu. Frame refreshes must
-    // preserve it; the selected slot is the only changing input to this model.
-    app_.set_native_app_menu(build_native_menus(app_.app_name(), active_state_slot_));
-    native_menu_slot_ = active_state_slot_;
+    // preserve it unless a displayed slot or keyboard equivalent has changed.
+    app_.set_native_app_menu(build_native_menus(app_.app_name(), state.first, state.second));
+    native_menu_state_ = state;
 }
 
 void MapperBusGuiController::update_native_toolbar() {
@@ -1868,15 +1898,21 @@ void MapperBusGuiController::rebuild_header_menu() {
         header_menu_actions_.emplace_back();
     };
 
+    const auto session_label = [typing = cartridge_keyboard_active()](std::string_view name,
+                                                                      std::string_view shortcut) {
+        return menu_label(name, typing ? std::string_view{} : shortcut);
+    };
     const auto snapshot = actions_->snapshot();
     if (snapshot.has_cartridge) {
-        add_action(menu_label(snapshot.paused ? "Resume" : "Pause", "P"), "emu.pause");
-        add_action(menu_label("Reset", "R"), "emu.reset");
+        add_action(session_label(snapshot.paused ? "Resume" : "Pause", "P"), "emu.pause");
+        add_action(session_label("Reset", "R"), "emu.reset");
         add_separator();
-        add_action(menu_label("Save State — Slot " + std::to_string(active_state_slot_ + 1), "F5"),
-                   "emu.save-state");
-        add_action(menu_label("Load State — Slot " + std::to_string(active_state_slot_ + 1), "F7"),
-                   "emu.load-state");
+        add_action(
+            session_label("Save State — Slot " + std::to_string(active_state_slot_ + 1), "F5"),
+            "emu.save-state");
+        add_action(
+            session_label("Load State — Slot " + std::to_string(active_state_slot_ + 1), "F7"),
+            "emu.load-state");
         add_action("Choose State Slot…", "emu.choose-slot");
         add_action("Open States Folder", "emu.open-states-folder");
         add_separator();
@@ -1891,7 +1927,7 @@ void MapperBusGuiController::rebuild_header_menu() {
         add_separator();
         add_action("Close ROM", "file.close");
     }
-    add_action(menu_label(window_.is_fullscreen() ? "Leave Fullscreen" : "Fullscreen", "F11"),
+    add_action(session_label(window_.is_fullscreen() ? "Leave Fullscreen" : "Fullscreen", "F11"),
                "win.toggle-fullscreen");
     add_action(menu_label("Settings…", "Ctrl+,"), "settings.open");
     add_action("About MapperBus", "help.about");

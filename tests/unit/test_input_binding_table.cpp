@@ -313,6 +313,21 @@ TEST_CASE("NodalKit routes and resets each player's bindings independently", "[g
     CHECK_FALSE(first.gamepad_config().enabled);
 }
 
+TEST_CASE("Cartridge typing uses the physical keyboard without pressing a bound gamepad button",
+          "[gui][input][cartridge-keyboard]") {
+    using namespace mapperbus;
+    nk::Window window({.title = "Cartridge keyboard", .width = 600, .height = 300});
+    frontend::NodalKitInput input(window, {}, {});
+    window.dispatch_key_event({.type = nk::KeyEvent::Type::Press, .key = nk::KeyCode::X});
+    CHECK(input.is_button_pressed(0, core::Button::A));
+    input.set_cartridge_keyboard_active(true);
+    CHECK(input.keyboard_key_down(static_cast<core::Byte>(nk::KeyCode::X)));
+    CHECK_FALSE(input.is_button_pressed(0, core::Button::A));
+    CHECK_FALSE(input.monitor_profiles()[0].held[platform::button_index(platform::InputAction::A)]);
+    window.dispatch_key_event({.type = nk::KeyEvent::Type::Release, .key = nk::KeyCode::X});
+    CHECK_FALSE(input.keyboard_key_down(static_cast<core::Byte>(nk::KeyCode::X)));
+}
+
 TEST_CASE("NodalKit microphone key is bindable without sending controller buttons",
           "[gui][input][microphone]") {
     using namespace mapperbus;

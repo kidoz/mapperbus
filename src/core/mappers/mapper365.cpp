@@ -16,7 +16,7 @@ constexpr std::size_t kMaxPrgSize = 0x200000UZ;
 constexpr std::size_t kPrgRamSize = 0x2000UZ;
 constexpr std::size_t kMinChrRamSize = 0x2000UZ;
 constexpr std::size_t kMaxChrRamSize = 0x040000UZ;
-constexpr std::uint16_t kStateTag = 0x3650U;
+constexpr std::uint16_t kStateTag = 0x3651U;
 
 } // namespace
 
@@ -25,7 +25,7 @@ constexpr std::uint16_t kStateTag = 0x3650U;
 // PCB populations. The mirroring register and several expansion devices remain
 // unidentified: their writes are retained, unknown reads float, and CIRAM keeps
 // its header-selected H/V arrangement. No IRQ or expansion audio is documented.
-// Reset clears latches and retains RAM; cold power clears RAM deterministically.
+// NRS PC-95 reset vectors start in the final bank. Soft reset retains the bank selectors.
 Mapper365::Mapper365(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte>)
     : prg_rom_(std::move(prg_rom)), prg_ram_(kPrgRamSize, 0U), chr_ram_(header.chr_ram_size, 0U),
       initial_mirror_(header.mirror_mode) {
@@ -46,9 +46,10 @@ Result<void> Mapper365::validate_geometry(const INesHeader& header,
         return std::unexpected(
             "Mapper 365 requires power-of-two 32 KiB-2 MiB PRG ROM and no CHR ROM");
     }
-    if (header.has_battery || header.prg_ram_size != kPrgRamSize || header.prg_nvram_size != 0U ||
-        !std::has_single_bit(header.chr_ram_size) || header.chr_ram_size < kMinChrRamSize ||
-        header.chr_ram_size > kMaxChrRamSize || header.chr_nvram_size != 0U) {
+    if (header.has_trainer || header.has_battery || header.prg_ram_size != kPrgRamSize ||
+        header.prg_nvram_size != 0U || !std::has_single_bit(header.chr_ram_size) ||
+        header.chr_ram_size < kMinChrRamSize || header.chr_ram_size > kMaxChrRamSize ||
+        header.chr_nvram_size != 0U) {
         return std::unexpected(
             "Mapper 365 requires 8 KiB volatile PRG RAM, 8-256 KiB power-of-two CHR RAM, "
             "and no NVRAM or battery");
@@ -129,15 +130,15 @@ MirrorMode Mapper365::mirror_mode() const {
 }
 
 bool Mapper365::maps_expansion(Address addr) const {
-    return addr == 0x4902U;
+    return addr == 0x4902U || addr == 0x4906U;
 }
 
 Byte Mapper365::expansion_read_mask(Address addr) const {
-    return maps_expansion(addr) ? 0x80U : 0U;
+    return addr == 0x4906U ? 0xFFU : addr == 0x4902U ? 0x80U : 0U;
 }
 
-Byte Mapper365::read_expansion(Address) {
-    return 0U;
+Byte Mapper365::read_expansion(Address addr) {
+    return addr == 0x4906U ? keyboard_.read_row(registers_.keyboard_row) : 0U;
 }
 
 void Mapper365::write_expansion(Address addr, Byte value) {
@@ -164,13 +165,13 @@ void Mapper365::write_expansion(Address addr, Byte value) {
 }
 
 void Mapper365::power_on() {
-    reset();
+    registers_ = {};
     std::ranges::fill(prg_ram_, 0U);
     std::ranges::fill(chr_ram_, 0U);
 }
 
 void Mapper365::reset() {
-    registers_ = Registers{};
+    // The PC-95 banking registers keep their values on a console reset.
 }
 
 void Mapper365::save_state(StateWriter& writer) const {
@@ -190,6 +191,7 @@ void Mapper365::save_state(StateWriter& writer) const {
     writer.write_array(registers_.unknown_491x);
     writer.write_bytes(prg_ram_);
     writer.write_bytes(chr_ram_);
+    keyboard_.save_state(writer);
 }
 
 void Mapper365::load_state(StateReader& reader) {
@@ -212,6 +214,8 @@ void Mapper365::load_state(StateReader& reader) {
     std::vector<Byte> chr_ram;
     reader.read_bytes(prg_ram, kPrgRamSize);
     reader.read_bytes(chr_ram, kMaxChrRamSize);
+    SuborKeyboard keyboard;
+    keyboard.load_state(reader);
 
     if (!reader.ok() || tag != kStateTag || prg_size != prg_rom_.size() || chr_size != 0U ||
         prg_ram_size != prg_ram_.size() || chr_ram_size != chr_ram_.size() || initial_mirror > 1U ||
@@ -221,6 +225,7 @@ void Mapper365::load_state(StateReader& reader) {
         reader.fail();
         return;
     }
+    keyboard_ = keyboard;
     registers_ = next;
     prg_ram_ = std::move(prg_ram);
     chr_ram_ = std::move(chr_ram);

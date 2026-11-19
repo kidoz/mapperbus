@@ -58,8 +58,20 @@ class Cartridge {
     void set_shared_nvram(std::span<const Byte> data) {
         mapper_->set_shared_nvram(data);
     }
+    Byte controller_port_bits(int port, Byte bus) const {
+        return mapper_->controller_port_bits(port, bus);
+    }
+    void clock_controller_port(int port) {
+        mapper_->clock_controller_port(port);
+    }
     VsCabinet* vs_cabinet() {
         return mapper_->vs_cabinet();
+    }
+    void send_keyboard_scancode(Byte code) {
+        mapper_->send_keyboard_scancode(code);
+    }
+    void set_keyboard_row(Byte row, Byte pressed_mask) {
+        mapper_->set_keyboard_row(row, pressed_mask);
     }
     Result<void> scan_barcode(std::string_view digits, uint32_t module_cycles) {
         return mapper_->scan_barcode(digits, module_cycles);

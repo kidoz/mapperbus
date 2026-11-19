@@ -14,6 +14,33 @@
 namespace mapperbus::frontend {
 namespace {
 
+TEST_CASE("Typing on cartridge keyboards leaves SDL runtime commands available through Super",
+          "[sdl3][input][cartridge-keyboard]") {
+    Sdl3Input input;
+    const auto press = [&](SDL_Scancode key, SDL_Keymod mod = SDL_KMOD_NONE) {
+        SDL_Event event{};
+        event.type = SDL_EVENT_KEY_DOWN;
+        event.key.scancode = key;
+        event.key.mod = mod;
+        REQUIRE(SDL_PushEvent(&event));
+        input.poll();
+    };
+    input.set_cartridge_keyboard_active(true);
+    press(SDL_SCANCODE_3);
+    CHECK_FALSE(input.consume_scaler_command());
+    press(SDL_SCANCODE_V);
+    CHECK_FALSE(input.consume_window_command());
+    press(SDL_SCANCODE_F7);
+    CHECK_FALSE(input.consume_session_command());
+    press(SDL_SCANCODE_3, SDL_KMOD_LGUI);
+    CHECK(input.consume_scaler_command().factor == 3);
+    press(SDL_SCANCODE_F7, SDL_KMOD_LGUI);
+    CHECK(input.consume_session_command().kind == Sdl3SessionCommandKind::LoadState);
+    input.set_cartridge_keyboard_active(false);
+    press(SDL_SCANCODE_V);
+    CHECK(input.consume_window_command().kind == Sdl3WindowCommandKind::ToggleVsync);
+}
+
 TEST_CASE("SDL game layouts retain process mappings and save discovery to the active game",
           "[sdl3][input][game-assignments]") {
     tests::IdentityGamepads pads;
