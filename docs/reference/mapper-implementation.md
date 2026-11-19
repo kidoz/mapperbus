@@ -24,6 +24,7 @@ unusual ROM geometry.
 
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
+| Subor karaoke, Family Noraebang and UNROM microphone boards | 514–518 | CIRAM-selected or banked CHR RAM, AX5202P banking, microphone ADCs, K-663A audio and optional LPC speech. |
 | Pikachu Y2K (follow-up) | 254 | MMC3 PRG/CHR/CIRAM/IRQs, masked WRAM reads until bank-select unlock, raw RAM persistence, reset policy and atomic snapshots. |
 | Waixing VRC4 fixed/relocated CHR (follow-up) | 253 | Default CHR4/5 RAM and explicit f009s PPU-write relocation, shared 2 KiB RAM, VRC4e banking/CIRAM/IRQ and profile/geometry-bound atomic snapshots. |
 | Waixing VRC4 mixed CHR (follow-up) | 252 | Exact VRC4e A2/A3 decoding, PRG swap, four CIRAM arrangements, WRAM gate, two writable CHR pages and CPU-driven IRQs with atomic snapshots. |
@@ -5306,7 +5307,7 @@ or another registered cartridge ID.
 | 515 | Board-specific specification | Registered: Mapper515 | [r22771](https://www.nesdev.org/w/index.php?oldid=22771) |
 | 516 | Board-specific specification | Registered: Mapper516 | [r8088](https://www.nesdev.org/w/index.php?oldid=8088) |
 | 517 | Board-specific specification | Registered: Mapper517 | [r8090](https://www.nesdev.org/w/index.php?oldid=8090) |
-| 518 | Subor / Dance 2000 | Not registered | [r22909](https://www.nesdev.org/w/index.php?oldid=22909) |
+| 518 | Subor / Dance 2000 | Registered: Mapper518 | [r22909](https://www.nesdev.org/w/index.php?oldid=22909) |
 | 519 | Board-specific specification | Not registered | [r8101](https://www.nesdev.org/w/index.php?oldid=8101) |
 | 520 | Board-specific specification | Not registered | [r8107](https://www.nesdev.org/w/index.php?oldid=8107) |
 | 521 | Board-specific specification | Not registered | [r22137](https://www.nesdev.org/w/index.php?oldid=22137) |
