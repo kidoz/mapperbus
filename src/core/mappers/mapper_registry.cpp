@@ -279,6 +279,7 @@
 #include "core/mappers/mapper548.hpp"
 #include "core/mappers/mapper553.hpp"
 #include "core/mappers/mapper554.hpp"
+#include "core/mappers/mapper555.hpp"
 #include "core/mappers/maxi15.hpp"
 #include "core/mappers/mmc1.hpp"
 #include "core/mappers/mmc1a.hpp"
@@ -958,6 +959,8 @@ namespace {
         return Mapper553::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 554U)
         return Mapper554::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 555U)
+        return Mapper555::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 557U)
         return Namco108::validate_ntdec2718(header, prg_size, chr_size);
     if (header.mapper_number == 30U || header.mapper_number == 111U)
@@ -2306,6 +2309,7 @@ void register_builtin_mappers() {
     registry.register_mapper(530, make_factory<Mapper530>());
     registry.register_mapper(553, make_factory<Mapper553>());
     registry.register_mapper(554, make_factory<Mapper554>());
+    registry.register_mapper(555, make_factory<Mapper555>());
     registry.register_mapper(557, make_factory<Namco108>());
 }
 

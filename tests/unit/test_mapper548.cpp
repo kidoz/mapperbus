@@ -422,3 +422,36 @@ TEST_CASE("03-101 selects discrete banks or MMC1 and gates WRAM and graphics wri
     CHECK(c.read_prg(0x6000) == 0x7C);
 }
 
+TEST_CASE("Campus Challenge RAM select and the timer are independent of MMC3 IRQs", "[mapper555]") {
+    auto c = cartridge(555, 512, 256, 0, 8, 7);
+    REQUIRE(c.configure_board_jumpers(0));
+    CHECK_FALSE(c.configure_board_jumpers(16));
+    c.write_expansion(0x5012, 0xB7);
+    c.write_prg(0x6012, 0xC8);
+    CHECK(c.read_prg(0x6012) == 0xC8);
+    CHECK(c.read_expansion(0x5012) == 0xB7);
+    c.write_expansion(0x5800, 2);
+    c.write_prg(0x8000, 2);
+    c.write_prg(0x8001, 0x43);
+    c.write_chr(0x1007, 0xA1);
+    CHECK(c.read_chr(0x1007) == 0xA1);
+    c.write_expansion(0x5800, 4);
+    CHECK(c.read_chr(0x1007) == 0xC3);
+    CHECK(c.read_prg(0xE000) == 39);
+    c.write_expansion(0x5800, 8);
+    StateWriter saved;
+    c.save_state(saved);
+    auto before_timeout = saved.take();
+    const std::uint32_t deadline = (16U << 25U) - 1;
+    std::memcpy(before_timeout.data() + 4, &deadline, sizeof(deadline));
+    StateReader state(before_timeout);
+    c.load_state(state);
+    REQUIRE(state.ok());
+    CHECK(c.read_expansion(0x5FFF) == 0x5C);
+    c.clock_cpu();
+    CHECK(c.read_expansion(0x5800) == 0xDC);
+    snapshot(c);
+    c.write_expansion(0x5800, 0);
+    CHECK(c.read_expansion(0x5800) == 0x5C);
+}
+
