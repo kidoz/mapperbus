@@ -5298,7 +5298,7 @@ or another registered cartridge ID.
 | 481 | Board-specific specification | Registered: Mapper481 | [r22323](https://www.nesdev.org/w/index.php?oldid=22323) |
 | 487 | Board-specific specification | Registered: Mapper487 | [r23361](https://www.nesdev.org/w/index.php?oldid=23361) |
 | 493 | Board-specific specification | Registered: Mapper493 | [r24546](https://www.nesdev.org/w/index.php?oldid=24546) |
-| 495 | Board-specific specification | Not registered | [r22800](https://www.nesdev.org/w/index.php?oldid=22800) |
+| 495 | Board-specific specification | Registered: Mapper495 | [r22800](https://www.nesdev.org/w/index.php?oldid=22800) |
 | 497 | Board-specific specification | Not registered | [r22873](https://www.nesdev.org/w/index.php?oldid=22873) |
 | 512 | Sachen Zhongguo Daheng | New implementation: Mmc3 | [r8073](https://www.nesdev.org/w/index.php?oldid=8073) |
 | 513 | Sachen SA-9602B / Princess Maker | New implementation: Mmc3 | [r8077](https://www.nesdev.org/w/index.php?oldid=8077) |
