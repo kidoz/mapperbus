@@ -55,11 +55,34 @@ void Apu::load_state(StateReader& reader,
                      uint64_t legacy_cycles,
                      bool has_frame_state,
                      bool has_stop_state) {
-    reader.read(pulse1_);
-    reader.read(pulse2_);
-    reader.read(triangle_);
-    reader.read(noise_);
-    reader.read(dmc_);
+    for (auto* pulse : {&pulse1_, &pulse2_})
+        reader.read_record(*pulse,
+                           {offsetof(PulseChannel, enabled),
+                            offsetof(PulseChannel, halt_length),
+                            offsetof(PulseChannel, envelope.start),
+                            offsetof(PulseChannel, envelope.loop),
+                            offsetof(PulseChannel, envelope.constant_volume),
+                            offsetof(PulseChannel, sweep.enabled),
+                            offsetof(PulseChannel, sweep.negate),
+                            offsetof(PulseChannel, sweep.reload),
+                            offsetof(PulseChannel, sweep.is_pulse1)});
+    reader.read_record(triangle_,
+                       {offsetof(TriangleChannel, linear_counter_reload_flag),
+                        offsetof(TriangleChannel, control_flag),
+                        offsetof(TriangleChannel, enabled)});
+    reader.read_record(noise_,
+                       {offsetof(NoiseChannel, mode),
+                        offsetof(NoiseChannel, enabled),
+                        offsetof(NoiseChannel, halt_length),
+                        offsetof(NoiseChannel, envelope.start),
+                        offsetof(NoiseChannel, envelope.loop),
+                        offsetof(NoiseChannel, envelope.constant_volume)});
+    reader.read_record(dmc_,
+                       {offsetof(DmcChannel, enabled),
+                        offsetof(DmcChannel, irq_enabled),
+                        offsetof(DmcChannel, loop_flag),
+                        offsetof(DmcChannel, irq_pending),
+                        offsetof(DmcChannel, sample_buffer_empty)});
     // Older resets left the inactive DMC rate at zero. The free-running
     // output timer now needs the power-on rate even before the first $4010 write.
     if (!has_dma_state && dmc_.timer_period == 0) {

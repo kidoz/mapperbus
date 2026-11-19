@@ -472,7 +472,8 @@ void Mapper515::load_state(StateReader& reader) {
     const auto audio_index = reader.read<Byte>();
     AudioState audio;
     reader.read_array(audio.registers);
-    reader.read_array(audio.voices);
+    for (auto& voice : audio.voices)
+        reader.read_record(voice, {offsetof(FmVoice, key_on)});
     reader.read(audio.divider);
     reader.read(audio.amplitude_lfo_phase);
     reader.read(audio.vibrato_lfo_phase);

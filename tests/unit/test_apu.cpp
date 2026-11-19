@@ -10,6 +10,18 @@
 
 using namespace mapperbus::core;
 
+TEST_CASE("APU snapshots validate native boolean fields before restoring channels",
+          "[apu][state]") {
+    Apu apu;
+    StateWriter writer;
+    apu.save_state(writer);
+    auto bytes = writer.take();
+    bytes[offsetof(PulseChannel, sweep.is_pulse1)] = 2;
+    StateReader reader(bytes);
+    apu.load_state(reader);
+    CHECK_FALSE(reader.ok());
+}
+
 TEST_CASE("APU region switching", "[apu]") {
     SECTION("NTSC") {
         Apu apu;

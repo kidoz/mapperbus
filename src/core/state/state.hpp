@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <initializer_list>
 #include <limits>
 #include <span>
 #include <type_traits>
@@ -65,8 +66,32 @@ class StateReader {
             value = T{};
             return;
         }
-        std::memcpy(&value, data_.data() + pos_, sizeof(T));
+        if constexpr (std::is_same_v<T, bool>) {
+            static_assert(sizeof(bool) == sizeof(Byte));
+            const auto flag = data_[pos_];
+            if (flag > 1)
+                fail();
+            value = flag == 1;
+        } else {
+            std::memcpy(&value, data_.data() + pos_, sizeof(T));
+        }
         pos_ += sizeof(T);
+    }
+
+    // Legacy records include native padding. Check every boolean in the wire
+    // representation before copying any of the record into a live object.
+    template <typename T>
+    void read_record(T& value, std::initializer_list<std::size_t> bool_offsets) {
+        static_assert(std::is_standard_layout_v<T> && std::is_trivially_copyable_v<T>);
+        if (ok_ && remaining() >= sizeof(T)) {
+            for (auto offset : bool_offsets) {
+                if (offset >= sizeof(T) || data_[pos_ + offset] > 1) {
+                    fail();
+                    break;
+                }
+            }
+        }
+        read(value);
     }
 
     template <typename T> [[nodiscard]] T read() {
@@ -81,6 +106,11 @@ class StateReader {
         if (!ok_ || pos_ + sizeof(T) * N > data_.size()) {
             ok_ = false;
             values = {};
+            return;
+        }
+        if constexpr (std::is_same_v<T, bool>) {
+            for (auto& flag : values)
+                read(flag);
             return;
         }
         std::memcpy(values.data(), data_.data() + pos_, sizeof(T) * N);

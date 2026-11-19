@@ -364,8 +364,12 @@ void Mmc5::load_state(StateReader& r) {
     r.read_array(chr_banks_1k_);
     r.read(mirror_mode_);
     validate_mirror_mode(mirror_mode_, r);
-    r.read(pulse1_);
-    r.read(pulse2_);
+    for (auto* pulse : {&pulse1_, &pulse2_})
+        r.read_record(*pulse,
+                      {offsetof(Mmc5Pulse, enabled),
+                       offsetof(Mmc5Pulse, halt_length),
+                       offsetof(Mmc5Pulse, constant_volume),
+                       offsetof(Mmc5Pulse, envelope_start)});
     r.read(pcm_output_);
     r.read(pcm_read_mode_);
     r.read(pcm_irq_enabled_);
@@ -424,9 +428,11 @@ void Vrc6::load_state(StateReader& r) {
     r.read(irq_pending_);
     r.read(irq_cycle_mode_);
     r.read(irq_prescaler_);
-    r.read(pulse1_);
-    r.read(pulse2_);
-    r.read(sawtooth_);
+    for (auto* pulse : {&pulse1_, &pulse2_})
+        r.read_record(
+            *pulse,
+            {offsetof(Vrc6Pulse, mode), offsetof(Vrc6Pulse, enabled), offsetof(Vrc6Pulse, halted)});
+    r.read_record(sawtooth_, {offsetof(Vrc6Sawtooth, enabled), offsetof(Vrc6Sawtooth, halted)});
     if (irq_prescaler_ < 0) {
         irq_prescaler_ = 0;
         r.fail();
@@ -483,7 +489,8 @@ void Vrc7::load_state(StateReader& r) {
     r.read(irq_pending_);
     r.read(irq_prescaler_);
     r.read(audio_register_);
-    r.read_array(fm_channels_);
+    for (auto& channel : fm_channels_)
+        r.read_record(channel, {offsetof(FmChannel, key_on), offsetof(FmChannel, sustain)});
     r.read_array(custom_patch_);
     r.read(audio_divider_);
     r.read(audio_halted_);
@@ -606,7 +613,12 @@ void Sunsoft5b::load_state(StateReader& r) {
     r.read(irq_enabled_);
     r.read(irq_counter_enabled_);
     r.read(irq_pending_);
-    r.read_array(channels_);
+    for (auto& channel : channels_)
+        r.read_record(channel,
+                      {offsetof(AyChannel, use_envelope),
+                       offsetof(AyChannel, tone_enabled),
+                       offsetof(AyChannel, noise_enabled),
+                       offsetof(AyChannel, output_state)});
     r.read(ay_register_);
     r.read(audio_divider_);
     r.read(noise_period_);
