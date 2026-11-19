@@ -1,11 +1,19 @@
 // PPU unit tests — exercise the Loopy $2005/$2006/$2007 register model,
 // fine-X scroll, and VRAM access patterns documented in ADR-001.
 
+#include <algorithm>
+#include <array>
 #include <catch2/catch_test_macros.hpp>
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <utility>
+#include <vector>
 
 #include "core/bus/memory_bus.hpp"
 #include "core/cartridge/cartridge.hpp"
 #include "core/mappers/mapper_registry.hpp"
+#include "core/mappers/nrom.hpp"
 #include "core/ppu/ppu.hpp"
 #include "core/state/state.hpp"
 #include "core/types.hpp"
@@ -27,6 +35,100 @@ std::pair<uint16_t, uint16_t> ppu_position(const Ppu& ppu) {
 void reset_latch(Ppu& ppu) {
     (void)ppu.read_register(0x02);
 }
+
+struct AttributePaletteProbe {
+    Byte palette = 0U;
+    std::vector<Address> tile_addresses;
+};
+
+class AttributePaletteMapper final : public Nrom {
+  public:
+    AttributePaletteMapper(const INesHeader& header,
+                           std::vector<Byte> prg,
+                           std::vector<Byte> chr,
+                           std::shared_ptr<AttributePaletteProbe> probe)
+        : Nrom(header, std::move(prg), std::move(chr)), probe_(std::move(probe)) {}
+
+    std::optional<Byte> background_attribute_palette(Address tile_address) const override {
+        probe_->tile_addresses.push_back(tile_address);
+        return probe_->palette;
+    }
+
+  private:
+    std::shared_ptr<AttributePaletteProbe> probe_;
+};
+
+std::vector<Byte> attribute_palette_image() {
+    std::vector<Byte> image(16U + 16384U + 8192U, 0U);
+    image[0] = 'N';
+    image[1] = 'E';
+    image[2] = 'S';
+    image[3] = 0x1AU;
+    image[4] = 1U;
+    image[5] = 1U;
+    const std::size_t chr_offset = 16U + 16384U;
+    for (unsigned row = 0U; row < 8U; ++row) {
+        image[chr_offset + 16U + row] = 0xFFU;
+    }
+    return image;
+}
+
+Cartridge attribute_palette_cartridge(const std::shared_ptr<AttributePaletteProbe>& probe) {
+    register_builtin_mappers();
+    MapperRegistry::instance().register_mapper(
+        0U, [probe](const INesHeader& header, std::vector<Byte> prg, std::vector<Byte> chr) {
+            return std::make_unique<AttributePaletteMapper>(
+                header, std::move(prg), std::move(chr), probe);
+        });
+    auto result = Cartridge::from_data(attribute_palette_image());
+    register_builtin_mappers();
+    REQUIRE(result);
+    return std::move(*result);
+}
+
+std::array<std::uint32_t, 4> render_attribute_samples(Cartridge& cartridge, Byte attribute) {
+    Ppu ppu;
+    ppu.reset();
+    ppu.connect_cartridge(&cartridge);
+    const auto address = [&ppu](Address value) {
+        reset_latch(ppu);
+        ppu.write_register(6U, static_cast<Byte>(value >> 8U));
+        ppu.write_register(6U, static_cast<Byte>(value));
+    };
+    const auto write = [&address, &ppu](Address addr, Byte value) {
+        address(addr);
+        ppu.write_register(7U, value);
+    };
+
+    address(0x2000U);
+    for (unsigned tile = 0U; tile < 960U; ++tile) {
+        ppu.write_register(7U, 1U);
+    }
+    for (unsigned index = 0U; index < 64U; ++index) {
+        ppu.write_register(7U, attribute);
+    }
+    write(0x3F00U, 0x0FU);
+    write(0x3F01U, 0x01U);
+    write(0x3F05U, 0x06U);
+    write(0x3F09U, 0x09U);
+    write(0x3F0DU, 0x2AU);
+    address(0x2000U);
+    ppu.write_register(1U, 0x0AU);
+    ppu.step_dots(20U * 341U);
+
+    const auto& pixels = ppu.frame_buffer().pixels;
+    return {pixels[2U * 256U + 2U],
+            pixels[2U * 256U + 18U],
+            pixels[18U * 256U + 2U],
+            pixels[18U * 256U + 18U]};
+}
+
+constexpr std::array<std::uint32_t, 4> kAttributePaletteColors = {
+    0xFF002A88U,
+    0xFF6C0600U,
+    0xFF0B4800U,
+    0xFF5CE430U,
+};
 
 } // namespace
 
@@ -402,6 +504,42 @@ TEST_CASE("PPU background fetch crosses into the next tile when fine_x overflows
     REQUIRE(frame.pixels[18] == 0xFFFFFEFF);
     REQUIRE(frame.pixels[19] == 0xFFFFFEFF);
     REQUIRE(frame.pixels[20] == 0xFFFFFEFF);
+}
+
+TEST_CASE("PPU background attributes use ordinary quadrants or Drip-like mapper palettes",
+          "[ppu][render][attribute-palette]") {
+    SECTION("The default mapper hook retains ordinary packed attribute bytes") {
+        register_builtin_mappers();
+        auto result = Cartridge::from_data(attribute_palette_image());
+        REQUIRE(result);
+        auto cartridge = std::move(*result);
+        CHECK(render_attribute_samples(cartridge, 0xE4U) == kAttributePaletteColors);
+    }
+
+    SECTION("A returned palette expands to every quadrant and stays tile cached") {
+        for (Byte palette = 0U; palette < 4U; ++palette) {
+            CAPTURE(palette);
+            auto probe = std::make_shared<AttributePaletteProbe>();
+            probe->palette = palette;
+            auto cartridge = attribute_palette_cartridge(probe);
+            const auto expected = std::array<std::uint32_t, 4>{
+                kAttributePaletteColors[palette],
+                kAttributePaletteColors[palette],
+                kAttributePaletteColors[palette],
+                kAttributePaletteColors[palette],
+            };
+            CHECK(render_attribute_samples(cartridge, 0x1BU) == expected);
+
+            REQUIRE(probe->tile_addresses.size() >= 2U);
+            CHECK(probe->tile_addresses[0] == 0x2000U);
+            CHECK(probe->tile_addresses[1] == 0x2001U);
+            for (const Address tile_address : {0x2000U, 0x2002U, 0x2040U, 0x2042U}) {
+                CHECK(std::find(probe->tile_addresses.begin(),
+                                probe->tile_addresses.end(),
+                                tile_address) != probe->tile_addresses.end());
+            }
+        }
+    }
 }
 
 TEST_CASE("Dendy PPU starts VBlank at scanline 291, not 241", "[ppu][region][dendy]") {

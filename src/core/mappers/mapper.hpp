@@ -50,6 +50,12 @@ class Mapper {
     }
     virtual Byte read_chr(Address addr) = 0;
     virtual void write_chr(Address addr, Byte value) = 0;
+    /// Optional two-bit background palette for a nametable tile address.
+    /// Nullopt retains the ordinary packed attribute-byte fetch.
+    [[nodiscard]] virtual std::optional<Byte> background_attribute_palette(
+        Address /*tile_address*/) const {
+        return std::nullopt;
+    }
 
     virtual MirrorMode mirror_mode() const = 0;
     /// Direct console CIRAM mapping for external PPU $0000-$3EFF accesses.

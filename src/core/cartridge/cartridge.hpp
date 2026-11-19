@@ -98,6 +98,9 @@ class Cartridge {
     }
     [[nodiscard]] Byte read_chr(Address addr);
     void write_chr(Address addr, Byte value);
+    [[nodiscard]] std::optional<Byte> background_attribute_palette(Address tile_address) const {
+        return mapper_->background_attribute_palette(tile_address);
+    }
 
     [[nodiscard]] const INesHeader& header() const {
         return header_;

@@ -709,8 +709,13 @@ void Ppu::render_pixel() {
             plane0 = bg_tile_cache_.plane0;
             plane1 = bg_tile_cache_.plane1;
         } else {
-            const Byte tile_index = read_vram(loopy::tile_address(bg_v));
-            attribute = read_vram(loopy::attribute_address(bg_v));
+            const Address tile_address = loopy::tile_address(bg_v);
+            const Byte tile_index = read_vram(tile_address);
+            const auto palette = cartridge_ != nullptr
+                                     ? cartridge_->background_attribute_palette(tile_address)
+                                     : std::nullopt;
+            attribute = palette ? static_cast<Byte>(*palette * 0x55U)
+                                : read_vram(loopy::attribute_address(bg_v));
             int fine_y = static_cast<int>(loopy::fine_y(bg_v));
             Address pattern_addr = static_cast<Address>(pattern_base + tile_index * 16 + fine_y);
             plane0 = read_vram(pattern_addr);
