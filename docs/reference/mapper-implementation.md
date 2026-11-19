@@ -5093,7 +5093,7 @@ or another registered cartridge ID.
 | 269 | Board-specific specification | Registered: Mapper269 | [r24351](https://www.nesdev.org/w/index.php?oldid=24351) |
 | 270 | OneBus outer banking | Not registered | [r23373](https://www.nesdev.org/w/index.php?oldid=23373) |
 | 271 | Board-specific specification | Registered: Bmc22026 | [r24533](https://www.nesdev.org/w/index.php?oldid=24533) |
-| 272 | Board-specific specification | Not registered | [r7701](https://www.nesdev.org/w/index.php?oldid=7701) |
+| 272 | Board-specific specification | Registered: Mapper272 | [r7701](https://www.nesdev.org/w/index.php?oldid=7701) |
 | 273 | Board-specific specification | Not registered | [r7703](https://www.nesdev.org/w/index.php?oldid=7703) |
 | 274 | Board-specific specification | Not registered | [r7708](https://www.nesdev.org/w/index.php?oldid=7708) |
 | 275 | Board-specific specification | Not registered | [r7709](https://www.nesdev.org/w/index.php?oldid=7709) |
