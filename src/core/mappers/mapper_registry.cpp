@@ -89,6 +89,7 @@
 #include "core/mappers/mapper287.hpp"
 #include "core/mappers/mapper288.hpp"
 #include "core/mappers/mapper289.hpp"
+#include "core/mappers/mapper290.hpp"
 #include "core/mappers/maxi15.hpp"
 #include "core/mappers/mmc1.hpp"
 #include "core/mappers/mmc1a.hpp"
@@ -317,6 +318,8 @@ namespace {
         return Mapper288::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 289U)
         return Mapper289::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 290U)
+        return Mapper290::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 30U || header.mapper_number == 111U)
         return FlashBoards::validate_geometry(header, prg_size, chr_size);
     if (JyCompany::supports_mapper(header.mapper_number))
@@ -1286,6 +1289,7 @@ void register_builtin_mappers() {
     registry.register_mapper(287, make_factory<Mapper287>());
     registry.register_mapper(288, make_factory<Mapper288>());
     registry.register_mapper(289, make_factory<Mapper289>());
+    registry.register_mapper(290, make_factory<Mapper290>());
     registry.register_mapper(284, make_factory<Drip>());
 }
 
