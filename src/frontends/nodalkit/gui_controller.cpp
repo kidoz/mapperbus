@@ -4550,7 +4550,7 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
         microphone_group->add(
             pref_row("Capture input",
                      capture_switch,
-                     "Uses host sound as microphone activity during RF Famicom play."));
+                     "Feeds host sound to the RF Famicom microphone or a supported cartridge."));
         std::vector<std::string> device_names{""};
         auto devices = session_->live_microphone().devices();
         if (devices)

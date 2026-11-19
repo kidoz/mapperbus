@@ -19,7 +19,10 @@ class Mapper515 final : public Mapper {
                                           std::size_t prg_size,
                                           std::size_t chr_size);
 
-    void set_microphone_sample(Byte sample);
+    bool has_microphone_adc() const override {
+        return true;
+    }
+    void set_microphone_sample(Byte sample) override;
 
     Byte read_prg(Address addr) override;
     void write_prg(Address addr, Byte value) override;

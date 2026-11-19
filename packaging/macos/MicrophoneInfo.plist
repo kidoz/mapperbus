@@ -3,6 +3,6 @@
 <plist version="1.0">
 <dict>
     <key>NSMicrophoneUsageDescription</key>
-    <string>Use microphone sound as Famicom microphone activity when live input is enabled.</string>
+    <string>Use microphone sound for RF Famicom games and supported microphone cartridges when live input is enabled.</string>
 </dict>
 </plist>

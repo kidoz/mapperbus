@@ -27,6 +27,9 @@ class LiveMicrophone {
     void discard();
     void retry();
     [[nodiscard]] bool poll(bool eligible);
+    [[nodiscard]] core::Byte adc_sample() const {
+        return adc_sample_;
+    }
     /// Add host PCM to interleaved playback only; never alters activity or core audio.
     void mix_into(std::span<float> samples, int sample_rate, int channels);
     [[nodiscard]] core::Result<std::vector<std::string>> devices();
@@ -47,6 +50,7 @@ class LiveMicrophone {
     std::string error_;
     bool recording_ = false;
     bool active_ = false;
+    core::Byte adc_sample_ = 0;
     std::array<float, 2048> mix_audio_{};
     std::size_t mix_head_ = 0;
     std::size_t mix_size_ = 0;

@@ -3,11 +3,13 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <limits>
+#include <string>
 #include <vector>
 
 #include "../support/test_rom.hpp"
 #include "app/emulation_session.hpp"
 #include "app/live_microphone.hpp"
+#include "core/binary_file.hpp"
 #include "core/mappers/mapper_registry.hpp"
 #include "platform/audio/null_audio.hpp"
 #include "platform/video/null_video.hpp"
@@ -348,4 +350,64 @@ TEST_CASE("Session capture closes on pause, snapshots, wiring changes and stop",
     CHECK_FALSE(capture->recording);
     std::filesystem::remove_all(storage.directory);
     std::filesystem::remove(rom);
+}
+
+TEST_CASE("Live capture feeds cartridge microphone ports with NES wiring",
+          "[microphone][session][capture]") {
+    core::register_builtin_mappers();
+    // Latch the SPI sample, shift D7 into $01 eight times, and publish it at $00.
+    constexpr core::Byte spi[] = {0xA9, 0x00, 0x85, 0x01, 0xA2, 0x08, 0x8D, 0x02, 0xC0, 0xAD,
+                                  0x03, 0x60, 0x0A, 0x26, 0x01, 0xA9, 0x80, 0x8D, 0x03, 0xC0,
+                                  0xA9, 0x00, 0x8D, 0x03, 0xC0, 0xCA, 0xD0, 0xED, 0xA5, 0x01,
+                                  0x85, 0x00, 0xA9, 0x80, 0x8D, 0x02, 0xC0, 0x4C, 0x00, 0x80};
+    constexpr core::Byte parallel[] = {0xAD, 0x00, 0x60, 0x85, 0x00, 0x4C, 0x00, 0x80};
+    for (unsigned mapper : {515U, 517U}) {
+        CAPTURE(mapper);
+        const auto path = tests::write_visible_nrom_test_rom("adc-" + std::to_string(mapper));
+        const std::size_t banks = mapper == 515U ? 64 : 2;
+        std::vector<core::Byte> rom(16 + banks * 16384);
+        const std::array<core::Byte, 12> header{'N',
+                                                'E',
+                                                'S',
+                                                0x1A,
+                                                static_cast<core::Byte>(banks),
+                                                0,
+                                                static_cast<core::Byte>(mapper << 4U),
+                                                8,
+                                                2,
+                                                0,
+                                                0,
+                                                7};
+        std::ranges::copy(header, rom.begin());
+        const auto program = mapper == 515U ? std::span<const core::Byte>{spi}
+                                            : std::span<const core::Byte>{parallel};
+        std::ranges::copy(program, rom.begin() + 16);
+        for (int vector : {5, 3, 1})
+            rom[rom.size() - vector] = 0x80;
+        REQUIRE(core::write_binary_file_atomic(path.string(), rom, "microphone cartridge"));
+
+        app::EmulationSession session(std::make_unique<platform::NullVideo>(),
+                                      std::make_unique<platform::NullAudio>(),
+                                      std::make_unique<Input>());
+        auto backend = std::make_unique<Capture>();
+        auto* capture = backend.get();
+        capture->level = -0.5F;
+        session.set_microphone_backend(std::move(backend));
+        REQUIRE(session.load_rom(path.string()));
+        REQUIRE(session.tick() == app::TickResult::FrameAdvanced);
+        CHECK(capture->starts == 0);
+        CHECK(session.emulator().read_cpu(0) == 0U);
+
+        session.configure_live_microphone({.enabled = true, .device = {}});
+        REQUIRE(session.tick() == app::TickResult::FrameAdvanced);
+        CHECK(capture->recording);
+        CHECK(session.emulator().read_cpu(0) == 32U);
+        CHECK_FALSE(session.emulator().microphone_active());
+        capture->empty = true;
+        REQUIRE(session.tick() == app::TickResult::FrameAdvanced);
+        CHECK(session.emulator().read_cpu(0) == 0U);
+        session.set_paused(true);
+        CHECK_FALSE(capture->recording);
+        std::filesystem::remove(path);
+    }
 }

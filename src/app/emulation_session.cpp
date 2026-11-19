@@ -355,6 +355,7 @@ void EmulationSession::suspend_live_microphone() {
     if (live_microphone_.recording())
         clear_microphone_playback();
     live_microphone_.suspend();
+    emulator_->set_cartridge_microphone_sample(0);
 }
 
 void EmulationSession::configure_live_microphone(LiveMicrophoneSettings settings) {
@@ -522,13 +523,16 @@ void EmulationSession::sync_input() {
                                    Button::Right};
 
     const bool was_recording = live_microphone_.recording();
-    const bool live = live_microphone_.poll(!paused_ && emulator_->controller_wiring() ==
-                                                            core::ControllerWiring::RfFamicom);
+    const bool rf = emulator_->controller_wiring() == core::ControllerWiring::RfFamicom;
+    const bool cartridge_mic = emulator_->has_cartridge_microphone_adc();
+    const bool live = live_microphone_.poll(!paused_ && (rf || cartridge_mic));
+    if (cartridge_mic)
+        emulator_->set_cartridge_microphone_sample(live_microphone_.adc_sample());
     if (was_recording && !live_microphone_.recording())
         clear_microphone_playback();
     auto* cabinet = emulator_->vs_cabinet();
     bool coin = false;
-    bool microphone = live;
+    bool microphone = rf && live;
     for (int player = 0; player < platform::kInputProfileCount; ++player) {
         const bool mic_button =
             input_->is_action_pressed(player, platform::InputAction::Microphone);

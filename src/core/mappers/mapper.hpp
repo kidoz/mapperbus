@@ -243,6 +243,11 @@ class Mapper {
         return 0;
     }
     virtual void write_expansion(Address /*addr*/, Byte /*value*/) {}
+    /// Live host input is sampled by the cartridge ADC and is separate from snapshots.
+    virtual bool has_microphone_adc() const {
+        return false;
+    }
+    virtual void set_microphone_sample(Byte /*sample*/) {}
 };
 
 } // namespace mapperbus::core

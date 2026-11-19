@@ -220,6 +220,13 @@ class Emulator {
     [[nodiscard]] bool microphone_active() const {
         return bus_.microphone_active();
     }
+    [[nodiscard]] bool has_cartridge_microphone_adc() const {
+        return cartridge_ && cartridge_->has_microphone_adc();
+    }
+    void set_cartridge_microphone_sample(Byte sample) {
+        if (cartridge_)
+            cartridge_->set_microphone_sample(sample);
+    }
 
     void set_region(Region region) {
         region_ = region;

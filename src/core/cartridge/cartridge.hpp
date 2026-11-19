@@ -74,6 +74,12 @@ class Cartridge {
     void set_keyboard_row(Byte row, Byte pressed_mask) {
         mapper_->set_keyboard_row(row, pressed_mask);
     }
+    [[nodiscard]] bool has_microphone_adc() const {
+        return mapper_->has_microphone_adc();
+    }
+    void set_microphone_sample(Byte sample) {
+        mapper_->set_microphone_sample(sample);
+    }
     Result<void> scan_barcode(std::string_view digits, uint32_t module_cycles) {
         return mapper_->scan_barcode(digits, module_cycles);
     }

@@ -35,6 +35,7 @@ void LiveMicrophone::suspend() {
         backend_->stop();
     recording_ = false;
     active_ = false;
+    adc_sample_ = 0;
     clear_mix_audio();
 }
 
@@ -51,6 +52,7 @@ void LiveMicrophone::retry() {
 
 void LiveMicrophone::discard() {
     active_ = false;
+    adc_sample_ = 0;
     clear_mix_audio();
     if (recording_) {
         if (auto result = backend_->discard(); !result)
@@ -82,6 +84,7 @@ bool LiveMicrophone::poll(bool eligible) {
     }
     if (*read == 0) {
         active_ = false;
+        adc_sample_ = 0;
         return false;
     }
     double energy = 0;
@@ -96,6 +99,7 @@ bool LiveMicrophone::poll(bool eligible) {
     const float threshold =
         0.2F * std::pow(0.01F, static_cast<float>(settings_.sensitivity) / 100.0F);
     const double level = std::sqrt(energy / static_cast<double>(*read));
+    adc_sample_ = static_cast<core::Byte>(std::lround(level * 63.0));
     active_ = level >= static_cast<double>(threshold * (active_ ? 0.6F : 1.0F));
     return active_;
 }
@@ -162,7 +166,7 @@ std::string LiveMicrophone::status() const {
     if (recording_)
         return active_ ? "Live microphone: recording · activity detected"
                        : "Live microphone: recording · quiet";
-    return "Live microphone: waiting for an unpaused RF Famicom game";
+    return "Live microphone: waiting for an unpaused RF Famicom or microphone cartridge game";
 }
 
 } // namespace mapperbus::app
