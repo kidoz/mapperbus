@@ -452,6 +452,7 @@ TEST_CASE("Mapper 236 bus and PPU route pad ROM reads open CPU space and both CI
 }
 TEST_CASE("Mapper 236 machine snapshots reject different physical pads with identical ROM bytes",
           "[mapper236][state]") {
+    register_builtin_mappers();
     for (unsigned population = 0U; population < 3U; ++population) {
         const auto bytes = mapperbus::tests::make_mapper236_rom(population);
         auto ca = Cartridge::from_data(bytes), cb = Cartridge::from_data(bytes);
