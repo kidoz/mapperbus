@@ -56,6 +56,7 @@
 #include "core/mappers/mapper142_ks202.hpp"
 #include "core/mappers/mapper144.hpp"
 #include "core/mappers/mapper156_daou.hpp"
+#include "core/mappers/mapper162_fs304.hpp"
 #include "core/mappers/maxi15.hpp"
 #include "core/mappers/mmc1.hpp"
 #include "core/mappers/mmc1a.hpp"
@@ -204,6 +205,8 @@ namespace {
         return Mapper144::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 156U)
         return DaouMapper156::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 162U)
+        return Mapper162Fs304::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 99U)
         return VsSystem::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 30U || header.mapper_number == 111U)
@@ -1140,6 +1143,7 @@ void register_builtin_mappers() {
     registry.register_mapper(155, make_factory<Mmc1a>());
     registry.register_mapper(144, make_factory<Mapper144>());
     registry.register_mapper(156, make_factory<DaouMapper156>());
+    registry.register_mapper(162, make_factory<Mapper162Fs304>());
 }
 
 } // namespace mapperbus::core
