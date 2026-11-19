@@ -5354,7 +5354,7 @@ some historical aliases share a factory with another ID.
 | 556 | JY-215 | Registered: Mapper556 | [r22948](https://www.nesdev.org/w/index.php?oldid=22948) |
 | 557 | NTDEC 2718 | Registered: Namco108 | [r21239](https://www.nesdev.org/w/index.php?oldid=21239) |
 | 558 | Yancheng YC-03-09 | Registered: Fs304 | [r23362](https://www.nesdev.org/w/index.php?oldid=23362) |
-| 560 | Board-specific specification | Not registered | [r23154](https://www.nesdev.org/w/index.php?oldid=23154) |
+| 560 | Chinese / English BASIC | Registered: Mapper560 | [r23154](https://www.nesdev.org/w/index.php?oldid=23154) |
 | 561 | Bung Super Game Doctor | Not registered | [r18925](https://www.nesdev.org/w/index.php?oldid=18925) |
 | 562 | Venus Turbo Game Doctor | Not registered | [r19971](https://www.nesdev.org/w/index.php?oldid=19971) |
 | 594 | Rinco Talkman | Not registered | [r22961](https://www.nesdev.org/w/index.php?oldid=22961) |
