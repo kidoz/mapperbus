@@ -5,6 +5,7 @@
 #include "core/mappers/action52.hpp"
 #include "core/mappers/axrom.hpp"
 #include "core/mappers/bandai_fcg.hpp"
+#include "core/mappers/bmc_t3h53.hpp"
 #include "core/mappers/bxrom_wram.hpp"
 #include "core/mappers/caltron_041.hpp"
 #include "core/mappers/cnrom.hpp"
@@ -100,6 +101,8 @@ namespace {
         return Realtec8213::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 55U)
         return Mario1Malee2::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 59U)
+        return BmcT3h53::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 12U)
         return Mapper012::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 14U)
@@ -1015,6 +1018,7 @@ void register_builtin_mappers() {
     registry.register_mapper(50, make_factory<N32Mapper050>());
     registry.register_mapper(52, make_factory<Realtec8213>());
     registry.register_mapper(55, make_factory<Mario1Malee2>());
+    registry.register_mapper(59, make_factory<BmcT3h53>());
     registry.register_mapper(12, make_factory<Mapper012>());
     registry.register_mapper(14, make_factory<Sl1632>());
     registry.register_mapper(15, make_factory<Mapper015>());
