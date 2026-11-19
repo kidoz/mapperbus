@@ -8,6 +8,11 @@
 
 namespace mapperbus::core {
 
+void Ppu::connect_cartridge(Cartridge* cartridge) {
+    cartridge_ = cartridge;
+    render_context_ = cartridge && cartridge->uses_render_context();
+}
+
 void Ppu::save_state(StateWriter& writer) const {
     writer.write(scanline_);
     writer.write(cycle_);
@@ -248,6 +253,8 @@ void Ppu::step_dots(uint32_t ppu_dots) {
         bool visible_line = scanline_ < 240;
         bool pre_render = scanline_ == timing_->pre_render_scanline;
         bool rendering = rendering_enabled();
+        if (render_context_)
+            cartridge_->on_render_dot(scanline_, cycle_, rendering);
 
         // The frame-length gate is independent of the renderer's delayed mask.
         // Latch before dot 339 so later writes cannot change this frame's length.
@@ -711,15 +718,31 @@ void Ppu::render_pixel() {
         } else {
             const Address tile_address = loopy::tile_address(bg_v);
             const Byte tile_index = read_vram(tile_address);
-            const auto palette = cartridge_ != nullptr
+            const int fine_y = static_cast<int>(loopy::fine_y(bg_v));
+            Address pattern_addr = static_cast<Address>(pattern_base + tile_index * 16 + fine_y);
+            auto fetch = render_context_
+                             ? cartridge_->background_fetch(
+                                   tile_address, pattern_addr, ((x + fine_x_) >> 3) & 31U, y)
+                             : std::nullopt;
+            if (fetch)
+                pattern_addr = fetch->pattern;
+            const auto palette = fetch ? fetch->palette
+                                 : cartridge_
                                      ? cartridge_->background_attribute_palette(tile_address)
                                      : std::nullopt;
             attribute = palette ? static_cast<Byte>(*palette * 0x55U)
                                 : read_vram(loopy::attribute_address(bg_v));
-            int fine_y = static_cast<int>(loopy::fine_y(bg_v));
-            Address pattern_addr = static_cast<Address>(pattern_base + tile_index * 16 + fine_y);
-            plane0 = read_vram(pattern_addr);
-            plane1 = read_vram(pattern_addr + 8);
+            const auto planes = fetch ? fetch->planes
+                                : cartridge_
+                                    ? cartridge_->background_pattern(tile_address, pattern_addr)
+                                    : std::nullopt;
+            if (planes) {
+                plane0 = (*planes)[0];
+                plane1 = (*planes)[1];
+            } else {
+                plane0 = read_vram(pattern_addr);
+                plane1 = read_vram(pattern_addr + 8);
+            }
 
             bg_tile_cache_.addr = bg_v;
             bg_tile_cache_.pattern_addr = pattern_base;
@@ -782,8 +805,11 @@ void Ppu::render_pixel() {
                 }
 
                 Address pat_addr = static_cast<Address>(pat_base + tile * 16 + pattern_row);
-                Byte plane0 = read_vram(pat_addr);
-                Byte plane1 = read_vram(pat_addr + 8);
+                auto sprite = render_context_
+                                  ? cartridge_->sprite_pattern(sp.index, pat_addr, sprite_size_8x16)
+                                  : std::nullopt;
+                Byte plane0 = sprite ? (*sprite)[0] : read_vram(pat_addr);
+                Byte plane1 = sprite ? (*sprite)[1] : read_vram(pat_addr + 8);
 
                 int bit_index = flip_h ? col : (7 - col);
                 Byte color_index = static_cast<Byte>(((plane0 >> bit_index) & 0x01) |

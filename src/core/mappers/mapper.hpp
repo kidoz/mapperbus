@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <optional>
 #include <span>
 #include <string_view>
@@ -50,6 +51,28 @@ class Mapper {
     }
     virtual Byte read_chr(Address addr) = 0;
     virtual void write_chr(Address addr, Byte value) = 0;
+    /// Override both background bitplanes for boards whose pattern source
+    /// depends on the current nametable tile. Sprite and CPU reads use read_chr.
+    [[nodiscard]] virtual std::optional<std::array<Byte, 2>> background_pattern(
+        Address /*tile*/, Address /*pattern*/) const {
+        return std::nullopt;
+    }
+    /// Boards with counters or extended patterns tied to the rendered screen.
+    virtual bool uses_render_context() const {
+        return false;
+    }
+    virtual void on_render_dot(unsigned /*scanline*/, unsigned /*dot*/, bool /*rendering*/) {}
+    virtual std::optional<BackgroundFetch> background_fetch(Address /*nt*/,
+                                                            Address /*pattern*/,
+                                                            unsigned /*column*/,
+                                                            unsigned /*scanline*/) const {
+        return {};
+    }
+    virtual std::optional<std::array<Byte, 2>> sprite_pattern(unsigned /*oam*/,
+                                                              Address /*pattern*/,
+                                                              bool /*tall*/) const {
+        return {};
+    }
     /// Optional two-bit background palette for a nametable tile address.
     /// Nullopt retains the ordinary packed attribute-byte fetch.
     [[nodiscard]] virtual std::optional<Byte> background_attribute_palette(

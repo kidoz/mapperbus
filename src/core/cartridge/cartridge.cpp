@@ -8,6 +8,8 @@
 #include "core/cartridge/rom_database.hpp"
 #include "core/fds/fds_mapper.hpp"
 #include "core/mappers/mapper_registry.hpp"
+#include "core/mappers/san2.hpp"
+#include "core/ppu/ppu.hpp"
 #include "core/state/state.hpp"
 
 namespace mapperbus::core {

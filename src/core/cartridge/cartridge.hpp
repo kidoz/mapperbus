@@ -13,6 +13,7 @@
 namespace mapperbus::core {
 
 class Fds;
+class Ppu;
 class StateWriter;
 class StateReader;
 
@@ -35,6 +36,7 @@ class Cartridge {
     Cartridge(Cartridge&&) = default;
     Cartridge& operator=(Cartridge&&) = default;
 
+    const FrameBuffer& translated_frame(const Ppu&, const std::array<Byte, kRamSize>&) const;
     void save_state(StateWriter& writer) const;
     void load_state(StateReader& reader, std::uint32_t version = 20U);
 
@@ -72,6 +74,24 @@ class Cartridge {
     Result<void> configure_board_jumpers(Byte value) {
         return mapper_->configure_board_jumpers(value);
     }
+    bool uses_render_context() const {
+        return mapper_->uses_render_context();
+    }
+    void on_render_dot(unsigned scanline, unsigned dot, bool rendering) {
+        mapper_->on_render_dot(scanline, dot, rendering);
+    }
+    std::optional<BackgroundFetch> background_fetch(Address nt,
+                                                    Address pattern,
+                                                    unsigned column,
+                                                    unsigned scanline) const {
+        return mapper_->background_fetch(nt, pattern, column, scanline);
+    }
+    std::optional<std::array<Byte, 2>> sprite_pattern(unsigned oam,
+                                                      Address pattern,
+                                                      bool tall) const {
+        return mapper_->sprite_pattern(oam, pattern, tall);
+    }
+    Result<void> configure_game_doctor_bios(std::span<const Byte> bios);
     Result<void> configure_board_profile(std::string_view profile) {
         return mapper_->configure_board_profile(profile);
     }
@@ -99,6 +119,10 @@ class Cartridge {
     }
     [[nodiscard]] Byte read_chr(Address addr);
     void write_chr(Address addr, Byte value);
+    [[nodiscard]] std::optional<std::array<Byte, 2>> background_pattern(Address tile,
+                                                                        Address pattern) const {
+        return mapper_->background_pattern(tile, pattern);
+    }
     [[nodiscard]] std::optional<Byte> background_attribute_palette(Address tile_address) const {
         return mapper_->background_attribute_palette(tile_address);
     }

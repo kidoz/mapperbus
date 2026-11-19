@@ -57,9 +57,7 @@ class Ppu {
     }
     void write_oam_dma(Byte value);
 
-    void connect_cartridge(Cartridge* cartridge) {
-        cartridge_ = cartridge;
-    }
+    void connect_cartridge(Cartridge* cartridge);
 
     // Loopy register inspection (for testing and future debugger support).
     [[nodiscard]] uint16_t loopy_v() const {
@@ -117,6 +115,7 @@ class Ppu {
     FrameBuffer frame_buffer_{};
     bool frame_ready_ = false;
     Cartridge* cartridge_ = nullptr;
+    bool render_context_ = false;
 
     uint16_t scanline_ = 0;
     uint16_t cycle_ = 0;
