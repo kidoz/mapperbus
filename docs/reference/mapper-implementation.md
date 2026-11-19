@@ -5337,14 +5337,14 @@ some historical aliases share a factory with another ID.
 | 540 | UNL-82112C | Registered: Mapper359 | [r8158](https://www.nesdev.org/w/index.php?oldid=8158) |
 | 541 | LittleCom 160-in-1 | Registered: MulticartLatches | [r8159](https://www.nesdev.org/w/index.php?oldid=8159) |
 | 542 | VRC4 clone with switchable CIRAM | Registered: Mapper530 | [r8160](https://www.nesdev.org/w/index.php?oldid=8160) |
-| 543 | Board-specific specification | Not registered | [r8162](https://www.nesdev.org/w/index.php?oldid=8162) |
+| 543 | CH-501 | Registered: Mmc1 | [r8162](https://www.nesdev.org/w/index.php?oldid=8162) |
 | 544 | Board-specific specification | Not registered | [r24263](https://www.nesdev.org/w/index.php?oldid=24263) |
 | 545 | ST-80 | Registered: Mmc3 | [r23190](https://www.nesdev.org/w/index.php?oldid=23190) |
-| 546 | Board-specific specification | Not registered | [r8169](https://www.nesdev.org/w/index.php?oldid=8169) |
+| 546 | 03-101 | Registered: Mmc1 | [r8169](https://www.nesdev.org/w/index.php?oldid=8169) |
 | 547 | Konami VRC5 / QTa | Not registered | [r23763](https://www.nesdev.org/w/index.php?oldid=23763) |
 | 548 | Board-specific specification | Not registered | [r8186](https://www.nesdev.org/w/index.php?oldid=8186) |
 | 549 | Board-specific specification | Not registered | [r21240](https://www.nesdev.org/w/index.php?oldid=21240) |
-| 550 | Board-specific specification | Not registered | [r8188](https://www.nesdev.org/w/index.php?oldid=8188) |
+| 550 | JY820845C | Registered: Mmc1 | [r8188](https://www.nesdev.org/w/index.php?oldid=8188) |
 | 551 | Jncota | Registered: Fs305 | [r8189](https://www.nesdev.org/w/index.php?oldid=8189) |
 | 552 | Taito X1-017 wiring variant | New implementation: TaitoX1017 | [r24125](https://www.nesdev.org/w/index.php?oldid=24125) |
 | 553 | Board-specific specification | Not registered | [r8192](https://www.nesdev.org/w/index.php?oldid=8192) |
