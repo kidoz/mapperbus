@@ -20,6 +20,7 @@
 #include "core/mappers/jaleco_ss88006.hpp"
 #include "core/mappers/jy_company.hpp"
 #include "core/mappers/konami_vrc.hpp"
+#include "core/mappers/mapper006.hpp"
 #include "core/mappers/maxi15.hpp"
 #include "core/mappers/mmc1.hpp"
 #include "core/mappers/mmc2.hpp"
@@ -59,6 +60,8 @@ namespace {
     if (header.mapper_number == 31 && prg_size < 4096) {
         return std::unexpected("Mapper 31 requires at least a 4 KiB PRG ROM");
     }
+    if (header.mapper_number == 6U || header.mapper_number == 8U)
+        return FfeMagicCard::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 30U || header.mapper_number == 111U)
         return FlashBoards::validate_geometry(header, prg_size, chr_size);
     if (JyCompany::supports_mapper(header.mapper_number))
@@ -941,6 +944,8 @@ void register_builtin_mappers() {
                               201, 202, 203, 212, 213, 225, 226, 229, 231, 232, 240}) {
         registry.register_mapper(id, make_factory<DiscreteMapper>());
     }
+    for (const uint16_t id : {6U, 8U})
+        registry.register_mapper(id, make_factory<FfeMagicCard>());
 }
 
 } // namespace mapperbus::core

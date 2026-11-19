@@ -433,6 +433,16 @@ test_mapper254 = executable('test-mapper254',
 )
 test('mapper254', test_mapper254, timeout : mapper_test_timeout)
 
+foreach mapper_id : [
+    '006',
+]
+    test_mapper = executable('test-mapper' + mapper_id,
+        'unit/test_mapper' + mapper_id + '.cpp',
+        dependencies : [mapperbus_core_dep, catch2_dep],
+    )
+    test('mapper' + mapper_id, test_mapper, timeout : mapper_test_timeout)
+endforeach
+
 test_one_bus = executable('test-one-bus',
     'unit/test_one_bus.cpp',
     dependencies : [mapperbus_core_dep, catch2_dep],
