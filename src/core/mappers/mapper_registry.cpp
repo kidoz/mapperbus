@@ -41,6 +41,7 @@
 #include "core/mappers/mapper057.hpp"
 #include "core/mappers/mapper083.hpp"
 #include "core/mappers/mapper091.hpp"
+#include "core/mappers/mapper103.hpp"
 #include "core/mappers/maxi15.hpp"
 #include "core/mappers/mmc1.hpp"
 #include "core/mappers/mmc2.hpp"
@@ -144,6 +145,8 @@ namespace {
         return JalecoJf13::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 91U)
         return Mapper091::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 103U)
+        return Mapper103::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 99U)
         return VsSystem::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 30U || header.mapper_number == 111U)
@@ -1058,6 +1061,7 @@ void register_builtin_mappers() {
     registry.register_mapper(57, make_factory<Mapper057>());
     registry.register_mapper(86, make_factory<JalecoJf13>());
     registry.register_mapper(91, make_factory<Mapper091>());
+    registry.register_mapper(103, make_factory<Mapper103>());
 }
 
 } // namespace mapperbus::core
