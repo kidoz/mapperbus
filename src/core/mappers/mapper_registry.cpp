@@ -28,6 +28,7 @@
 #include "core/mappers/mapper027.hpp"
 #include "core/mappers/mapper037.hpp"
 #include "core/mappers/mapper042.hpp"
+#include "core/mappers/mapper043.hpp"
 #include "core/mappers/maxi15.hpp"
 #include "core/mappers/mmc1.hpp"
 #include "core/mappers/mmc2.hpp"
@@ -76,6 +77,8 @@ namespace {
         return Mapper027::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 42U)
         return Mapper042::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 43U)
+        return Mapper043::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 12U)
         return Mapper012::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 14U)
@@ -978,6 +981,7 @@ void register_builtin_mappers() {
         registry.register_mapper(id, make_factory<FfeMagicCard>());
     registry.register_mapper(27, make_factory<Mapper027>());
     registry.register_mapper(42, make_factory<Mapper042>());
+    registry.register_mapper(43, make_factory<Mapper043>());
     registry.register_mapper(12, make_factory<Mapper012>());
     registry.register_mapper(14, make_factory<Sl1632>());
     registry.register_mapper(15, make_factory<Mapper015>());
