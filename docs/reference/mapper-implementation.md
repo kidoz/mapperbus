@@ -4865,7 +4865,7 @@ or another registered cartridge ID.
 | 046 | Board-specific specification | New implementation: DiscreteMapper | [r4278](https://www.nesdev.org/w/index.php?oldid=4278) |
 | 047 | Board-specific specification | Registered: Mmc3Multicart47 | [r4284](https://www.nesdev.org/w/index.php?oldid=4284) |
 | 048 | Taito TC0690 | New implementation: TaitoTc | [r22585](https://www.nesdev.org/w/index.php?oldid=22585) |
-| 049 | Board-specific specification | Not registered | [r4300](https://www.nesdev.org/w/index.php?oldid=4300) |
+| 049 | Board-specific specification | Registered: Mapper049 | [r4300](https://www.nesdev.org/w/index.php?oldid=4300) |
 | 050 | Board-specific specification | Not registered | [r4310](https://www.nesdev.org/w/index.php?oldid=4310) |
 | 051 | Board-specific specification | Not registered | [r4311](https://www.nesdev.org/w/index.php?oldid=4311) |
 | 052 | Board-specific specification | Not registered | [r21408](https://www.nesdev.org/w/index.php?oldid=21408) |
