@@ -152,6 +152,42 @@ TEST_CASE("Asder PC-95 returns active-low key rows through the cartridge port",
     CHECK(cart->read_expansion(0x4906) == 0xAA);
 }
 
+TEST_CASE("BATMAP reads and advances the serial ROM through both CPU windows",
+          "[mapper413][cartridge]") {
+    register_builtin_mappers();
+    auto rom = image(413, 16, 32);
+    const auto start = rom.size();
+    rom[14] = 1;
+    REQUIRE_FALSE(Cartridge::from_data(rom));
+    rom.resize(start + (8U << 20));
+    rom[start + 3] = 0xC2;
+    rom[start + 4] = 0xB7;
+    auto cart = Cartridge::from_data(rom);
+    REQUIRE(cart);
+    cart->write_prg(0xC000, 0x80);
+    cart->write_prg(0xC000, 0x80);
+    CHECK(cart->read_expansion(0x4ABC) == 0xC2);
+    cart->write_prg(0xD000, 2);
+    CHECK(cart->read_prg(0xCFFF) == 0xC2);
+    CHECK(cart->read_expansion(0x4800) == 0xB7);
+    cart->write_prg(0xE000, 10);
+    CHECK(cart->read_prg(0x6000) == 5);
+    cart->write_prg(0xE000, 0xC6);
+    CHECK(cart->read_chr(0x0FFF) == 3);
+    CHECK(cart->read_chr(0x1000) == 30);
+    cart->write_prg(0x8000, 1);
+    cart->write_prg(0xB000, 0);
+    for (int rise = 0; rise < 2; ++rise) {
+        cart->observe_ppu_a12(false);
+        for (int cycle = 0; cycle < 5; ++cycle)
+            cart->clock_cpu();
+        cart->observe_ppu_a12(true);
+        CHECK(cart->irq_pending() == (rise == 1));
+    }
+    cart->write_prg(0xA000, 0);
+    CHECK_FALSE(cart->irq_pending());
+}
+
 TEST_CASE("09-078 locks the NROM/UNROM selection until reset", "[mapper277][cartridge]") {
     register_builtin_mappers();
     auto cart = Cartridge::from_data(image(277, 16, 0, 0, 7));

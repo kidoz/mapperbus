@@ -200,6 +200,7 @@
 #include "core/mappers/mapper410.hpp"
 #include "core/mappers/mapper411.hpp"
 #include "core/mappers/mapper412.hpp"
+#include "core/mappers/mapper413.hpp"
 #include "core/mappers/mapper414.hpp"
 #include "core/mappers/mapper415.hpp"
 #include "core/mappers/mapper416.hpp"
@@ -903,6 +904,8 @@ namespace {
         return TransformerKeyboard::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 352U)
         return Multicart060::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 413U)
+        return Mapper413::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 420U)
         return Mmc3::validate_a971210(header, prg_size, chr_size);
     if (header.mapper_number == 440U || header.mapper_number == 442U)
@@ -2152,6 +2155,16 @@ void register_builtin_mappers() {
     registry.register_mapper(410, make_factory<Mapper410>());
     registry.register_mapper(411, make_factory<Mapper411>());
     registry.register_mapper(412, make_factory<Mapper412>());
+    registry.register_mapper(
+        413,
+        [](const INesHeader& h,
+           std::vector<Byte> prg,
+           std::vector<Byte> chr,
+           std::span<const Byte> samples) -> Result<std::unique_ptr<Mapper>> {
+            if (h.misc_rom_count != 1 || samples.size() != Mapper413::kSerialSize)
+                return std::unexpected("Mapper 413 requires one 8 MiB serial sample ROM");
+            return std::make_unique<Mapper413>(h, std::move(prg), std::move(chr), samples);
+        });
     registry.register_mapper(414, make_factory<Mapper414>());
     registry.register_mapper(415, make_factory<Mapper415>());
     registry.register_mapper(416, make_factory<Mapper416>());
