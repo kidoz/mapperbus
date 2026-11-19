@@ -62,14 +62,15 @@ def main():
                 invalid[5] = 65
                 invalid.extend(bytes(8192))
             else:
-                invalid[6], invalid[7] = 0x61, 0xB8  # Historical duplicate ID 182.
+                invalid[6], invalid[7] = 0x61, 0xB8  # NT-994 uses 512 KiB of each ROM.
             source.write_bytes(invalid)
             result = run(source)
-            assert result.returncode != 0, (index, result.stderr)
             if index == 11:
-                assert "Unsupported mapper: 182" in result.stderr, result.stderr
+                assert result.returncode == 0 and "Ran 2 frames" in result.stderr, result.stderr
+            else:
+                assert result.returncode != 0, (index, result.stderr)
             assert source.read_bytes() == invalid and not source.with_suffix(".sav").exists()
-    print("CLI mapper 114: twenty-four boot profiles and twelve invalid/duplicate headers passed")
+    print("CLI mapper 114: twenty-four boot profiles, eleven invalid headers and a YH-001 image passed")
 
 
 if __name__ == "__main__":

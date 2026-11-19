@@ -331,6 +331,7 @@ core_sources = files(
     'mappers/education_440_442.cpp',
     'mappers/fs305.cpp',
     'mappers/mapper127.cpp',
+    'mappers/yh001.cpp',
     'mappers/nesticle_mmc3.cpp',
     'mappers/multicart51_53.cpp',
     'mappers/transformer_keyboard.cpp',

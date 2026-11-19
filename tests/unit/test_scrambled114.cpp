@@ -256,8 +256,7 @@ TEST_CASE("Scrambled 114 snapshots validate wiring identity, override bits and p
         REQUIRE(copy->read_chr(1U) == 0x40U);
     }
 }
-TEST_CASE("Scrambled 114 geometry accepts only assigned wirings and rejects duplicate mapper 182",
-          "[mappers][scrambled114]") {
+TEST_CASE("Scrambled 114 geometry accepts only assigned wirings", "[mappers][scrambled114]") {
     register_builtin_mappers();
     for (unsigned kind = 0U; kind < 12U; ++kind) {
         auto h = header();
@@ -313,9 +312,75 @@ TEST_CASE("Scrambled 114 geometry accepts only assigned wirings and rejects dupl
     REQUIRE(small->read_prg(0x8000U) == 2U);
     h = header();
     h.mapper_number = 182U;
-    auto duplicate = MapperRegistry::instance().create(h, banks(0x80000U, 8192U), chr());
-    REQUIRE_FALSE(duplicate);
-    REQUIRE(duplicate.error().find("Unsupported mapper") != std::string::npos);
+    REQUIRE(MapperRegistry::instance().create(h, banks(0x80000U, 8192U), chr()));
+    REQUIRE_FALSE(MapperRegistry::instance().create(h, banks(0x40000U, 8192U), chr()));
+}
+TEST_CASE("YH-001 locks its multicart pins independently of the scrambled AX5202P",
+          "[mappers][mapper182]") {
+    auto h = header();
+    h.mapper_number = 182;
+    auto m = board(h, 524288, 524288);
+    REQUIRE(m->configure_board_jumpers(5));
+    REQUIRE_FALSE(m->configure_board_jumpers(8));
+    for (Address addr : {0x6002, 0x67FA, 0x7FFE}) {
+        REQUIRE(m->read_prg(addr) == 5);
+        REQUIRE(m->prg_read_mask(addr) == 7);
+        REQUIRE(m->prg_read_mask(addr - 1) == 0);
+    }
+    REQUIRE(m->read_prg(0xE000) == 15);
+    bank(*m, 0, 6, 0x1A);
+    bank(*m, 0, 2, 0x91);
+    for (unsigned bits = 0; bits < 128; bits += 2) {
+        m->write_prg(0x7FFD, bits);
+        const unsigned prg = ((bits & 2) ? 16 : 0) | ((bits & 16) ? 32 : 0);
+        const unsigned chr_base = prg * 8;
+        REQUIRE(m->read_prg(0x8000) == (prg | ((bits & 32) ? 26 : 10)));
+        REQUIRE(m->read_prg(0xE000) == (prg | ((bits & 32) ? 31 : 15)));
+        const unsigned page = chr_base | ((bits & 64) ? 0x91 : 0x11);
+        REQUIRE(m->read_chr(0x1000) == static_cast<Byte>(page));
+        REQUIRE(m->read_chr(0x1001) == 0x40 + (page >> 8));
+    }
+    m->write_prg(0x8000, 0x40); // ASIC WRAM write protection blocks the outer latch.
+    m->write_prg(0x6000, 0x83);
+    REQUIRE(m->read_prg(0x8000) == 58);
+    m->write_prg(0x8000, 0);
+    m->write_prg(0x6000, 0x83);
+    REQUIRE(m->read_prg(0x8000) == 6);
+    REQUIRE(m->read_prg(0xC000) == 6);
+    m->write_prg(0x7FFC, 0xA3);
+    REQUIRE(m->read_prg(0x8000) == 4);
+    REQUIRE(m->read_prg(0xC000) == 6);
+    m->write_prg(0x6001, 0x13);
+    m->write_prg(0x6000, 0);
+    REQUIRE(m->read_prg(0x8000) == 4);
+    m->write_prg(0x8001, 1);
+    REQUIRE(m->mirror_mode() == MirrorMode::Horizontal);
+    m->write_prg(0xA001, 1);
+    m->write_prg(0xC001, 0);
+    m->write_prg(0xE001, 0);
+    m->clock_irq_counter();
+    REQUIRE_FALSE(m->irq_pending());
+    m->clock_irq_counter();
+    REQUIRE(m->irq_pending());
+    const auto saved = state(*m);
+    m->reset();
+    REQUIRE_FALSE(m->irq_pending());
+    REQUIRE(m->read_prg(0x8000) == 10);
+    StateReader reader(saved);
+    m->load_state(reader);
+    REQUIRE(reader.ok());
+    REQUIRE(m->read_prg(0x8000) == 4);
+    REQUIRE(m->irq_pending());
+    auto invalid = saved;
+    invalid.pop_back();
+    StateReader truncated(invalid);
+    m->load_state(truncated);
+    REQUIRE_FALSE(truncated.ok());
+    REQUIRE(state(*m) == saved);
+    m->power_on();
+    REQUIRE(m->read_prg(0x8000) == 0);
+    REQUIRE(m->mirror_mode() == MirrorMode::Vertical);
+}
 TEST_CASE("NESticle ports select only the destination written by the Akira trainer",
           "[mappers][mapper100]") {
     auto h = header();

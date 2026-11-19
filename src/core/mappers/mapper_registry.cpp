@@ -320,6 +320,7 @@
 #include "core/mappers/vrc7.hpp"
 #include "core/mappers/vs_system.hpp"
 #include "core/mappers/vt3x.hpp"
+#include "core/mappers/yh001.hpp"
 
 namespace mapperbus::core {
 namespace {
@@ -862,6 +863,8 @@ namespace {
         return Multicart51_53::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 100U)
         return NesticleMmc3::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 182U)
+        return Yh001::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 127U)
         return Mapper127::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 170U || header.mapper_number == 175U ||
@@ -1782,6 +1785,7 @@ void register_builtin_mappers() {
     registry.register_mapper(3, make_factory<Cnrom>());
     registry.register_mapper(4, make_factory<Mmc3>());
     registry.register_mapper(100, make_factory<NesticleMmc3>());
+    registry.register_mapper(182, make_factory<Yh001>());
     registry.register_mapper(114, make_factory<Mmc3>());
     registry.register_mapper(115, make_factory<Mmc3>());
     registry.register_mapper(123, make_factory<Mmc3>());
