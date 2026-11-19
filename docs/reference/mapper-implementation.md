@@ -4878,7 +4878,7 @@ or another registered cartridge ID.
 | 056 | Board-specific specification | Registered: Mapper056Ks202 | [r4330](https://www.nesdev.org/w/index.php?oldid=4330) |
 | 057 | Board-specific specification | Registered: Mapper057 | [r4333](https://www.nesdev.org/w/index.php?oldid=4333) |
 | 058 | Board-specific specification | New implementation: DiscreteMapper | [r4340](https://www.nesdev.org/w/index.php?oldid=4340) |
-| 059 | Board-specific specification | Not registered | [r22300](https://www.nesdev.org/w/index.php?oldid=22300) |
+| 059 | Board-specific specification | Registered: BmcT3h53 | [r22300](https://www.nesdev.org/w/index.php?oldid=22300) |
 | 060 | Board-specific specification | Not registered | [r22301](https://www.nesdev.org/w/index.php?oldid=22301) |
 | 061 | Board-specific specification | New implementation: DiscreteMapper | [r22920](https://www.nesdev.org/w/index.php?oldid=22920) |
 | 062 | Board-specific specification | New implementation: DiscreteMapper | [r4357](https://www.nesdev.org/w/index.php?oldid=4357) |
