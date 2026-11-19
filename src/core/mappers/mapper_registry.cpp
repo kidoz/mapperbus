@@ -8,6 +8,7 @@
 #include "core/mappers/bmc_t3h53.hpp"
 #include "core/mappers/bxrom_wram.hpp"
 #include "core/mappers/caltron_041.hpp"
+#include "core/mappers/cartridge_story_274.hpp"
 #include "core/mappers/city_fighter266.hpp"
 #include "core/mappers/cnrom.hpp"
 #include "core/mappers/cnrom185.hpp"
@@ -197,6 +198,8 @@ namespace {
         return Mapper191::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 261U)
         return Ntdec2746::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 274U)
+        return CartridgeStory274::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 12U)
         return Mapper012::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 14U)
@@ -1209,6 +1212,7 @@ void register_builtin_mappers() {
     registry.register_mapper(190, make_factory<Mapper190>());
     registry.register_mapper(191, make_factory<Mapper191>());
     registry.register_mapper(261, make_factory<Ntdec2746>());
+    registry.register_mapper(274, make_factory<CartridgeStory274>());
     registry.register_mapper(12, make_factory<Mapper012>());
     registry.register_mapper(14, make_factory<Sl1632>());
     registry.register_mapper(15, make_factory<Mapper015>());
