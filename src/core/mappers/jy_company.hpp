@@ -7,7 +7,7 @@
 #include "core/mappers/mapper.hpp"
 
 namespace mapperbus::core {
-/// J.Y. Company ASIC and its documented outer-bank multicart PCBs.
+/// J.Y. Company ASIC, obsolete mapper-160 alias, and outer-bank multicart PCBs.
 class JyCompany final : public Mapper {
   public:
     JyCompany(const INesHeader& header, std::vector<Byte> prg, std::vector<Byte> chr);

@@ -982,7 +982,8 @@ void register_builtin_mappers() {
         registry.register_mapper(id, make_factory<Sachen>());
     for (const uint16_t id : {36U, 132U, 136U, 147U, 172U, 173U})
         registry.register_mapper(id, make_factory<Txc>());
-    for (const uint16_t id : {35U, 90U, 209U, 211U, 281U, 282U, 295U, 358U, 386U, 387U, 388U, 397U})
+    for (const uint16_t id :
+         {35U, 90U, 160U, 209U, 211U, 281U, 282U, 295U, 358U, 386U, 387U, 388U, 397U})
         registry.register_mapper(id, make_factory<JyCompany>());
     registry.register_mapper(0, make_factory<Nrom>());
     registry.register_mapper(1, make_factory<Mmc1>());

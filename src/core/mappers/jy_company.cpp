@@ -16,7 +16,8 @@ JyCompany::JyCompany(const INesHeader& h, std::vector<Byte> prg, std::vector<Byt
       prg_ram_(h.is_nes2 ? h.prg_ram_size + h.prg_nvram_size
                          : (h.mapper_number == 35U || h.has_battery ? 8192U : 0U)),
       chr_ram_(chr_.empty()), persistent_(h.has_battery),
-      inhibit_nametables_(h.mapper_number == 90U || h.mapper_number == 388U),
+      inhibit_nametables_(h.mapper_number == 90U || h.mapper_number == 160U ||
+                          h.mapper_number == 388U),
       mapper_id_(h.mapper_number) {
     if (chr_ram_)
         chr_.resize(h.is_nes2 ? h.chr_ram_size : 8192U);
@@ -25,6 +26,7 @@ bool JyCompany::supports_mapper(uint16_t id) {
     switch (id) {
     case 35U:
     case 90U:
+    case 160U:
     case 209U:
     case 211U:
     case 281U:
