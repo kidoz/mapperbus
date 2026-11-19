@@ -5258,7 +5258,7 @@ or another registered cartridge ID.
 | 434 | Board-specific specification | Registered: Mapper434 | [r24539](https://www.nesdev.org/w/index.php?oldid=24539) |
 | 435 | Board-specific specification | Registered: Mapper435 | [r19228](https://www.nesdev.org/w/index.php?oldid=19228) |
 | 436 | Board-specific specification | Not registered | [r23383](https://www.nesdev.org/w/index.php?oldid=23383) |
-| 437 | Board-specific specification | Not registered | [r19230](https://www.nesdev.org/w/index.php?oldid=19230) |
+| 437 | Board-specific specification | Registered: Mapper437 | [r19230](https://www.nesdev.org/w/index.php?oldid=19230) |
 | 438 | Board-specific specification | Not registered | [r19303](https://www.nesdev.org/w/index.php?oldid=19303) |
 | 439 | Board-specific specification | Not registered | [r21163](https://www.nesdev.org/w/index.php?oldid=21163) |
 | 440 | Board-specific specification | Not registered | [r19242](https://www.nesdev.org/w/index.php?oldid=19242) |
