@@ -67,7 +67,7 @@ unusual ROM geometry.
 | Sachen boards (follow-up) | 133, 135, 137, 138, 139, 141, 143, 146, 150, 243 | Explicit latch/8259/SA-015 wiring, asymmetric CIRAM, readable registers and D2 pad, Q-Boy CHR RAM, protection reads and snapshots. |
 | TXC/JV001 boards (follow-up) | 36, 132, 136, 147, 172, 173 | Staged input/register/output, chip-width counters and inversion, S bit, reversed data pins, immediate CHR pin, 147 latch/conflict variant, open bus and snapshots. |
 | J.Y. multicart PCBs (follow-up) | 281, 282, 295, 358, 386, 387, 388, 397 | Board-specific outer PRG/CHR pin assignments, inner masks, outer-register aliases, mapper-388 nametable inhibit, shared IRQs and snapshot/persistence integration. |
-| J.Y. Company ASIC (follow-up) | 35, 90, 209, 211 | PRG/CHR modes and outer banking, physical-read CHR latches, mixed CHR/CIRAM nametables, all four documented IRQ sources, math/protection ports, board jumpers, WRAM persistence and snapshots. |
+| J.Y. Company ASIC (follow-up) | 35, 90, 160, 209, 211 | PRG/CHR modes and outer banking, physical-read CHR latches, mixed CHR/CIRAM nametables, all four documented IRQ sources, math/protection ports, board jumpers, WRAM persistence and snapshots. Mapper 160 is an obsolete mapper-90 alias with advanced nametables inhibited. |
 | Flash boards (follow-up) | 30, 111 | UNROM 512 submappers 0–4, GTROM read-triggered open-bus latch, banked CHR/nametable/bonus RAM, SST39SF040 commands and polling, separate flash persistence; mapper 111 CHR ROM selects direct MMC1. |
 | MMC4 | 10 | 16 KiB PRG, both eight-byte CHR trigger ranges, old-bank trigger fetch, mirroring, RAM, persistence. |
 | Datach (follow-up) | 157 | Fixed 8 KiB CHR RAM, LZ93D50 M2 IRQ, PPU-selected external EEPROM clock, shared SDA, barcode injection, separate reader/cartridge persistence and snapshots. |
@@ -131,6 +131,7 @@ See [mapper tests](../../tests/unit/test_mapper_boards.cpp),
 [RAMBO-1 tests](../../tests/unit/test_rambo1.cpp),
 [Bandai tests](../../tests/unit/test_bandai_fcg.cpp),
 [Datach tests](../../tests/unit/test_datach.cpp),
+[mapper-160 tests](../../tests/unit/test_mapper160.cpp),
 [flash-board tests](../../tests/unit/test_flash_boards.cpp),
 [Sunsoft tests](../../tests/unit/test_sunsoft_boards.cpp),
 [Taito tests](../../tests/unit/test_taito.cpp),
@@ -1169,7 +1170,10 @@ No commercial-title or physical-cartridge compatibility certification is claimed
 
 Mappers 35, 90, 209 and 211 use the original `JyCompany` implementation of
 [NESdev ASIC revision 24184](https://www.nesdev.org/w/index.php?oldid=24184).
-Mapper 90 inhibits both ROM nametables and extended CIRAM arrangements. Mapper
+[Mapper 160](https://www.nesdev.org/wiki/INES_Mapper_160) is registered as an
+obsolete mapper-90 alias; no separate SA009 circuit is inferred from historical
+emulator claims. Mappers 90 and 160 inhibit both ROM nametables and extended CIRAM
+arrangements. Mapper
 211 follows 209: the historical always-ROM-nametable interpretation describes
 no known PCB. Legacy 35 supplies 8 KiB WRAM; NES 2.0 declarations override that
 fallback. Legacy battery-marked boards get 8 KiB persistent WRAM; other legacy
@@ -4979,7 +4983,7 @@ or another registered cartridge ID.
 | 157 | Bandai Datach | New implementation: Datach | [r21310](https://www.nesdev.org/w/index.php?oldid=21310) |
 | 158 | RAMBO-1 nametable variant | New implementation: Rambo1 | [r21299](https://www.nesdev.org/w/index.php?oldid=21299) |
 | 159 | Bandai X24C01 EEPROM | New implementation: BandaiFcg | [r5171](https://www.nesdev.org/w/index.php?oldid=5171) |
-| 160 | Board-specific specification | Not registered | [r5173](https://www.nesdev.org/w/index.php?oldid=5173) |
+| 160 | Obsolete mapper-90 alias | Registered: JyCompany | [r5173](https://www.nesdev.org/w/index.php?oldid=5173) |
 | 161 | Board-specific specification | Not registered | [r5175](https://www.nesdev.org/w/index.php?oldid=5175) |
 | 162 | Board-specific specification | Not registered | [r19013](https://www.nesdev.org/w/index.php?oldid=19013) |
 | 163 | Board-specific specification | Not registered | [r24182](https://www.nesdev.org/w/index.php?oldid=24182) |
