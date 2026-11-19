@@ -54,18 +54,27 @@ Rainbow::Location Rainbow::cpu_location(Address a) const {
                                              : Chip::WorkRam;
     return {chip, (((high & 7U) << 8U) | reg_[reg + 16]) * size + (a & (size - 1U))};
 }
+std::optional<Byte> Rainbow::redirected_vector_byte(Address a) const {
+    if ((a & 0xFFFEU) == 0xFFFA && (reg_[0x6B] & 1U) != 0U)
+        return reg_[0x6D - (a & 1U)];
+    if ((a & 0xFFFEU) == 0xFFFE && (reg_[0x6B] & 2U) != 0U)
+        return reg_[0x6F - (a & 1U)];
+    return std::nullopt;
+}
 Byte Rainbow::prg_read_mask(Address a) const {
     if (a < 0x6000)
         return 0;
-    return cpu_location(a).chip == Chip::WorkRam && !nvram_size_ && work_.empty() ? 0 : 255;
+    if (a >= 0xFFFA && redirected_vector_byte(a))
+        return 0xFFU;
+    return cpu_location(a).chip == Chip::WorkRam && nvram_size_ == 0U && work_.empty() ? 0 : 0xFFU;
 }
 Byte Rainbow::read_prg(Address a) {
     if (a < 0x6000)
         return 0;
-    if ((a & 0xFFFEU) == 0xFFFA && (reg_[0x6B] & 1U))
-        return reg_[0x6D - (a & 1U)];
-    if ((a & 0xFFFEU) == 0xFFFE && (reg_[0x6B] & 2U))
-        return reg_[0x6F - (a & 1U)];
+    if (a >= 0xFFFA) {
+        if (const auto vector_byte = redirected_vector_byte(a))
+            return *vector_byte;
+    }
     return read(cpu_location(a));
 }
 void Rainbow::write_prg(Address a, Byte v) {

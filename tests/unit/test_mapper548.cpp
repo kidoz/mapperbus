@@ -3,6 +3,7 @@
 #include <cstring>
 #include <vector>
 
+#include "core/bus/memory_bus.hpp"
 #include "core/cartridge/cartridge.hpp"
 #include "core/emulator.hpp"
 #include "core/mappers/mapper_registry.hpp"
@@ -773,6 +774,32 @@ TEST_CASE("Rainbow splits the window, fetches extended tiles and sprites and syn
     CHECK_FALSE(c.maps_expansion(0x4283));
     snapshot(c);
 }
+TEST_CASE("Rainbow drives redirected vectors even when the underlying RAM bank is absent",
+          "[mapper682]") {
+    auto c = cartridge(682, 32, 0, 0, 0, 0);
+    MemoryBus bus;
+    bus.connect_cartridge(&c);
+    bus.write_cpu(0x4108, 0x80); // Map unpopulated work RAM throughout $8000-$FFFF.
+    bus.write_cpu(0x416C, 0xB5);
+    bus.write_cpu(0x416D, 0x00);
+    bus.write_cpu(0x416E, 0xD2);
+    bus.write_cpu(0x416F, 0x39);
+
+    bus.write_cpu(0x416B, 1);
+    bus.write_cpu(0x0000, 0x42);
+    CHECK(bus.read_cpu(0xFFFA) == 0x00);
+    CHECK(bus.read_cpu(0xFFFB) == 0xB5);
+    bus.write_cpu(0x0000, 0x42);
+    CHECK(bus.read_cpu(0xFFFE) == 0x42);
+
+    bus.write_cpu(0x416B, 2);
+    bus.write_cpu(0x0000, 0x42);
+    CHECK(bus.read_cpu(0xFFFA) == 0x42);
+    CHECK(bus.read_cpu(0xFFFC) == 0x42);
+    CHECK(bus.read_cpu(0xFFFE) == 0x39);
+    CHECK(bus.read_cpu(0xFFFF) == 0xD2);
+}
+
 TEST_CASE("Rainbow IRQ sources run independently and IPCM observes the unmixed volume",
           "[mapper682]") {
     auto c = cartridge(682, 512, 256, 0, 0, 0);

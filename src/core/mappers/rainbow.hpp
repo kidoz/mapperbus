@@ -62,6 +62,7 @@ class Rainbow final : public Mapper {
         unsigned offset;
     };
     Location cpu_location(Address) const;
+    std::optional<Byte> redirected_vector_byte(Address) const;
     Location pattern_location(unsigned offset) const;
     Location chr_location(Address) const;
     Location nt_location(Address) const;
