@@ -5117,7 +5117,7 @@ some historical aliases share a factory with another ID.
 | 294 | Board-specific specification | Registered: Mapper294 | [r19317](https://www.nesdev.org/w/index.php?oldid=19317) |
 | 295 | J.Y. Company multicart | New implementation: JyCompany | [r23352](https://www.nesdev.org/w/index.php?oldid=23352) |
 | 296 | VT3x | Not registered | [r23820](https://www.nesdev.org/w/index.php?oldid=23820) |
-| 297 | Board-specific specification | Not registered | [r7767](https://www.nesdev.org/w/index.php?oldid=7767) |
+| 297 | TXC Uzi | Registered: Mapper297 | [r7767](https://www.nesdev.org/w/index.php?oldid=7767) |
 | 298 | Board-specific specification | Registered: UnlTf1201 | [r7772](https://www.nesdev.org/w/index.php?oldid=7772) |
 | 299 | Board-specific specification | Registered: Mapper299 | [r22947](https://www.nesdev.org/w/index.php?oldid=22947) |
 | 300 | Board-specific specification | Registered: Mapper300 | [r7775](https://www.nesdev.org/w/index.php?oldid=7775) |
