@@ -5350,7 +5350,7 @@ some historical aliases share a factory with another ID.
 | 552 | Taito X1-017 wiring variant | New implementation: TaitoX1017 | [r24125](https://www.nesdev.org/w/index.php?oldid=24125) |
 | 553 | Sachen 3013 | Registered: Mapper553 | [r8192](https://www.nesdev.org/w/index.php?oldid=8192) |
 | 554 | Kaiser KS-7010 | Registered: Mapper554 | [r8195](https://www.nesdev.org/w/index.php?oldid=8195) |
-| 555 | Board-specific specification | Not registered | [r8198](https://www.nesdev.org/w/index.php?oldid=8198) |
+| 555 | Campus Challenge 1991 reproduction | Registered: Mapper555 | [r8198](https://www.nesdev.org/w/index.php?oldid=8198) |
 | 556 | Board-specific specification | Not registered | [r22948](https://www.nesdev.org/w/index.php?oldid=22948) |
 | 557 | NTDEC 2718 | Registered: Namco108 | [r21239](https://www.nesdev.org/w/index.php?oldid=21239) |
 | 558 | Yancheng YC-03-09 | Not registered | [r23362](https://www.nesdev.org/w/index.php?oldid=23362) |
