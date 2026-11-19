@@ -84,6 +84,7 @@ core_sources = files(
     'mappers/caltron_041.cpp',
     'mappers/mapper049.cpp',
     'mappers/mapper056_ks202.cpp',
+    'mappers/mapper057.cpp',
     'fds/fds.cpp',
     'fds/fds_mapper.cpp',
     'input/controller.cpp',
