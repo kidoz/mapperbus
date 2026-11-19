@@ -23,6 +23,7 @@ image. Mapper 355 requires one 1 KiB PIC firmware image. Mapper 413 requires one
 | Identified historical ROMs | 39 supports the English and Arabic Study & Game multicarts. The separate Subor keyboard is outside this cartridge profile. 54 distinguishes two Novel Diamond circuits. 181 uses the Seicross V2 CHR enable pins. 220 recognizes KS-7057 Gyruss and Boogerman II. |
 | NESticle (100) | The Akira translation uses independent PRG/CHR banks, WRAM and a 512-byte trainer. The trainer can supply its reset entry point. |
 | Legacy variants | 178 supports submappers 0, 2 and 3. Submapper 1 requires an infrared receiver. 216 supports Magic Jewelry II. The Bonza payment reader is outside that profile. 222 implements the CTC-31 wiring. |
+| OneBus (256, 270, 436) | NES 2.0 VT02 with normal 2bpp graphics. Native register transactions, CIRAM and IRQs run through the CPU and PPU. Extended graphics, second APU and enhanced DMA are outstanding. |
 | Educational keyboards | Desktop keyboard input drives the set-1 receiver on 329, the matrix on 365 and 531, and the serial keyboard ports on 371, 440 and 442. Mapper 531 reports the speech device idle. |
 | CF-028 (204) | Address-latched PRG, CHR and mirroring with configurable menu straps. The empty socket in a 56 KiB CHR population reads high. |
 
@@ -1901,10 +1902,9 @@ is claimed.
 ### Historical mapper 182 duplicate
 
 Revision 4858 identifies mapper 182 as a duplicate of 114, describing Hosenkan
-games that initialize the low controls to zero and then do not use them. This
-does not establish another cartridge circuit to implement. The inventory marks
-182 as a historical duplicate and leaves it unregistered; core and CLI tests
-require an unsupported-ID error. No ROM header is silently rewritten to 114.
+games that initialize the low controls to zero. The current assignment covers
+the 512/512 KiB YH-001 (NT-994) multicart. Its outer register selects PRG and CHR
+blocks and can lock itself until reset.
 
 Validation passed the build, all 53 MapperBus test targets and eight serial
 ASan/UBSan suites with the macOS `detect_leaks=0` exception. The mapper executable
@@ -4277,11 +4277,10 @@ standards validation retained zero errors, 72 warnings and three infos across
 
 [NESdev revision 5898](https://www.nesdev.org/w/index.php?oldid=5898)
 describes 251 as a Nestopia assignment duplicating mapper 45 and directs use
-of 45. It does not identify a distinct cartridge circuit. The catalog now
-classifies it as obsolete; it remains unregistered, following the existing
-182/223/248 duplicate policy. Core and native/legacy CLI probes require an
-explicit unsupported-ID error. No header rewrite or silent alias is added.
-Mapper 45 remains a separate implementation task.
+of 45. The catalogued Qilongzhu ES-1064 ROM pair with a reported 251 header
+matches the 253 circuit. Its profile includes 8 KiB battery RAM and 2 KiB
+mixed CHR RAM. Other payloads need separate identification. [MAME cartridge
+catalog](https://github.com/mamedev/mame/blob/master/hash/nes.xml).
 
 ## Mapper-252 follow-up: Waixing VRC4 mixed CHR
 
@@ -4567,12 +4566,9 @@ describes the 110-in-1 address latch and calls the assignment an apparent
 duplicate of mapper 225. The corresponding
 [mapper 225 revision 18874](https://www.nesdev.org/w/index.php?oldid=18874)
 identifies ET-4310 / K-1010 boards and likewise notes the duplicate assignment.
-Following the project's existing duplicate-ID policy, 255 remains unregistered;
-its catalog row now records the research result explicitly. Core, CLI and app
-loading require `Unsupported mapper: 255`. No automatic header rewriting,
-blanket alias or extra registered cartridge ID is introduced. The registry
-still contains 162 cartridge IDs; this is classification and regression work,
-not a new mapper implementation.
+The current 255 profile covers the 1 MiB PRG / 512 KiB CHR New Star 128-in-1
+population. The older 2 MiB / 1 MiB fixtures below exercise the separate 225
+assignment.
 
 Existing `DiscreteMapper` 225 already implements the shared A14 outer bit for
 both PRG and CHR. A6–A11 select the inner 16 KiB PRG bank, A12 selects mirrored
@@ -5080,7 +5076,7 @@ some historical aliases share a factory with another ID.
 | 253 | Waixing VRC4 CHR4/5 / F009S relocation profile | New implementation: KonamiVrc | [r5910](https://www.nesdev.org/w/index.php?oldid=5910) |
 | 254 | Pikachu Y2K WRAM XOR protection | New implementation: Mmc3 | [r24273](https://www.nesdev.org/w/index.php?oldid=24273) |
 | 255 | New Star 128-in-1 | Registered: New Star 128-in-1 population of mapper 225 | [r20429](https://www.nesdev.org/w/index.php?oldid=20429) |
-| 256 | OneBus / VTxx native console registers | Not registered: normal banking/IRQ component implemented | [r23934](https://www.nesdev.org/w/index.php?oldid=23934) |
+| 256 | OneBus VT02 | Registered: OneBus | [r23934](https://www.nesdev.org/w/index.php?oldid=23934) |
 | 257 | Dongda / Hongda educational boards | Registered: Mapper257 | [r23118](https://www.nesdev.org/w/index.php?oldid=23118) |
 | 258 | Board-specific specification | Not registered | [r7627](https://www.nesdev.org/w/index.php?oldid=7627) |
 | 259 | Board-specific specification | Not registered | [r7628](https://www.nesdev.org/w/index.php?oldid=7628) |
@@ -5094,7 +5090,7 @@ some historical aliases share a factory with another ID.
 | 267 | Board-specific specification | Registered: Mapper267 | [r7663](https://www.nesdev.org/w/index.php?oldid=7663) |
 | 268 | Coolboy / Mindkids | Registered: Coolboy | [r24626](https://www.nesdev.org/w/index.php?oldid=24626) |
 | 269 | Board-specific specification | Registered: Mapper269 | [r24351](https://www.nesdev.org/w/index.php?oldid=24351) |
-| 270 | OneBus outer banking | Not registered | [r23373](https://www.nesdev.org/w/index.php?oldid=23373) |
+| 270 | OneBus outer banking | Registered: Mapper270 | [r23373](https://www.nesdev.org/w/index.php?oldid=23373) |
 | 271 | Board-specific specification | Registered: Bmc22026 | [r24533](https://www.nesdev.org/w/index.php?oldid=24533) |
 | 272 | Board-specific specification | Registered: Mapper272 | [r7701](https://www.nesdev.org/w/index.php?oldid=7701) |
 | 273 | Board-specific specification | Registered: Mapper273 | [r7703](https://www.nesdev.org/w/index.php?oldid=7703) |
@@ -5260,7 +5256,7 @@ some historical aliases share a factory with another ID.
 | 433 | Board-specific specification | Registered: Mapper433 | [r8063](https://www.nesdev.org/w/index.php?oldid=8063) |
 | 434 | Board-specific specification | Registered: Mapper434 | [r24539](https://www.nesdev.org/w/index.php?oldid=24539) |
 | 435 | Board-specific specification | Registered: Mapper435 | [r19228](https://www.nesdev.org/w/index.php?oldid=19228) |
-| 436 | Board-specific specification | Not registered | [r23383](https://www.nesdev.org/w/index.php?oldid=23383) |
+| 436 | VT02 outer banking | Registered: Mapper436 | [r23383](https://www.nesdev.org/w/index.php?oldid=23383) |
 | 437 | Board-specific specification | Registered: Mapper437 | [r19230](https://www.nesdev.org/w/index.php?oldid=19230) |
 | 438 | Board-specific specification | Registered: Mapper438 | [r19303](https://www.nesdev.org/w/index.php?oldid=19303) |
 | 439 | Board-specific specification | Registered: Mapper439 | [r21163](https://www.nesdev.org/w/index.php?oldid=21163) |
