@@ -5336,7 +5336,7 @@ some historical aliases share a factory with another ID.
 | 539 | Kid Icarus FDS conversion | Registered: FdsConversion535 | [r8157](https://www.nesdev.org/w/index.php?oldid=8157) |
 | 540 | UNL-82112C | Registered: Mapper359 | [r8158](https://www.nesdev.org/w/index.php?oldid=8158) |
 | 541 | LittleCom 160-in-1 | Registered: MulticartLatches | [r8159](https://www.nesdev.org/w/index.php?oldid=8159) |
-| 542 | Board-specific specification | Not registered | [r8160](https://www.nesdev.org/w/index.php?oldid=8160) |
+| 542 | VRC4 clone with switchable CIRAM | Registered: Mapper530 | [r8160](https://www.nesdev.org/w/index.php?oldid=8160) |
 | 543 | Board-specific specification | Not registered | [r8162](https://www.nesdev.org/w/index.php?oldid=8162) |
 | 544 | Board-specific specification | Not registered | [r24263](https://www.nesdev.org/w/index.php?oldid=24263) |
 | 545 | ST-80 | Registered: Mmc3 | [r23190](https://www.nesdev.org/w/index.php?oldid=23190) |
