@@ -5224,7 +5224,7 @@ or another registered cartridge ID.
 | 400 | 8-BIT XMAS 2017 | Registered: Mapper400 | [r22764](https://www.nesdev.org/w/index.php?oldid=22764) |
 | 401 | Board-specific specification | Registered: Mapper401 | [r18958](https://www.nesdev.org/w/index.php?oldid=18958) |
 | 402 | Board-specific specification | Registered: Mapper402 | [r18959](https://www.nesdev.org/w/index.php?oldid=18959) |
-| 403 | Board-specific specification | Not registered | [r18960](https://www.nesdev.org/w/index.php?oldid=18960) |
+| 403 | Board-specific specification | Registered: Mapper403 | [r18960](https://www.nesdev.org/w/index.php?oldid=18960) |
 | 404 | Board-specific specification | Not registered | [r18976](https://www.nesdev.org/w/index.php?oldid=18976) |
 | 405 | Board-specific specification | Not registered | [r23367](https://www.nesdev.org/w/index.php?oldid=23367) |
 | 406 | Haradius Zero | Not registered | [r22429](https://www.nesdev.org/w/index.php?oldid=22429) |
