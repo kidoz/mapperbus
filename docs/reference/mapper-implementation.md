@@ -26,6 +26,7 @@ image. Mapper 355 requires one 1 KiB PIC firmware image. Mapper 413 requires one
 | OneBus (256, 270, 436) | NES 2.0 VT02 with normal 2bpp graphics. Native register transactions, CIRAM and IRQs run through the CPU and PPU. Extended graphics, second APU and enhanced DMA are outstanding. |
 | Educational keyboards | Desktop keyboard input drives the set-1 receiver on 329, the matrix on 365 and 531, and the serial keyboard ports on 371, 440 and 442. Mapper 531 reports the speech device idle. |
 | CF-028 (204) | Address-latched PRG, CHR and mirroring with configurable menu straps. The empty socket in a 56 KiB CHR population reads high. |
+| COOLGIRL (342) | Native loader and the cores in the default CPLD build. The author’s menu boots and launches After Dark. In-system flash programming and optional custom CPLD cores are outside this profile. |
 
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
@@ -5162,7 +5163,7 @@ some historical aliases share a factory with another ID.
 | 339 | Board-specific specification | Registered: Mapper339 | [r22997](https://www.nesdev.org/w/index.php?oldid=22997) |
 | 340 | Board-specific specification | Registered: Mapper340 | [r7874](https://www.nesdev.org/w/index.php?oldid=7874) |
 | 341 | Board-specific specification | Registered: Mapper341 | [r7876](https://www.nesdev.org/w/index.php?oldid=7876) |
-| 342 | Board-specific specification | Not registered | [r22755](https://www.nesdev.org/w/index.php?oldid=22755) |
+| 342 | COOLGIRL | Registered: Mapper342 | [r22755](https://www.nesdev.org/w/index.php?oldid=22755) |
 | 343 | GD / Sheng Tian multicarts | Registered: ChrRamMulticarts | [r7885](https://www.nesdev.org/w/index.php?oldid=7885) |
 | 344 | Board-specific specification | Registered: Mapper344 | [r19185](https://www.nesdev.org/w/index.php?oldid=19185) |
 | 345 | Board-specific specification | Registered: Mapper345 | [r7895](https://www.nesdev.org/w/index.php?oldid=7895) |
