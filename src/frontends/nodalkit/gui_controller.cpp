@@ -3390,19 +3390,23 @@ void MapperBusGuiController::poll_session_close() {
         session_->emulator().set_persistence_enabled(false);
         close_authorized_ = true;
         window_.request_close();
-    } else {
-        close_intent_.reset();
-        close_ready_ = false;
-        close_captured_ = false;
-        finish_close_rom();
+        return;
     }
+    finish_close_rom();
 }
 
 void MapperBusGuiController::finish_close_rom() {
     // The checked worker already saved all data; retirement must do no I/O.
     session_->emulator().set_persistence_enabled(false);
-    actions_->close_rom();
+    auto closed = actions_->close_rom();
     session_->emulator().set_persistence_enabled(true);
+    if (!closed) {
+        show_close_error(closed.error());
+        return;
+    }
+    close_intent_.reset();
+    close_ready_ = false;
+    close_captured_ = false;
     input_backend_->set_gamepad_assignments(app::gamepad_assignments_for_game(configuration_, {}));
     app::apply_controller_hardware(session_->emulator(),
                                    app::controller_hardware(configuration_.input));
