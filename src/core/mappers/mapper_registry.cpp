@@ -226,6 +226,7 @@
 #include "core/mappers/mapper449.hpp"
 #include "core/mappers/mapper450.hpp"
 #include "core/mappers/mapper451.hpp"
+#include "core/mappers/mapper452.hpp"
 #include "core/mappers/maxi15.hpp"
 #include "core/mappers/mmc1.hpp"
 #include "core/mappers/mmc1a.hpp"
@@ -734,6 +735,8 @@ namespace {
         return Mapper450::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 451U)
         return Mapper451::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 452U)
+        return Mapper452::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 30U || header.mapper_number == 111U)
         return FlashBoards::validate_geometry(header, prg_size, chr_size);
     if (JyCompany::supports_mapper(header.mapper_number))
@@ -1826,6 +1829,7 @@ void register_builtin_mappers() {
     registry.register_mapper(448, make_factory<Mapper448>());
     registry.register_mapper(449, make_factory<Mapper449>());
     registry.register_mapper(450, make_factory<Mapper450>());
+    registry.register_mapper(452, make_factory<Mapper452>());
 }
 
 } // namespace mapperbus::core
