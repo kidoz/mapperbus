@@ -21,6 +21,7 @@ image. Mapper 355 requires one 1 KiB PIC firmware image. Mapper 413 requires one
 |---|---|
 | Vs. Unisystem (75, 99, 151) | Standard single cabinet, shared RAM, RGB PPU, coin, service and DIP inputs. VRC1 cartridges retain four-screen mirroring. Legacy VRC1 images select the Gradius or The Goonies PPU and harness by matching both ROM sockets. DualSystem, light guns and protected cabinet profiles need separate support. |
 | Identified historical ROMs | 39 supports the English and Arabic Study & Game multicarts. The separate Subor keyboard is outside this cartridge profile. 54 distinguishes two Novel Diamond circuits. 181 uses the Seicross V2 CHR enable pins. 220 recognizes KS-7057 Gyruss and Boogerman II. |
+| NESticle (100) | The Akira translation uses independent PRG/CHR banks, WRAM and a 512-byte trainer. The trainer can supply its reset entry point. |
 | Educational keyboards | Desktop keyboard input drives the set-1 receiver on 329, the matrix on 365 and 531, and the serial keyboard ports on 371, 440 and 442. Mapper 531 reports the speech device idle. |
 
 | Implementation | New IDs | Observable behavior covered |
@@ -4923,7 +4924,7 @@ some historical aliases share a factory with another ID.
 | 097 | Irem TAM-S1 | New implementation: DiscreteMapper | [r22478](https://www.nesdev.org/w/index.php?oldid=22478) |
 | 098 | Reserved | Not registered | [r22148](https://www.nesdev.org/w/index.php?oldid=22148) |
 | 099 | Vs. Unisystem | Registered: VsSystem | [r23485](https://www.nesdev.org/w/index.php?oldid=23485) |
-| 100 | Emulator tool use | Not registered | [r23979](https://www.nesdev.org/w/index.php?oldid=23979) |
+| 100 | Akira NESticle translation | Registered: NesticleMmc3 | [r23979](https://www.nesdev.org/w/index.php?oldid=23979) |
 | 101 | JF-10 legacy dump ordering | New implementation: JalecoDiscrete | [r21360](https://www.nesdev.org/w/index.php?oldid=21360) |
 | 102 | Drip Game | Registered: Historical ID for mapper 284 | [r4801](https://www.nesdev.org/w/index.php?oldid=4801) |
 | 103 | Board-specific specification | Registered: Mapper103 | [r4802](https://www.nesdev.org/w/index.php?oldid=4802) |
