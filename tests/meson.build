@@ -703,6 +703,7 @@ foreach mapper_id : [
     test('mapper' + mapper_id, test_mapper, timeout : mapper_test_timeout)
 endforeach
 
+test('fs305', executable('test-fs305',
     'unit/test_fs305.cpp',
     dependencies : [mapperbus_core_dep, catch2_dep],
 ), timeout : mapper_test_timeout)

@@ -23,6 +23,7 @@
 #include "core/mappers/fk23c.hpp"
 #include "core/mappers/flash_boards.hpp"
 #include "core/mappers/fs304.hpp"
+#include "core/mappers/fs305.hpp"
 #include "core/mappers/g0151.hpp"
 #include "core/mappers/golden_game.hpp"
 #include "core/mappers/hp_multicart260.hpp"
@@ -867,6 +868,8 @@ namespace {
         header.mapper_number == 214U || header.mapper_number == 216U ||
         header.mapper_number == 217U || header.mapper_number == 255U)
         return DiscreteMapper::validate_fixed_rom_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 178U || header.mapper_number == 551U)
+        return Fs305::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 329U)
         return TransformerKeyboard::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 440U || header.mapper_number == 442U)
@@ -1863,6 +1866,7 @@ void register_builtin_mappers() {
     registry.register_mapper(207, make_factory<TaitoX1005>());
     registry.register_mapper(82, make_factory<TaitoX1017>());
     registry.register_mapper(531, make_factory<Mmc3>());
+    registry.register_mapper(551, make_factory<Fs305>());
     registry.register_mapper(552, make_factory<TaitoX1017>());
     registry.register_mapper(18, make_factory<JalecoSs88006>());
     registry.register_mapper(72, make_factory<JalecoDiscrete>());
@@ -1918,6 +1922,7 @@ void register_builtin_mappers() {
         registry.register_mapper(id, make_factory<Mapper166>());
     registry.register_mapper(170, make_factory<DiscreteMapper>());
     registry.register_mapper(174, make_factory<Ntdec174>());
+    registry.register_mapper(178, make_factory<Fs305>());
     registry.register_mapper(183, make_factory<Mapper183>());
     registry.register_mapper(189, make_factory<Txc189>());
     registry.register_mapper(190, make_factory<Mapper190>());
