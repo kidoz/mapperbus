@@ -5082,7 +5082,7 @@ or another registered cartridge ID.
 | 258 | Board-specific specification | Not registered | [r7627](https://www.nesdev.org/w/index.php?oldid=7627) |
 | 259 | Board-specific specification | Not registered | [r7628](https://www.nesdev.org/w/index.php?oldid=7628) |
 | 260 | Board-specific specification | Registered: HpMulticart260 | [r22170](https://www.nesdev.org/w/index.php?oldid=22170) |
-| 261 | Board-specific specification | Not registered | [r18984](https://www.nesdev.org/w/index.php?oldid=18984) |
+| 261 | Board-specific specification | Registered: Ntdec2746 | [r18984](https://www.nesdev.org/w/index.php?oldid=18984) |
 | 262 | Sachen Street Heroes / UNL-SHERO | New implementation: Mmc3 | [r7640](https://www.nesdev.org/w/index.php?oldid=7640) |
 | 263 | Rex Soft UNL-KOF97 | New implementation: Mmc3 | [r7642](https://www.nesdev.org/w/index.php?oldid=7642) |
 | 264 | Board-specific specification | Not registered | [r24580](https://www.nesdev.org/w/index.php?oldid=24580) |
