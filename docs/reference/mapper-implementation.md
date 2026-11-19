@@ -5201,7 +5201,7 @@ or another registered cartridge ID.
 | 377 | Board-specific specification | Registered: Mapper377 | [r7987](https://www.nesdev.org/w/index.php?oldid=7987) |
 | 378 | Board-specific specification | Registered: Mapper378 | [r7988](https://www.nesdev.org/w/index.php?oldid=7988) |
 | 379 | Board-specific specification | Registered: Mapper379 | [r24576](https://www.nesdev.org/w/index.php?oldid=24576) |
-| 380 | Board-specific specification | Not registered | [r18847](https://www.nesdev.org/w/index.php?oldid=18847) |
+| 380 | Board-specific specification | Registered: Mapper380 | [r18847](https://www.nesdev.org/w/index.php?oldid=18847) |
 | 381 | Board-specific specification | Not registered | [r24543](https://www.nesdev.org/w/index.php?oldid=24543) |
 | 382 | Board-specific specification | Not registered | [r24536](https://www.nesdev.org/w/index.php?oldid=24536) |
 | 383 | Board-specific specification | Not registered | [r7997](https://www.nesdev.org/w/index.php?oldid=7997) |
