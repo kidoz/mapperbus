@@ -59,6 +59,7 @@
 #include "core/mappers/mapper156_daou.hpp"
 #include "core/mappers/mapper162_fs304.hpp"
 #include "core/mappers/mapper165.hpp"
+#include "core/mappers/mapper166.hpp"
 #include "core/mappers/maxi15.hpp"
 #include "core/mappers/mmc1.hpp"
 #include "core/mappers/mmc1a.hpp"
@@ -158,6 +159,8 @@ namespace {
         return KaiserKs202::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 164U)
         return Fs304::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 166U || header.mapper_number == 167U)
+        return Mapper166::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 12U)
         return Mapper012::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 14U)
@@ -1126,6 +1129,8 @@ void register_builtin_mappers() {
     registry.register_mapper(134, make_factory<T4a54a>());
     registry.register_mapper(142, make_factory<KaiserKs202>());
     registry.register_mapper(164, make_factory<Fs304>());
+    for (const uint16_t id : {166U, 167U})
+        registry.register_mapper(id, make_factory<Mapper166>());
     registry.register_mapper(12, make_factory<Mapper012>());
     registry.register_mapper(14, make_factory<Sl1632>());
     registry.register_mapper(15, make_factory<Mapper015>());
