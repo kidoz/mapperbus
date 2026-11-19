@@ -5271,7 +5271,7 @@ or another registered cartridge ID.
 | 447 | Board-specific specification | Registered: Mapper447 | [r19301](https://www.nesdev.org/w/index.php?oldid=19301) |
 | 448 | Board-specific specification | Registered: Mapper448 | [r19305](https://www.nesdev.org/w/index.php?oldid=19305) |
 | 449 | Board-specific specification | Registered: Mapper449 | [r19306](https://www.nesdev.org/w/index.php?oldid=19306) |
-| 450 | Board-specific specification | Not registered | [r19307](https://www.nesdev.org/w/index.php?oldid=19307) |
+| 450 | Board-specific specification | Registered: Mapper450 | [r19307](https://www.nesdev.org/w/index.php?oldid=19307) |
 | 451 | Haratyler HG/MP | Not registered | [r24353](https://www.nesdev.org/w/index.php?oldid=24353) |
 | 452 | Board-specific specification | Not registered | [r19632](https://www.nesdev.org/w/index.php?oldid=19632) |
 | 453 | Board-specific specification | Not registered | [r19315](https://www.nesdev.org/w/index.php?oldid=19315) |
