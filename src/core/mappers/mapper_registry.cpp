@@ -40,6 +40,7 @@
 #include "core/mappers/namco163.hpp"
 #include "core/mappers/namco175340.hpp"
 #include "core/mappers/nrom.hpp"
+#include "core/mappers/ntdec_2722.hpp"
 #include "core/mappers/ntdec_n625092.hpp"
 #include "core/mappers/rambo1.hpp"
 #include "core/mappers/realtec_multicart.hpp"
@@ -83,6 +84,8 @@ namespace {
         return RetCufrom::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 37U)
         return Mmc3Multicart37::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 40U)
+        return Ntdec2722::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 30U || header.mapper_number == 111U)
         return FlashBoards::validate_geometry(header, prg_size, chr_size);
     if (JyCompany::supports_mapper(header.mapper_number))
@@ -974,6 +977,7 @@ void register_builtin_mappers() {
     registry.register_mapper(17, make_factory<FfeSuperMagicCard>());
     registry.register_mapper(29, make_factory<RetCufrom>());
     registry.register_mapper(37, make_factory<Mmc3Multicart37>());
+    registry.register_mapper(40, make_factory<Ntdec2722>());
 }
 
 } // namespace mapperbus::core
