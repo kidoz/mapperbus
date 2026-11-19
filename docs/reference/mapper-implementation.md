@@ -4927,7 +4927,7 @@ or another registered cartridge ID.
 | 105 | NES-EVENT / MMC1 | Registered: NesEvent | [r23388](https://www.nesdev.org/w/index.php?oldid=23388) |
 | 106 | Board-specific specification | Registered: Mapper106 | [r4815](https://www.nesdev.org/w/index.php?oldid=4815) |
 | 107 | Board-specific specification | New implementation: DiscreteMapper | [r24577](https://www.nesdev.org/w/index.php?oldid=24577) |
-| 108 | FDS-to-cartridge boards | Not registered | [r21237](https://www.nesdev.org/w/index.php?oldid=21237) |
+| 108 | FDS-to-cartridge boards | Registered: FdsConversion108 | [r21237](https://www.nesdev.org/w/index.php?oldid=21237) |
 | 109 | Board-specific specification | Not registered | [r4825](https://www.nesdev.org/w/index.php?oldid=4825) |
 | 110 | Board-specific specification | Not registered | [r4826](https://www.nesdev.org/w/index.php?oldid=4826) |
 | 111 | GTROM / earlier MMC1 variant | New implementation: FlashBoards / Mmc1 | [r24005](https://www.nesdev.org/w/index.php?oldid=24005) |
