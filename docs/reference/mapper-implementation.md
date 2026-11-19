@@ -30,6 +30,7 @@ image. Mapper 355 requires one 1 KiB PIC firmware image. Mapper 413 requires one
 | BlazePro (469) | The cartridge FPGA reads packed FDS sides from its 8 MiB ROM and supplies its own RAM and IRQs. |
 | CHINA_ER_SAN2 (532) | The translation uses N163 banking plus a 29,920-byte font in one NES 2.0 miscellaneous ROM. Text is composed over the output frame using the game’s screen state and nametables. |
 | 451 and 476 | 451 implements the music command/status interface. 476 implements the cartridge latch. Music synthesis and host microphone input respectively are outstanding. |
+| FDS conversions (535, 538, 539) | Each cartridge has its own PRG decode and RAM windows. 535 includes the M2 timer and onboard RAM even when the header omits it. |
 | 534, 540, 542, 543 | Includes the inverted MMC3 IRQ latch, 2 KiB CHR-ROM banking, VRC4-controlled pattern-table CIRAM and the CH-501 serial PAL with two SRAM chips, respectively. |
 
 | Implementation | New IDs | Observable behavior covered |
@@ -5327,11 +5328,11 @@ some historical aliases share a factory with another ID.
 | 532 | CHINA_ER_SAN2 | Registered: San2 | [r8133](https://www.nesdev.org/w/index.php?oldid=8133) |
 | 533 | Sachen 3014 | Registered: Sachen | [r8137](https://www.nesdev.org/w/index.php?oldid=8137) |
 | 534 | ING-022 | Registered: Mapper422 | [r22468](https://www.nesdev.org/w/index.php?oldid=22468) |
-| 535 | Board-specific specification | Not registered | [r8147](https://www.nesdev.org/w/index.php?oldid=8147) |
+| 535 | Whirlwind Manu LH53 | Registered: FdsConversion535 | [r8147](https://www.nesdev.org/w/index.php?oldid=8147) |
 | 536 | Board-specific specification | Not registered | [r23952](https://www.nesdev.org/w/index.php?oldid=23952) |
 | 537 | Board-specific specification | Not registered | [r23952](https://www.nesdev.org/w/index.php?oldid=23952) |
-| 538 | Board-specific specification | Not registered | [r8156](https://www.nesdev.org/w/index.php?oldid=8156) |
-| 539 | Board-specific specification | Not registered | [r8157](https://www.nesdev.org/w/index.php?oldid=8157) |
+| 538 | Super Soccer Champion / 60-1064-16L | Registered: FdsConversion535 | [r8156](https://www.nesdev.org/w/index.php?oldid=8156) |
+| 539 | Kid Icarus FDS conversion | Registered: FdsConversion535 | [r8157](https://www.nesdev.org/w/index.php?oldid=8157) |
 | 540 | Board-specific specification | Not registered | [r8158](https://www.nesdev.org/w/index.php?oldid=8158) |
 | 541 | LittleCom 160-in-1 | Registered: MulticartLatches | [r8159](https://www.nesdev.org/w/index.php?oldid=8159) |
 | 542 | Board-specific specification | Not registered | [r8160](https://www.nesdev.org/w/index.php?oldid=8160) |
