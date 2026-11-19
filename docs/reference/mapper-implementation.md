@@ -22,6 +22,7 @@ image. Mapper 355 requires one 1 KiB PIC firmware image. Mapper 413 requires one
 | Vs. Unisystem (75, 99, 151) | Standard single cabinet, shared RAM, RGB PPU, coin, service and DIP inputs. VRC1 cartridges retain four-screen mirroring. Legacy VRC1 images select the Gradius or The Goonies PPU and harness by matching both ROM sockets. DualSystem, light guns and protected cabinet profiles need separate support. |
 | Identified historical ROMs | 39 supports the English and Arabic Study & Game multicarts. The separate Subor keyboard is outside this cartridge profile. 54 distinguishes two Novel Diamond circuits. 181 uses the Seicross V2 CHR enable pins. 220 recognizes KS-7057 Gyruss and Boogerman II. |
 | NESticle (100) | The Akira translation uses independent PRG/CHR banks, WRAM and a 512-byte trainer. The trainer can supply its reset entry point. |
+| Legacy variants | 178 supports submappers 0, 2 and 3. Submapper 1 requires an infrared receiver. 216 supports Magic Jewelry II. The Bonza payment reader is outside that profile. 222 implements the CTC-31 wiring. |
 | Educational keyboards | Desktop keyboard input drives the set-1 receiver on 329, the matrix on 365 and 531, and the serial keyboard ports on 371, 440 and 442. Mapper 531 reports the speech device idle. |
 
 | Implementation | New IDs | Observable behavior covered |
@@ -5002,7 +5003,7 @@ some historical aliases share a factory with another ID.
 | 175 | Kaiser KS-7022 | Registered: DiscreteMapper | [r5297](https://www.nesdev.org/w/index.php?oldid=5297) |
 | 176 | FK23C | Registered: Fk23c | [r24008](https://www.nesdev.org/w/index.php?oldid=24008) |
 | 177 | Board-specific specification | Registered: Henggedianzi177 | [r24245](https://www.nesdev.org/w/index.php?oldid=24245) |
-| 178 | Waixing / Nanjing family | Not registered | [r22866](https://www.nesdev.org/w/index.php?oldid=22866) |
+| 178 | Waixing FS305 / Nanjing | Registered: Fs305 | [r22866](https://www.nesdev.org/w/index.php?oldid=22866) |
 | 179 | Xinghe Zhanshi | Registered: Xinghe Zhanshi on mapper 176 | [r5374](https://www.nesdev.org/w/index.php?oldid=5374) |
 | 180 | UxROM fixed-low-window variant | New implementation: DiscreteMapper | [r19264](https://www.nesdev.org/w/index.php?oldid=19264) |
 | 181 | Seicross V2 | Registered: Seicross V2 on mapper 185.4 | [r24634](https://www.nesdev.org/w/index.php?oldid=24634) |
@@ -5340,7 +5341,7 @@ some historical aliases share a factory with another ID.
 | 548 | Board-specific specification | Not registered | [r8186](https://www.nesdev.org/w/index.php?oldid=8186) |
 | 549 | Board-specific specification | Not registered | [r21240](https://www.nesdev.org/w/index.php?oldid=21240) |
 | 550 | Board-specific specification | Not registered | [r8188](https://www.nesdev.org/w/index.php?oldid=8188) |
-| 551 | Board-specific specification | Not registered | [r8189](https://www.nesdev.org/w/index.php?oldid=8189) |
+| 551 | Jncota | Registered: Fs305 | [r8189](https://www.nesdev.org/w/index.php?oldid=8189) |
 | 552 | Taito X1-017 wiring variant | New implementation: TaitoX1017 | [r24125](https://www.nesdev.org/w/index.php?oldid=24125) |
 | 553 | Board-specific specification | Not registered | [r8192](https://www.nesdev.org/w/index.php?oldid=8192) |
 | 554 | Board-specific specification | Not registered | [r8195](https://www.nesdev.org/w/index.php?oldid=8195) |
