@@ -25,6 +25,7 @@ unusual ROM geometry.
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
 | Subor karaoke, Family Noraebang and UNROM microphone boards | 514–518 | CIRAM-selected or banked CHR RAM, AX5202P banking, microphone ADCs, K-663A audio and optional LPC speech. |
+| Discrete and FDS conversion boards | 519–522 | Address/data latches, VRC4e CHR RAM, DREAMTECH01 bank switching and restricted MMC3 banking. |
 | Pikachu Y2K (follow-up) | 254 | MMC3 PRG/CHR/CIRAM/IRQs, masked WRAM reads until bank-select unlock, raw RAM persistence, reset policy and atomic snapshots. |
 | Waixing VRC4 fixed/relocated CHR (follow-up) | 253 | Default CHR4/5 RAM and explicit f009s PPU-write relocation, shared 2 KiB RAM, VRC4e banking/CIRAM/IRQ and profile/geometry-bound atomic snapshots. |
 | Waixing VRC4 mixed CHR (follow-up) | 252 | Exact VRC4e A2/A3 decoding, PRG swap, four CIRAM arrangements, WRAM gate, two writable CHR pages and CPU-driven IRQs with atomic snapshots. |
@@ -5311,7 +5312,7 @@ or another registered cartridge ID.
 | 519 | Board-specific specification | Registered: Mapper519 | [r8101](https://www.nesdev.org/w/index.php?oldid=8101) |
 | 520 | Board-specific specification | Registered: Mapper520 | [r8107](https://www.nesdev.org/w/index.php?oldid=8107) |
 | 521 | Board-specific specification | Registered: Mapper521 | [r22137](https://www.nesdev.org/w/index.php?oldid=22137) |
-| 522 | Board-specific specification | Not registered | [r8112](https://www.nesdev.org/w/index.php?oldid=8112) |
+| 522 | Board-specific specification | Registered: Mapper522 | [r8112](https://www.nesdev.org/w/index.php?oldid=8112) |
 | 523 | Board-specific specification | Not registered | [r23888](https://www.nesdev.org/w/index.php?oldid=23888) |
 | 524 | Board-specific specification | Not registered | [r8116](https://www.nesdev.org/w/index.php?oldid=8116) |
 | 525 | Board-specific specification | Not registered | [r8120](https://www.nesdev.org/w/index.php?oldid=8120) |
