@@ -80,6 +80,7 @@ core_sources = files(
     'mappers/mapper174.cpp',
     'mappers/mapper183.cpp',
     'mappers/mapper190.cpp',
+    'mappers/mapper191.cpp',
     'mappers/bmc_t3h53.cpp',
     'mappers/fds_conversion108.cpp',
     'mappers/fs304.cpp',
