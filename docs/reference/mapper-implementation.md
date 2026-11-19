@@ -4947,7 +4947,7 @@ or another registered cartridge ID.
 | 125 | Board-specific specification | Registered: Lh32 | [r4945](https://www.nesdev.org/w/index.php?oldid=4945) |
 | 126 | Board-specific specification | Registered: Tec9719 | [r22468](https://www.nesdev.org/w/index.php?oldid=22468) |
 | 127 | Board-specific specification | Not registered | [r4951](https://www.nesdev.org/w/index.php?oldid=4951) |
-| 128 | Board-specific specification | Not registered | [r21955](https://www.nesdev.org/w/index.php?oldid=21955) |
+| 128 | Board-specific specification | Registered: Mapper128 | [r21955](https://www.nesdev.org/w/index.php?oldid=21955) |
 | 129 | Board-specific specification | Not registered | [r24633](https://www.nesdev.org/w/index.php?oldid=24633) |
 | 130 | Board-specific specification | Not registered | [r24051](https://www.nesdev.org/w/index.php?oldid=24051) |
 | 131 | Board-specific specification | Not registered | [r24052](https://www.nesdev.org/w/index.php?oldid=24052) |
