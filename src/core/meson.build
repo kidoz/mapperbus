@@ -119,6 +119,7 @@ core_sources = files(
     'mappers/nanjing_fc001.cpp',
     'mappers/mapper165.cpp',
     'mappers/racermate168.cpp',
+    'mappers/fk23c.cpp',
     'mappers/vs_system.cpp',
     'fds/fds.cpp',
     'fds/fds_mapper.cpp',

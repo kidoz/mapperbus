@@ -15,6 +15,7 @@
 #include "core/mappers/discrete.hpp"
 #include "core/mappers/fds_conversion108.hpp"
 #include "core/mappers/ffe_super_magic_card.hpp"
+#include "core/mappers/fk23c.hpp"
 #include "core/mappers/flash_boards.hpp"
 #include "core/mappers/fs304.hpp"
 #include "core/mappers/g0151.hpp"
@@ -225,6 +226,8 @@ namespace {
         return Mapper165::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 168U)
         return Racermate168::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 176U)
+        return Fk23c::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 99U)
         return VsSystem::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 30U || header.mapper_number == 111U)
@@ -1169,6 +1172,7 @@ void register_builtin_mappers() {
     registry.register_mapper(163, make_factory<NanjingFc001>());
     registry.register_mapper(165, make_factory<Mapper165>());
     registry.register_mapper(168, make_factory<Racermate168>());
+    registry.register_mapper(176, make_factory<Fk23c>());
 }
 
 } // namespace mapperbus::core
