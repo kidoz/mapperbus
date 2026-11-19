@@ -465,6 +465,7 @@ foreach mapper_id : [
     '091',
     '103',
     '104',
+    '106',
     '099',
 ]
     test_mapper = executable('test-mapper' + mapper_id,

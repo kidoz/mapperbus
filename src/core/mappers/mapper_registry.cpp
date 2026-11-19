@@ -43,6 +43,7 @@
 #include "core/mappers/mapper091.hpp"
 #include "core/mappers/mapper103.hpp"
 #include "core/mappers/mapper104_golden_five.hpp"
+#include "core/mappers/mapper106.hpp"
 #include "core/mappers/maxi15.hpp"
 #include "core/mappers/mmc1.hpp"
 #include "core/mappers/mmc2.hpp"
@@ -153,6 +154,8 @@ namespace {
         return Mapper103::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 104U)
         return Mapper104GoldenFive::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 106U)
+        return Mapper106::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 99U)
         return VsSystem::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 30U || header.mapper_number == 111U)
@@ -1070,6 +1073,7 @@ void register_builtin_mappers() {
     registry.register_mapper(91, make_factory<Mapper091>());
     registry.register_mapper(103, make_factory<Mapper103>());
     registry.register_mapper(104, make_factory<Mapper104GoldenFive>());
+    registry.register_mapper(106, make_factory<Mapper106>());
 }
 
 } // namespace mapperbus::core
