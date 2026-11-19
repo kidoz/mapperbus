@@ -140,8 +140,8 @@ Byte Mapper334::chr_bank(Address addr) const {
 }
 
 Byte Mapper334::read_chr(Address addr) {
-    const auto offset = static_cast<std::size_t>(chr_bank(addr)) * kChrBankSize +
-                        (addr & (kChrBankSize - 1U));
+    const auto offset =
+        static_cast<std::size_t>(chr_bank(addr)) * kChrBankSize + (addr & (kChrBankSize - 1U));
     return chr_rom_[offset % chr_rom_.size()];
 }
 
