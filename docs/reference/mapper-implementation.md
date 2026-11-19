@@ -4985,7 +4985,7 @@ or another registered cartridge ID.
 | 159 | Bandai X24C01 EEPROM | New implementation: BandaiFcg | [r5171](https://www.nesdev.org/w/index.php?oldid=5171) |
 | 160 | Obsolete mapper-90 alias | Registered: JyCompany | [r5173](https://www.nesdev.org/w/index.php?oldid=5173) |
 | 161 | Board-specific specification | Not registered | [r5175](https://www.nesdev.org/w/index.php?oldid=5175) |
-| 162 | Board-specific specification | Not registered | [r19013](https://www.nesdev.org/w/index.php?oldid=19013) |
+| 162 | Board-specific specification | Registered: Mapper162Fs304 | [r19013](https://www.nesdev.org/w/index.php?oldid=19013) |
 | 163 | Board-specific specification | Not registered | [r24182](https://www.nesdev.org/w/index.php?oldid=24182) |
 | 164 | Board-specific specification | Not registered | [r22865](https://www.nesdev.org/w/index.php?oldid=22865) |
 | 165 | Board-specific specification | Not registered | [r5217](https://www.nesdev.org/w/index.php?oldid=5217) |
