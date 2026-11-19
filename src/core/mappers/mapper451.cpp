@@ -41,8 +41,11 @@ Result<void> Mapper451::validate_geometry(const INesHeader& header,
     if (prg_size != kPrgSize || chr_size != 0U) {
         return std::unexpected("Mapper 451 requires exactly 512 KiB PRG flash and no CHR ROM");
     }
-    if (header.chr_ram_size != kChrRamSize || header.chr_nvram_size != 0U) {
-        return std::unexpected("Mapper 451 requires exactly 16 KiB volatile CHR RAM");
+    // The board exposes A13 for two CHR banks. Known NES 2.0 images also
+    // describe a 32 KiB chip with its upper half inaccessible.
+    if ((header.chr_ram_size != kChrRamSize && header.chr_ram_size != 2U * kChrRamSize) ||
+        header.chr_nvram_size != 0U) {
+        return std::unexpected("Mapper 451 requires 16 or 32 KiB volatile CHR RAM");
     }
     if (header.prg_ram_size != 0U || header.prg_nvram_size != 0U || header.has_battery) {
         return std::unexpected("Mapper 451 has no CPU work RAM or battery-backed RAM");

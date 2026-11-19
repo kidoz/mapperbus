@@ -235,7 +235,7 @@ TEST_CASE("Mapper 451 validates exact Haratyler memory geometry", "[mapper451][g
             h.chr_ram_size = 0x2000U;
             break;
         case 5U:
-            h.chr_ram_size = 0x8000U;
+            h.chr_ram_size = 0x10000U;
             break;
         case 6U:
             h.chr_nvram_size = kChrRamSize;

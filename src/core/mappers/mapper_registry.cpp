@@ -2200,6 +2200,7 @@ void register_builtin_mappers() {
     registry.register_mapper(448, make_factory<Mapper448>());
     registry.register_mapper(449, make_factory<Mapper449>());
     registry.register_mapper(450, make_factory<Mapper450>());
+    registry.register_mapper(451, make_factory<Mapper451>());
     registry.register_mapper(452, make_factory<Mapper452>());
     registry.register_mapper(453, make_factory<Mapper453>());
     registry.register_mapper(454, make_factory<Mapper454>());

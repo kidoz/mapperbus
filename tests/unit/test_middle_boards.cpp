@@ -152,6 +152,21 @@ TEST_CASE("Asder PC-95 returns active-low key rows through the cartridge port",
     CHECK(cart->read_expansion(0x4906) == 0xAA);
 }
 
+TEST_CASE("Haratyler accepts a 32 KiB CHR RAM chip and exposes the two wired banks",
+          "[mapper451][cartridge]") {
+    register_builtin_mappers();
+    auto cart = Cartridge::from_data(image(451, 32, 0, 0, 9));
+    REQUIRE(cart);
+    REQUIRE(cart->has_battery());
+    CHECK(cart->battery_ram().size() == 512U * 1024);
+    cart->write_chr(0x1FFF, 0x6A);
+    cart->write_prg(0xE001, 0);
+    cart->write_chr(0x1FFF, 0xB8);
+    cart->write_prg(0xE002, 0);
+    CHECK(cart->read_chr(0x1FFF) == 0x6A);
+    cart->write_prg(0xE003, 0);
+    CHECK(cart->read_chr(0x1FFF) == 0xB8);
+}
 TEST_CASE("LH42 banks program ROM while R5 controls CIRAM independently of CHR RAM",
           "[mapper418][cartridge]") {
     register_builtin_mappers();
