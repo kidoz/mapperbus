@@ -28,6 +28,7 @@ image. Mapper 355 requires one 1 KiB PIC firmware image. Mapper 413 requires one
 | CF-028 (204) | Address-latched PRG, CHR and mirroring with configurable menu straps. The empty socket in a 56 KiB CHR population reads high. |
 | COOLGIRL (342) | Native loader and the cores in the default CPLD build. The author’s menu boots and launches After Dark. In-system flash programming and optional custom CPLD cores are outside this profile. |
 | BlazePro (469) | The cartridge FPGA reads packed FDS sides from its 8 MiB ROM and supplies its own RAM and IRQs. |
+| CHINA_ER_SAN2 (532) | The translation uses N163 banking plus a 29,920-byte font in one NES 2.0 miscellaneous ROM. Text is composed over the output frame using the game’s screen state and nametables. |
 | 451 and 476 | 451 implements the music command/status interface. 476 implements the cartridge latch. Music synthesis and host microphone input respectively are outstanding. |
 
 | Implementation | New IDs | Observable behavior covered |
@@ -5322,7 +5323,7 @@ some historical aliases share a factory with another ID.
 | 529 | Board-specific specification | Registered: Mapper529 | [r19170](https://www.nesdev.org/w/index.php?oldid=19170) |
 | 530 | Board-specific specification | Registered: Mapper530 | [r8130](https://www.nesdev.org/w/index.php?oldid=8130) |
 | 531 | LittleCom PC-95 | Registered: Mmc3 | [r8131](https://www.nesdev.org/w/index.php?oldid=8131) |
-| 532 | Board-specific specification | Not registered | [r8133](https://www.nesdev.org/w/index.php?oldid=8133) |
+| 532 | CHINA_ER_SAN2 | Registered: San2 | [r8133](https://www.nesdev.org/w/index.php?oldid=8133) |
 | 533 | Board-specific specification | Not registered | [r8137](https://www.nesdev.org/w/index.php?oldid=8137) |
 | 534 | Board-specific specification | Not registered | [r22468](https://www.nesdev.org/w/index.php?oldid=22468) |
 | 535 | Board-specific specification | Not registered | [r8147](https://www.nesdev.org/w/index.php?oldid=8147) |
