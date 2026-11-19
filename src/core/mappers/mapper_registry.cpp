@@ -38,6 +38,7 @@
 #include "core/mappers/mapper055.hpp"
 #include "core/mappers/mapper056_ks202.hpp"
 #include "core/mappers/mapper057.hpp"
+#include "core/mappers/mapper083.hpp"
 #include "core/mappers/maxi15.hpp"
 #include "core/mappers/mmc1.hpp"
 #include "core/mappers/mmc2.hpp"
@@ -109,6 +110,8 @@ namespace {
         return Multicart060::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 63U)
         return Multicart063::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 83U || header.mapper_number == 264U)
+        return ConyYoko::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 12U)
         return Mapper012::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 14U)
@@ -1027,6 +1030,8 @@ void register_builtin_mappers() {
     registry.register_mapper(59, make_factory<BmcT3h53>());
     registry.register_mapper(60, make_factory<Multicart060>());
     registry.register_mapper(63, make_factory<Multicart063>());
+    for (const uint16_t id : {83U, 264U})
+        registry.register_mapper(id, make_factory<ConyYoko>());
     registry.register_mapper(12, make_factory<Mapper012>());
     registry.register_mapper(14, make_factory<Sl1632>());
     registry.register_mapper(15, make_factory<Mapper015>());
