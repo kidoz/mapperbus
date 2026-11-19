@@ -21,6 +21,7 @@ image. Mapper 355 requires one 1 KiB PIC firmware image. Mapper 413 requires one
 |---|---|
 | Vs. Unisystem (75, 99, 151) | Standard single cabinet, shared RAM, RGB PPU, coin, service and DIP inputs. VRC1 cartridges retain four-screen mirroring. Legacy VRC1 images select the Gradius or The Goonies PPU and harness by matching both ROM sockets. DualSystem, light guns and protected cabinet profiles need separate support. |
 | Identified historical ROMs | 39 supports the English and Arabic Study & Game multicarts. The separate Subor keyboard is outside this cartridge profile. 54 distinguishes two Novel Diamond circuits. 181 uses the Seicross V2 CHR enable pins. 220 recognizes KS-7057 Gyruss and Boogerman II. |
+| Educational keyboards | Desktop keyboard input drives the set-1 receiver on 329, the matrix on 365 and 531, and the serial keyboard ports on 371, 440 and 442. Mapper 531 reports the speech device idle. |
 
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
@@ -5149,7 +5150,7 @@ some historical aliases share a factory with another ID.
 | 326 | Board-specific specification | Registered: Mapper326 | [r7837](https://www.nesdev.org/w/index.php?oldid=7837) |
 | 327 | Board-specific specification | Registered: Mapper327 | [r7840](https://www.nesdev.org/w/index.php?oldid=7840) |
 | 328 | Board-specific specification | Registered: Mapper328 | [r7844](https://www.nesdev.org/w/index.php?oldid=7844) |
-| 329 | Board-specific specification | Not registered | [r24220](https://www.nesdev.org/w/index.php?oldid=24220) |
+| 329 | PS/2 Transformer | Registered: TransformerKeyboard | [r24220](https://www.nesdev.org/w/index.php?oldid=24220) |
 | 330 | Board-specific specification | Registered: Mapper330 | [r20367](https://www.nesdev.org/w/index.php?oldid=20367) |
 | 331 | Board-specific specification | Registered: Mapper331 | [r7849](https://www.nesdev.org/w/index.php?oldid=7849) |
 | 332 | Board-specific specification | Registered: Mapper332 | [r7853](https://www.nesdev.org/w/index.php?oldid=7853) |
@@ -5185,13 +5186,13 @@ some historical aliases share a factory with another ID.
 | 362 | Board-specific specification | Registered: Mapper362 | [r7956](https://www.nesdev.org/w/index.php?oldid=7956) |
 | 363 | Board-specific specification | Not registered | [r18941](https://www.nesdev.org/w/index.php?oldid=18941) |
 | 364 | Board-specific specification | Registered: Mapper364 | [r21441](https://www.nesdev.org/w/index.php?oldid=21441) |
-| 365 | Asder PC-95 | Not registered | [r7963](https://www.nesdev.org/w/index.php?oldid=7963) |
+| 365 | Asder PC-95 | Registered: Mapper365 | [r7963](https://www.nesdev.org/w/index.php?oldid=7963) |
 | 366 | Board-specific specification | Registered: Mapper366 | [r7967](https://www.nesdev.org/w/index.php?oldid=7967) |
 | 367 | Board-specific specification | Registered: Mapper367 | [r7968](https://www.nesdev.org/w/index.php?oldid=7968) |
 | 368 | Board-specific specification | Registered: Mapper368 | [r7973](https://www.nesdev.org/w/index.php?oldid=7973) |
 | 369 | Board-specific specification | Registered: Mapper369 | [r7975](https://www.nesdev.org/w/index.php?oldid=7975) |
 | 370 | Board-specific specification | Registered: Mapper370 | [r7976](https://www.nesdev.org/w/index.php?oldid=7976) |
-| 371 | Board-specific specification | Not registered | [r7978](https://www.nesdev.org/w/index.php?oldid=7978) |
+| 371 | Spanish PEC-586 | Registered: Mapper371 | [r7978](https://www.nesdev.org/w/index.php?oldid=7978) |
 | 372 | Board-specific specification | Registered: Mapper372 | [r7980](https://www.nesdev.org/w/index.php?oldid=7980) |
 | 373 | Board-specific specification | Registered: Mapper373 | [r7982](https://www.nesdev.org/w/index.php?oldid=7982) |
 | 374 | Board-specific specification | Registered: Mapper374 | [r7984](https://www.nesdev.org/w/index.php?oldid=7984) |
@@ -5260,9 +5261,9 @@ some historical aliases share a factory with another ID.
 | 437 | Board-specific specification | Registered: Mapper437 | [r19230](https://www.nesdev.org/w/index.php?oldid=19230) |
 | 438 | Board-specific specification | Registered: Mapper438 | [r19303](https://www.nesdev.org/w/index.php?oldid=19303) |
 | 439 | Board-specific specification | Registered: Mapper439 | [r21163](https://www.nesdev.org/w/index.php?oldid=21163) |
-| 440 | Board-specific specification | Not registered | [r19242](https://www.nesdev.org/w/index.php?oldid=19242) |
+| 440 | Sonic REC-9388 | Registered: Education440442 | [r19242](https://www.nesdev.org/w/index.php?oldid=19242) |
 | 441 | Board-specific specification | Registered: Mapper441 | [r19277](https://www.nesdev.org/w/index.php?oldid=19277) |
-| 442 | Board-specific specification | Not registered | [r19244](https://www.nesdev.org/w/index.php?oldid=19244) |
+| 442 | Golden Key educational computer | Registered: Education440442 | [r19244](https://www.nesdev.org/w/index.php?oldid=19244) |
 | 443 | Board-specific specification | Registered: Mapper443 | [r8065](https://www.nesdev.org/w/index.php?oldid=8065) |
 | 444 | Board-specific specification | Registered: Mapper444 | [r22463](https://www.nesdev.org/w/index.php?oldid=22463) |
 | 445 | Board-specific specification | Registered: Mapper445 | [r19271](https://www.nesdev.org/w/index.php?oldid=19271) |
@@ -5318,7 +5319,7 @@ some historical aliases share a factory with another ID.
 | 528 | Board-specific specification | Registered: Mapper528 | [r8126](https://www.nesdev.org/w/index.php?oldid=8126) |
 | 529 | Board-specific specification | Registered: Mapper529 | [r19170](https://www.nesdev.org/w/index.php?oldid=19170) |
 | 530 | Board-specific specification | Registered: Mapper530 | [r8130](https://www.nesdev.org/w/index.php?oldid=8130) |
-| 531 | Board-specific specification | Not registered | [r8131](https://www.nesdev.org/w/index.php?oldid=8131) |
+| 531 | LittleCom PC-95 | Registered: Mmc3 | [r8131](https://www.nesdev.org/w/index.php?oldid=8131) |
 | 532 | Board-specific specification | Not registered | [r8133](https://www.nesdev.org/w/index.php?oldid=8133) |
 | 533 | Board-specific specification | Not registered | [r8137](https://www.nesdev.org/w/index.php?oldid=8137) |
 | 534 | Board-specific specification | Not registered | [r22468](https://www.nesdev.org/w/index.php?oldid=22468) |

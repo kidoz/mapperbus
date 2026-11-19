@@ -140,6 +140,11 @@ unbound; existing custom controls keep their values.
 
 ### SDL3 runtime shortcuts
 
+For keyboard cartridges 329, 365, 371, 440, 442 and 531, hold Command on macOS
+or Super/Windows on other desktops in addition to the shortcut below. Ordinary typing goes to the
+cartridge. Connected gamepads continue to drive the emulated controllers.
+In the NodalKit GUI, use the menus for pause, reset and save states while typing.
+
 | Key | Action |
 |---|---|
 | `0`, `1` | Native scale |
