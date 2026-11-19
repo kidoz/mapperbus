@@ -690,6 +690,13 @@ test_mapper432 = executable('test-mapper432',
 )
 test('mapper432', test_mapper432, timeout : mapper_test_timeout * 2)
 
+# The exhaustive outer-register address matrix needs headroom under parallel load.
+test_mapper457 = executable('test-mapper457',
+    'unit/test_mapper457.cpp',
+    dependencies : [mapperbus_core_dep, catch2_dep],
+)
+test('mapper457', test_mapper457, timeout : mapper_test_timeout * 2)
+
 test_one_bus = executable('test-one-bus',
     'unit/test_one_bus.cpp',
     dependencies : [mapperbus_core_dep, catch2_dep],
