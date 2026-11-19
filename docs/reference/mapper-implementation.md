@@ -5078,7 +5078,7 @@ or another registered cartridge ID.
 | 254 | Pikachu Y2K WRAM XOR protection | New implementation: Mmc3 | [r24273](https://www.nesdev.org/w/index.php?oldid=24273) |
 | 255 | 110-in-1 / apparent duplicate of 225 | Apparent duplicate; not registered | [r20429](https://www.nesdev.org/w/index.php?oldid=20429) |
 | 256 | OneBus / VTxx native console registers | Not registered: normal banking/IRQ component implemented | [r23934](https://www.nesdev.org/w/index.php?oldid=23934) |
-| 257 | Dongda / Hongda educational boards | Not registered | [r23118](https://www.nesdev.org/w/index.php?oldid=23118) |
+| 257 | Dongda / Hongda educational boards | Registered: Mapper257 | [r23118](https://www.nesdev.org/w/index.php?oldid=23118) |
 | 258 | Board-specific specification | Not registered | [r7627](https://www.nesdev.org/w/index.php?oldid=7627) |
 | 259 | Board-specific specification | Not registered | [r7628](https://www.nesdev.org/w/index.php?oldid=7628) |
 | 260 | Board-specific specification | Not registered | [r22170](https://www.nesdev.org/w/index.php?oldid=22170) |
