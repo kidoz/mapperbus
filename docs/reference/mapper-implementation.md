@@ -5104,7 +5104,7 @@ or another registered cartridge ID.
 | 280 | Board-specific specification | Not registered | [r7714](https://www.nesdev.org/w/index.php?oldid=7714) |
 | 281 | J.Y. Company multicart | New implementation: JyCompany | [r18938](https://www.nesdev.org/w/index.php?oldid=18938) |
 | 282 | J.Y. Company multicart | New implementation: JyCompany | [r23351](https://www.nesdev.org/w/index.php?oldid=23351) |
-| 283 | Board-specific specification | Not registered | [r7724](https://www.nesdev.org/w/index.php?oldid=7724) |
+| 283 | Board-specific specification | Registered: BlockFamily283 | [r7724](https://www.nesdev.org/w/index.php?oldid=7724) |
 | 284 | Drip | Not registered | [r7727](https://www.nesdev.org/w/index.php?oldid=7727) |
 | 285 | Board-specific specification | Not registered | [r22915](https://www.nesdev.org/w/index.php?oldid=22915) |
 | 286 | Board-specific specification | Not registered | [r24644](https://www.nesdev.org/w/index.php?oldid=24644) |
