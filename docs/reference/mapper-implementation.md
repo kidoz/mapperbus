@@ -33,6 +33,7 @@ image. Mapper 355 requires one 1 KiB PIC firmware image. Mapper 413 requires one
 | 451 and 476 | 451 implements the music command/status interface. 476 implements the cartridge latch. Music synthesis and host microphone input respectively are outstanding. |
 | FDS conversions (535, 538, 539) | Each cartridge has its own PRG decode and RAM windows. 535 includes the M2 timer and onboard RAM even when the header omits it. |
 | 534, 540, 542, 543 | Includes the inverted MMC3 IRQ latch, 2 KiB CHR-ROM banking, VRC4-controlled pattern-table CIRAM and the CH-501 serial PAL with two SRAM chips, respectively. |
+| 547, 555, 556, 560 | QTa background tile metadata, Campus Challenge timer and mixed graphics, JY-215 MMC3/VRC4 switching and BASIC bitplane routing are covered by synthetic cartridge tests. |
 
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
@@ -5341,7 +5342,7 @@ some historical aliases share a factory with another ID.
 | 544 | FS306 | Registered: KonamiVrc | [r24263](https://www.nesdev.org/w/index.php?oldid=24263) |
 | 545 | ST-80 | Registered: Mmc3 | [r23190](https://www.nesdev.org/w/index.php?oldid=23190) |
 | 546 | 03-101 | Registered: Mmc1 | [r8169](https://www.nesdev.org/w/index.php?oldid=8169) |
-| 547 | Konami VRC5 / QTa | Not registered | [r23763](https://www.nesdev.org/w/index.php?oldid=23763) |
+| 547 | Konami VRC5 / QTa | Registered: Mapper547 | [r23763](https://www.nesdev.org/w/index.php?oldid=23763) |
 | 548 | Board-specific specification | Not registered | [r8186](https://www.nesdev.org/w/index.php?oldid=8186) |
 | 549 | Board-specific specification | Not registered | [r21240](https://www.nesdev.org/w/index.php?oldid=21240) |
 | 550 | JY820845C | Registered: Mmc1 | [r8188](https://www.nesdev.org/w/index.php?oldid=8188) |
