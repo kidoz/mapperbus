@@ -116,6 +116,7 @@
 #include "core/mappers/mapper322.hpp"
 #include "core/mappers/mapper323.hpp"
 #include "core/mappers/mapper324.hpp"
+#include "core/mappers/mapper325.hpp"
 #include "core/mappers/maxi15.hpp"
 #include "core/mappers/mmc1.hpp"
 #include "core/mappers/mmc1a.hpp"
@@ -404,6 +405,8 @@ namespace {
         return FaridSlrom323::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 324U)
         return Mapper324::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 325U)
+        return Mapper325::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 30U || header.mapper_number == 111U)
         return FlashBoards::validate_geometry(header, prg_size, chr_size);
     if (JyCompany::supports_mapper(header.mapper_number))
@@ -1400,6 +1403,7 @@ void register_builtin_mappers() {
     registry.register_mapper(322, make_factory<Mapper322>());
     registry.register_mapper(323, make_factory<FaridSlrom323>());
     registry.register_mapper(324, make_factory<Mapper324>());
+    registry.register_mapper(325, make_factory<Mapper325>());
 }
 
 } // namespace mapperbus::core
