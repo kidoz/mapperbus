@@ -5211,7 +5211,7 @@ some historical aliases share a factory with another ID.
 | 387 | J.Y. Company multicart | New implementation: JyCompany | [r23355](https://www.nesdev.org/w/index.php?oldid=23355) |
 | 388 | J.Y. Company multicart | New implementation: JyCompany | [r18944](https://www.nesdev.org/w/index.php?oldid=18944) |
 | 389 | Board-specific specification | Registered: Mapper389 | [r8004](https://www.nesdev.org/w/index.php?oldid=8004) |
-| 390 | Board-specific specification | Not registered | [r18875](https://www.nesdev.org/w/index.php?oldid=18875) |
+| 390 | Realtec 8031 | Registered: RealtecMulticart | [r18875](https://www.nesdev.org/w/index.php?oldid=18875) |
 | 391 | Board-specific specification | Registered: Mapper391 | [r8012](https://www.nesdev.org/w/index.php?oldid=8012) |
 | 392 | Board-specific specification | Registered: Mapper392 | [r19172](https://www.nesdev.org/w/index.php?oldid=19172) |
 | 393 | Board-specific specification | Registered: Mapper393 | [r8014](https://www.nesdev.org/w/index.php?oldid=8014) |
