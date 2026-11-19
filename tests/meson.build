@@ -588,6 +588,7 @@ foreach mapper_id : [
     '367',
     '368',
     '369',
+    '370',
 ]
     test_mapper = executable('test-mapper' + mapper_id,
         'unit/test_mapper' + mapper_id + '.cpp',
