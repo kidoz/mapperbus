@@ -4915,7 +4915,7 @@ or another registered cartridge ID.
 | 093 | Sunsoft 2 | New implementation: DiscreteMapper | [r24542](https://www.nesdev.org/w/index.php?oldid=24542) |
 | 094 | UxROM bit-layout variant | New implementation: DiscreteMapper | [r24548](https://www.nesdev.org/w/index.php?oldid=24548) |
 | 095 | Namco 118 nametable variant | New implementation: Namco108 | [r23892](https://www.nesdev.org/w/index.php?oldid=23892) |
-| 096 | Oeka Kids | Not registered | [r24545](https://www.nesdev.org/w/index.php?oldid=24545) |
+| 096 | Oeka Kids | Registered: OekaKids | [r24545](https://www.nesdev.org/w/index.php?oldid=24545) |
 | 097 | Irem TAM-S1 | New implementation: DiscreteMapper | [r22478](https://www.nesdev.org/w/index.php?oldid=22478) |
 | 098 | Reserved | Not registered | [r22148](https://www.nesdev.org/w/index.php?oldid=22148) |
 | 099 | Vs. System board | Not registered | [r23485](https://www.nesdev.org/w/index.php?oldid=23485) |
