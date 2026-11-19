@@ -310,6 +310,20 @@ TEST_CASE("LittleCom 160 uses address pins for PRG and CIRAM", "[mapper541]") {
     CHECK(c.mirror_mode() == MirrorMode::Horizontal);
     replay(c);
 }
+TEST_CASE("Mapper 542 gates a CIRAM page independently of VRC4 registers", "[mapper542]") {
+    auto c = board(542, 16, 64);
+    CHECK(c.read_prg(0x6000) == 15);
+    CHECK(c.read_prg(0xE000) == 31);
+    c.write_prg(0x8000, 4);
+    CHECK(c.read_prg(0x8000) == 4);
+    c.write_prg(0xD800, 0xFF);
+    CHECK(c.ciram_address(0x0FFF) == 0x07FF);
+    CHECK_FALSE(c.ciram_address(0x1000));
+    replay(c);
+    c.write_prg(0xE800, 0);
+    CHECK_FALSE(c.ciram_address(0x0C00));
+    CHECK(c.read_chr(0x1000) == 0);
+}
 TEST_CASE("CHINA_ER_SAN2 uses its font ROM for the translation overlay", "[mapper532]") {
     register_builtin_mappers();
     constexpr auto font_offset = 16U + 2U * 262144U;

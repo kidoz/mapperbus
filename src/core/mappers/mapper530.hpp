@@ -25,6 +25,7 @@ class Mapper530 final : public Mapper {
     Byte prg_read_mask(Address addr) const override;
     Byte read_chr(Address addr) override;
     void write_chr(Address addr, Byte value) override;
+    std::optional<Address> ciram_address(Address addr) const override;
     MirrorMode mirror_mode() const override;
 
     bool irq_pending() const override;
@@ -53,6 +54,8 @@ class Mapper530 final : public Mapper {
     static std::size_t scramble_chr_bank(std::size_t bank);
     void tick_irq();
 
+    const bool ciram_board_; // Mapper 542 uses straight ROM pins and switchable CIRAM.
+    Byte ciram_enabled_ = 0U;
     const MirrorMode initial_mirror_;
     std::vector<Byte> prg_rom_;
     std::vector<Byte> chr_rom_;

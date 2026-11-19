@@ -932,6 +932,8 @@ namespace {
         return FdsConversion535::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 540U)
         return Mapper359::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 542U)
+        return Mapper530::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 545U)
         return Mmc3::validate_st80(header, prg_size, chr_size);
     if (header.mapper_number == 557U)
@@ -1938,6 +1940,7 @@ void register_builtin_mappers() {
     registry.register_mapper(539, make_factory<FdsConversion535>());
     registry.register_mapper(540, make_factory<Mapper359>());
     registry.register_mapper(541, make_factory<MulticartLatches>());
+    registry.register_mapper(542, make_factory<Mapper530>());
     registry.register_mapper(545, make_factory<Mmc3>());
     registry.register_mapper(551, make_factory<Fs305>());
     registry.register_mapper(552, make_factory<TaitoX1017>());

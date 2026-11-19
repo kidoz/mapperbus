@@ -28,35 +28,37 @@ constexpr Byte kPrgBankMask = 0x1FU;
 // geometry is ROM-only with no expansion audio; smaller fitted ROMs wrap only
 // after the VRC4 bank decode and external address-pin exchanges.
 Mapper530::Mapper530(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte> chr_rom)
-    : initial_mirror_(header.mirror_mode), prg_rom_(std::move(prg_rom)),
-      chr_rom_(std::move(chr_rom)) {
+    : ciram_board_(header.mapper_number == 542U), initial_mirror_(header.mirror_mode),
+      prg_rom_(std::move(prg_rom)), chr_rom_(std::move(chr_rom)) {
     reset();
 }
 
 Result<void> Mapper530::validate_geometry(const INesHeader& header,
                                           std::size_t prg_size,
                                           std::size_t chr_size) {
-    if (header.mapper_number != 530U) {
-        return std::unexpected("Mapper 530 requires mapper ID 530");
+    if (header.mapper_number == 542U && (prg_size != kMaxPrgSize || chr_size != kMaxChrSize))
+        return std::unexpected("Mapper 542 requires 256 KiB PRG and 512 KiB CHR ROM");
+    if (header.mapper_number != 530U && header.mapper_number != 542U) {
+        return std::unexpected("Expected mapper 530 or 542");
     }
     if (!header.is_nes2 || header.submapper != 0U) {
-        return std::unexpected("Mapper 530 requires NES 2.0 submapper 0");
+        return std::unexpected("VRC4f board requires NES 2.0 submapper 0");
     }
     if (!std::has_single_bit(prg_size) || prg_size < kMinPrgSize || prg_size > kMaxPrgSize ||
         !std::has_single_bit(chr_size) || chr_size < kMinChrSize || chr_size > kMaxChrSize) {
         return std::unexpected(
-            "Mapper 530 requires power-of-two 32-256 KiB PRG and 8-512 KiB CHR ROM");
+            "VRC4f board requires power-of-two 32-256 KiB PRG and 8-512 KiB CHR ROM");
     }
     if (header.has_battery || header.prg_ram_size != 0U || header.prg_nvram_size != 0U ||
         header.chr_ram_size != 0U || header.chr_nvram_size != 0U) {
-        return std::unexpected("Mapper 530 provides no cartridge RAM or NVRAM");
+        return std::unexpected("VRC4f board provides no cartridge RAM or NVRAM");
     }
     if (header.mirror_mode != MirrorMode::Horizontal &&
         header.mirror_mode != MirrorMode::Vertical) {
-        return std::unexpected("Mapper 530 requires ordinary H/V initial CIRAM metadata");
+        return std::unexpected("VRC4f board requires ordinary H/V initial CIRAM metadata");
     }
     if (header.has_trainer) {
-        return std::unexpected("Mapper 530 does not provide trainer RAM");
+        return std::unexpected("VRC4f board does not provide trainer RAM");
     }
     return {};
 }
@@ -70,7 +72,7 @@ std::size_t Mapper530::scramble_chr_bank(std::size_t bank) {
 }
 
 bool Mapper530::maps_prg(Address addr) const {
-    return addr >= 0x8000U;
+    return addr >= (ciram_board_ ? 0x6000U : 0x8000U);
 }
 
 Byte Mapper530::prg_read_mask(Address addr) const {
@@ -82,6 +84,8 @@ Byte Mapper530::read_prg(Address addr) {
         return 0U;
     }
 
+    if (addr < 0x8000U)
+        return prg_rom_[15U * kPrgBankSize + (addr & 0x1FFFU)];
     const auto slot = static_cast<unsigned>((addr - 0x8000U) >> 13U);
     const bool swap = (state_.mode & 2U) != 0U;
     std::size_t bank = kFixedLastPrgBank;
@@ -92,8 +96,8 @@ Byte Mapper530::read_prg(Address addr) {
     } else if (slot == 2U) {
         bank = swap ? state_.prg_banks[0U] : kFixedSecondLastPrgBank;
     }
-    const std::size_t offset =
-        scramble_prg_bank(bank) * kPrgBankSize + (addr & (kPrgBankSize - 1U));
+    const std::size_t offset = (ciram_board_ ? bank : scramble_prg_bank(bank)) * kPrgBankSize +
+                               (addr & (kPrgBankSize - 1U));
     return prg_rom_[offset % prg_rom_.size()];
 }
 
@@ -102,6 +106,10 @@ void Mapper530::write_prg(Address addr, Byte value) {
         return;
     }
 
+    if (ciram_board_ && ((addr & 0xF800U) == 0xD800U || (addr & 0xF800U) == 0xE800U)) {
+        ciram_enabled_ = (addr >> 12U) & 1U;
+        return;
+    }
     const auto group = static_cast<unsigned>(addr >> 12U);
     const auto port = static_cast<unsigned>(addr) & 3U;
     if (group == 8U || group == 10U) {
@@ -155,12 +163,18 @@ Byte Mapper530::read_chr(Address addr) {
         return 0U;
     }
     const auto bank = state_.chr_banks[(addr >> 10U) & 7U];
-    const std::size_t offset =
-        scramble_chr_bank(bank) * kChrBankSize + (addr & (kChrBankSize - 1U));
+    const std::size_t offset = (ciram_board_ ? bank : scramble_chr_bank(bank)) * kChrBankSize +
+                               (addr & (kChrBankSize - 1U));
     return chr_rom_[offset % chr_rom_.size()];
 }
 
 void Mapper530::write_chr(Address /*addr*/, Byte /*value*/) {}
+
+std::optional<Address> Mapper530::ciram_address(Address addr) const {
+    if (ciram_enabled_ && (addr & 0xFC00U) == 0x0C00U)
+        return static_cast<Address>(0x0400U | (addr & 0x03FFU));
+    return std::nullopt;
+}
 
 MirrorMode Mapper530::mirror_mode() const {
     return state_.mirror;
@@ -198,12 +212,15 @@ void Mapper530::clock_cpu() {
 }
 
 void Mapper530::reset() {
+    ciram_enabled_ = 0U;
     state_ = State{};
     state_.mirror = initial_mirror_;
 }
 
 void Mapper530::save_state(StateWriter& writer) const {
-    writer.write(kStateTag);
+    writer.write<std::uint16_t>(ciram_board_ ? 0x5420U : kStateTag);
+    if (ciram_board_)
+        writer.write(ciram_enabled_);
     writer.write(static_cast<std::uint32_t>(prg_rom_.size()));
     writer.write(static_cast<std::uint32_t>(chr_rom_.size()));
     writer.write(static_cast<Byte>(initial_mirror_));
@@ -221,6 +238,7 @@ void Mapper530::save_state(StateWriter& writer) const {
 
 void Mapper530::load_state(StateReader& reader) {
     const auto tag = reader.read<std::uint16_t>();
+    const auto ciram = ciram_board_ ? reader.read<Byte>() : Byte{0};
     const auto prg_size = reader.read<std::uint32_t>();
     const auto chr_size = reader.read<std::uint32_t>();
     const auto initial_mirror = reader.read<Byte>();
@@ -237,9 +255,9 @@ void Mapper530::load_state(StateReader& reader) {
     reader.read(next.irq_pending);
 
     const bool valid =
-        reader.ok() && reader.remaining() == 0U && tag == kStateTag &&
-        prg_size == prg_rom_.size() && chr_size == chr_rom_.size() &&
-        initial_mirror == static_cast<Byte>(initial_mirror_) &&
+        reader.ok() && reader.remaining() == 0U && ciram <= 1U &&
+        tag == (ciram_board_ ? 0x5420U : kStateTag) && prg_size == prg_rom_.size() &&
+        chr_size == chr_rom_.size() && initial_mirror == static_cast<Byte>(initial_mirror_) &&
         std::ranges::all_of(next.prg_banks, [](Byte bank) { return bank <= kPrgBankMask; }) &&
         std::ranges::all_of(next.chr_banks, [](std::uint16_t bank) { return bank <= 0x01FFU; }) &&
         next.mirror != MirrorMode::FourScreen && next.mirror <= MirrorMode::SingleUpper &&
@@ -251,6 +269,7 @@ void Mapper530::load_state(StateReader& reader) {
         return;
     }
 
+    ciram_enabled_ = ciram;
     state_ = next;
 }
 
