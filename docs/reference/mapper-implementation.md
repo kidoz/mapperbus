@@ -4989,7 +4989,7 @@ or another registered cartridge ID.
 | 163 | Board-specific specification | Registered: NanjingFc001 | [r24182](https://www.nesdev.org/w/index.php?oldid=24182) |
 | 164 | Board-specific specification | Registered: Fs304 | [r22865](https://www.nesdev.org/w/index.php?oldid=22865) |
 | 165 | Board-specific specification | Registered: Mapper165 | [r5217](https://www.nesdev.org/w/index.php?oldid=5217) |
-| 166 | Board-specific specification | Not registered | [r22345](https://www.nesdev.org/w/index.php?oldid=22345) |
+| 166 | Board-specific specification | Registered: Mapper166 | [r22345](https://www.nesdev.org/w/index.php?oldid=22345) |
 | 167 | Board-specific specification | Not registered | [r22345](https://www.nesdev.org/w/index.php?oldid=22345) |
 | 168 | Racermate | Not registered | [r22805](https://www.nesdev.org/w/index.php?oldid=22805) |
 | 169 | Board-specific specification | Not registered | [r5247](https://www.nesdev.org/w/index.php?oldid=5247) |
