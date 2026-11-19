@@ -27,6 +27,7 @@ image. Mapper 355 requires one 1 KiB PIC firmware image. Mapper 413 requires one
 | Educational keyboards | Desktop keyboard input drives the set-1 receiver on 329, the matrix on 365 and 531, and the serial keyboard ports on 371, 440 and 442. Mapper 531 reports the speech device idle. |
 | CF-028 (204) | Address-latched PRG, CHR and mirroring with configurable menu straps. The empty socket in a 56 KiB CHR population reads high. |
 | COOLGIRL (342) | Native loader and the cores in the default CPLD build. The author’s menu boots and launches After Dark. In-system flash programming and optional custom CPLD cores are outside this profile. |
+| BlazePro (469) | The cartridge FPGA reads packed FDS sides from its 8 MiB ROM and supplies its own RAM and IRQs. |
 | 451 and 476 | 451 implements the music command/status interface. 476 implements the cartridge latch. Music synthesis and host microphone input respectively are outstanding. |
 
 | Implementation | New IDs | Observable behavior covered |
@@ -5288,7 +5289,7 @@ some historical aliases share a factory with another ID.
 | 463 | Board-specific specification | Registered: Mapper463 | [r22670](https://www.nesdev.org/w/index.php?oldid=22670) |
 | 467 | Board-specific specification | Registered: Mapper467 | [r19326](https://www.nesdev.org/w/index.php?oldid=19326) |
 | 468 | Board-specific specification | Registered: Mapper468 | [r20144](https://www.nesdev.org/w/index.php?oldid=20144) |
-| 469 | Board-specific specification | Not registered | [r21014](https://www.nesdev.org/w/index.php?oldid=21014) |
+| 469 | BlazePro FDS multicart | Registered: BlazeProFds | [r21014](https://www.nesdev.org/w/index.php?oldid=21014) |
 | 470 | Board-specific specification | Registered: Mapper470 | [r20148](https://www.nesdev.org/w/index.php?oldid=20148) |
 | 471 | Board-specific specification | Registered: Mapper471 | [r23357](https://www.nesdev.org/w/index.php?oldid=23357) |
 | 472 | Board-specific specification | Registered: Mapper472 | [r23358](https://www.nesdev.org/w/index.php?oldid=23358) |
