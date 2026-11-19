@@ -5291,7 +5291,7 @@ or another registered cartridge ID.
 | 470 | Board-specific specification | Registered: Mapper470 | [r20148](https://www.nesdev.org/w/index.php?oldid=20148) |
 | 471 | Board-specific specification | Registered: Mapper471 | [r23357](https://www.nesdev.org/w/index.php?oldid=23357) |
 | 472 | Board-specific specification | Registered: Mapper472 | [r23358](https://www.nesdev.org/w/index.php?oldid=23358) |
-| 473 | Board-specific specification | Not registered | [r23359](https://www.nesdev.org/w/index.php?oldid=23359) |
+| 473 | Board-specific specification | Registered: Mapper473 | [r23359](https://www.nesdev.org/w/index.php?oldid=23359) |
 | 474 | Board-specific specification | Not registered | [r23360](https://www.nesdev.org/w/index.php?oldid=23360) |
 | 476 | Board-specific specification | Not registered | [r22133](https://www.nesdev.org/w/index.php?oldid=22133) |
 | 479 | Board-specific specification | Not registered | [r21982](https://www.nesdev.org/w/index.php?oldid=21982) |
