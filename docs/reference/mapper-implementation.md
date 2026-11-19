@@ -4856,7 +4856,7 @@ or another registered cartridge ID.
 | 037 | Board-specific specification | Registered: Mmc3Multicart37 | [r4204](https://www.nesdev.org/w/index.php?oldid=4204) |
 | 038 | Board-specific specification | New implementation: DiscreteMapper | [r23289](https://www.nesdev.org/w/index.php?oldid=23289) |
 | 039 | Board-specific specification | Not registered | [r4217](https://www.nesdev.org/w/index.php?oldid=4217) |
-| 040 | Board-specific specification | Not registered | [r19687](https://www.nesdev.org/w/index.php?oldid=19687) |
+| 040 | Board-specific specification | Registered: Ntdec2722 | [r19687](https://www.nesdev.org/w/index.php?oldid=19687) |
 | 041 | Board-specific specification | Not registered | [r24572](https://www.nesdev.org/w/index.php?oldid=24572) |
 | 042 | Board-specific specification | Not registered | [r4239](https://www.nesdev.org/w/index.php?oldid=4239) |
 | 043 | Board-specific specification | Not registered | [r4258](https://www.nesdev.org/w/index.php?oldid=4258) |
