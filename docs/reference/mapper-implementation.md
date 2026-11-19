@@ -27,6 +27,7 @@ image. Mapper 355 requires one 1 KiB PIC firmware image. Mapper 413 requires one
 | Educational keyboards | Desktop keyboard input drives the set-1 receiver on 329, the matrix on 365 and 531, and the serial keyboard ports on 371, 440 and 442. Mapper 531 reports the speech device idle. |
 | CF-028 (204) | Address-latched PRG, CHR and mirroring with configurable menu straps. The empty socket in a 56 KiB CHR population reads high. |
 | COOLGIRL (342) | Native loader and the cores in the default CPLD build. The author’s menu boots and launches After Dark. In-system flash programming and optional custom CPLD cores are outside this profile. |
+| 451 and 476 | 451 implements the music command/status interface. 476 implements the cartridge latch. Music synthesis and host microphone input respectively are outstanding. |
 
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
@@ -5272,7 +5273,7 @@ some historical aliases share a factory with another ID.
 | 448 | Board-specific specification | Registered: Mapper448 | [r19305](https://www.nesdev.org/w/index.php?oldid=19305) |
 | 449 | Board-specific specification | Registered: Mapper449 | [r19306](https://www.nesdev.org/w/index.php?oldid=19306) |
 | 450 | Board-specific specification | Registered: Mapper450 | [r19307](https://www.nesdev.org/w/index.php?oldid=19307) |
-| 451 | Haratyler HG/MP | Not registered | [r24353](https://www.nesdev.org/w/index.php?oldid=24353) |
+| 451 | Haratyler HG/MP | Registered: Mapper451 | [r24353](https://www.nesdev.org/w/index.php?oldid=24353) |
 | 452 | Board-specific specification | Registered: Mapper452 | [r19632](https://www.nesdev.org/w/index.php?oldid=19632) |
 | 453 | Board-specific specification | Registered: Mapper453 | [r19315](https://www.nesdev.org/w/index.php?oldid=19315) |
 | 454 | Board-specific specification | Registered: Mapper454 | [r21017](https://www.nesdev.org/w/index.php?oldid=21017) |
