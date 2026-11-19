@@ -16,6 +16,11 @@ class Mmc1 : public Mapper {
   public:
     Mmc1(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte> chr_rom);
 
+    static Result<void> validate_03101(const INesHeader& header, std::size_t prg, std::size_t chr);
+    static Result<void> validate_jy820845c(const INesHeader& header,
+                                           std::size_t prg,
+                                           std::size_t chr);
+
     Byte read_prg(Address addr) override;
     void write_prg(Address addr, Byte value) override;
     void write_prg_cpu(Address addr, Byte value, bool consecutive) override;
@@ -25,6 +30,8 @@ class Mmc1 : public Mapper {
     void write_chr(Address addr, Byte value) override;
     MirrorMode mirror_mode() const override;
     void reset() override;
+    void write_expansion(Address addr, Byte value) override;
+    static Result<void> validate_ch501(const INesHeader& header, std::size_t prg, std::size_t chr);
     void save_state(StateWriter& writer) const override;
     void load_state(StateReader& reader) override;
     std::span<const Byte> battery_ram() const override;
@@ -34,6 +41,18 @@ class Mmc1 : public Mapper {
     void write_register(Address addr, Byte value);
     void update_banks();
 
+    std::size_t ch501_ram_offset(Address addr) const;
+    std::size_t ch501_chr_offset(Address addr) const;
+    std::vector<Byte> ch501_sram_;
+    std::vector<Byte> ch501_chr_;
+    Byte outer_bank_ = 0;
+    Byte outer_shift_ = 0;
+    Byte outer_count_ = 0;
+
+    const bool jy820845c_;
+    const bool board03101_;
+    Byte outer_ = 0;
+    Byte mhrom_ = 0;
     const bool direct_;
     const bool has_prg_ram_;
     std::vector<Byte> prg_rom_;

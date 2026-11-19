@@ -105,6 +105,36 @@ void ColorDreams::load_state(StateReader& r) {
 
 // --- MMC1 (1) ---
 void Mmc1::save_state(StateWriter& w) const {
+    if (jy820845c_ || board03101_) {
+        w.write<Word>(board03101_ ? 546 : 550);
+        if (board03101_)
+            w.write_array(chr_ram_);
+        w.write_array(prg_ram_);
+        w.write(outer_);
+        w.write(mhrom_);
+        w.write(shift_register_);
+        w.write(write_count_);
+        w.write(control_);
+        w.write(chr_bank0_);
+        w.write(chr_bank1_);
+        w.write(prg_bank_);
+        return;
+    }
+    if (!ch501_sram_.empty()) {
+        w.write<uint16_t>(543U);
+        w.write_array(std::array{shift_register_,
+                                 write_count_,
+                                 control_,
+                                 chr_bank0_,
+                                 chr_bank1_,
+                                 prg_bank_,
+                                 outer_bank_,
+                                 outer_shift_,
+                                 outer_count_});
+        w.write_bytes(ch501_sram_);
+        w.write_bytes(ch501_chr_);
+        return;
+    }
     w.write_array(prg_ram_);
     w.write_array(chr_ram_);
     w.write(shift_register_);
@@ -120,6 +150,71 @@ void Mmc1::save_state(StateWriter& w) const {
     w.write(mirror_mode_);
 }
 void Mmc1::load_state(StateReader& r) {
+    if (jy820845c_ || board03101_) {
+        const auto tag = r.read<Word>();
+        decltype(chr_ram_) chr{};
+        if (board03101_)
+            r.read_array(chr);
+        decltype(prg_ram_) ram{};
+        r.read_array(ram);
+        const auto outer = r.read<Byte>();
+        const auto mhrom = r.read<Byte>();
+        const auto shift = r.read<Byte>();
+        const auto count = r.read<Byte>();
+        const auto control = r.read<Byte>();
+        const auto chr0 = r.read<Byte>();
+        const auto chr1 = r.read<Byte>();
+        const auto prg = r.read<Byte>();
+        if (!r.ok() || tag != (board03101_ ? 546 : 550) || (!board03101_ && outer > 15) ||
+            (board03101_ && mhrom) || (mhrom & ~0x13U) || shift > 31 || count > 4 ||
+            (shift & ((0x20U >> count) - 1U)) != (0x10U >> count) || control > 31 || chr0 > 31 ||
+            chr1 > 31 || prg > 31) {
+            r.fail();
+            return;
+        }
+        if (board03101_)
+            chr_ram_ = chr;
+        prg_ram_ = ram;
+        outer_ = outer;
+        mhrom_ = mhrom;
+        shift_register_ = shift;
+        write_count_ = count;
+        control_ = control;
+        chr_bank0_ = chr0;
+        chr_bank1_ = chr1;
+        prg_bank_ = prg;
+        update_banks();
+        return;
+    }
+    if (!ch501_sram_.empty()) {
+        const auto id = r.read<uint16_t>();
+        std::array<Byte, 9> regs{};
+        r.read_array(regs);
+        std::vector<Byte> sram, chr;
+        r.read_bytes(sram, ch501_sram_.size());
+        r.read_bytes(chr, ch501_chr_.size());
+        if (!r.ok() || id != 543U || regs[0] > 31U || regs[1] > 4U ||
+            (regs[0] & ((1U << (5U - regs[1])) - 1U)) != (1U << (4U - regs[1])) || regs[2] > 31U ||
+            regs[3] > 31U || regs[4] > 31U || regs[5] > 31U || regs[6] > 15U || regs[8] > 3U ||
+            regs[7] >= (1U << regs[8]) || sram.size() != ch501_sram_.size() ||
+            chr.size() != ch501_chr_.size()) {
+            r.fail();
+            return;
+        }
+        shift_register_ = regs[0];
+        write_count_ = regs[1];
+        control_ = regs[2];
+        chr_bank0_ = regs[3];
+        chr_bank1_ = regs[4];
+        prg_bank_ = regs[5];
+        outer_bank_ = regs[6];
+        outer_shift_ = regs[7];
+        outer_count_ = regs[8];
+        ch501_sram_.swap(sram);
+        ch501_chr_.swap(chr);
+        update_banks();
+        return;
+    }
     r.read_array(prg_ram_);
     r.read_array(chr_ram_);
     r.read(shift_register_);
@@ -566,9 +661,16 @@ void Nrom::set_battery_ram(std::span<const Byte> data) {
 }
 
 std::span<const Byte> Mmc1::battery_ram() const {
+    if (!ch501_sram_.empty())
+        return ch501_sram_;
     return has_prg_ram_ ? std::span<const Byte>(prg_ram_) : std::span<const Byte>{};
 }
 void Mmc1::set_battery_ram(std::span<const Byte> data) {
+    if (!ch501_sram_.empty()) {
+        if (data.size() == ch501_sram_.size())
+            std::ranges::copy(data, ch501_sram_.begin());
+        return;
+    }
     restore_prg_ram(prg_ram_, data);
 }
 

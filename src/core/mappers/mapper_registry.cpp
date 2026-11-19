@@ -934,8 +934,14 @@ namespace {
         return Mapper359::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 542U)
         return Mapper530::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 543U)
+        return Mmc1::validate_ch501(header, prg_size, chr_size);
     if (header.mapper_number == 545U)
         return Mmc3::validate_st80(header, prg_size, chr_size);
+    if (header.mapper_number == 546U)
+        return Mmc1::validate_03101(header, prg_size, chr_size);
+    if (header.mapper_number == 550U)
+        return Mmc1::validate_jy820845c(header, prg_size, chr_size);
     if (header.mapper_number == 557U)
         return Namco108::validate_ntdec2718(header, prg_size, chr_size);
     if (header.mapper_number == 30U || header.mapper_number == 111U)
@@ -1941,7 +1947,10 @@ void register_builtin_mappers() {
     registry.register_mapper(540, make_factory<Mapper359>());
     registry.register_mapper(541, make_factory<MulticartLatches>());
     registry.register_mapper(542, make_factory<Mapper530>());
+    registry.register_mapper(543, make_factory<Mmc1>());
     registry.register_mapper(545, make_factory<Mmc3>());
+    registry.register_mapper(546, make_factory<Mmc1>());
+    registry.register_mapper(550, make_factory<Mmc1>());
     registry.register_mapper(551, make_factory<Fs305>());
     registry.register_mapper(552, make_factory<TaitoX1017>());
     registry.register_mapper(18, make_factory<JalecoSs88006>());

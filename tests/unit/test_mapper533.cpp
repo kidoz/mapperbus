@@ -324,6 +324,30 @@ TEST_CASE("Mapper 542 gates a CIRAM page independently of VRC4 registers", "[map
     CHECK_FALSE(c.ciram_address(0x0C00));
     CHECK(c.read_chr(0x1000) == 0);
 }
+TEST_CASE("CH-501 retains serial writes and selects both SRAM chips", "[mapper543]") {
+    auto c = board(543, 128, 0, 0xA0, 9);
+    auto outer = [&](Byte bank) {
+        for (int i = 0; i < 4; ++i)
+            c.write_expansion(0x5FFF, ((bank >> i) & 1) * 8);
+    };
+    outer(9);
+    CHECK(c.read_prg(0x8000) == 32);
+    CHECK(c.read_prg(0xC000) == 62);
+    c.write_prg(0x6000, 13);
+    outer(15);
+    c.write_prg(0x6000, 17);
+    REQUIRE(c.battery_ram().size() == 65536);
+    CHECK(c.battery_ram()[2 * 8192] == 13);
+    CHECK(c.battery_ram()[7 * 8192] == 17);
+    c.write_expansion(0x5000, 0);
+    replay(c); // first PAL bit survives the snapshot
+    for (int i = 0; i < 3; ++i)
+        c.write_expansion(0x5000, 8);
+    CHECK(c.read_prg(0x8000) == 192);
+    CHECK(c.read_prg(0x6000) == 0);
+}
+} // namespace
+
 TEST_CASE("CHINA_ER_SAN2 uses its font ROM for the translation overlay", "[mapper532]") {
     register_builtin_mappers();
     constexpr auto font_offset = 16U + 2U * 262144U;

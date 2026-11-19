@@ -210,6 +210,29 @@ TEST_CASE("ST-80 routes MMC3 pins to the menu, the large chip and the small chip
     snapshot(c);
 }
 
+TEST_CASE("JY820845C observes MMC1 writes during MHROM banking and locks its game selection",
+          "[mapper550]") {
+    auto c = cartridge(550, 512, 128, 0, 7, 0);
+    c.write_prg(0x7003, 0xCA);
+    CHECK(c.read_prg(0x7003) == 0xCA);
+    c.write_prg(0x8000, 0x13);
+    CHECK(c.read_prg(0x8000) == 28);
+    CHECK(c.read_chr(0) == 56);
+    c.write_prg(0x8000, 0x80);
+    for (auto bit : {0, 1, 0, 0, 0})
+        c.write_prg(0x8000, bit);
+    CHECK(c.mirror_mode() == MirrorMode::Vertical);
+    c.write_prg(0x700E, 0);
+    c.write_prg(0x7000, 0xDF);
+    CHECK(c.read_prg(0x8000) == 48);
+    CHECK(c.read_prg(0x7000) == 0xDF);
+    for (auto bit : {0, 1, 1, 0, 0})
+        c.write_prg(0xE000, bit);
+    CHECK(c.read_prg(0x8000) == 60);
+    CHECK(c.read_chr(0) == 96);
+    snapshot(c);
+}
+
 TEST_CASE("NTDEC 2718 keeps CHR RAM fixed while N118 bank 5 changes CIRAM", "[mapper557]") {
     auto c = cartridge(557, 128, 0, 0, 7, 7);
     c.write_chr(0x1B23, 0xAC);
@@ -225,5 +248,25 @@ TEST_CASE("NTDEC 2718 keeps CHR RAM fixed while N118 bank 5 changes CIRAM", "[ma
     c.write_prg(0x7000, 0xB7);
     snapshot(c);
     CHECK(c.read_prg(0x7000) == 0xB7);
+}
+
+TEST_CASE("03-101 selects discrete banks or MMC1 and gates WRAM and graphics writes",
+          "[mapper546]") {
+    auto c = cartridge(546, 512, 0, 2, 0x70, 7);
+    c.write_prg(0x9003, 0x80);
+    CHECK(c.read_prg(0x8000) == 6);
+    CHECK(c.read_prg(0xC000) == 6);
+    CHECK_FALSE(c.maps_prg(0x6000));
+    c.write_chr(0x1FE1, 0xB5);
+    c.write_prg(0x80A3, 0x80);
+    CHECK(c.read_prg(0x8000) == 4);
+    CHECK(c.read_prg(0xC000) == 6);
+    c.write_chr(0x1FE1, 0);
+    CHECK(c.read_chr(0x1FE1) == 0xB5);
+    c.write_prg(0x9010, 0x80);
+    CHECK(c.read_prg(0xC000) == 62);
+    c.write_prg(0x6000, 0x7C);
+    snapshot(c);
+    CHECK(c.read_prg(0x6000) == 0x7C);
 }
 
