@@ -5013,7 +5013,7 @@ or another registered cartridge ID.
 | 187 | Board-specific specification | Registered: Mapper187 | [r23904](https://www.nesdev.org/w/index.php?oldid=23904) |
 | 188 | Bandai Karaoke Studio | Registered: KaraokeStudio188 | [r22386](https://www.nesdev.org/w/index.php?oldid=22386) |
 | 189 | Board-specific specification | Registered: Txc189 | [r22901](https://www.nesdev.org/w/index.php?oldid=22901) |
-| 190 | Board-specific specification | Not registered | [r22728](https://www.nesdev.org/w/index.php?oldid=22728) |
+| 190 | Board-specific specification | Registered: Mapper190 | [r22728](https://www.nesdev.org/w/index.php?oldid=22728) |
 | 191 | Board-specific specification | Not registered | [r23949](https://www.nesdev.org/w/index.php?oldid=23949) |
 | 192 | Waixing FS308 mixed CHR | New implementation: Mmc3 | [r23950](https://www.nesdev.org/w/index.php?oldid=23950) |
 | 193 | Board-specific specification | New implementation: DiscreteMapper | [r21022](https://www.nesdev.org/w/index.php?oldid=21022) |
