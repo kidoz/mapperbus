@@ -65,6 +65,7 @@
 #include "core/mappers/mapper174.hpp"
 #include "core/mappers/mapper177.hpp"
 #include "core/mappers/mapper183.hpp"
+#include "core/mappers/mapper187.hpp"
 #include "core/mappers/maxi15.hpp"
 #include "core/mappers/mmc1.hpp"
 #include "core/mappers/mmc1a.hpp"
@@ -237,6 +238,8 @@ namespace {
         return Henggedianzi177::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 185U)
         return Cnrom185::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 187U)
+        return Mapper187::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 99U)
         return VsSystem::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 30U || header.mapper_number == 111U)
@@ -1185,6 +1188,7 @@ void register_builtin_mappers() {
     registry.register_mapper(176, make_factory<Fk23c>());
     registry.register_mapper(177, make_factory<Henggedianzi177>());
     registry.register_mapper(185, make_factory<Cnrom185>());
+    registry.register_mapper(187, make_factory<Mapper187>());
 }
 
 } // namespace mapperbus::core

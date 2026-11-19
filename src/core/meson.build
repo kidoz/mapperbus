@@ -123,6 +123,7 @@ core_sources = files(
     'mappers/fk23c.cpp',
     'mappers/mapper177.cpp',
     'mappers/cnrom185.cpp',
+    'mappers/mapper187.cpp',
     'mappers/vs_system.cpp',
     'fds/fds.cpp',
     'fds/fds_mapper.cpp',
