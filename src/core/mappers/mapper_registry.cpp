@@ -25,6 +25,7 @@
 #include "core/mappers/mapper012.hpp"
 #include "core/mappers/mapper015.hpp"
 #include "core/mappers/mapper027.hpp"
+#include "core/mappers/mapper037.hpp"
 #include "core/mappers/maxi15.hpp"
 #include "core/mappers/mmc1.hpp"
 #include "core/mappers/mmc2.hpp"
@@ -80,6 +81,8 @@ namespace {
         return FfeSuperMagicCard::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 29U)
         return RetCufrom::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 37U)
+        return Mmc3Multicart37::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 30U || header.mapper_number == 111U)
         return FlashBoards::validate_geometry(header, prg_size, chr_size);
     if (JyCompany::supports_mapper(header.mapper_number))
@@ -970,6 +973,7 @@ void register_builtin_mappers() {
     registry.register_mapper(15, make_factory<Mapper015>());
     registry.register_mapper(17, make_factory<FfeSuperMagicCard>());
     registry.register_mapper(29, make_factory<RetCufrom>());
+    registry.register_mapper(37, make_factory<Mmc3Multicart37>());
 }
 
 } // namespace mapperbus::core
