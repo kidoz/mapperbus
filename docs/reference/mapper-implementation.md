@@ -5090,7 +5090,7 @@ or another registered cartridge ID.
 | 266 | Board-specific specification | Registered: CityFighter266 | [r7660](https://www.nesdev.org/w/index.php?oldid=7660) |
 | 267 | Board-specific specification | Registered: Mapper267 | [r7663](https://www.nesdev.org/w/index.php?oldid=7663) |
 | 268 | Coolboy / Mindkids | Registered: Coolboy | [r24626](https://www.nesdev.org/w/index.php?oldid=24626) |
-| 269 | Board-specific specification | Not registered | [r24351](https://www.nesdev.org/w/index.php?oldid=24351) |
+| 269 | Board-specific specification | Registered: Mapper269 | [r24351](https://www.nesdev.org/w/index.php?oldid=24351) |
 | 270 | OneBus outer banking | Not registered | [r23373](https://www.nesdev.org/w/index.php?oldid=23373) |
 | 271 | Board-specific specification | Not registered | [r24533](https://www.nesdev.org/w/index.php?oldid=24533) |
 | 272 | Board-specific specification | Not registered | [r7701](https://www.nesdev.org/w/index.php?oldid=7701) |
