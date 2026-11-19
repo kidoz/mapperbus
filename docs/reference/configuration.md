@@ -420,18 +420,19 @@ Duplicate names appear once. A missing named device reports an error without
 falling back. Sensitivity ranges from 1 to 100; larger values detect quieter
 sounds. Out-of-range integers clamp, and malformed values use 50.
 
-Only unpaused RF Famicom play opens capture. Pause, stop, ROM close, wiring
-changes away from RF, and successful snapshot loads close it and discard queued
-sound. Resume or the next eligible frame starts fresh. Disconnects, device/default
+Capture starts during unpaused play with RF Famicom wiring or a cartridge
+microphone on mapper 515 or 517. Pause, stop, ROM close, wiring changes away
+from RF, and successful snapshot loads close it and discard queued sound.
+Resume or the next eligible frame starts fresh. Disconnects, device/default
 changes, and capture failures release live activity; use Retry / Refresh Devices
 or change a setting to retry. System-default capture stops if the recording-device
 set or default name changes. Bound keyboard/gamepad input remains usable.
 
 Microphone audio is separately off by default. Enable it to add captured sound
-at playback, with `volume` from 0 to 100 (default 25). Both Capture input and
-unpaused RF play are required; enabling playback alone never opens a device.
-The volume does not affect sensitivity or the game's activity signal, and
-sensitivity does not gate playback. GUI master volume/mute apply to the combined
+at playback, with `volume` from 0 to 100 (default 25). Playback requires enabled
+capture during eligible play. Sensitivity sets the RF activity threshold.
+Cartridge microphones use a six-bit level derived from capture packet RMS.
+GUI master volume/mute apply to the combined
 output. Bound M/gamepad simulation produces activity only, not an audio tone.
 
 The host mixer linearly resamples 16 kHz mono PCM to the session playback rate,

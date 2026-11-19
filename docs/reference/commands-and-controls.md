@@ -178,12 +178,14 @@ wiring.
 
 Optional live capture is off by default. In GUI Settings → Input → Live
 microphone, enable Capture input, choose an input device, and raise Sensitivity
-for quieter sounds. Capture runs during unpaused RF Famicom play. Pause and
+for quieter sounds. Capture runs during unpaused RF Famicom play or with a
+supported cartridge microphone (515 and 517). Pause and
 snapshot loads discard capture buffers; device failures release live activity
 and show an error until Retry / Refresh Devices or a setting change. Keyboard
 and gamepad simulation remain available. Microphone audio optionally adds captured
 sound to playback with an independent 0–100 volume control (default 25). It starts
-off and requires Capture input. Sensitivity only controls game input detection.
+off and requires Capture input. Sensitivity controls the RF activity threshold.
+Cartridge ADCs receive a six-bit level from the current capture packet.
 Master audio volume/mute affect the combined sound. Use headphones to avoid
 feedback. No raw microphone sound is saved.
 

@@ -6,9 +6,10 @@ The inventory below identifies the factory for each registered ID and records
 separate FDS support under ID 020.
 
 Registration identifies a loadable board model. Cartridge geometry, submapper,
-and peripheral support still vary by implementation. In particular, mappers
-515 and 517 model the cartridge microphone ADCs in component tests and currently
-receive the default silent sample during ordinary play.
+and peripheral support vary by implementation. Desktop live microphone capture
+feeds the ADC models on mappers 515 and 517 with a six-bit level per capture
+packet. Mapper 517's port behavior remains a compatibility model pending
+hardware verification.
 
 ## Cartridge coverage follow-up
 
@@ -32,7 +33,7 @@ image. Mapper 355 requires one 1 KiB PIC firmware image. Mapper 413 requires one
 | N42S-2 and JY4M4 (536, 537) | 536 has 1 MiB PRG and unbanked CHR RAM. 537 accepts 384/512 and 512/512 KiB PRG/CHR ROM. The unpopulated fourth PRG block on the 384 KiB board floats. |
 | Game Doctor (561, 562) | RAM-loaded cartridge images, optional startup code and per-model bank switching. Turbo Game Doctor can use an 8 KiB firmware image. |
 | Rainbow (682) | Offline FPGA, persistent flash, extended tiles and sprites, IRQs and expansion audio. Wi-Fi and optional EPSM audio are disconnected. The manufacturer’s example reaches its main loop. |
-| 451 and 476 | 451 implements the music command/status interface. 476 implements the cartridge latch. Music synthesis and host microphone input respectively are outstanding. |
+| 451 and 476 | 451 implements the music command/status interface and still needs external MP3 playback. 476 implements the cartridge latch and still needs a verified microphone interface. |
 | FDS conversions (535, 538, 539) | Each cartridge has its own PRG decode and RAM windows. 535 includes the M2 timer and onboard RAM even when the header omits it. |
 | 534, 540, 542, 543 | Includes the inverted MMC3 IRQ latch, 2 KiB CHR-ROM banking, VRC4-controlled pattern-table CIRAM and the CH-501 serial PAL with two SRAM chips, respectively. |
 | 547, 555, 556, 560 | QTa background tile metadata, Campus Challenge timer and mixed graphics, JY-215 MMC3/VRC4 switching and BASIC bitplane routing are covered by synthetic cartridge tests. |
