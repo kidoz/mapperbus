@@ -80,6 +80,7 @@
 #include "core/mappers/mapper270.hpp"
 #include "core/mappers/mapper271.hpp"
 #include "core/mappers/mapper272.hpp"
+#include "core/mappers/mapper273.hpp"
 #include "core/mappers/maxi15.hpp"
 #include "core/mappers/mmc1.hpp"
 #include "core/mappers/mmc1a.hpp"
@@ -284,6 +285,8 @@ namespace {
         return Bmc22026::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 272U)
         return Mapper272::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 273U)
+        return Mapper273::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 99U)
         return VsSystem::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 222U)
@@ -1251,6 +1254,7 @@ void register_builtin_mappers() {
     registry.register_mapper(269, make_factory<Mapper269>());
     registry.register_mapper(271, make_factory<Bmc22026>());
     registry.register_mapper(272, make_factory<Mapper272>());
+    registry.register_mapper(273, make_factory<Mapper273>());
 }
 
 } // namespace mapperbus::core
