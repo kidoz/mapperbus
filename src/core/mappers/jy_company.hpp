@@ -55,6 +55,7 @@ class JyCompany final : public Mapper {
     bool chr_nametable(Address addr) const;
     void clock_irq(Byte source);
     void disable_irq();
+    void load_registers(StateReader& reader);
     std::vector<Byte> prg_rom_;
     std::vector<Byte> chr_;
     std::vector<Byte> prg_ram_;

@@ -2175,6 +2175,7 @@ void register_builtin_mappers() {
     registry.register_mapper(417, make_factory<Mapper417>());
     registry.register_mapper(418, make_factory<Namco108>());
     registry.register_mapper(420, make_factory<Mmc3>());
+    registry.register_mapper(421, make_factory<JyCompany>());
     registry.register_mapper(422, make_factory<Mapper422>());
     registry.register_mapper(428, make_factory<MulticartLatches>());
     registry.register_mapper(429, make_factory<Mapper429>());

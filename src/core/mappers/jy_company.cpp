@@ -37,6 +37,7 @@ bool JyCompany::supports_mapper(uint16_t id) {
     case 387U:
     case 388U:
     case 397U:
+    case 421U:
         return true;
     default:
         return false;
@@ -47,6 +48,11 @@ Result<void> JyCompany::validate_geometry(const INesHeader& h, std::size_t prg, 
         return std::unexpected("J.Y. Company multicart IDs require a NES 2.0 header");
     if (h.is_nes2 && h.submapper != 0U)
         return std::unexpected("Unsupported J.Y. Company submapper");
+    if (h.mapper_number == 421U &&
+        (prg != 1048576U || chr != 1048576U || h.prg_ram_size != 8192U || h.has_trainer ||
+         h.has_battery ||
+         (h.mirror_mode != MirrorMode::Horizontal && h.mirror_mode != MirrorMode::Vertical)))
+        return std::unexpected("SC871115C requires two 1 MiB ROMs and 8 KiB WRAM");
     const bool multicart = h.mapper_number > 255U;
     const std::size_t max_prg = h.mapper_number == 387U
                                     ? 524288U
@@ -69,11 +75,15 @@ Result<void> JyCompany::validate_geometry(const INesHeader& h, std::size_t prg, 
     return {};
 }
 bool JyCompany::outer_aliases_a11() const {
-    return mapper_id_ > 255U && mapper_id_ != 358U;
+    return mapper_id_ > 255U && mapper_id_ != 358U && mapper_id_ != 421U;
 }
 JyCompany::OuterBank JyCompany::prg_outer_bank() const {
     const unsigned value = config_[3];
     switch (mapper_id_) {
+    case 421U: {
+        const unsigned mask = (value & 4U) ? 0x7FFFFU : 0x3FFFFU;
+        return {.base = (value << 17U) & ~mask, .mask = mask};
+    }
     case 281U:
         return {.base = (value & 3U) << 18U, .mask = 0x3FFFFU};
     case 282U: {
@@ -98,6 +108,8 @@ JyCompany::OuterBank JyCompany::prg_outer_bank() const {
 JyCompany::OuterBank JyCompany::chr_outer_bank() const {
     const unsigned value = config_[3];
     switch (mapper_id_) {
+    case 421U:
+        return {.base = (value & 3U) << 18U, .mask = 0x7FFFFU};
     case 281U:
         return {.base = (value & 3U) << 18U, .mask = 0x3FFFFU};
     case 295U:
@@ -289,6 +301,11 @@ std::optional<Address> JyCompany::nametable_address(Address addr) const {
 std::optional<Byte> JyCompany::read_nametable(Address addr) const {
     if (!chr_nametable(addr))
         return std::nullopt;
+    if (mapper_id_ == 421U) {
+        const auto outer = chr_outer_bank();
+        const unsigned inner = nt_banks_[(addr >> 10U) & 3U] * 1024U + (addr & 0x3FFU);
+        return chr_[(outer.base | (inner & outer.mask)) % chr_.size()];
+    }
     // B registers are direct 1 KiB CHR indices, not the masked 900x/A00x path.
     return chr_[(nt_banks_[(static_cast<unsigned>(addr) >> 10U) & 3U] * 1024U + (addr & 0x3FFU)) %
                 chr_.size()];
@@ -408,6 +425,8 @@ void JyCompany::set_battery_ram(std::span<const Byte> data) {
         std::ranges::copy(data, prg_ram_.begin());
 }
 void JyCompany::save_state(StateWriter& w) const {
+    if (mapper_id_ == 421U)
+        w.write(mapper_id_);
     w.write_array(prg_banks_);
     w.write_array(chr_banks_);
     w.write_array(nt_banks_);
@@ -434,6 +453,24 @@ void JyCompany::save_state(StateWriter& w) const {
         w.write_bytes(chr_);
 }
 void JyCompany::load_state(StateReader& r) {
+    if (mapper_id_ == 421U) {
+        if (r.read<uint16_t>() != mapper_id_) {
+            r.fail();
+            return;
+        }
+        StateWriter backup;
+        save_state(backup);
+        load_registers(r);
+        if (!r.ok()) {
+            StateReader restore(backup.data());
+            (void)restore.read<uint16_t>();
+            load_registers(restore);
+        }
+        return;
+    }
+    load_registers(r);
+}
+void JyCompany::load_registers(StateReader& r) {
     const auto prg_size = prg_ram_.size();
     const auto chr_size = chr_.size();
     r.read_array(prg_banks_);

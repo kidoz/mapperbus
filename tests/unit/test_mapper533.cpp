@@ -100,6 +100,18 @@ TEST_CASE("A971210 decodes both MMC3 and NROM outer banking", "[mapper420]") {
     CHECK(c.read_chr(0) == 192);
     replay(c);
 }
+TEST_CASE("SC871115C wires outer banks to both pattern and nametable ROM", "[mapper421]") {
+    auto c = board(421, 64, 128, 7);
+    c.write_prg(0xD003, 2);
+    CHECK(c.read_prg(0x8000) == 60); // Last 32 KiB of the selected 256 KiB block.
+    c.write_prg(0xD000, 0x60);
+    c.write_prg(0xB000, 16);
+    CHECK(c.read_nametable(0x2000) == 8);
+    c.write_prg(0xD003, 1);
+    CHECK(c.read_chr(0) == 128);
+    CHECK(c.read_nametable(0x2000) == 136);
+    replay(c);
+}
 TEST_CASE("KB-46 menu jumpers and CNROM latch share the low register window", "[mapper428]") {
     auto c = board(428, 8, 8);
     REQUIRE(c.configure_board_jumpers(3));
