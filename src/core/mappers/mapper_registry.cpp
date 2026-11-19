@@ -1840,10 +1840,13 @@ void register_builtin_mappers() {
     registry.register_mapper(18, make_factory<JalecoSs88006>());
     registry.register_mapper(72, make_factory<JalecoDiscrete>());
     registry.register_mapper(92, make_factory<JalecoDiscrete>());
+    registry.register_mapper(99, make_factory<VsSystem>());
     registry.register_mapper(101, make_factory<JalecoDiscrete>());
     registry.register_mapper(77, make_factory<IremLrog017>());
     registry.register_mapper(210, make_factory<Namco175340>());
-    for (const uint16_t id : {21, 22, 23, 25, 73, 75})
+    registry.register_mapper(75, VsSystem::create_vrc1);
+    registry.register_mapper(151, VsSystem::create_vrc1);
+    for (const uint16_t id : {21, 22, 23, 25, 73})
         registry.register_mapper(id, make_factory<KonamiVrc>());
     for (const uint16_t id :
          {13, 34, 66, 70, 71, 78, 79, 87, 89, 93, 94, 97, 113, 140, 152, 180, 184}) {

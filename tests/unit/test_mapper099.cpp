@@ -7,6 +7,7 @@
 
 #include "core/bus/memory_bus.hpp"
 #include "core/cartridge/cartridge.hpp"
+#include "core/emulator.hpp"
 #include "core/mappers/mapper_registry.hpp"
 #include "core/mappers/vs_system.hpp"
 #include "core/ppu/ppu.hpp"
@@ -47,28 +48,14 @@ std::vector<Byte> patterned_rom(std::size_t size, Byte salt) {
 }
 
 std::unique_ptr<VsSystem> make_board(const INesHeader& header = make_header()) {
-    REQUIRE(VsSystem::validate_geometry(header, header.prg_rom_size, header.chr_rom_size));
     return std::make_unique<VsSystem>(
         header, patterned_rom(header.prg_rom_size, 3U), patterned_rom(header.chr_rom_size, 71U));
 }
 
-std::vector<Byte> mapper_state(const Mapper& mapper) {
+std::vector<Byte> mapper_state(const auto& mapper) {
     StateWriter writer;
     mapper.save_state(writer);
     return writer.take();
-}
-
-void register_mapper099() {
-    register_builtin_mappers();
-    MapperRegistry::instance().register_mapper(
-        99U,
-        [](const INesHeader& header,
-           std::vector<Byte> prg,
-           std::vector<Byte> chr) -> std::unique_ptr<Mapper> {
-            if (!VsSystem::validate_geometry(header, prg.size(), chr.size()))
-                return nullptr;
-            return std::make_unique<VsSystem>(header, std::move(prg), std::move(chr));
-        });
 }
 
 Byte size_encoding(std::size_t size) {
@@ -80,6 +67,8 @@ Byte size_encoding(std::size_t size) {
         return 0x35U;
     if (size == 32768U)
         return 2U;
+    if (size == 65536U)
+        return 4U;
     REQUIRE(size == 40960U);
     return 0x36U;
 }
@@ -88,6 +77,7 @@ std::vector<Byte> make_image(std::size_t prg_size,
                              std::size_t chr_size,
                              bool battery,
                              MirrorMode mirror) {
+    register_builtin_mappers();
     const bool exponent_prg = prg_size == 8192U || prg_size == 24576U || prg_size == 40960U;
     std::array<Byte, 16> header{
         'N',
@@ -100,7 +90,7 @@ std::vector<Byte> make_image(std::size_t prg_size,
                           (mirror == MirrorMode::FourScreen ? 8U
                            : mirror == MirrorMode::Vertical ? 1U
                                                             : 0U)),
-        0x68U,
+        0x69U,
         0U,
         static_cast<Byte>(exponent_prg ? 0x0FU : 0U),
         static_cast<Byte>(battery ? 0x50U : 0x05U),
@@ -246,6 +236,7 @@ TEST_CASE("Mapper 099 mirrors 2 KiB shared RAM and applies reset and persistence
 
 TEST_CASE("Mapper 099 rejects unsupported geometry and native memory metadata", "[mapper099]") {
     const auto reject = [](INesHeader header, std::size_t prg, std::size_t chr) {
+        header.console_type = 1U;
         REQUIRE_FALSE(VsSystem::validate_geometry(header, prg, chr));
     };
     for (std::size_t prg : {0U, 4096U, 8191U, 12288U, 40961U, 49152U})
@@ -341,7 +332,7 @@ TEST_CASE("Mapper 099 state replay is bounded tagged and atomic", "[mapper099]")
 }
 
 TEST_CASE("Mapper 099 CPU bus and PPU preserve open bus and four-screen accesses", "[mapper099]") {
-    register_mapper099();
+    register_builtin_mappers();
     auto cartridge = Cartridge::from_data(make_image(24576U, 8192U, true, MirrorMode::FourScreen));
     if (!cartridge)
         FAIL(cartridge.error());
@@ -353,10 +344,10 @@ TEST_CASE("Mapper 099 CPU bus and PPU preserve open bus and four-screen accesses
     ppu.connect_cartridge(&*cartridge);
 
     bus.write(0U, 0xA7U);
-    REQUIRE(bus.read(0xE000U) == 0xA7U);
-    REQUIRE(bus.read(0x8000U) == patterned_rom(24576U, 3U)[0]);
+    REQUIRE(bus.read(0x8000U) == 0xA7U);
+    REQUIRE(bus.read(0xA000U) == patterned_rom(24576U, 3U)[0]);
     bus.write(0x4016U, 0xFFU);
-    REQUIRE(bus.read(0x8000U) == patterned_rom(24576U, 3U)[0]);
+    REQUIRE(bus.read(0xA000U) == patterned_rom(24576U, 3U)[0]);
     REQUIRE(read_ppu(ppu, 0x0123U) == 0x23U);
     bus.write(0x4016U, 0U);
     REQUIRE(read_ppu(ppu, 0x0123U) == patterned_rom(8192U, 71U)[0x0123U]);
@@ -377,6 +368,203 @@ TEST_CASE("Mapper 099 CPU bus and PPU preserve open bus and four-screen accesses
     REQUIRE(read_ppu(ppu, 0x2C00U) == 0x44U);
     REQUIRE(read_ppu(ppu, 0x3000U) == 0x11U);
     REQUIRE(read_ppu(ppu, 0x3400U) == 0x22U);
+}
+
+TEST_CASE("Vs. Unisystem boots through the reset socket and reads the cabinet harness",
+          "[mapper099]") {
+    auto image = make_image(24576U, 8192U, false, MirrorMode::FourScreen);
+    image[13] = 2U;
+    image[15] = 5U; // 1P on the left stick ($4017).
+    constexpr std::array<Byte, 25> program{
+        0xA9, 0x01, 0x8D, 0x16, 0x40, // LDA #1 / STA $4016
+        0xA9, 0x00, 0x8D, 0x16, 0x40, // LDA #0 / STA $4016
+        0xAD, 0x16, 0x40, 0x85, 0x00, // LDA $4016 / STA $00
+        0xAD, 0x17, 0x40, 0x85, 0x01, // LDA $4017 / STA $01
+        0xA9, 0xCA, 0x85, 0x02, 0xEA, // mark completion
+    };
+    std::ranges::copy(program, image.begin() + 16);
+    image[16U + 24576U - 4U] = 0x00;
+    image[16U + 24576U - 3U] = 0xA0;
+    auto cartridge = Cartridge::from_data(image);
+    REQUIRE(cartridge);
+    Emulator emulator;
+    REQUIRE(emulator.load_cartridge(std::move(*cartridge), ""));
+    emulator.power_on();
+    auto* cabinet = emulator.vs_cabinet();
+    REQUIRE(cabinet);
+    emulator.controller().set_button_state(0, Button::A, true);
+    cabinet->set_dips(0x96U);
+    cabinet->set_coin(true);
+    cabinet->set_service(true);
+    for (int step = 0; step < 10; ++step)
+        emulator.step_instruction();
+    REQUIRE(emulator.read_cpu(0) == 0x34); // DIP2, service, coin and P2 A=0
+    REQUIRE(emulator.read_cpu(1) == 0x95); // remaining DIP lines and P1 A=1
+    REQUIRE(emulator.read_cpu(2) == 0xCA);
+}
+
+TEST_CASE("Vs. cabinet pulses and book-keeping survive state restore", "[mapper099]") {
+    auto header = make_header(32768U);
+    header.console_type = 1U;
+    auto mapper = make_board(header);
+    auto* cabinet = mapper->vs_cabinet();
+    REQUIRE(cabinet);
+    cabinet->set_coin(true);
+    cabinet->set_dips(0xFF);
+    mapper->observe_cpu_write(0x4020, 1);
+    const auto state = mapper_state(*mapper);
+    for (int i = 0; i < 89489; ++i)
+        mapper->clock_cpu();
+    cabinet->set_coin(true);
+    REQUIRE(cabinet->read_port(0, 0) == 0x18);
+    cabinet->set_coin(false);
+    cabinet->set_coin(true);
+    REQUIRE(cabinet->read_port(0, 0) == 0x38);
+    mapper->observe_cpu_read(0x5F20, 2);
+    REQUIRE(cabinet->coins_counted() == 1);
+    auto invalid = state;
+    invalid.back() = 0x80;
+    const auto before = mapper_state(*mapper);
+    StateReader corrupt(invalid);
+    mapper->load_state(corrupt);
+    REQUIRE_FALSE(corrupt.ok());
+    REQUIRE(mapper_state(*mapper) == before);
+    StateReader restored(state);
+    mapper->load_state(restored);
+    REQUIRE(restored.ok());
+    REQUIRE(cabinet->coins_counted() == 0);
+    REQUIRE(cabinet->read_port(0, 0) == 0x38);
+    mapper->observe_cpu_read(0x4040, 0); // A5=0 leaves counter unchanged
+    mapper->observe_cpu_write(0x5FE0, 0);
+    REQUIRE(cabinet->coins_counted() == 1);
+}
+
+TEST_CASE("Vs. RGB PPU palettes, emphasis and 2C05 registers match the header", "[mapper099]") {
+    auto image = make_image(32768U, 16384U, false, MirrorMode::FourScreen);
+    constexpr std::array<Byte, 8> models{0, 2, 3, 4, 5, 9, 10, 11};
+    constexpr std::array<uint32_t, 8> color0{0xFF6D6D6D,
+                                             0xFFFFB6B6,
+                                             0xFF000000,
+                                             0xFFB600FF,
+                                             0xFF926D00,
+                                             0xFF6D6D6D,
+                                             0xFF6D6D6D,
+                                             0xFF6D6D6D};
+    for (std::size_t i = 0; i < models.size(); ++i) {
+        CAPTURE(i);
+        image[13] = models[i];
+        auto cartridge = Cartridge::from_data(image);
+        REQUIRE(cartridge);
+        Ppu ppu;
+        ppu.connect_cartridge(&*cartridge);
+        ppu.step_dots(3);
+        REQUIRE(ppu.frame_buffer().pixels[0] == color0[i]);
+        ppu.write_register(models[i] >= 9U ? 0U : 1U, 0x40U);
+        ppu.step_dots(12);
+        REQUIRE(ppu.ppumask() == 0x40U);
+        REQUIRE(ppu.frame_buffer().pixels[8] == (color0[i] | 0x0000FF00));
+        ppu.write_register(3, 0xD2);
+        REQUIRE(ppu.read_register(4) == 0xD2);
+        if (models[i] >= 9U) {
+            const Byte signature = models[i] == 9U ? 0x3DU : models[i] == 10U ? 0x1CU : 0x1BU;
+            REQUIRE((ppu.read_register(2) & 0x3FU) == signature);
+        }
+        write_ppu(ppu, 0x2F00, 0xA5);
+        write_ppu(ppu, 0x3F00, 0x32);
+        REQUIRE(read_ppu(ppu, 0x3F00) == 0xA5); // buffered external nametable
+    }
+}
+
+TEST_CASE("Vs. registry rejects unsupported console, cabinet and device profiles", "[mapper099]") {
+    auto image = make_image(32768U, 16384U, false, MirrorMode::FourScreen);
+    for (Byte profile : {0x08, 0x0F, 0x10, 0x41, 0x50, 0x60}) {
+        image[13] = profile;
+        REQUIRE_FALSE(Cartridge::from_data(image));
+    }
+    image[13] = 0U;
+    image[15] = 7U;
+    REQUIRE_FALSE(Cartridge::from_data(image)); // Vs. Zapper
+    image[15] = 4U;
+    image[7] = 0x68U;
+    REQUIRE_FALSE(Cartridge::from_data(image)); // regular NES
+    image[7] = 0x61U;
+    REQUIRE_FALSE(Cartridge::from_data(image)); // missing NES 2.0 PPU information
+}
+
+TEST_CASE("Vs. VRC1 cartridge and historical ID share banking, cabinet and state behavior",
+          "[mapper099][mapper151]") {
+    for (const unsigned id : {75U, 151U}) {
+        CAPTURE(id);
+        auto image = make_image(65536U, 65536U, false, MirrorMode::FourScreen);
+        image[6] = static_cast<Byte>((id << 4U) | 8U);
+        image[7] = static_cast<Byte>((id & 0xF0U) | 9U);
+        image[13] = 2U;
+        image[15] = 5U;
+        auto cart = Cartridge::from_data(image);
+        INFO((cart ? "" : cart.error()));
+        REQUIRE(cart);
+        REQUIRE(cart->header().mapper_number == id);
+        auto* cabinet = cart->vs_cabinet();
+        REQUIRE(cabinet != nullptr);
+        REQUIRE(cabinet->ppu_type() == 2U);
+        REQUIRE(cabinet->player_for_port(0) == 1);
+        auto& board = *cart;
+        board.write_prg(0x8000U, 6U);
+        board.write_prg(0xE000U, 3U);
+        board.write_prg(0x6002U, 0xACU);
+        board.observe_cpu_write(0x4016U, 4U);
+        REQUIRE(board.read_prg(0x8000U) == image[16U + 6U * kBankSize]);
+        REQUIRE(board.read_chr(0) == image[16U + 65536U + 3U * 4096U]);
+        REQUIRE(board.read_prg(0x7802U) == 0xACU);
+        REQUIRE(board.mirror_mode() == MirrorMode::FourScreen);
+        const auto state = mapper_state(board);
+        board.reset();
+        StateReader restore(state);
+        board.load_state(restore);
+        REQUIRE(restore.ok());
+        REQUIRE(mapper_state(board) == state);
+        StateReader truncated(std::span<const Byte>(state).first(state.size() - 1));
+        board.load_state(truncated);
+        REQUIRE_FALSE(truncated.ok());
+        REQUIRE(mapper_state(board) == state);
+        image[13] = 0x11U;
+        REQUIRE_FALSE(Cartridge::from_data(image));
+        if (id == 151U) {
+            image[7] &= 0xF0U;
+            REQUIRE_FALSE(Cartridge::from_data(image)); // unknown legacy socket contents
+        }
+    }
+}
+
+TEST_CASE("Legacy Vs. VRC1 image pairs identify the RGB PPU and joystick harness", "[mapper151]") {
+    struct LegacyPair {
+        std::array<Byte, 4> prg, chr;
+        Byte ppu, port;
+    };
+    // Zero-filled sockets with four synthetic suffix bytes matching the database CRCs.
+    for (auto pair : {LegacyPair{std::array<Byte, 4>{0x53, 0xDE, 0xE4, 0x11},
+                                 std::array<Byte, 4>{0x26, 0x86, 0x6F, 0x40},
+                                 2,
+                                 1},
+                      LegacyPair{std::array<Byte, 4>{0xE0, 0x05, 0xCB, 0xAE},
+                                 std::array<Byte, 4>{0x57, 0x11, 0xD0, 0xD6},
+                                 4,
+                                 0}}) {
+        auto image = make_image(65536, 65536, false, MirrorMode::FourScreen);
+        image[6] = 0x70;
+        image[7] = 0x90;
+        std::fill(image.begin() + 8, image.end(), 0);
+        std::ranges::copy(pair.prg, image.begin() + 16 + 65536 - 4);
+        std::ranges::copy(pair.chr, image.end() - 4);
+        auto cart = Cartridge::from_data(image);
+        REQUIRE(cart);
+        REQUIRE_FALSE(cart->header().is_nes2);
+        REQUIRE(cart->header().mapper_number == 151);
+        REQUIRE(cart->vs_cabinet()->ppu_type() == pair.ppu);
+        REQUIRE(cart->vs_cabinet()->player_for_port(0) == pair.port);
+        image.back() ^= 1;
+        REQUIRE_FALSE(Cartridge::from_data(image));
+    }
 }
 
 } // namespace

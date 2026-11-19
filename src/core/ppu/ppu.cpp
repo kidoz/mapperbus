@@ -3,7 +3,9 @@
 #include <utility>
 
 #include "core/cartridge/cartridge.hpp"
+#include "core/input/vs_cabinet.hpp"
 #include "core/ppu/loopy.hpp"
+#include "core/ppu/vs_palettes.hpp"
 #include "core/state/state.hpp"
 
 namespace mapperbus::core {
@@ -11,6 +13,10 @@ namespace mapperbus::core {
 void Ppu::connect_cartridge(Cartridge* cartridge) {
     cartridge_ = cartridge;
     render_context_ = cartridge && cartridge->uses_render_context();
+    const auto* cabinet = cartridge ? cartridge->vs_cabinet() : nullptr;
+    rgb_ppu_ = cabinet ? cabinet->ppu_type() : kCompositePpu;
+    const unsigned palette = (rgb_ppu_ >= 2U && rgb_ppu_ <= 5U) ? rgb_ppu_ - 1U : 0U;
+    color_palette_ = cabinet ? &kVsPalettes[palette] : &kEmphasisPalette;
 }
 
 void Ppu::save_state(StateWriter& writer) const {
@@ -83,7 +89,7 @@ void Ppu::load_state(StateReader& reader,
     odd_frame_ = has_frame_parity ? odd == 1 : (old_frames & 1U) != 0;
     skip_dot_ = skip == 1;
     if (odd > 1 || skip > 1 ||
-        (skip_dot_ && (!odd_frame_ || !timing_->odd_frame_skip ||
+        (skip_dot_ && (!odd_frame_ || !timing_->odd_frame_skip || rgb_ppu_ != kCompositePpu ||
                        !std::cmp_equal(scanline_, timing_->pre_render_scanline) || cycle_ < 338 ||
                        cycle_ > 339)))
         reader.fail();
@@ -259,7 +265,8 @@ void Ppu::step_dots(uint32_t ppu_dots) {
         // The frame-length gate is independent of the renderer's delayed mask.
         // Latch before dot 339 so later writes cannot change this frame's length.
         if (pre_render && cycle_ == 338)
-            skip_dot_ = timing_->odd_frame_skip && odd_frame_ && (ppumask_ & 0x18U) != 0;
+            skip_dot_ = rgb_ppu_ == kCompositePpu && timing_->odd_frame_skip && odd_frame_ &&
+                        (ppumask_ & 0x18U) != 0;
 
         if (visible_line && cycle_ >= 1 && cycle_ <= 256) {
             render_pixel();
@@ -407,6 +414,10 @@ Byte Ppu::read_register(uint8_t reg) {
     switch (reg) {
     case 0x02: { // PPUSTATUS
         Byte value = static_cast<Byte>((ppustatus_ & 0xE0U) | (io_latch_ & 0x1FU));
+        if (rgb_ppu_ == 9U)
+            value = static_cast<Byte>((ppustatus_ & 0xC0U) | 0x3DU);
+        else if (rgb_ppu_ == 10U || rgb_ppu_ == 11U)
+            value = static_cast<Byte>((ppustatus_ & 0xE0U) | (rgb_ppu_ == 10U ? 0x1CU : 0x1BU));
         // A status read one dot before vblank suppresses its flag and NMI.
         if (std::cmp_equal(scanline_, timing_->vblank_scanline) && cycle_ == 0)
             suppress_vblank_ = true;
@@ -422,18 +433,21 @@ Byte Ppu::read_register(uint8_t reg) {
         return value;
     }
     case 0x04: // OAMDATA: attribute bits 2-4 are not implemented in OAM.
+        if (rgb_ppu_ != kCompositePpu)
+            return io_latch_;
         io_latch_ = static_cast<Byte>(oam_[oam_addr_] & ((oam_addr_ & 3U) == 2 ? 0xE3U : 0xFFU));
         return io_latch_;
     case 0x07: { // PPUDATA
-        Byte value = read_vram(reg_v_);
-        Byte result = 0;
-        if ((reg_v_ & 0x3FFF) >= 0x3F00) {
-            result = static_cast<Byte>((io_latch_ & 0xC0U) |
-                                       (value & ((ppumask_ & 1U) != 0 ? 0x30U : 0x3FU)));
+        Byte result = read_buffer_;
+        if ((reg_v_ & 0x3FFFU) >= 0x3F00U) {
+            if (rgb_ppu_ == kCompositePpu) {
+                const Byte value = read_vram(reg_v_);
+                result = static_cast<Byte>((io_latch_ & 0xC0U) |
+                                           (value & ((ppumask_ & 1U) != 0 ? 0x30U : 0x3FU)));
+            }
             read_buffer_ = read_vram(static_cast<Address>(reg_v_ - 0x1000));
         } else {
-            result = read_buffer_;
-            read_buffer_ = value;
+            read_buffer_ = read_vram(reg_v_);
         }
         if (cartridge_ != nullptr && cartridge_->observes_ppu_reads()) {
             // Palette RAM is internal; its hidden buffer refill is the single
@@ -455,6 +469,8 @@ Byte Ppu::read_register(uint8_t reg) {
 void Ppu::write_register(uint8_t reg, Byte value) {
     io_latch_ = value;
     reg &= 0x07;
+    if (rgb_ppu_ >= 9U && rgb_ppu_ <= 11U && reg < 2U)
+        reg ^= 1U;
     switch (reg) {
     case 0x00: { // PPUCTRL: only a rising NMI-enable edge can retrigger in vblank.
         const bool nmi_was_enabled = (ppuctrl_ & 0x80) != 0;
@@ -640,7 +656,7 @@ std::uint32_t Ppu::palette_color(Byte palette_value) const {
     auto emphasis = static_cast<unsigned>(ppumask_ >> 5);
     if (timing_->swap_color_emphasis)
         emphasis = (emphasis & 4U) | ((emphasis & 1U) << 1) | ((emphasis & 2U) >> 1);
-    return kEmphasisPalette[emphasis][color];
+    return (*color_palette_)[emphasis][color];
 }
 
 // === Scanline-based rendering ===

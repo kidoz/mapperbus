@@ -33,6 +33,7 @@ class Ppu {
     void clear_frame_ready() {
         frame_ready_ = false;
     }
+    std::uint32_t palette_color(Byte palette_value) const;
     const FrameBuffer& frame_buffer() const {
         return frame_buffer_;
     }
@@ -112,6 +113,9 @@ class Ppu {
         return palettes;
     }();
 
+    static constexpr Byte kCompositePpu = 0xFFU;
+    Byte rgb_ppu_ = kCompositePpu;
+    const decltype(kEmphasisPalette)* color_palette_ = &kEmphasisPalette;
     FrameBuffer frame_buffer_{};
     bool frame_ready_ = false;
     Cartridge* cartridge_ = nullptr;
@@ -170,7 +174,6 @@ class Ppu {
     Address mirror_nametable_address(Address addr) const;
     Byte read_palette(Address addr) const;
     void write_palette(Address addr, Byte value);
-    std::uint32_t palette_color(Byte palette_value) const;
 
     void increment_coarse_x();
     void increment_fine_y();

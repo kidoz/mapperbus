@@ -6,6 +6,7 @@
 #include "app/async_rom_loader.hpp"
 #include "app/rom_source.hpp"
 #include "core/binary_file.hpp"
+#include "core/input/vs_cabinet.hpp"
 #include "core/logger.hpp"
 
 namespace mapperbus::app {
@@ -509,9 +510,14 @@ void EmulationSession::sync_input() {
                                                             core::ControllerWiring::RfFamicom);
     if (was_recording && !live_microphone_.recording())
         clear_microphone_playback();
+    auto* cabinet = emulator_->vs_cabinet();
+    bool coin = false;
     bool microphone = live;
     for (int player = 0; player < platform::kInputProfileCount; ++player) {
-        microphone |= input_->is_action_pressed(player, platform::InputAction::Microphone);
+        const bool mic_button =
+            input_->is_action_pressed(player, platform::InputAction::Microphone);
+        microphone |= mic_button;
+        coin |= mic_button;
         // Consume each turbo action even when ordinary A/B is held, so its
         // phase remains independent of the normal binding.
         const bool turbo_a = turbo_input_.next(
@@ -520,6 +526,13 @@ void EmulationSession::sync_input() {
             player, 1, input_->is_action_pressed(player, platform::InputAction::TurboB));
         for (auto button : kButtons) {
             bool pressed = input_->is_action_pressed(player, platform::input_action(button));
+            if (cabinet && player < 2 && (button == Button::Start || button == Button::Select)) {
+                // Cabinet pushbuttons 1/2 are serial bit 2 on the right/left sticks,
+                // independently of which joystick the game assigns to player one.
+                const auto action = button == Button::Select ? platform::InputAction::Start
+                                                             : platform::InputAction::Select;
+                pressed = input_->is_action_pressed(cabinet->player_for_port(player), action);
+            }
             if (button == Button::A)
                 pressed |= turbo_a;
             if (button == Button::B)
@@ -530,6 +543,8 @@ void EmulationSession::sync_input() {
             controller.set_button_state(player % 2, button, pressed);
         }
     }
+    if (cabinet)
+        cabinet->set_coin(coin);
     emulator_->set_microphone_active(microphone);
 }
 

@@ -199,6 +199,9 @@ class Emulator {
     [[nodiscard]] ControllerWiring controller_wiring() const {
         return bus_.controller_wiring();
     }
+    VsCabinet* vs_cabinet() {
+        return cartridge_ ? cartridge_->vs_cabinet() : nullptr;
+    }
     void set_microphone_active(bool active) {
         bus_.set_microphone_active(active);
     }

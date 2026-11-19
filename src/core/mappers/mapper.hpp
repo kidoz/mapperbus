@@ -11,6 +11,14 @@ namespace mapperbus::core {
 
 class StateWriter;
 class StateReader;
+class VsCabinet;
+
+/// A rendered background row can come from a cartridge-selected tile and palette.
+struct BackgroundFetch {
+    Address pattern;
+    std::optional<Byte> palette;
+    std::optional<std::array<Byte, 2>> planes;
+};
 
 class Mapper {
   public:
@@ -156,6 +164,9 @@ class Mapper {
         return {};
     }
     virtual void set_shared_nvram(std::span<const Byte> /*data*/) {}
+    virtual VsCabinet* vs_cabinet() {
+        return nullptr;
+    }
     virtual Result<void> scan_barcode(std::string_view /*digits*/, uint32_t /*module_cycles*/) {
         return std::unexpected("Barcode scanning requires a Datach cartridge (mapper 157)");
     }

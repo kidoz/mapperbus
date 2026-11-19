@@ -4,10 +4,17 @@
 #include "core/cartridge/cartridge.hpp"
 #include "core/fds/fds.hpp"
 #include "core/input/controller.hpp"
+#include "core/input/vs_cabinet.hpp"
 #include "core/ppu/ppu.hpp"
 #include "core/state/state.hpp"
 
 namespace mapperbus::core {
+
+void MemoryBus::connect_cartridge(Cartridge* cartridge) {
+    cartridge_ = cartridge;
+    vs_cabinet_ = cartridge ? cartridge->vs_cabinet() : nullptr;
+    update_mappings();
+}
 
 MemoryBus::MemoryBus() {
     ram_.fill(0);
@@ -104,7 +111,8 @@ void MemoryBus::restore_legacy_controller() {
 
 void MemoryBus::set_controller_oe(Byte port) {
     if (controller_oe_ != port && controller_oe_ != 0 && controller_ != nullptr)
-        controller_->clock(controller_oe_ - 1);
+        controller_->clock(vs_cabinet_ ? vs_cabinet_->player_for_port(controller_oe_ - 1)
+                                       : controller_oe_ - 1);
     if (controller_oe_ != port && controller_oe_ != 0 && expansion_controller_ != nullptr)
         expansion_controller_->clock(controller_oe_ - 1);
     if (controller_oe_ != port && controller_oe_ != 0 &&
@@ -159,7 +167,8 @@ void MemoryBus::write_controller_strobe(Byte value) {
     if ((value & 1U) != 0 || (controller_ != nullptr && controller_->strobed()))
         latch_adapter();
     if (controller_ != nullptr)
-        controller_->write(value, controller_wiring_ == ControllerWiring::RfFamicom ? 0xF3 : 0xFF);
+        controller_->write(
+            value, !vs_cabinet_ && controller_wiring_ == ControllerWiring::RfFamicom ? 0xF3 : 0xFF);
     if (expansion_controller_ != nullptr)
         expansion_controller_->write(value);
     if (additional_expansion_controller_ != nullptr)
@@ -167,6 +176,21 @@ void MemoryBus::write_controller_strobe(Byte value) {
 }
 
 Byte MemoryBus::read_controller(int player, Byte external, bool timed) {
+    if (vs_cabinet_) {
+        const int pad = vs_cabinet_->player_for_port(player);
+        const Byte serial = !controller_         ? 0U
+                            : timed && ntsc_io() ? controller_->peek(pad)
+                                                 : controller_->read(pad);
+        return vs_cabinet_->read_port(player, serial);
+    }
+    const auto computer_lines = [&](Byte value) {
+        if (cartridge_ == nullptr)
+            return value;
+        value = cartridge_->controller_port_bits(player, value);
+        if (!(timed && ntsc_io()))
+            cartridge_->clock_controller_port(player);
+        return value;
+    };
     if (controller_ == nullptr && controller_wiring_ == ControllerWiring::Nes &&
         expansion_ports_ == 0 && controller_mode_ == ControllerMode::Standard)
         return external;

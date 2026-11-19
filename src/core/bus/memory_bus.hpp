@@ -13,6 +13,7 @@ class Fds;
 class Ppu;
 class Apu;
 class Controller;
+class VsCabinet;
 class StateWriter;
 class StateReader;
 
@@ -113,10 +114,7 @@ class MemoryBus {
     /// Undriven external CPU bus value after cartridge pull-downs.
     [[nodiscard]] Byte open_bus() const;
 
-    void connect_cartridge(Cartridge* cartridge) {
-        cartridge_ = cartridge;
-        update_mappings();
-    }
+    void connect_cartridge(Cartridge* cartridge);
     void connect_ppu(Ppu* ppu) {
         ppu_ = ppu;
         update_mappings();
@@ -190,6 +188,7 @@ class MemoryBus {
     bool nmi_pending_ = false;
 
     Cartridge* cartridge_ = nullptr;
+    VsCabinet* vs_cabinet_ = nullptr;
     Ppu* ppu_ = nullptr;
     Apu* apu_ = nullptr;
     Controller* controller_ = nullptr;

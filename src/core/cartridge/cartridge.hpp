@@ -58,6 +58,9 @@ class Cartridge {
     void set_shared_nvram(std::span<const Byte> data) {
         mapper_->set_shared_nvram(data);
     }
+    VsCabinet* vs_cabinet() {
+        return mapper_->vs_cabinet();
+    }
     Result<void> scan_barcode(std::string_view digits, uint32_t module_cycles) {
         return mapper_->scan_barcode(digits, module_cycles);
     }
