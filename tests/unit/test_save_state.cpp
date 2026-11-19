@@ -31,6 +31,32 @@ namespace {
 
 } // namespace
 
+TEST_CASE("Restoring a CPU snapshot restores its JAM latch", "[state][cpu]") {
+    register_builtin_mappers();
+    constexpr Byte program[]{0xEA, 0x02};
+    const auto rom = mapperbus::tests::build_ines_rom("jam-snapshot", 0, 1, 1, program);
+    Emulator machine;
+    REQUIRE(machine.load_cartridge(rom.string()));
+    machine.power_on();
+    const auto running = machine.save_state();
+    machine.step_instruction();
+    machine.step_instruction();
+    REQUIRE(machine.cpu().jammed());
+    const auto halted = machine.save_state();
+    REQUIRE(machine.load_state(running));
+    REQUIRE_FALSE(machine.cpu().jammed());
+    machine.step_instruction();
+    CHECK(machine.cpu().pc() == 0x8001);
+    REQUIRE(machine.load_state(halted));
+    CHECK(machine.cpu().jammed());
+    auto legacy = running;
+    const std::uint32_t version = 20;
+    std::memcpy(legacy.data() + 4, &version, sizeof(version));
+    REQUIRE(machine.load_state(legacy));
+    CHECK_FALSE(machine.cpu().jammed());
+    std::filesystem::remove(rom);
+}
+
 TEST_CASE("Hybrid snapshots restore timing, active audio and regional emphasis",
           "[state][hybrid]") {
     register_builtin_mappers();

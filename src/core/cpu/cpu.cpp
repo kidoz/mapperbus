@@ -19,10 +19,10 @@ void Cpu::save_state(StateWriter& writer) const {
     writer.write(pc_);
     writer.write(status_);
     writer.write(total_cycles_);
-    writer.write(interrupt_pending_);
+    writer.write(static_cast<Byte>(interrupt_pending_ | (jammed_ ? 0x80U : 0U)));
 }
 
-void Cpu::load_state(StateReader& reader, bool has_interrupt_state) {
+void Cpu::load_state(StateReader& reader, bool has_interrupt_state, bool has_jam_state) {
     reader.read(a_);
     reader.read(x_);
     reader.read(y_);
@@ -31,6 +31,9 @@ void Cpu::load_state(StateReader& reader, bool has_interrupt_state) {
     reader.read(status_);
     reader.read(total_cycles_);
     interrupt_pending_ = has_interrupt_state ? reader.read<Byte>() : Byte{0};
+    jammed_ = has_jam_state && (interrupt_pending_ & 0x80U) != 0U;
+    if (has_jam_state)
+        interrupt_pending_ &= 0x7FU;
     if (interrupt_pending_ > 2)
         reader.fail();
     bus_cycles_ = 0;

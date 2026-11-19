@@ -26,7 +26,9 @@ class Cpu {
     }
 
     void save_state(StateWriter& writer) const;
-    void load_state(StateReader& reader, bool has_interrupt_state = true);
+    void load_state(StateReader& reader,
+                    bool has_interrupt_state = true,
+                    bool has_jam_state = true);
     void restore_legacy_interrupts();
     [[nodiscard]] uint64_t cycles() const {
         return total_cycles_;
