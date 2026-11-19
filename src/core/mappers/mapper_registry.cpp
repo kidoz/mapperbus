@@ -140,6 +140,7 @@
 #include "core/mappers/vrc6.hpp"
 #include "core/mappers/vrc7.hpp"
 #include "core/mappers/vs_system.hpp"
+#include "core/mappers/vt3x.hpp"
 
 namespace mapperbus::core {
 namespace {
@@ -332,6 +333,8 @@ namespace {
         return Mapper293::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 294U)
         return Mapper294::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 296U)
+        return Vt3x::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 30U || header.mapper_number == 111U)
         return FlashBoards::validate_geometry(header, prg_size, chr_size);
     if (JyCompany::supports_mapper(header.mapper_number))

@@ -534,6 +534,12 @@ foreach mapper_id : [
     test('mapper' + mapper_id, test_mapper, timeout : mapper_test_timeout)
 endforeach
 
+test_mapper296 = executable('test-mapper296',
+    'unit/test_vt3x.cpp',
+    dependencies : [mapperbus_core_dep, catch2_dep],
+)
+test('mapper296', test_mapper296, timeout : mapper_test_timeout)
+
 test_one_bus = executable('test-one-bus',
     'unit/test_one_bus.cpp',
     dependencies : [mapperbus_core_dep, catch2_dep],
