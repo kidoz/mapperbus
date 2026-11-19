@@ -30,6 +30,7 @@ image. Mapper 355 requires one 1 KiB PIC firmware image. Mapper 413 requires one
 | BlazePro (469) | The cartridge FPGA reads packed FDS sides from its 8 MiB ROM and supplies its own RAM and IRQs. |
 | CHINA_ER_SAN2 (532) | The translation uses N163 banking plus a 29,920-byte font in one NES 2.0 miscellaneous ROM. Text is composed over the output frame using the game’s screen state and nametables. |
 | N42S-2 and JY4M4 (536, 537) | 536 has 1 MiB PRG and unbanked CHR RAM. 537 accepts 384/512 and 512/512 KiB PRG/CHR ROM. The unpopulated fourth PRG block on the 384 KiB board floats. |
+| Game Doctor (561, 562) | RAM-loaded cartridge images, optional startup code and per-model bank switching. Turbo Game Doctor can use an 8 KiB firmware image. |
 | 451 and 476 | 451 implements the music command/status interface. 476 implements the cartridge latch. Music synthesis and host microphone input respectively are outstanding. |
 | FDS conversions (535, 538, 539) | Each cartridge has its own PRG decode and RAM windows. 535 includes the M2 timer and onboard RAM even when the header omits it. |
 | 534, 540, 542, 543 | Includes the inverted MMC3 IRQ latch, 2 KiB CHR-ROM banking, VRC4-controlled pattern-table CIRAM and the CH-501 serial PAL with two SRAM chips, respectively. |
@@ -5355,8 +5356,8 @@ some historical aliases share a factory with another ID.
 | 557 | NTDEC 2718 | Registered: Namco108 | [r21239](https://www.nesdev.org/w/index.php?oldid=21239) |
 | 558 | Yancheng YC-03-09 | Registered: Fs304 | [r23362](https://www.nesdev.org/w/index.php?oldid=23362) |
 | 560 | Chinese / English BASIC | Registered: Mapper560 | [r23154](https://www.nesdev.org/w/index.php?oldid=23154) |
-| 561 | Bung Super Game Doctor | Not registered | [r18925](https://www.nesdev.org/w/index.php?oldid=18925) |
-| 562 | Venus Turbo Game Doctor | Not registered | [r19971](https://www.nesdev.org/w/index.php?oldid=19971) |
+| 561 | Bung Super Game Doctor | Registered: GameDoctor | [r18925](https://www.nesdev.org/w/index.php?oldid=18925) |
+| 562 | Venus Turbo Game Doctor | Registered: GameDoctor | [r19971](https://www.nesdev.org/w/index.php?oldid=19971) |
 | 594 | Rinco Talkman | Not registered | [r22961](https://www.nesdev.org/w/index.php?oldid=22961) |
 | 595 | NES-4MROM-512 | Not registered | [r22979](https://www.nesdev.org/w/index.php?oldid=22979) |
 | 600 | ABL UM6578 extended banking | Not registered | [r23398](https://www.nesdev.org/w/index.php?oldid=23398) |

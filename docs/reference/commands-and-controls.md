@@ -228,6 +228,12 @@ The CLI reads the shared FDS BIOS path;
 `--fds-bios` overrides it. It presents no video, audio device, or interactive
 input. Invalid arguments and load/save failures return failure.
 
+For Turbo Game Doctor cartridges (562), `--game-doctor-bios PATH` supplies an
+optional 8 KiB raw firmware image for the BIOS window at $4800–$4FFF. Disk
+extracts that omit the memory configuration can select `sgd-2m` or `sgd-4m`
+for mapper 561, or `tgd-4plus`, `tgd-6plus` or `tgd-6m` for mapper 562
+with `--board-profile`.
+
 For mapper 250, `--board-profile nitra-queen-bee-v` selects Queen Bee V's extra
 PRG wiring. The default is `nitra-l401`, which can also be selected explicitly.
 This works with raw ROMs and archive members; Nitra profiles are rejected for
