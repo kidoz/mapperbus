@@ -320,6 +320,42 @@ TEST_CASE("YC-03-09 scrambles bank writes and selects EEPROM or persistent WRAM"
     }
 }
 
+TEST_CASE("NES-4MROM-512 updates each serial PRG bit immediately and keeps video RAM independent",
+          "[mapper595]") {
+    auto c = cartridge(595, 512, 0, 8, 7, 8);
+    CHECK(c.read_prg(0xC000) == 62);
+    c.write_prg(0xFFFF, 1);
+    CHECK(c.read_prg(0x8000) == 32);
+    c.write_prg(0xC000, 0x80);
+    CHECK(c.read_prg(0x8000) == 16);
+    c.write_chr(0x0123, 0x41);
+    REQUIRE(c.write_nametable(0x2123, 0x54));
+    REQUIRE(c.write_nametable(0x3123, 0x32));
+    CHECK(c.read_nametable(0x2123) == 0x54);
+    CHECK(c.read_nametable(0x3123) == 0x32);
+    CHECK(c.read_chr(0x0123) == 0x41);
+    c.write_prg(0x6002, 0x12);
+    CHECK(c.read_prg(0x6002) == 0x12);
+    CHECK(c.has_flash_storage());
+    const auto select = [&](unsigned bank) {
+        for (unsigned bit = 0; bit < 5; ++bit)
+            c.write_prg(0xC000, (bank >> bit) & 1U);
+    };
+    select(1);
+    c.write_prg(0x9555, 0xAA);
+    select(0);
+    c.write_prg(0xAAAA, 0x55);
+    select(1);
+    c.write_prg(0x9555, 0xA0);
+    select(15);
+    c.write_prg(0x8000, 0xF0);
+    for (int i = 0; i < 200; ++i)
+        c.clock_cpu();
+    CHECK(c.read_prg(0x8000) == (30 & 0xF0));
+    CHECK(c.battery_ram().size() == 524288);
+    snapshot(c);
+}
+
 TEST_CASE(
     "FS306 controls individual CIRAM quadrants, the third PRG slot and a shared CHR RAM window",
     "[mapper544]") {

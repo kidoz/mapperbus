@@ -284,6 +284,7 @@
 #include "core/mappers/mapper556.hpp"
 #include "core/mappers/mapper560.hpp"
 #include "core/mappers/mapper594.hpp"
+#include "core/mappers/mapper595.hpp"
 #include "core/mappers/maxi15.hpp"
 #include "core/mappers/mmc1.hpp"
 #include "core/mappers/mmc1a.hpp"
@@ -975,6 +976,8 @@ namespace {
         return Mapper560::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 594U)
         return Mapper594::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 595U)
+        return Mapper595::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 30U || header.mapper_number == 111U)
         return FlashBoards::validate_geometry(header, prg_size, chr_size);
     if (JyCompany::supports_mapper(header.mapper_number))
@@ -2329,6 +2332,7 @@ void register_builtin_mappers() {
     registry.register_mapper(561, GameDoctor::create);
     registry.register_mapper(562, GameDoctor::create);
     registry.register_mapper(594, make_factory<Mapper594>());
+    registry.register_mapper(595, make_factory<Mapper595>());
 }
 
 } // namespace mapperbus::core
