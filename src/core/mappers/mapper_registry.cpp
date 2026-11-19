@@ -50,6 +50,7 @@
 #include "core/mappers/mapper120_lh15.hpp"
 #include "core/mappers/mapper121.hpp"
 #include "core/mappers/mapper122.hpp"
+#include "core/mappers/mapper125_lh32.hpp"
 #include "core/mappers/maxi15.hpp"
 #include "core/mappers/mmc1.hpp"
 #include "core/mappers/mmc2.hpp"
@@ -180,6 +181,8 @@ namespace {
         return Mapper121::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 124U)
         return SuperGameMegaTypeIII::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 125U)
+        return Lh32::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 99U)
         return VsSystem::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 30U || header.mapper_number == 111U)
@@ -1106,6 +1109,7 @@ void register_builtin_mappers() {
     registry.register_mapper(117, make_factory<Mapper117>());
     registry.register_mapper(121, make_factory<Mapper121>());
     registry.register_mapper(124, make_factory<SuperGameMegaTypeIII>());
+    registry.register_mapper(125, make_factory<Lh32>());
 }
 
 } // namespace mapperbus::core
