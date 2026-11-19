@@ -10,7 +10,15 @@ and peripheral support still vary by implementation. In particular, mappers
 515 and 517 model the cartridge microphone ADCs in component tests and currently
 receive the default silent sample during ordinary play.
 
-## Implemented in this batch
+## Cartridge coverage follow-up
+
+The loader now passes NES 2.0 miscellaneous ROM data to boards that use it.
+Supervision 16-in-1 accepts its menu as a separate ROM or at the front of the PRG
+image. Mapper 355 requires one 1 KiB PIC firmware image. Mapper 413 requires one
+8 MiB serial ROM. The complete cartridge image contributes to save-state identity.
+
+| Board or family | Supported profile and limits |
+|---|---|
 
 | Implementation | New IDs | Observable behavior covered |
 |---|---|---|
@@ -5167,7 +5175,7 @@ some historical aliases share a factory with another ID.
 | 352 | Board-specific specification | Not registered | [r22975](https://www.nesdev.org/w/index.php?oldid=22975) |
 | 353 | Board-specific specification | Registered: Mapper353 | [r7920](https://www.nesdev.org/w/index.php?oldid=7920) |
 | 354 | Board-specific specification | Registered: Mapper354 | [r20572](https://www.nesdev.org/w/index.php?oldid=20572) |
-| 355 | Board-specific specification | Not registered | [r7933](https://www.nesdev.org/w/index.php?oldid=7933) |
+| 355 | PIC16C54 protection | Registered: Mapper355 | [r7933](https://www.nesdev.org/w/index.php?oldid=7933) |
 | 356 | Board-specific specification | Registered: Mapper356 | [r7934](https://www.nesdev.org/w/index.php?oldid=7934) |
 | 357 | Board-specific specification | Registered: Mapper357 | [r7940](https://www.nesdev.org/w/index.php?oldid=7940) |
 | 358 | J.Y. Company multicart | New implementation: JyCompany | [r18941](https://www.nesdev.org/w/index.php?oldid=18941) |
