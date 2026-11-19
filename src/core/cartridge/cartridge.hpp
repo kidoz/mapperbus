@@ -154,9 +154,8 @@ class Cartridge {
         return base_content_hash_;
     }
     void power_on();
-    void reset() {
-        mapper_->reset();
-    }
+    void reset();
+    [[nodiscard]] std::optional<Address> trainer_entry() const;
     [[nodiscard]] MirrorMode mirror_mode() const {
         return mapper_->mirror_mode();
     }

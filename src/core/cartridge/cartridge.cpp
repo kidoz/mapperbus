@@ -25,12 +25,41 @@ void Cartridge::seed_trainer() {
         std::ranges::copy(trainer_, ram.begin());
 }
 
+std::optional<Address> Cartridge::trainer_entry() const {
+    if (header_.mapper_number == 100 && header_.has_trainer && trainer_[0] == 0x4C)
+        return 0x7000;
+    return std::nullopt;
+}
+
+void Cartridge::reset() {
+    mapper_->reset();
+    if (header_.mapper_number == 100)
+        seed_trainer();
+}
+
 void Cartridge::power_on() {
     mapper_->power_on();
     // Persistent RAM was seeded on load and may have since been restored from
     // a save file. Only volatile RAM needs reseeding after cold initialization.
     if (!has_battery())
         seed_trainer();
+}
+
+Result<void> Cartridge::configure_game_doctor_bios(std::span<const Byte> bios) {
+    if (auto configured = mapper_->configure_game_doctor_bios(bios); !configured)
+        return configured;
+    std::array<Byte, 72> identity{'M', 'B', 'T', 'G', 'D', 0, 0, 1};
+    std::ranges::copy(base_content_hash_, identity.begin() + 8);
+    std::ranges::copy(rom_sha256(bios), identity.begin() + 40);
+    content_hash_ = rom_sha256(identity);
+    return {};
+}
+
+const FrameBuffer& Cartridge::translated_frame(const Ppu& ppu,
+                                               const std::array<Byte, kRamSize>& ram) const {
+    if (const auto* san2 = dynamic_cast<const San2*>(mapper_.get()))
+        return san2->translated_frame(ppu, ram);
+    return ppu.frame_buffer();
 }
 
 void Cartridge::save_state(StateWriter& writer) const {

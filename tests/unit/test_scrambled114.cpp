@@ -316,6 +316,91 @@ TEST_CASE("Scrambled 114 geometry accepts only assigned wirings and rejects dupl
     auto duplicate = MapperRegistry::instance().create(h, banks(0x80000U, 8192U), chr());
     REQUIRE_FALSE(duplicate);
     REQUIRE(duplicate.error().find("Unsupported mapper") != std::string::npos);
+TEST_CASE("NESticle ports select only the destination written by the Akira trainer",
+          "[mappers][mapper100]") {
+    auto h = header();
+    h.mapper_number = 100;
+    h.has_trainer = true;
+    h.prg_ram_size = 8192;
+    auto m = board(h, 131072, 262144);
+    const auto set = [&m](Byte reg, Byte value) {
+        m->write_prg(0x9FFE, reg);
+        m->write_prg(0x9FFF, value);
+    };
+    for (unsigned slot = 0; slot < 8; ++slot) {
+        set(slot < 4 ? 0x82 + slot : slot - 2, 20 + slot);
+        REQUIRE(m->read_chr(slot * 1024) == 20 + slot);
+    }
+    m->write_prg(0x8000, 0x80);
+    REQUIRE(m->read_chr(0x1000) == 24);
+    m->write_prg(0x8001, 57);
+    REQUIRE(m->read_chr(0x1000) == 56);
+    REQUIRE(m->read_chr(0x1400) == 57);
+    set(1, 0xAB);
+    REQUIRE(m->read_chr(0x0800) == 0xAA);
+    REQUIRE(m->read_chr(0x0C00) == 0xAB);
+    set(6, 3);
+    set(7, 4);
+    set(0x46, 7);
+    set(0x47, 9);
+    REQUIRE(m->read_prg(0x8000) == 3);
+    REQUIRE(m->read_prg(0xA000) == 9);
+    REQUIRE(m->read_prg(0xC000) == 7);
+    REQUIRE(m->read_prg(0xE000) == 15);
+    m->write_prg(0x6000, 27);
+    m->write_prg(0xA001, 0x40);
+    m->write_prg(0x6000, 28);
+    REQUIRE(m->read_prg(0x6000) == 27);
+    m->write_prg(0x8000, 0x46);
+    auto saved = state(*m);
+    m->power_on();
+    REQUIRE(m->read_prg(0x6000) == 0);
+    StateReader read(saved);
+    m->load_state(read);
+    REQUIRE(read.ok());
+    REQUIRE(m->read_prg(0x6000) == 27);
+    m->write_prg(0x8001, 11);
+    REQUIRE(m->read_prg(0xC000) == 11);
+    h.has_trainer = false;
+    REQUIRE_FALSE(MapperRegistry::instance().create(h, banks(131072, 8192), chr(262144)));
+}
+
+TEST_CASE("Akira-compatible trainer boots on power and soft reset", "[mappers][mapper100]") {
+    register_builtin_mappers();
+    for (bool nes2 : {true, false}) {
+        std::vector<Byte> rom(16 + 512 + 131072 + 262144);
+        const std::array<Byte, 8> prefix{
+            'N', 'E', 'S', 0x1A, 8, 32, 0x45, static_cast<Byte>(nes2 ? 0x68 : 0x60)};
+        std::ranges::copy(prefix, rom.begin());
+        if (nes2)
+            rom[10] = 7;
+        // The trainer jumps to $7003, increments RAM, then overwrites its own first opcode.
+        const std::array<Byte, 13> code{
+            0x4C, 3, 0x70, 0xE6, 0x17, 0xA9, 0xEA, 0x8D, 0, 0x70, 0x4C, 10, 0x70};
+        std::ranges::copy(code, rom.begin() + 16);
+        const auto prg = 16 + 512;
+        rom[prg + 131072 - 4] = 0x00;
+        rom[prg + 131072 - 3] = 0xE0;
+        rom[prg + 131072 - 8192] = 0xE6;
+        rom[prg + 131072 - 8191] = 0x18;
+        rom[prg + 131072 - 8190] = 0x4C;
+        rom[prg + 131072 - 8189] = 2;
+        rom[prg + 131072 - 8188] = 0xE0;
+        for (bool jump : {true, false}) {
+            if (!jump)
+                rom[16] = 0xEA;
+            auto cart = Cartridge::from_data(rom);
+            REQUIRE(cart);
+            Emulator emu;
+            REQUIRE(emu.load_cartridge(std::move(*cart), {}));
+            emu.power_on();
+            emu.step_frame();
+            REQUIRE(emu.read_cpu(jump ? 0x17 : 0x18) == 1);
+            emu.reset();
+            emu.step_frame();
+            REQUIRE(emu.read_cpu(jump ? 0x17 : 0x18) == 2);
+        }
+    }
 }
 std::vector<Byte> image(Byte sub = 0U, bool legacy = false) {
     auto p = banks(0x80000U, 8192U);

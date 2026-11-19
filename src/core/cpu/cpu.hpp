@@ -16,7 +16,7 @@ class Cpu {
   public:
     explicit Cpu(MemoryBus& bus);
 
-    void reset();
+    void reset(std::optional<Address> trainer_entry = {});
     uint32_t step();
 
     /// Untimed external counter adjustment for host/tests. CPU step() already

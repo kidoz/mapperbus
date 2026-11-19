@@ -39,7 +39,7 @@ void Cpu::load_state(StateReader& reader, bool has_interrupt_state) {
     oam_dma_page_.reset();
 }
 
-void Cpu::reset() {
+void Cpu::reset(std::optional<Address> trainer_entry) {
     a_ = 0;
     x_ = 0;
     y_ = 0;
@@ -58,7 +58,7 @@ void Cpu::reset() {
     // Read reset vector at $FFFC-$FFFD
     Byte lo = bus_.read(0xFFFC);
     Byte hi = bus_.read(0xFFFD);
-    pc_ = static_cast<Word>((hi << 8) | lo);
+    pc_ = trainer_entry.value_or(static_cast<Word>((hi << 8) | lo));
 }
 
 Byte Cpu::read(Address addr) const {

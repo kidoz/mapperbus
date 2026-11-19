@@ -432,7 +432,7 @@ void Emulator::reset_machine(bool cold_start) {
         else
             cartridge_->reset();
     }
-    cpu_.reset();
+    cpu_.reset(cartridge_ ? cartridge_->trainer_entry() : std::nullopt);
 }
 
 void Emulator::step_frame() {

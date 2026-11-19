@@ -287,6 +287,7 @@
 #include "core/mappers/namco175340.hpp"
 #include "core/mappers/nanjing_fc001.hpp"
 #include "core/mappers/nes_event.hpp"
+#include "core/mappers/nesticle_mmc3.hpp"
 #include "core/mappers/nrom.hpp"
 #include "core/mappers/ntdec2746.hpp"
 #include "core/mappers/ntdec_2722.hpp"
@@ -857,6 +858,8 @@ namespace {
         return Mapper530::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 51U || header.mapper_number == 53U)
         return Multicart51_53::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 100U)
+        return NesticleMmc3::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 329U)
         return TransformerKeyboard::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 440U || header.mapper_number == 442U)
@@ -1768,6 +1771,7 @@ void register_builtin_mappers() {
     registry.register_mapper(2, make_factory<Uxrom>());
     registry.register_mapper(3, make_factory<Cnrom>());
     registry.register_mapper(4, make_factory<Mmc3>());
+    registry.register_mapper(100, make_factory<NesticleMmc3>());
     registry.register_mapper(114, make_factory<Mmc3>());
     registry.register_mapper(115, make_factory<Mmc3>());
     registry.register_mapper(123, make_factory<Mmc3>());
