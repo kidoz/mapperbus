@@ -12,6 +12,7 @@ Sachen::Sachen(const INesHeader& h, std::vector<Byte> prg, std::vector<Byte> chr
       fixed_mirror_(h.mirror_mode) {}
 bool Sachen::supports_mapper(uint16_t id) {
     switch (id) {
+    case 533U:
     case 133U:
     case 135U:
     case 137U:
@@ -32,6 +33,10 @@ Result<void> Sachen::validate_geometry(const INesHeader& h, std::size_t prg, std
         return std::unexpected("Unsupported Sachen submapper");
     std::size_t max_prg = 262144U, max_chr = 262144U;
     switch (h.mapper_number) {
+    case 533U:
+        if (!h.is_nes2 || h.has_trainer || prg != 32768U || chr != 16384U)
+            return std::unexpected("Sachen 3014 requires 32 KiB PRG and 16 KiB CHR ROM");
+        break;
     case 133U:
         max_prg = 65536U;
         max_chr = 32768U;
@@ -89,6 +94,8 @@ bool Sachen::readable_registers() const {
     return id_ == 150U || id_ == 243U;
 }
 bool Sachen::maps_expansion(Address addr) const {
+    if (id_ == 533U)
+        return false;
     if (id_ == 133U || id_ == 143U || id_ == 146U)
         return (addr & 0xE100U) == 0x4100U;
     return (addr & 0xC100U) == 0x4100U;
@@ -102,6 +109,8 @@ Byte Sachen::prg_read_mask(Address addr) const {
 Byte Sachen::read_prg(Address addr) {
     if (addr < 0x8000U)
         return read_expansion(addr);
+    if (id_ == 533U && (addr & 0xF000U) == 0xE000U)
+        return (prg_rom_[addr & 0x7FFFU] & 0xF0U) | latch_;
     unsigned bank = 0U;
     if (id_ == 133U)
         bank = latch_ >> 2U;
@@ -114,6 +123,10 @@ Byte Sachen::read_prg(Address addr) {
     return prg_rom_[(bank * 32768U + (addr & 0x7FFFU)) % prg_rom_.size()];
 }
 void Sachen::write_prg(Address addr, Byte value) {
+    if (id_ == 533U && addr >= 0x8000U) {
+        latch_ = (value & prg_rom_[addr & 0x7FFFU]) >> 4U;
+        return;
+    }
     write_expansion(addr, value);
 }
 Byte Sachen::expansion_read_mask(Address addr) const {
@@ -155,7 +168,9 @@ std::size_t Sachen::chr_address(Address addr) const {
     if (chr_rom_.empty())
         return addr & 0x1FFFU;
     unsigned bank = 0U;
-    if (id_ == 133U)
+    if (id_ == 533U)
+        bank = latch_ & 1U;
+    else if (id_ == 133U)
         bank = latch_ & 3U;
     else if (id_ == 146U)
         bank = latch_ & 7U;
@@ -232,8 +247,19 @@ std::optional<Address> Sachen::nametable_address(Address addr) const {
     return static_cast<Address>((mirror_page((static_cast<unsigned>(addr) >> 10U) & 3U) << 10U) |
                                 (addr & 0x3FFU));
 }
+void Sachen::power_on() {
+    if (id_ == 533U)
+        latch_ = 0U;
+    reset();
+}
+
 void Sachen::reset() {} // Cartridge latches retain their state on console reset.
 void Sachen::save_state(StateWriter& w) const {
+    if (id_ == 533U) {
+        w.write(id_);
+        w.write(latch_);
+        return;
+    }
     w.write_array(registers_);
     w.write(select_);
     w.write(latch_);
@@ -242,6 +268,15 @@ void Sachen::save_state(StateWriter& w) const {
         w.write_array(chr_ram_);
 }
 void Sachen::load_state(StateReader& r) {
+    if (id_ == 533U) {
+        const auto id = r.read<uint16_t>();
+        const auto latch = r.read<Byte>();
+        if (!r.ok() || id != id_ || latch > 15U)
+            r.fail();
+        else
+            latch_ = latch;
+        return;
+    }
     r.read_array(registers_);
     r.read(select_);
     r.read(latch_);

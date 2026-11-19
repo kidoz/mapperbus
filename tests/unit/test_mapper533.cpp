@@ -209,6 +209,17 @@ TEST_CASE("LittleCom PC-95 exposes two outer bank ports and active-low keyboard 
     replay(c);
     CHECK(c.read_expansion(0x4906) == 0x7E);
 }
+TEST_CASE("Sachen 3014 conflicts on writes and drives the readback nibble at E000", "[mapper533]") {
+    auto c = board(533, 2, 2);
+    c.write_prg(0x8000, 0xFF);
+    CHECK(c.read_prg(0xE000) == 0xB9);
+    CHECK(c.read_prg(0xF000) == 3);
+    CHECK(c.read_chr(0) == 4);
+    replay(c);
+    c.write_prg(0x8001, 0xFF);
+    CHECK(c.read_prg(0xE000) == 0xB0);
+    CHECK(c.read_chr(0) == 0);
+}
 TEST_CASE("LittleCom 160 uses address pins for PRG and CIRAM", "[mapper541]") {
     auto c = board(541, 64, 0, 0, 7);
     c.write_prg(0xBFFF, 255);

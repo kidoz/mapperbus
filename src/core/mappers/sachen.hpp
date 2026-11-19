@@ -26,6 +26,7 @@ class Sachen final : public Mapper {
     Byte read_expansion(Address addr) override;
     void write_expansion(Address addr, Byte value) override;
     Result<void> configure_board_jumpers(Byte value) override;
+    void power_on() override;
     void reset() override;
     void save_state(StateWriter& writer) const override;
     void load_state(StateReader& reader) override;

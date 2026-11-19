@@ -1918,6 +1918,7 @@ void register_builtin_mappers() {
     registry.register_mapper(82, make_factory<TaitoX1017>());
     registry.register_mapper(531, make_factory<Mmc3>());
     registry.register_mapper(532, San2::create);
+    registry.register_mapper(533, make_factory<Sachen>());
     registry.register_mapper(541, make_factory<MulticartLatches>());
     registry.register_mapper(545, make_factory<Mmc3>());
     registry.register_mapper(551, make_factory<Fs305>());
