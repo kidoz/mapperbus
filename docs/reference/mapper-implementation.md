@@ -5219,7 +5219,7 @@ or another registered cartridge ID.
 | 395 | Board-specific specification | Registered: Mapper395 | [r8017](https://www.nesdev.org/w/index.php?oldid=8017) |
 | 396 | Board-specific specification | Registered: Mapper396 | [r22978](https://www.nesdev.org/w/index.php?oldid=22978) |
 | 397 | J.Y. Company multicart | New implementation: JyCompany | [r23356](https://www.nesdev.org/w/index.php?oldid=23356) |
-| 398 | Board-specific specification | Not registered | [r8021](https://www.nesdev.org/w/index.php?oldid=8021) |
+| 398 | Board-specific specification | Registered: Mapper398 | [r8021](https://www.nesdev.org/w/index.php?oldid=8021) |
 | 399 | Board-specific specification | Not registered | [r24616](https://www.nesdev.org/w/index.php?oldid=24616) |
 | 400 | 8-BIT XMAS 2017 | Not registered | [r22764](https://www.nesdev.org/w/index.php?oldid=22764) |
 | 401 | Board-specific specification | Not registered | [r18958](https://www.nesdev.org/w/index.php?oldid=18958) |
