@@ -5048,7 +5048,7 @@ some historical aliases share a factory with another ID.
 | 219 | Kasheng A9461 / NT-8029 | New implementation: Mmc3 (ROM-only compatibility model) | [r21696](https://www.nesdev.org/w/index.php?oldid=21696) |
 | 220 | Gyruss / Boogerman II | Registered: KS-7057 on mapper 302 or Boogerman II on mapper 263 | [r23976](https://www.nesdev.org/w/index.php?oldid=23976) |
 | 221 | NTDEC N625092 / BMC-N625092 | New implementation: NtdecN625092 | [r5744](https://www.nesdev.org/w/index.php?oldid=5744) |
-| 222 | CTC-31 / VRC2 plus discrete IRQ logic | Not registered: hardware/register evidence gap | [r5746](https://www.nesdev.org/w/index.php?oldid=5746) |
+| 222 | CTC-31 | Registered: Ctc31 | [r5746](https://www.nesdev.org/w/index.php?oldid=5746) |
 | 223 | Tom Sawyer | Registered: Tom Sawyer on mapper 199 | [r24635](https://www.nesdev.org/w/index.php?oldid=24635) |
 | 224 | Jncota KT-008 / mapper-268 chipset | Registered: Kt008 | [r5752](https://www.nesdev.org/w/index.php?oldid=5752) |
 | 225 | ET-4310 / K-1010 address-latched multicarts | New implementation: DiscreteMapper | [r18874](https://www.nesdev.org/w/index.php?oldid=18874) |
