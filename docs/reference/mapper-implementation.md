@@ -4828,7 +4828,7 @@ or another registered cartridge ID.
 | 009 | MMC2 / PxROM | Existing registration: Mmc2 | [r22483](https://www.nesdev.org/w/index.php?oldid=22483) |
 | 010 | MMC4 / FxROM | New implementation: Mmc4 | [r6620](https://www.nesdev.org/w/index.php?oldid=6620) |
 | 011 | Color Dreams | Existing registration: ColorDreams | [r24575](https://www.nesdev.org/w/index.php?oldid=24575) |
-| 012 | Gouder SL-5020B / FFE 4M | Not registered | [r18954](https://www.nesdev.org/w/index.php?oldid=18954) |
+| 012 | Gouder SL-5020B / FFE 4M | Registered: Mapper012 | [r18954](https://www.nesdev.org/w/index.php?oldid=18954) |
 | 013 | CPROM | New implementation: DiscreteMapper | [r1200](https://www.nesdev.org/w/index.php?oldid=1200) |
 | 014 | Board-specific specification | Not registered | [r19503](https://www.nesdev.org/w/index.php?oldid=19503) |
 | 015 | Board-specific specification | Not registered | [r19956](https://www.nesdev.org/w/index.php?oldid=19956) |
