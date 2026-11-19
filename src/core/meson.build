@@ -70,6 +70,7 @@ core_sources = files(
     'mappers/sl1632.cpp',
     'mappers/mapper015.cpp',
     'mappers/ffe_super_magic_card.cpp',
+    'mappers/ret_cufrom.cpp',
     'fds/fds.cpp',
     'fds/fds_mapper.cpp',
     'input/controller.cpp',
