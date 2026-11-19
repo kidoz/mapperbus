@@ -65,6 +65,7 @@ core_sources = files(
     'mappers/namco175340.cpp',
     'mappers/sunsoft5b.cpp',
     'mappers/mapper006.cpp',
+    'mappers/mapper027.cpp',
     'mappers/mapper012.cpp',
     'mappers/sl1632.cpp',
     'mappers/mapper015.cpp',
