@@ -53,6 +53,7 @@
 #include "core/mappers/mapper125_lh32.hpp"
 #include "core/mappers/mapper126.hpp"
 #include "core/mappers/mapper128.hpp"
+#include "core/mappers/mapper142_ks202.hpp"
 #include "core/mappers/maxi15.hpp"
 #include "core/mappers/mmc1.hpp"
 #include "core/mappers/mmc2.hpp"
@@ -146,6 +147,8 @@ namespace {
         return Jy043::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 134U)
         return T4a54a::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 142U)
+        return KaiserKs202::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 12U)
         return Mapper012::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 14U)
@@ -1099,6 +1102,7 @@ void register_builtin_mappers() {
     registry.register_mapper(120, make_factory<Lh15>());
     registry.register_mapper(122, make_factory<Jy043>());
     registry.register_mapper(134, make_factory<T4a54a>());
+    registry.register_mapper(142, make_factory<KaiserKs202>());
     registry.register_mapper(12, make_factory<Mapper012>());
     registry.register_mapper(14, make_factory<Sl1632>());
     registry.register_mapper(15, make_factory<Mapper015>());
