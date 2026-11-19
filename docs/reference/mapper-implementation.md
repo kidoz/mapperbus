@@ -5183,7 +5183,7 @@ or another registered cartridge ID.
 | 359 | Board-specific specification | Registered: Mapper359 | [r7945](https://www.nesdev.org/w/index.php?oldid=7945) |
 | 360 | Board-specific specification | Registered: Mapper360 | [r7948](https://www.nesdev.org/w/index.php?oldid=7948) |
 | 361 | Board-specific specification | Registered: Mapper361 | [r7951](https://www.nesdev.org/w/index.php?oldid=7951) |
-| 362 | Board-specific specification | Not registered | [r7956](https://www.nesdev.org/w/index.php?oldid=7956) |
+| 362 | Board-specific specification | Registered: Mapper362 | [r7956](https://www.nesdev.org/w/index.php?oldid=7956) |
 | 363 | Board-specific specification | Not registered | [r18941](https://www.nesdev.org/w/index.php?oldid=18941) |
 | 364 | Board-specific specification | Not registered | [r21441](https://www.nesdev.org/w/index.php?oldid=21441) |
 | 365 | Asder PC-95 | Not registered | [r7963](https://www.nesdev.org/w/index.php?oldid=7963) |
