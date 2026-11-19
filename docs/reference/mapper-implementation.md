@@ -4936,7 +4936,7 @@ or another registered cartridge ID.
 | 114 | SuperGame/Hosenkan scrambled MMC3, submappers 0/1 | New implementation: Mmc3 | [r4858](https://www.nesdev.org/w/index.php?oldid=4858) |
 | 115 | Kasheng SFC-02B/-03/-004 | New implementation: Mmc3 | [r21614](https://www.nesdev.org/w/index.php?oldid=21614) |
 | 116 | Board-specific specification | Registered: SomariP116 | [r22958](https://www.nesdev.org/w/index.php?oldid=22958) |
-| 117 | Board-specific specification | Not registered | [r4888](https://www.nesdev.org/w/index.php?oldid=4888) |
+| 117 | Board-specific specification | Registered: Mapper117 | [r4888](https://www.nesdev.org/w/index.php?oldid=4888) |
 | 118 | TxSROM / MMC3 | New implementation: Mmc3 variant | [r24058](https://www.nesdev.org/w/index.php?oldid=24058) |
 | 119 | TQROM / MMC3 | New implementation: Mmc3 variant | [r24251](https://www.nesdev.org/w/index.php?oldid=24251) |
 | 120 | Board-specific specification | Not registered | [r20571](https://www.nesdev.org/w/index.php?oldid=20571) |
