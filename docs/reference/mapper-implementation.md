@@ -5079,7 +5079,7 @@ some historical aliases share a factory with another ID.
 | 256 | OneBus VT02 | Registered: OneBus | [r23934](https://www.nesdev.org/w/index.php?oldid=23934) |
 | 257 | Dongda / Hongda educational boards | Registered: Mapper257 | [r23118](https://www.nesdev.org/w/index.php?oldid=23118) |
 | 258 | Shanghai 158B | Registered: Shanghai158B | [r7627](https://www.nesdev.org/w/index.php?oldid=7627) |
-| 259 | Board-specific specification | Not registered | [r7628](https://www.nesdev.org/w/index.php?oldid=7628) |
+| 259 | F-15 multicart | Registered: Mmc3 | [r7628](https://www.nesdev.org/w/index.php?oldid=7628) |
 | 260 | Board-specific specification | Registered: HpMulticart260 | [r22170](https://www.nesdev.org/w/index.php?oldid=22170) |
 | 261 | Board-specific specification | Registered: Ntdec2746 | [r18984](https://www.nesdev.org/w/index.php?oldid=18984) |
 | 262 | Sachen Street Heroes / UNL-SHERO | New implementation: Mmc3 | [r7640](https://www.nesdev.org/w/index.php?oldid=7640) |
@@ -5240,7 +5240,7 @@ some historical aliases share a factory with another ID.
 | 417 | Board-specific specification | Registered: Mapper417 | [r19973](https://www.nesdev.org/w/index.php?oldid=19973) |
 | 418 | Board-specific specification | Not registered | [r8047](https://www.nesdev.org/w/index.php?oldid=8047) |
 | 419 | Board-specific specification | Not registered | [r23377](https://www.nesdev.org/w/index.php?oldid=23377) |
-| 420 | Board-specific specification | Not registered | [r8052](https://www.nesdev.org/w/index.php?oldid=8052) |
+| 420 | Kasheng A971210 | Registered: Mmc3 | [r8052](https://www.nesdev.org/w/index.php?oldid=8052) |
 | 421 | Board-specific specification | Not registered | [r8053](https://www.nesdev.org/w/index.php?oldid=8053) |
 | 422 | Board-specific specification | Registered: Mapper422 | [r22468](https://www.nesdev.org/w/index.php?oldid=22468) |
 | 423 | Board-specific specification | Not registered | [r23378](https://www.nesdev.org/w/index.php?oldid=23378) |
@@ -5332,7 +5332,7 @@ some historical aliases share a factory with another ID.
 | 542 | Board-specific specification | Not registered | [r8160](https://www.nesdev.org/w/index.php?oldid=8160) |
 | 543 | Board-specific specification | Not registered | [r8162](https://www.nesdev.org/w/index.php?oldid=8162) |
 | 544 | Board-specific specification | Not registered | [r24263](https://www.nesdev.org/w/index.php?oldid=24263) |
-| 545 | Board-specific specification | Not registered | [r23190](https://www.nesdev.org/w/index.php?oldid=23190) |
+| 545 | ST-80 | Registered: Mmc3 | [r23190](https://www.nesdev.org/w/index.php?oldid=23190) |
 | 546 | Board-specific specification | Not registered | [r8169](https://www.nesdev.org/w/index.php?oldid=8169) |
 | 547 | Konami VRC5 / QTa | Not registered | [r23763](https://www.nesdev.org/w/index.php?oldid=23763) |
 | 548 | Board-specific specification | Not registered | [r8186](https://www.nesdev.org/w/index.php?oldid=8186) |
