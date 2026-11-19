@@ -4953,7 +4953,7 @@ or another registered cartridge ID.
 | 131 | Board-specific specification | Not registered | [r24052](https://www.nesdev.org/w/index.php?oldid=24052) |
 | 132 | TXC/JV001 protection board | New implementation: Txc | [r4967](https://www.nesdev.org/w/index.php?oldid=4967) |
 | 133 | Sachen board | New implementation: Sachen | [r4977](https://www.nesdev.org/w/index.php?oldid=4977) |
-| 134 | Board-specific specification | Not registered | [r20085](https://www.nesdev.org/w/index.php?oldid=20085) |
+| 134 | Board-specific specification | Registered: T4a54a | [r20085](https://www.nesdev.org/w/index.php?oldid=20085) |
 | 135 | Sachen 8259 | New implementation: Sachen | [r23709](https://www.nesdev.org/w/index.php?oldid=23709) |
 | 136 | TXC/JV001 protection board | New implementation: Txc | [r21611](https://www.nesdev.org/w/index.php?oldid=21611) |
 | 137 | Sachen 8259 | New implementation: Sachen | [r20417](https://www.nesdev.org/w/index.php?oldid=20417) |
