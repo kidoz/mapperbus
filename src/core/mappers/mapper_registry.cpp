@@ -35,6 +35,7 @@
 #include "core/mappers/mapper049.hpp"
 #include "core/mappers/mapper052.hpp"
 #include "core/mappers/mapper055.hpp"
+#include "core/mappers/mapper056_ks202.hpp"
 #include "core/mappers/maxi15.hpp"
 #include "core/mappers/mmc1.hpp"
 #include "core/mappers/mmc2.hpp"
@@ -116,6 +117,8 @@ namespace {
         return Caltron041::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 49U)
         return Mapper049::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 56U)
+        return Mapper056Ks202::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 30U || header.mapper_number == 111U)
         return FlashBoards::validate_geometry(header, prg_size, chr_size);
     if (JyCompany::supports_mapper(header.mapper_number))
@@ -1018,6 +1021,7 @@ void register_builtin_mappers() {
     registry.register_mapper(40, make_factory<Ntdec2722>());
     registry.register_mapper(41, make_factory<Caltron041>());
     registry.register_mapper(49, make_factory<Mapper049>());
+    registry.register_mapper(56, make_factory<Mapper056Ks202>());
 }
 
 } // namespace mapperbus::core
