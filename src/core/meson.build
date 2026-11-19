@@ -101,6 +101,7 @@ core_sources = files(
     'mappers/mapper106.cpp',
     'mappers/somari_p_116.cpp',
     'mappers/mapper117.cpp',
+    'mappers/mapper121.cpp',
     'mappers/vs_system.cpp',
     'fds/fds.cpp',
     'fds/fds_mapper.cpp',

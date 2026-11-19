@@ -48,6 +48,7 @@
 #include "core/mappers/mapper112.hpp"
 #include "core/mappers/mapper117.hpp"
 #include "core/mappers/mapper120_lh15.hpp"
+#include "core/mappers/mapper121.hpp"
 #include "core/mappers/maxi15.hpp"
 #include "core/mappers/mmc1.hpp"
 #include "core/mappers/mmc2.hpp"
@@ -171,6 +172,8 @@ namespace {
         return SomariP116::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 117U)
         return Mapper117::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 121U)
+        return Mapper121::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 99U)
         return VsSystem::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 30U || header.mapper_number == 111U)
@@ -1094,6 +1097,7 @@ void register_builtin_mappers() {
     registry.register_mapper(106, make_factory<Mapper106>());
     registry.register_mapper(116, make_factory<SomariP116>());
     registry.register_mapper(117, make_factory<Mapper117>());
+    registry.register_mapper(121, make_factory<Mapper121>());
 }
 
 } // namespace mapperbus::core
