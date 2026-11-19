@@ -563,8 +563,8 @@ TEST_CASE("JY battery files contain exactly WRAM and reload through the cartridg
     REQUIRE(restored.load_cartridge(jy_cart(35U, true), path.string()));
     REQUIRE(restored.read_cpu(0x6000U) == 0x6DU);
     REQUIRE(restored.read_cpu(0x7FFFU) == 0xB2U);
-    restored.unload_cartridge();
-    writer.unload_cartridge();
+    REQUIRE(restored.unload_cartridge());
+    REQUIRE(writer.unload_cartridge());
     std::filesystem::remove_all(root);
 }
 TEST_CASE("JY PPUDATA latch trigger fetch uses the old bank before switching", "[mappers][jy]") {

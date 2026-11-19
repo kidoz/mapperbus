@@ -419,7 +419,7 @@ TEST_CASE("Archived battery saves are isolated by ROM content", "[app][archive]"
     REQUIRE(load_rom_source(emulator, path.string(), "second.nes"));
     emulator.reset();
     emulator.step_frame();
-    emulator.unload_cartridge();
+    REQUIRE(emulator.unload_cartridge());
     const auto directory = mapperbus_data_directory() / "battery";
     for (const auto& rom : {first, second}) {
         auto saved = core::read_binary_file_capped(
@@ -705,7 +705,7 @@ TEST_CASE("Mixed NES and FDS archives select exact members and retain active FDS
         CHECK_FALSE(emulator.is_fds());
         emulator.reset();
         emulator.step_frame();
-        emulator.unload_cartridge();
+        REQUIRE(emulator.unload_cartridge());
         auto battery = core::read_binary_file_capped(
             (storage / "battery" / (core::sha256_hex(core::rom_sha256(cartridge)) + ".sav"))
                 .string(),

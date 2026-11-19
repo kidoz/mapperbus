@@ -456,7 +456,7 @@ TEST_CASE(
         staged.reset();
         staged.step_frame();
         REQUIRE(staged.flush_persistent_data());
-        staged.unload_cartridge();
+        REQUIRE(staged.unload_cartridge());
         REQUIRE_FALSE(std::filesystem::exists(discarded));
     }
 }

@@ -153,7 +153,7 @@ TEST_CASE("Non-battery cartridge writes no .sav", "[battery]") {
     for (int i = 0; i < 10; ++i) {
         emu.step_frame();
     }
-    emu.unload_cartridge();
+    REQUIRE(emu.unload_cartridge());
 
     // A non-battery board must not leave a save file behind.
     REQUIRE_FALSE(std::filesystem::exists(sav));
@@ -226,7 +226,7 @@ TEST_CASE("Loading a new ROM flushes the previous cartridge's battery RAM", "[ba
     REQUIRE(std::filesystem::exists(sav_a));
     REQUIRE(std::filesystem::file_size(sav_a) == 0x2000);
 
-    emu.unload_cartridge();
+    REQUIRE(emu.unload_cartridge());
     std::filesystem::remove(sav_a);
     std::filesystem::remove(sav_b);
 }

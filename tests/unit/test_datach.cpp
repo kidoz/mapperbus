@@ -471,7 +471,7 @@ TEST_CASE("Datach device and cartridge saves stay separate and shared device mem
         writer.reset();
         writer.step_frame();
         REQUIRE(writer.read_cpu(0x10U) == 0x5AU);
-        writer.unload_cartridge();
+        REQUIRE(writer.unload_cartridge());
         REQUIRE(writer.load_cartridge(datach_cart(true, true, 3U, true), game, unit));
         writer.reset();
         writer.step_frame();
@@ -503,7 +503,7 @@ TEST_CASE("Datach device and cartridge saves stay separate and shared device mem
         REQUIRE(memory.load_cartridge(datach_cart(false, true), {}));
         memory.reset();
         memory.step_frame();
-        memory.unload_cartridge();
+        REQUIRE(memory.unload_cartridge());
         REQUIRE(memory.load_cartridge(datach_cart(false, true, 9U, true), {}));
         memory.reset();
         memory.step_frame();
@@ -518,7 +518,7 @@ TEST_CASE("Datach device and cartridge saves stay separate and shared device mem
         candidate.reset();
         candidate.step_frame();
         REQUIRE(candidate.flush_persistent_data());
-        candidate.unload_cartridge();
+        REQUIRE(candidate.unload_cartridge());
         REQUIRE_FALSE(std::filesystem::exists(staged));
         REQUIRE_FALSE(std::filesystem::exists(staged_game));
     }
