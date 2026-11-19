@@ -4941,7 +4941,7 @@ or another registered cartridge ID.
 | 119 | TQROM / MMC3 | New implementation: Mmc3 variant | [r24251](https://www.nesdev.org/w/index.php?oldid=24251) |
 | 120 | Board-specific specification | Registered: Lh15 | [r20571](https://www.nesdev.org/w/index.php?oldid=20571) |
 | 121 | Board-specific specification | Registered: Mapper121 | [r23905](https://www.nesdev.org/w/index.php?oldid=23905) |
-| 122 | Board-specific specification | Not registered | [r22366](https://www.nesdev.org/w/index.php?oldid=22366) |
+| 122 | Board-specific specification | Registered: Jy043 | [r22366](https://www.nesdev.org/w/index.php?oldid=22366) |
 | 123 | Kasheng H2288 / UNL-H2288 | New implementation: Mmc3 | [r4940](https://www.nesdev.org/w/index.php?oldid=4940) |
 | 124 | Board-specific specification | Not registered | [r4941](https://www.nesdev.org/w/index.php?oldid=4941) |
 | 125 | Board-specific specification | Not registered | [r4945](https://www.nesdev.org/w/index.php?oldid=4945) |
