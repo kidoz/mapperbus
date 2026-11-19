@@ -67,6 +67,7 @@
 #include "core/mappers/mapper177.hpp"
 #include "core/mappers/mapper183.hpp"
 #include "core/mappers/mapper187.hpp"
+#include "core/mappers/mapper190.hpp"
 #include "core/mappers/maxi15.hpp"
 #include "core/mappers/mmc1.hpp"
 #include "core/mappers/mmc1a.hpp"
@@ -176,6 +177,8 @@ namespace {
         return Mapper183::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 189U)
         return Txc189::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 190U)
+        return Mapper190::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 12U)
         return Mapper012::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 14U)
@@ -1161,6 +1164,7 @@ void register_builtin_mappers() {
     registry.register_mapper(174, make_factory<Ntdec174>());
     registry.register_mapper(183, make_factory<Mapper183>());
     registry.register_mapper(189, make_factory<Txc189>());
+    registry.register_mapper(190, make_factory<Mapper190>());
     registry.register_mapper(12, make_factory<Mapper012>());
     registry.register_mapper(14, make_factory<Sl1632>());
     registry.register_mapper(15, make_factory<Mapper015>());
