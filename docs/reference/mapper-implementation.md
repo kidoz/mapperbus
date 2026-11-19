@@ -5173,7 +5173,7 @@ some historical aliases share a factory with another ID.
 | 349 | Board-specific specification | Registered: Mapper349 | [r7906](https://www.nesdev.org/w/index.php?oldid=7906) |
 | 350 | Board-specific specification | Registered: Mapper350 | [r7909](https://www.nesdev.org/w/index.php?oldid=7909) |
 | 351 | Board-specific specification | Registered: Mapper351 | [r19719](https://www.nesdev.org/w/index.php?oldid=19719) |
-| 352 | Board-specific specification | Not registered | [r22975](https://www.nesdev.org/w/index.php?oldid=22975) |
+| 352 | Reset-select NROM multicart | Registered: Multicart060 | [r22975](https://www.nesdev.org/w/index.php?oldid=22975) |
 | 353 | Board-specific specification | Registered: Mapper353 | [r7920](https://www.nesdev.org/w/index.php?oldid=7920) |
 | 354 | Board-specific specification | Registered: Mapper354 | [r20572](https://www.nesdev.org/w/index.php?oldid=20572) |
 | 355 | PIC16C54 protection | Registered: Mapper355 | [r7933](https://www.nesdev.org/w/index.php?oldid=7933) |
