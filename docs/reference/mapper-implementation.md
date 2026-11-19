@@ -4822,7 +4822,7 @@ or another registered cartridge ID.
 | 003 | CNROM | Existing registration: Cnrom | [r24346](https://www.nesdev.org/w/index.php?oldid=24346) |
 | 004 | MMC3 / MMC6, T9552 submapper 5 | Existing registration: Mmc3 (T9552 profile added) | [r24445](https://www.nesdev.org/w/index.php?oldid=24445) |
 | 005 | MMC5 / ExROM | Existing registration: Mmc5 | [r24329](https://www.nesdev.org/w/index.php?oldid=24329) |
-| 006 | FFE Magic Card | Not registered | [r18921](https://www.nesdev.org/w/index.php?oldid=18921) |
+| 006 | FFE Magic Card | Registered: FfeMagicCard | [r18921](https://www.nesdev.org/w/index.php?oldid=18921) |
 | 007 | AxROM | Existing registration: Axrom | [r24152](https://www.nesdev.org/w/index.php?oldid=24152) |
 | 008 | FFE Magic Card alias | Not registered | [r18921](https://www.nesdev.org/w/index.php?oldid=18921) |
 | 009 | MMC2 / PxROM | Existing registration: Mmc2 | [r22483](https://www.nesdev.org/w/index.php?oldid=22483) |
