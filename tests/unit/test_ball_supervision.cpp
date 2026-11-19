@@ -96,6 +96,43 @@ TEST_CASE("Supervision accepts menu-first or separate EPROM and locks the game s
     CHECK_FALSE(Cartridge::from_data(separate));
 }
 
+TEST_CASE("Double Dragon II bootleg independently banks PRG, CHR and CIRAM and times a CPU IRQ",
+          "[ball-supervision]") {
+    register_builtin_mappers();
+    auto rom = image(127, 8, 16);
+    for (unsigned page = 0U; page < 128U; ++page)
+        std::fill_n(rom.begin() + 16 + 131072U + page * 1024U, 1024U, static_cast<Byte>(page));
+    auto cart = Cartridge::from_data(rom);
+    REQUIRE(cart);
+    REQUIRE(cart->read_prg(0xFFFFU) == 15U);
+    for (unsigned slot = 0; slot < 4; ++slot) {
+        cart->write_prg(0xFF80U + slot, slot);
+        REQUIRE(cart->read_prg(0x8000U + slot * 8192U) == (slot == 3U ? 15U : slot));
+        cart->write_prg(0xFFD0U + slot, slot >> 1U);
+        REQUIRE(cart->nametable_address(0x2005U + slot * 1024U) == 5U + (slot >> 1U) * 1024U);
+    }
+    for (unsigned slot = 0; slot < 8; ++slot) {
+        cart->write_prg((slot < 4U ? 0xA010U : 0xBB20U) + (slot & 3U), 120U + slot);
+        REQUIRE(cart->read_chr(slot * 1024U) == 120U + slot);
+    }
+    cart->write_prg(0xFAB1U, 0);
+    for (unsigned i = 0; i < 255U; ++i)
+        cart->clock_cpu();
+    REQUIRE_FALSE(cart->irq_pending());
+    StateWriter partial;
+    cart->save_state(partial);
+    cart->clock_cpu();
+    REQUIRE(cart->irq_pending());
+    cart->write_prg(0xAB40U, 0);
+    REQUIRE_FALSE(cart->irq_pending());
+    StateReader reader(partial.data());
+    cart->load_state(reader);
+    REQUIRE(reader.ok());
+    cart->clock_cpu();
+    REQUIRE(cart->irq_pending());
+    verify_state(*cart);
+}
+
 TEST_CASE("Historical mapper IDs dispatch to their boards and retain image identity",
           "[legacy-alias]") {
     register_builtin_mappers();

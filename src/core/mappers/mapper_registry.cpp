@@ -61,6 +61,7 @@
 #include "core/mappers/mapper122.hpp"
 #include "core/mappers/mapper125_lh32.hpp"
 #include "core/mappers/mapper126.hpp"
+#include "core/mappers/mapper127.hpp"
 #include "core/mappers/mapper128.hpp"
 #include "core/mappers/mapper142_ks202.hpp"
 #include "core/mappers/mapper144.hpp"
@@ -860,6 +861,8 @@ namespace {
         return Multicart51_53::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 100U)
         return NesticleMmc3::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 127U)
+        return Mapper127::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 329U)
         return TransformerKeyboard::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 440U || header.mapper_number == 442U)
@@ -1899,6 +1902,7 @@ void register_builtin_mappers() {
     registry.register_mapper(112, make_factory<Mapper112>());
     registry.register_mapper(120, make_factory<Lh15>());
     registry.register_mapper(122, make_factory<Jy043>());
+    registry.register_mapper(127, make_factory<Mapper127>());
     registry.register_mapper(134, make_factory<T4a54a>());
     registry.register_mapper(142, make_factory<KaiserKs202>());
     registry.register_mapper(164, make_factory<Fs304>());
