@@ -16,6 +16,8 @@ class KonamiVrc final : public Mapper {
   public:
     KonamiVrc(const INesHeader& header, std::vector<Byte> prg, std::vector<Byte> chr);
     Result<void> configure_board_profile(std::string_view profile) override;
+    static Result<void> validate_fs306(const INesHeader& h, std::size_t prg, std::size_t chr);
+    std::optional<Address> nametable_address(Address addr) const override;
     Byte read_prg(Address addr) override;
     void write_prg(Address addr, Byte value) override;
     bool maps_prg(Address addr) const override;
@@ -55,7 +57,9 @@ class KonamiVrc final : public Mapper {
     std::array<Byte, 3> prg_banks_{};
     std::array<uint16_t, 8> chr_banks_{};
     MirrorMode mirror_;
-    bool waixing_dynamic_ = false;  // Immutable mapper-253 board profile.
+    bool waixing_dynamic_ = false; // Immutable mapper-253 board profile.
+    std::array<Byte, 4> fs306_ciram_{};
+    Byte fs306_irq_delay_ = 0;
     Byte waixing_chr_mode_ = 0xC8U; // Fixed or PPU-write-selected RAM decoder.
     Byte mode_ = 0;
     Byte microwire_ = 0;

@@ -233,6 +233,47 @@ TEST_CASE("JY820845C observes MMC1 writes during MHROM banking and locks its gam
     snapshot(c);
 }
 
+TEST_CASE(
+    "FS306 controls individual CIRAM quadrants, the third PRG slot and a shared CHR RAM window",
+    "[mapper544]") {
+    auto c = cartridge(544, 256, 512, 2, 0x70, 5);
+    c.write_prg(0x9C00, 9);
+    CHECK(c.read_prg(0xC000) == 9);
+    CHECK(c.read_prg(0xE000) == 31);
+    for (unsigned i = 0; i < 4; ++i) {
+        c.write_prg(0x9C0C + i, i == 2);
+        CHECK(c.nametable_address(0x2007 + i * 1024U) == (i == 2 ? 1031 : 7));
+    }
+    const auto bank = [&](unsigned value) {
+        c.write_prg(0xB000, value & 15U);
+        c.write_prg(0xB400, value >> 4U);
+    };
+    bank(0x28);
+    c.write_chr(5, 0xBC);
+    bank(0x12A);
+    CHECK(c.read_chr(5) == 0xBC);
+    bank(0xC8);
+    c.write_chr(0, 0);
+    bank(4);
+    CHECK(c.read_chr(5) == 0xBC);
+    bank(0x28);
+    CHECK(c.read_chr(5) == 0x28);
+    bank(0xD8);
+    c.write_chr(0, 0);
+    bank(4);
+    CHECK(c.read_chr(5) == 4);
+    c.write_prg(0xF000, 15);
+    c.write_prg(0xF400, 15);
+    c.write_prg(0xF800, 6);
+    c.clock_cpu();
+    CHECK_FALSE(c.irq_pending());
+    snapshot(c);
+    c.clock_cpu();
+    CHECK(c.irq_pending());
+    c.write_prg(0xFC00, 0);
+    CHECK_FALSE(c.irq_pending());
+}
+
 TEST_CASE("NTDEC 2718 keeps CHR RAM fixed while N118 bank 5 changes CIRAM", "[mapper557]") {
     auto c = cartridge(557, 128, 0, 0, 7, 7);
     c.write_chr(0x1B23, 0xAC);

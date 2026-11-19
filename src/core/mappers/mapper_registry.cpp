@@ -936,6 +936,8 @@ namespace {
         return Mapper530::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 543U)
         return Mmc1::validate_ch501(header, prg_size, chr_size);
+    if (header.mapper_number == 544U)
+        return KonamiVrc::validate_fs306(header, prg_size, chr_size);
     if (header.mapper_number == 545U)
         return Mmc3::validate_st80(header, prg_size, chr_size);
     if (header.mapper_number == 546U)
@@ -1948,6 +1950,7 @@ void register_builtin_mappers() {
     registry.register_mapper(541, make_factory<MulticartLatches>());
     registry.register_mapper(542, make_factory<Mapper530>());
     registry.register_mapper(543, make_factory<Mmc1>());
+    registry.register_mapper(544, make_factory<KonamiVrc>());
     registry.register_mapper(545, make_factory<Mmc3>());
     registry.register_mapper(546, make_factory<Mmc1>());
     registry.register_mapper(550, make_factory<Mmc1>());

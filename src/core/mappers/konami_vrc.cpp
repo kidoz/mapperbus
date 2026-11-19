@@ -33,6 +33,22 @@ KonamiVrc::KonamiVrc(const INesHeader& header, std::vector<Byte> prg, std::vecto
     reset();
 }
 
+Result<void> KonamiVrc::validate_fs306(const INesHeader& h, std::size_t prg, std::size_t chr) {
+    if (h.mapper_number != 544 || !h.is_nes2 || h.submapper || !h.has_battery || h.has_trainer ||
+        prg != 262144 || chr != 524288 || h.chr_ram_size != 2048 || h.prg_ram_size ||
+        h.chr_nvram_size || h.prg_nvram_size != 8192 ||
+        (h.mirror_mode != MirrorMode::Horizontal && h.mirror_mode != MirrorMode::Vertical))
+        return std::unexpected(
+            "FS306 requires 256/512 KiB PRG/CHR ROM, 8 KiB battery WRAM and 2 KiB CHR RAM");
+    return {};
+}
+
+std::optional<Address> KonamiVrc::nametable_address(Address addr) const {
+    if (mapper_ != 544U)
+        return std::nullopt;
+    return static_cast<Address>((fs306_ciram_[(addr >> 10U) & 3U] << 10U) | (addr & 0x3FFU));
+}
+
 Result<void> KonamiVrc::configure_board_profile(std::string_view profile) {
     if (mapper_ != 253U)
         return Mapper::configure_board_profile(profile);
@@ -45,7 +61,7 @@ Result<void> KonamiVrc::configure_board_profile(std::string_view profile) {
 
 void KonamiVrc::power_on() {
     reset();
-    if (mapper_ == 252U || mapper_ == 253U) {
+    if (mapper_ == 252U || mapper_ == 253U || mapper_ == 544U) {
         if (mapper_ == 253U)
             waixing_chr_mode_ = waixing_dynamic_ ? 0x80U : 0xC8U;
         chr_ram_.fill(0U);
@@ -56,6 +72,12 @@ void KonamiVrc::power_on() {
 
 void KonamiVrc::reset() {
     prg_banks_ = {0U, 1U, 0U};
+    if (mapper_ == 544U) {
+        waixing_chr_mode_ = 0x80U;
+        fs306_ciram_ = {0, 0, 1, 1};
+        prg_banks_[2] = 30U;
+        fs306_irq_delay_ = 0;
+    }
     chr_banks_.fill(0U);
     mirror_ = initial_mirror_;
     mode_ = microwire_ = irq_control_ = irq_enabled_ = irq_pending_ = 0U;
@@ -65,6 +87,8 @@ void KonamiVrc::reset() {
 
 Byte KonamiVrc::port(Address address) const {
     const auto addr = static_cast<unsigned>(address);
+    if (mapper_ == 544U)
+        return (addr >> 10U) & 3U;
     if (mapper_ == 252U || mapper_ == 253U)
         return (addr >> 2U) & 3U;
     if (mapper_ == 21U) {
@@ -93,7 +117,7 @@ bool KonamiVrc::maps_prg(Address addr) const {
         return true;
     if (addr < 0x6000U || mapper_ == 75U)
         return false;
-    if (mapper_ == 73U)
+    if (mapper_ == 73U || mapper_ == 544U)
         return !prg_ram_.empty();
     if (vrc2_)
         return !prg_ram_.empty() || addr < 0x7000U;
@@ -121,7 +145,7 @@ Byte KonamiVrc::read_prg(Address addr) {
     const auto slot = (addr - 0x8000U) >> 13U;
     const std::size_t count = prg_rom_.size() / 0x2000U;
     std::size_t bank = count - 1U;
-    if (mapper_ == 75U) {
+    if (mapper_ == 75U || mapper_ == 544U) {
         if (slot < 3U)
             bank = prg_banks_[slot];
     } else if (slot == 1U) {
@@ -138,6 +162,7 @@ void KonamiVrc::irq_control(Byte data) {
     irq_control_ = value & 7U;
     irq_enabled_ = (value >> 1U) & 1U;
     irq_pending_ = 0U;
+    fs306_irq_delay_ = 0;
     if (mapper_ == 252U || mapper_ == 253U)
         irq_prescaler_ = 341U;
     if (irq_enabled_ != 0U) {
@@ -148,6 +173,7 @@ void KonamiVrc::irq_control(Byte data) {
 
 void KonamiVrc::irq_acknowledge() {
     irq_pending_ = 0U;
+    fs306_irq_delay_ = 0;
     irq_enabled_ = irq_control_ & 1U;
 }
 
@@ -193,6 +219,15 @@ void KonamiVrc::write_prg(Address addr, Byte value) {
     if (group == 8U || group == 10U) {
         prg_banks_[group == 8U ? 0U : 1U] = value & 31U;
     } else if (group == 9U) {
+        if (mapper_ == 544U) {
+            if (index == 3U) {
+                if ((addr & 4U) != 0)
+                    fs306_ciram_[addr & 3U] = value & 1U;
+                else
+                    prg_banks_[2] = value & 31U;
+            }
+            return;
+        }
         if (vrc2_ || index == 0U) {
             constexpr std::array kModes = {MirrorMode::Vertical,
                                            MirrorMode::Horizontal,
@@ -240,7 +275,14 @@ std::optional<std::size_t> KonamiVrc::waixing_chr_ram_offset(Address addr) const
     bool ram = false;
     if (mapper_ == 252U)
         ram = bank == 6U || bank == 7U;
-    else if (!waixing_dynamic_)
+    else if (mapper_ == 544U) {
+        constexpr std::array<unsigned, 8> first{
+            0x28U, 0x00U, 0x4CU, 0x64U, 0x46U, 0x7CU, 0x04U, 0xFFU};
+        const auto code = ((waixing_chr_mode_ >> 1U) & 1U) | ((waixing_chr_mode_ >> 2U) & 2U) |
+                          ((waixing_chr_mode_ >> 4U) & 4U);
+        const unsigned mask = (waixing_chr_mode_ & 0x40U) ? 0xFEU : 0xFCU;
+        ram = !(waixing_chr_mode_ & 0x10U) && (bank & mask) == first[code];
+    } else if (!waixing_dynamic_)
         ram = bank == 4U || bank == 5U;
     else {
         const unsigned mask =
@@ -255,7 +297,7 @@ std::optional<std::size_t> KonamiVrc::waixing_chr_ram_offset(Address addr) const
     return ram ? std::optional<std::size_t>{(bank & 1U) * 1024U + (addr & 0x3FFU)} : std::nullopt;
 }
 Byte KonamiVrc::read_chr(Address addr) {
-    if (mapper_ == 252U || mapper_ == 253U)
+    if (mapper_ == 252U || mapper_ == 253U || mapper_ == 544U)
         if (const auto ram = waixing_chr_ram_offset(addr))
             return chr_ram_[*ram];
     const auto offset = chr_offset(addr & 0x1FFFU);
@@ -263,8 +305,10 @@ Byte KonamiVrc::read_chr(Address addr) {
                             : chr_rom_[offset % chr_rom_.size()];
 }
 void KonamiVrc::write_chr(Address addr, Byte value) {
-    if (mapper_ == 252U || mapper_ == 253U) {
+    if (mapper_ == 252U || mapper_ == 253U || mapper_ == 544U) {
         const auto bank = chr_banks_[(addr >> 10U) & 7U];
+        if (mapper_ == 544U && (bank & 0x80U))
+            waixing_chr_mode_ = bank & 0xDAU;
         if (mapper_ == 253U && waixing_dynamic_ &&
             (bank == 0x88U || bank == 0xC2U || bank == 0xC8U))
             waixing_chr_mode_ = static_cast<Byte>(bank);
@@ -283,11 +327,18 @@ void KonamiVrc::irq_tick() {
     const uint32_t mask = mapper_ == 73U && (irq_control_ & 4U) == 0U ? 0xFFFFU : 0x00FFU;
     if ((irq_counter_ & mask) == mask) {
         irq_counter_ = static_cast<uint16_t>((irq_counter_ & ~mask) | (irq_latch_ & mask));
-        irq_pending_ = 1U;
+        if (mapper_ == 544U)
+            fs306_irq_delay_ = 1;
+        else
+            irq_pending_ = 1U;
     } else
         ++irq_counter_;
 }
 void KonamiVrc::clock_cpu() {
+    if (fs306_irq_delay_) {
+        irq_pending_ = 1;
+        fs306_irq_delay_ = 0;
+    }
     if (vrc2_ || mapper_ == 75U || irq_enabled_ == 0U)
         return;
     if (mapper_ == 73U || (irq_control_ & 4U) != 0U)
@@ -306,7 +357,7 @@ void KonamiVrc::acknowledge_irq() {
 }
 
 void KonamiVrc::save_state(StateWriter& w) const {
-    if (mapper_ == 252U || mapper_ == 253U) {
+    if (mapper_ == 252U || mapper_ == 253U || mapper_ == 544U) {
         save_waixing_state(w);
         return;
     }
@@ -325,7 +376,7 @@ void KonamiVrc::save_state(StateWriter& w) const {
     w.write_array(chr_ram_);
 }
 void KonamiVrc::load_state(StateReader& r) {
-    if (mapper_ == 252U || mapper_ == 253U) {
+    if (mapper_ == 252U || mapper_ == 253U || mapper_ == 544U) {
         load_waixing_state(r);
         return;
     }
@@ -355,6 +406,8 @@ void KonamiVrc::load_state(StateReader& r) {
 uint16_t KonamiVrc::waixing_state_tag() const {
     const unsigned wiring =
         (initial_mirror_ == MirrorMode::Vertical ? 1U : 0U) | (nvram_size_ != 0U ? 2U : 0U);
+    if (mapper_ == 544U)
+        return static_cast<Word>(0x5440U | wiring);
     if (mapper_ == 252U)
         return static_cast<uint16_t>(0xFC00U | wiring);
     const auto prg = std::bit_width(prg_rom_.size() / 32768U) - 1U;
@@ -375,8 +428,13 @@ void KonamiVrc::save_waixing_state(StateWriter& w) const {
     w.write(irq_control_);
     w.write(irq_enabled_);
     w.write(irq_pending_);
-    if (mapper_ == 253U)
+    if (mapper_ == 253U || mapper_ == 544U)
         w.write(waixing_chr_mode_);
+    if (mapper_ == 544U) {
+        w.write(prg_banks_[2]);
+        w.write_array(fs306_ciram_);
+        w.write(fs306_irq_delay_);
+    }
     for (const auto value : prg_ram_)
         w.write(value);
     for (const auto value : std::span(chr_ram_).first(2048U))
@@ -393,10 +451,22 @@ void KonamiVrc::load_waixing_state(StateReader& r) {
     const auto latch = r.read<Byte>(), counter = r.read<Byte>();
     const auto prescaler = r.read<uint16_t>();
     const auto control = r.read<Byte>(), enabled = r.read<Byte>(), pending = r.read<Byte>();
-    const auto chr_mode = mapper_ == 253U ? r.read<Byte>() : Byte{0xC8U};
+    const auto chr_mode = mapper_ == 253U || mapper_ == 544U ? r.read<Byte>() : Byte{0xC8U};
+    Byte third_bank = 0, delay = 0;
+    decltype(fs306_ciram_) ciram{};
+    if (mapper_ == 544U) {
+        third_bank = r.read<Byte>();
+        r.read_array(ciram);
+        delay = r.read<Byte>();
+        if (third_bank > 31 || delay > enabled ||
+            std::ranges::any_of(ciram, [](Byte bit) { return bit > 1; }))
+            r.fail();
+    }
     const bool valid_chr_mode =
-        chr_mode == 0xC8U ||
-        (waixing_dynamic_ && (chr_mode == 0x80U || chr_mode == 0x88U || chr_mode == 0xC2U));
+        mapper_ == 544U
+            ? ((chr_mode & 0xA5U) == 0x80U)
+            : chr_mode == 0xC8U || (waixing_dynamic_ &&
+                                    (chr_mode == 0x80U || chr_mode == 0x88U || chr_mode == 0xC2U));
     std::array<Byte, 8192> wram{};
     std::array<Byte, 2048> cram{};
     r.read_array(wram);
@@ -409,7 +479,9 @@ void KonamiVrc::load_waixing_state(StateReader& r) {
         r.fail();
         return;
     }
-    prg_banks_ = {prg[0U], prg[1U], 0U};
+    prg_banks_ = {prg[0U], prg[1U], third_bank};
+    fs306_ciram_ = ciram;
+    fs306_irq_delay_ = delay;
     chr_banks_ = chr;
     waixing_chr_mode_ = chr_mode;
     mirror_ = mirror;
