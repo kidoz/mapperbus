@@ -97,7 +97,10 @@ TEST_CASE("Mapper 222 CTC-31 validates only the documented board population", "[
         reject(header(), size);
         reject(header(), kPrgSize, size);
     }
-    for (Byte submapper = 1U; submapper < 16U; ++submapper) {
+    auto ctc = header();
+    ctc.submapper = 1U;
+    REQUIRE(Ctc31::validate_geometry(ctc, kPrgSize, kChrSize));
+    for (Byte submapper = 2U; submapper < 16U; ++submapper) {
         auto h = header();
         h.submapper = submapper;
         reject(h);
@@ -381,14 +384,6 @@ TEST_CASE("Mapper 222 CTC-31 snapshots replay and reject corruption atomically",
     REQUIRE(state(*other) == before);
 }
 
-void register_test_factory() {
-    register_builtin_mappers();
-    MapperRegistry::instance().register_mapper(
-        222U, [](const INesHeader& h, std::vector<Byte> prg, std::vector<Byte> chr) {
-            return std::make_unique<Ctc31>(h, std::move(prg), std::move(chr));
-        });
-}
-
 std::vector<Byte> image(bool legacy = false, bool vertical = true) {
     auto prg = prg_rom();
     const auto chr = chr_rom();
@@ -467,13 +462,14 @@ std::vector<Byte> image(bool legacy = false, bool vertical = true) {
     result[5] = 16U;
     result[6] = static_cast<Byte>(0xE0U | (vertical ? 1U : 0U));
     result[7] = legacy ? 0xD0U : 0xD8U;
+    result[8] = legacy ? 0U : 0x10U;
     result.insert(result.end(), prg.begin(), prg.end());
     result.insert(result.end(), chr.begin(), chr.end());
     return result;
 }
 
 Cartridge cartridge(bool legacy = false, bool vertical = true) {
-    register_test_factory();
+    register_builtin_mappers();
     auto result = Cartridge::from_data(image(legacy, vertical));
     REQUIRE(result);
     return std::move(*result);

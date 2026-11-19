@@ -18,13 +18,14 @@ Result<void> Ctc31::validate_geometry(const INesHeader& header,
                                       std::size_t chr_size) {
     if (header.mapper_number != 222U)
         return std::unexpected("CTC-31 requires mapper 222");
-    if (header.is_nes2 && header.submapper != 0U)
-        return std::unexpected("CTC-31 supports submapper 0");
+    if (header.is_nes2 && header.submapper > 1U)
+        return std::unexpected("CTC-31 supports CTC-31 submapper 1 and legacy submapper 0");
     if (prg_size != 131072U || chr_size != 131072U)
         return std::unexpected("CTC-31 requires 128 KiB PRG and 128 KiB CHR ROM");
     if (header.mirror_mode != MirrorMode::Horizontal && header.mirror_mode != MirrorMode::Vertical)
         return std::unexpected("CTC-31 requires H/V startup mirroring");
-    if (header.has_battery || header.chr_ram_size != 0U || header.chr_nvram_size != 0U ||
+    if (header.has_trainer || header.has_battery || header.chr_ram_size != 0U ||
+        header.chr_nvram_size != 0U ||
         (header.is_nes2 && (header.prg_ram_size != 0U || header.prg_nvram_size != 0U)))
         return std::unexpected("CTC-31 has no RAM, NVRAM, or battery");
     return {};

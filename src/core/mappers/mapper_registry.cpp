@@ -1978,6 +1978,7 @@ void register_builtin_mappers() {
     registry.register_mapper(185, make_factory<Cnrom185>());
     registry.register_mapper(187, make_factory<Mapper187>());
     registry.register_mapper(188, make_factory<KaraokeStudio188>());
+    registry.register_mapper(222, make_factory<Ctc31>());
     registry.register_mapper(224, make_factory<Kt008>());
     registry.register_mapper(257, make_factory<Mapper257>());
     registry.register_mapper(260, make_factory<HpMulticart260>());
