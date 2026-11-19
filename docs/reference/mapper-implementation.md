@@ -5153,7 +5153,7 @@ or another registered cartridge ID.
 | 329 | Board-specific specification | Not registered | [r24220](https://www.nesdev.org/w/index.php?oldid=24220) |
 | 330 | Board-specific specification | Registered: Mapper330 | [r20367](https://www.nesdev.org/w/index.php?oldid=20367) |
 | 331 | Board-specific specification | Registered: Mapper331 | [r7849](https://www.nesdev.org/w/index.php?oldid=7849) |
-| 332 | Board-specific specification | Not registered | [r7853](https://www.nesdev.org/w/index.php?oldid=7853) |
+| 332 | Board-specific specification | Registered: Mapper332 | [r7853](https://www.nesdev.org/w/index.php?oldid=7853) |
 | 333 | Board-specific specification | Not registered | [r7855](https://www.nesdev.org/w/index.php?oldid=7855) |
 | 334 | Board-specific specification | Not registered | [r7857](https://www.nesdev.org/w/index.php?oldid=7857) |
 | 335 | Board-specific specification | Not registered | [r24495](https://www.nesdev.org/w/index.php?oldid=24495) |
