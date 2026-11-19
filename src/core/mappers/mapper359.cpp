@@ -29,34 +29,37 @@ constexpr Byte kIrqModeEnable = 1U;
 // it. These are deterministic policies, not established electrical defaults.
 Mapper359::Mapper359(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte> chr_rom)
     : prg_rom_(std::move(prg_rom)), chr_rom_(std::move(chr_rom)),
-      initial_mirror_(header.mirror_mode) {
+      two_kib_chr_(header.mapper_number == 540U), initial_mirror_(header.mirror_mode) {
     power_on();
 }
 
 Result<void> Mapper359::validate_geometry(const INesHeader& header,
                                           std::size_t prg_size,
                                           std::size_t chr_size) {
-    if (header.mapper_number != 359U) {
-        return std::unexpected("Mapper 359 requires mapper ID 359");
+    if (header.mapper_number == 540U && (chr_size != kMaxChrSize || header.has_trainer))
+        return std::unexpected("Mapper 540 requires 512 KiB CHR ROM without a trainer");
+    if (header.mapper_number != 359U && header.mapper_number != 540U) {
+        return std::unexpected("Expected mapper 359 or 540");
     }
     if (!header.is_nes2 || header.submapper != 0U) {
-        return std::unexpected("Mapper 359 requires NES 2.0 submapper 0");
+        return std::unexpected("SB-5013 family requires NES 2.0 submapper 0");
     }
     if (prg_size < kMinRomSize || prg_size > kMaxPrgSize || prg_size % kPrgBankSize != 0U) {
-        return std::unexpected("Mapper 359 requires 8 KiB-1 MiB PRG ROM in 8 KiB units");
+        return std::unexpected("SB-5013 family requires 8 KiB-1 MiB PRG ROM in 8 KiB units");
     }
     if (chr_size > kMaxChrSize || (chr_size != 0U && chr_size < kMinRomSize) ||
         chr_size % kChrBankSize != 0U) {
-        return std::unexpected("Mapper 359 requires zero or 8-512 KiB CHR ROM in 1 KiB units");
+        return std::unexpected("SB-5013 family requires zero or 8-512 KiB CHR ROM in 1 KiB units");
     }
     const auto expected_chr_ram = chr_size == 0U ? kChrRamSize : 0UZ;
     if (header.has_battery || header.prg_ram_size != 0U || header.prg_nvram_size != 0U ||
         header.chr_ram_size != expected_chr_ram || header.chr_nvram_size != 0U) {
-        return std::unexpected("Mapper 359 requires no CPU RAM and only optional 8 KiB CHR RAM");
+        return std::unexpected(
+            "SB-5013 family requires no CPU RAM and only optional 8 KiB CHR RAM");
     }
     if (header.mirror_mode != MirrorMode::Horizontal &&
         header.mirror_mode != MirrorMode::Vertical) {
-        return std::unexpected("Mapper 359 requires ordinary H/V initial CIRAM metadata");
+        return std::unexpected("SB-5013 family requires ordinary H/V initial CIRAM metadata");
     }
     return {};
 }
@@ -161,6 +164,11 @@ Byte Mapper359::read_chr(Address addr) {
     if (chr_rom_.empty()) {
         return chr_ram_[addr & 0x1FFFU];
     }
+    if (two_kib_chr_) {
+        constexpr std::array<unsigned, 4> kRegister{0, 1, 6, 7};
+        const unsigned bank = registers_.chr_banks[kRegister[(addr >> 11U) & 3U]];
+        return chr_rom_[bank * 2048U + (addr & 0x07FFU)];
+    }
     const auto slot = static_cast<unsigned>((addr >> 10U) & 7U);
     const unsigned mask = (registers_.bank_size & 0x40U) != 0U ? 0xFFU : 0x7FU;
     const unsigned outer = static_cast<unsigned>(registers_.chr_base) * 128U;
@@ -253,7 +261,7 @@ void Mapper359::observe_ppu_a12(bool high) {
 }
 
 std::uint16_t Mapper359::state_tag() const {
-    return static_cast<std::uint16_t>(kStateTag |
+    return static_cast<std::uint16_t>((two_kib_chr_ ? 0x5400U : kStateTag) |
                                       (initial_mirror_ == MirrorMode::Vertical ? 1U : 0U) |
                                       (chr_rom_.empty() ? 0U : 2U));
 }

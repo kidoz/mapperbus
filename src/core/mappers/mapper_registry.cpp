@@ -930,6 +930,8 @@ namespace {
     if (header.mapper_number == 535U || header.mapper_number == 538U ||
         header.mapper_number == 539U)
         return FdsConversion535::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 540U)
+        return Mapper359::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 545U)
         return Mmc3::validate_st80(header, prg_size, chr_size);
     if (header.mapper_number == 557U)
@@ -1934,6 +1936,7 @@ void register_builtin_mappers() {
     registry.register_mapper(537, make_factory<Mmc3Multicart536537>());
     registry.register_mapper(538, make_factory<FdsConversion535>());
     registry.register_mapper(539, make_factory<FdsConversion535>());
+    registry.register_mapper(540, make_factory<Mapper359>());
     registry.register_mapper(541, make_factory<MulticartLatches>());
     registry.register_mapper(545, make_factory<Mmc3>());
     registry.register_mapper(551, make_factory<Fs305>());

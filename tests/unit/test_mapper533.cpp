@@ -284,6 +284,17 @@ TEST_CASE("Kid Icarus conversion decodes disjoint RAM windows", "[mapper539]") {
     c.write_prg(0xFFFF, 0);
     CHECK(c.mirror_mode() == MirrorMode::Vertical);
 }
+TEST_CASE("UNL-82112C decodes four 2 KiB CHR windows", "[mapper540]") {
+    auto c = board(540, 8, 64);
+    for (unsigned i = 0; i < 4; ++i) {
+        constexpr std::array<Address, 4> ports{0xA000, 0xA001, 0xB002, 0xB003};
+        c.write_prg(ports[i], static_cast<Byte>(252 + i));
+        CHECK(c.read_chr(static_cast<Address>(i * 2048U + 2047U)) == 252 + i);
+    }
+    c.write_prg(0xA002, 33);
+    CHECK(c.read_chr(0x1000) == 254);
+    replay(c);
+}
 TEST_CASE("LittleCom 160 uses address pins for PRG and CIRAM", "[mapper541]") {
     auto c = board(541, 64, 0, 0, 7);
     c.write_prg(0xBFFF, 255);

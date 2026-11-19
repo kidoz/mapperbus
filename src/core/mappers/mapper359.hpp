@@ -64,6 +64,7 @@ class Mapper359 final : public Mapper {
     std::vector<Byte> prg_rom_;
     std::vector<Byte> chr_rom_;
     std::array<Byte, 0x2000> chr_ram_{};
+    const bool two_kib_chr_;
     MirrorMode initial_mirror_ = MirrorMode::Vertical;
     Registers registers_;
 };
