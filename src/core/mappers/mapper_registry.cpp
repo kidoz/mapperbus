@@ -99,6 +99,7 @@
 #include "core/mappers/mapper300.hpp"
 #include "core/mappers/mapper301.hpp"
 #include "core/mappers/mapper302_ks7057.hpp"
+#include "core/mappers/mapper304.hpp"
 #include "core/mappers/maxi15.hpp"
 #include "core/mappers/mmc1.hpp"
 #include "core/mappers/mmc1a.hpp"
@@ -353,6 +354,8 @@ namespace {
         return Mapper301::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 302U)
         return KaiserKs7057::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 304U)
+        return Mapper304::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 30U || header.mapper_number == 111U)
         return FlashBoards::validate_geometry(header, prg_size, chr_size);
     if (JyCompany::supports_mapper(header.mapper_number))
@@ -1332,6 +1335,7 @@ void register_builtin_mappers() {
     registry.register_mapper(299, make_factory<Mapper299>());
     registry.register_mapper(300, make_factory<Mapper300>());
     registry.register_mapper(302, make_factory<KaiserKs7057>());
+    registry.register_mapper(304, make_factory<Mapper304>());
 }
 
 } // namespace mapperbus::core
