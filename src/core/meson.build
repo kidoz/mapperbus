@@ -88,6 +88,7 @@ core_sources = files(
     'mappers/multicart063.cpp',
     'mappers/n32_mapper050.cpp',
     'mappers/nes_event.cpp',
+    'mappers/ntdec2746.cpp',
     'mappers/oeka_kids.cpp',
     'mappers/t4a54a.cpp',
     'mappers/txc189.cpp',

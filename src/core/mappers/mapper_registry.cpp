@@ -93,6 +93,7 @@
 #include "core/mappers/nanjing_fc001.hpp"
 #include "core/mappers/nes_event.hpp"
 #include "core/mappers/nrom.hpp"
+#include "core/mappers/ntdec2746.hpp"
 #include "core/mappers/ntdec_2722.hpp"
 #include "core/mappers/ntdec_n625092.hpp"
 #include "core/mappers/oeka_kids.hpp"
@@ -186,6 +187,8 @@ namespace {
         return Mapper190::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 191U)
         return Mapper191::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 261U)
+        return Ntdec2746::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 12U)
         return Mapper012::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 14U)
@@ -1181,6 +1184,7 @@ void register_builtin_mappers() {
     registry.register_mapper(189, make_factory<Txc189>());
     registry.register_mapper(190, make_factory<Mapper190>());
     registry.register_mapper(191, make_factory<Mapper191>());
+    registry.register_mapper(261, make_factory<Ntdec2746>());
     registry.register_mapper(12, make_factory<Mapper012>());
     registry.register_mapper(14, make_factory<Sl1632>());
     registry.register_mapper(15, make_factory<Mapper015>());
