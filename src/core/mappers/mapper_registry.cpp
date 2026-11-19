@@ -86,6 +86,7 @@
 #include "core/mappers/mapper284_drip.hpp"
 #include "core/mappers/mapper285.hpp"
 #include "core/mappers/mapper286_benshieng.hpp"
+#include "core/mappers/mapper287.hpp"
 #include "core/mappers/maxi15.hpp"
 #include "core/mappers/mmc1.hpp"
 #include "core/mappers/mmc1a.hpp"
@@ -308,6 +309,8 @@ namespace {
         return Mapper285::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 286U)
         return BenshiengBs5::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 287U)
+        return Mapper287::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 30U || header.mapper_number == 111U)
         return FlashBoards::validate_geometry(header, prg_size, chr_size);
     if (JyCompany::supports_mapper(header.mapper_number))
@@ -1274,6 +1277,7 @@ void register_builtin_mappers() {
     registry.register_mapper(273, make_factory<Mapper273>());
     registry.register_mapper(285, make_factory<Mapper285>());
     registry.register_mapper(286, make_factory<BenshiengBs5>());
+    registry.register_mapper(287, make_factory<Mapper287>());
     registry.register_mapper(284, make_factory<Drip>());
 }
 
