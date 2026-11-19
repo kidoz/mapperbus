@@ -167,6 +167,7 @@ TEST_CASE("Mapper 160 snapshots restore bank IRQ and arithmetic state", "[mapper
 }
 
 TEST_CASE("Mapper 160 accepts only the mapper 90 header envelope", "[mapper160]") {
+    register_builtin_mappers();
     REQUIRE(JyCompany::supports_mapper(160U));
     auto legacy = MapperRegistry::instance().create(
         header(), patterned_rom(32768U, 8192U), patterned_rom(8192U, 1024U));

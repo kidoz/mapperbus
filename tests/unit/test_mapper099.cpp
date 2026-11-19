@@ -491,6 +491,25 @@ TEST_CASE("Vs. registry rejects unsupported console, cabinet and device profiles
     REQUIRE_FALSE(Cartridge::from_data(image)); // missing NES 2.0 PPU information
 }
 
+TEST_CASE("Cartridge loading rejects Vs. images for mappers without cabinet support",
+          "[mapper099]") {
+    auto image = make_image(65536U, 16384U, false, MirrorMode::FourScreen);
+    for (unsigned mapper : {1U, 2U, 67U, 206U}) {
+        CAPTURE(mapper);
+        image[6] = static_cast<Byte>((mapper << 4U) | 8U);
+        for (Byte format : {0x00, 0x08}) {
+            CAPTURE(format);
+            image[7] = static_cast<Byte>((mapper & 0xF0U) | format);
+            REQUIRE(Cartridge::from_data(image));
+
+            image[7] |= 1U;
+            const auto result = Cartridge::from_data(image);
+            REQUIRE_FALSE(result);
+            CHECK(result.error() == "Unsupported Vs. System mapper: " + std::to_string(mapper));
+        }
+    }
+}
+
 TEST_CASE("Vs. VRC1 cartridge and historical ID share banking, cabinet and state behavior",
           "[mapper099][mapper151]") {
     for (const unsigned id : {75U, 151U}) {

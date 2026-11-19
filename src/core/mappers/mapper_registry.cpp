@@ -1747,7 +1747,12 @@ Result<std::unique_ptr<Mapper>> MapperRegistry::create(const INesHeader& header,
     if (auto valid = validate_geometry(header, prg_rom.size(), chr_rom.size()); !valid) {
         return std::unexpected(valid.error());
     }
-    return it->second(header, std::move(prg_rom), std::move(chr_rom), misc_rom);
+    auto mapper = it->second(header, std::move(prg_rom), std::move(chr_rom), misc_rom);
+    if (header.console_type == 1U && mapper && (*mapper)->vs_cabinet() == nullptr) {
+        return std::unexpected("Unsupported Vs. System mapper: " +
+                               std::to_string(header.mapper_number));
+    }
+    return mapper;
 }
 
 namespace {
