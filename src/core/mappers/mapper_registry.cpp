@@ -157,6 +157,7 @@
 #include "core/mappers/mapper368.hpp"
 #include "core/mappers/mapper369.hpp"
 #include "core/mappers/mapper370.hpp"
+#include "core/mappers/mapper371.hpp"
 #include "core/mappers/maxi15.hpp"
 #include "core/mappers/mmc1.hpp"
 #include "core/mappers/mmc1a.hpp"
@@ -527,6 +528,8 @@ namespace {
         return Mapper369::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 370U)
         return Mapper370::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 371U)
+        return Mapper371::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 30U || header.mapper_number == 111U)
         return FlashBoards::validate_geometry(header, prg_size, chr_size);
     if (JyCompany::supports_mapper(header.mapper_number))
