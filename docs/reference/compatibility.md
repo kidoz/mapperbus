@@ -97,6 +97,8 @@ work. Coverage varies by board and includes synthetic banking, IRQ, CPU/PPU
 integration, and save-state tests.
 
 Unsupported IDs fail cartridge creation with an `Unsupported mapper` error.
+ROMs marked for the Vs. System require a mapper that provides the cabinet.
+Standard Vs. Unisystem profiles are available on mappers 75, 99 and 151.
 Mappers 256, 270 and 436 accept the NES 2.0 VT02 profile for normal 2bpp graphics. Enhanced-console profiles still require additional hardware emulation. [Board profiles and media requirements](mapper-implementation.md#cartridge-coverage-follow-up).
 Mapper 182 implements the YH-001 multicart, and mapper 255 accepts the New
 Star 128-in-1 population. Historical IDs with conflicting assignments, including

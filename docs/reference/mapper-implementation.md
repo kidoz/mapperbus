@@ -20,7 +20,7 @@ image. Mapper 355 requires one 1 KiB PIC firmware image. Mapper 413 requires one
 
 | Board or family | Supported profile and limits |
 |---|---|
-| Vs. Unisystem (75, 99, 151) | Standard single cabinet, shared RAM, RGB PPU, coin, service and DIP inputs. VRC1 cartridges retain four-screen mirroring. Legacy VRC1 images select the Gradius or The Goonies PPU and harness by matching both ROM sockets. DualSystem, light guns and protected cabinet profiles need separate support. |
+| Vs. Unisystem (75, 99, 151) | Standard single cabinet, shared RAM, RGB PPU, coin, service and DIP inputs. VRC1 cartridges retain four-screen mirroring. Legacy VRC1 images select the Gradius or The Goonies PPU and harness by matching both ROM sockets. The loader rejects Vs. images whose mapper lacks cabinet support. DualSystem, light guns and protected cabinet profiles need separate support. |
 | Identified historical ROMs | 39 supports the English and Arabic Study & Game multicarts. The separate Subor keyboard is outside this cartridge profile. 54 distinguishes two Novel Diamond circuits. 181 uses the Seicross V2 CHR enable pins. 220 recognizes KS-7057 Gyruss and Boogerman II. |
 | NESticle (100) | The Akira translation uses independent PRG/CHR banks, WRAM and a 512-byte trainer. The trainer can supply its reset entry point. |
 | Legacy variants | 178 supports submappers 0, 2 and 3. Submapper 1 requires an infrared receiver. 216 supports Magic Jewelry II. The Bonza payment reader is outside that profile. 222 implements the CTC-31 wiring. |
@@ -194,9 +194,9 @@ See [mapper tests](../../tests/unit/test_mapper_boards.cpp),
   certified; normal `$7000–$7FFF` decoding is implemented.
 - Action 53 implements its standard no-PRG-RAM configuration; the optional
   implementation-specific WRAM extension is not supplied.
-- Larger remaining families include other Bandai, Jaleco and Taito boards,
-  further MMC3 derivatives and outer-bank variants,
-  remaining Sachen and other ASIC boards, further homebrew boards, and Rainbow.
+- The [coverage inventory](#every-documented-registry-slot) records unsupported
+  IDs. The [cartridge coverage follow-up](#cartridge-coverage-follow-up) lists
+  supported profiles and remaining features for recently added boards.
 - Jaleco's optional external ADPCM speech chips and sample-media loading remain
   unimplemented, including on some mapper-18/72/92 boards.
 - Enhanced consoles and copier/educational adapters may require machine or
