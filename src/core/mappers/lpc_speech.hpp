@@ -15,6 +15,7 @@ class LpcSpeech {
   public:
     void set_region(Region region);
     void reset();
+    void write_control(Byte data);
     void write_nibble(Byte data);
     bool ready() const;
     void clock();

@@ -42,12 +42,7 @@ Byte BxromWram::read_expansion(Address addr) {
 void BxromWram::write_expansion(Address addr, Byte data) {
     if (!maps_expansion(addr))
         return;
-    // NESdev defines both control pins high as data and both low as reset.
-    // Mixed control levels are unspecified; leave the device alone.
-    if ((data & 0x50U) == 0x50U)
-        speech_->write_nibble(data);
-    else if ((data & 0x50U) == 0U)
-        speech_->reset();
+    speech_->write_control(data);
 }
 bool BxromWram::has_expansion_audio() const {
     return speech_ != nullptr;

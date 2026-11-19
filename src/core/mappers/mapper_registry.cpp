@@ -2,6 +2,7 @@
 
 #include <bit>
 
+#include "core/cartridge/rom_crc32.hpp"
 #include "core/mappers/action52.hpp"
 #include "core/mappers/axrom.hpp"
 #include "core/mappers/bandai_fcg.hpp"
@@ -1630,10 +1631,120 @@ template <typename T> MapperFactory make_factory() {
     };
 }
 
+// A few old iNES assignments describe different hardware depending on the dump.
+// Match the chip identities recorded by NES 2.0 XML (2026-09-26) and the
+// original Nestopia board list. In particular, the Novel Diamond mapper hack
+// has both a different program AND a rearranged character ROM.
+Result<std::unique_ptr<Mapper>> identified_legacy_board(INesHeader h,
+                                                        std::vector<Byte> prg,
+                                                        std::vector<Byte> chr,
+                                                        std::span<const Byte> misc) {
+    struct Board {
+        Word legacy, canonical;
+        unsigned prg_kib, chr_kib;
+        std::uint32_t prg_crc, chr_crc;
+        MirrorMode mirror;
+        unsigned ram_kib, nvram_kib;
+        Byte submapper = 0;
+        unsigned mixed_chr_ram_kib = 0;
+    };
+    static constexpr Board boards[] = {
+        {39, 241, 1024, 0, 0xABB2F974, 0, MirrorMode::Vertical, 8, 0}, // Study & Game, English
+        {39, 241, 1024, 0, 0xC0A76428, 0, MirrorMode::Vertical, 8, 0}, // Study & Game, Arabic
+        {54, 58, 128, 64, 0x39BDB942, 0x069BD8F3, MirrorMode::Horizontal, 0, 0},
+        {54, 201, 128, 64, 0x4A168501, 0x04F65CC1, MirrorMode::Vertical, 0, 0},
+        {179, 176, 512, 0, 0x02C41438, 0, MirrorMode::Horizontal, 0, 8},          // Xinghe Zhanshi
+        {181, 185, 32, 8, 0xA03C98A7, 0xDBA2082A, MirrorMode::Vertical, 0, 0, 4}, // Seicross V2
+        {220, 302, 128, 0, 0xD0FD4140, 0, MirrorMode::Horizontal, 0, 0},          // KS-7057 Gyruss
+        {220, 263, 256, 128, 0xDB8854EE, 0x4BBE6FED, MirrorMode::Horizontal, 0, 0}, // Boogerman II
+        {223, 199, 512, 0, 0x2CA9BF7F, 0, MirrorMode::Horizontal, 0, 32},           // Tom Sawyer
+        {248, 115, 256, 256, 0x412B4AD9, 0xBDCE7CDA, MirrorMode::Horizontal, 0, 0}, // Bao Qing Tian
+        {251,
+         253,
+         256,
+         512,
+         0x5BC582FD,
+         0xB1F61F87,
+         MirrorMode::Horizontal,
+         0,
+         8,
+         0,
+         2}, // Qilongzhu
+    };
+    const auto unrecognized = [&h] {
+        return std::unexpected("Unsupported mapper: " + std::to_string(h.mapper_number));
+    };
+    if (h.has_trainer || h.submapper || h.misc_rom_count || !misc.empty() ||
+        h.mirror_mode == MirrorMode::FourScreen)
+        return unrecognized();
+    const auto prg_crc = crc32(prg), chr_crc = crc32(chr);
+    for (const auto& board : boards) {
+        if (board.legacy != h.mapper_number || board.prg_kib * 1024U != prg.size() ||
+            board.chr_kib * 1024U != chr.size() || prg_crc != board.prg_crc ||
+            chr_crc != board.chr_crc || h.has_battery != (board.nvram_kib != 0))
+            continue;
+        h.mapper_number = board.canonical;
+        h.submapper = board.submapper;
+        h.is_nes2 = true;
+        h.prg_ram_size = board.ram_kib * 1024U;
+        h.prg_nvram_size = board.nvram_kib * 1024U;
+        h.chr_ram_size = chr.empty() ? 8192U : board.mixed_chr_ram_kib * 1024U;
+        h.chr_nvram_size = 0;
+        h.mirror_mode = board.mirror;
+        return MapperRegistry::instance().create(h, std::move(prg), std::move(chr));
+    }
+    return unrecognized();
+}
+
+// Historical iNES IDs for the same circuit. Only the factory's private
+// header copy is translated: the cartridge and full machine state retain
+// the ID and content hash of the image supplied by the caller.
+MapperMediaFactory legacy_alias(uint16_t target) {
+    return [target](INesHeader h,
+                    std::vector<Byte> prg,
+                    std::vector<Byte> chr,
+                    std::span<const Byte> misc) -> Result<std::unique_ptr<Mapper>> {
+        if (h.submapper != 0U)
+            return std::unexpected("Historical mapper assignments require submapper 0");
+        if (h.mapper_number == 129U &&
+            (prg.size() != 131072U || chr.size() != 65536U || h.has_trainer || h.has_battery ||
+             (h.is_nes2 && h.prg_ram_size != 0U) || h.prg_nvram_size || h.chr_ram_size ||
+             h.chr_nvram_size ||
+             (h.mirror_mode != MirrorMode::Vertical && h.mirror_mode != MirrorMode::Horizontal)))
+            return std::unexpected("Mapper 129 requires the 128/64 KiB WQ1905-B ROM population");
+        if (h.mapper_number == 161U &&
+            (prg.size() != 131072U || !chr.empty() || h.has_trainer || !h.has_battery ||
+             h.prg_ram_size || h.prg_nvram_size != 8192U || h.chr_ram_size != 8192U ||
+             h.chr_nvram_size ||
+             (h.mirror_mode != MirrorMode::Vertical && h.mirror_mode != MirrorMode::Horizontal)))
+            return std::unexpected("Mapper 161 requires the Hanjuku Hero SNROM population");
+        if (h.mapper_number == 130U && !h.is_nes2) {
+            // iNES supplies an implicit 8 KiB WRAM even for this ROM-only PCB.
+            // Reject explicit extra RAM or a battery, then validate all remaining
+            // pins and sizes with the canonical NES 2.0 mapper 331 factory.
+            if (h.has_trainer || h.has_battery || h.prg_ram_size > 8192U)
+                return std::unexpected("Mapper 130 requires ROM-only NS03 hardware");
+            h.is_nes2 = true;
+            h.prg_ram_size = 0U;
+        }
+        h.mapper_number = target;
+        return MapperRegistry::instance().create(h, std::move(prg), std::move(chr), misc);
+    };
+}
+
 } // namespace
 
 void register_builtin_mappers() {
     auto& registry = MapperRegistry::instance();
+    for (const uint16_t id : {39, 54, 179, 181, 220, 223, 248, 251})
+        registry.register_mapper(id, identified_legacy_board);
+    registry.register_mapper(102, legacy_alias(284));
+    registry.register_mapper(109, legacy_alias(137));
+    registry.register_mapper(110, legacy_alias(243));
+    registry.register_mapper(129, legacy_alias(58));
+    registry.register_mapper(130, legacy_alias(331));
+    registry.register_mapper(131, legacy_alias(205));
+    registry.register_mapper(161, legacy_alias(1));
     for (const uint16_t id : {133U, 135U, 137U, 138U, 139U, 141U, 143U, 146U, 150U, 243U})
         registry.register_mapper(id, make_factory<Sachen>());
     for (const uint16_t id : {36U, 132U, 136U, 147U, 172U, 173U})

@@ -44,9 +44,11 @@ class Fk23c final : public Mapper {
     void set_battery_ram(std::span<const Byte> data) override;
     void save_state(StateWriter& writer) const override;
     void load_state(StateReader& reader) override;
+    void load_state_version(StateReader& reader, std::uint32_t version) override;
 
   private:
     struct RuntimeState;
+    void load_registers(StateReader& reader, bool exact_size);
 
     std::optional<unsigned> outer_register(Address addr) const;
     void write_outer_register(unsigned index, Byte value);

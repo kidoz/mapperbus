@@ -51,7 +51,7 @@ Fk23c::Fk23c(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<By
       prg_rom_(std::move(prg_rom)), chr_rom_(std::move(chr_rom)) {
     if (header.is_nes2) {
         chr_ram_.resize(header.chr_ram_size);
-        if (submapper_ == 2U) {
+        if (submapper_ == 0U || submapper_ == 2U) {
             volatile_wram_.resize(header.prg_ram_size);
             nvram_.resize(header.prg_nvram_size);
         }
@@ -97,6 +97,11 @@ Result<void> Fk23c::validate_geometry(const INesHeader& h,
         return std::unexpected("Mapper 176 submappers 3-5 do not provide CHR RAM");
     }
 
+    // A conventional 8 KiB battery RAM at $6000 is populated on the
+    // submapper-0 Henggedianzi Xinghe Zhanshi board.
+    if (submapper == 0U && h.has_battery && !h.prg_ram_size && h.prg_nvram_size == 8192U &&
+        prg_size == 524288U && chr_size == 0U && h.chr_ram_size == 8192U)
+        return {};
     if (submapper != 2U) {
         if (h.has_battery || h.prg_ram_size != 0U || h.prg_nvram_size != 0U)
             return std::unexpected("Only mapper 176 submapper 2 provides banked WRAM");
@@ -127,7 +132,7 @@ void Fk23c::reset() {
     bank_select_ = 0U;
     banks_ = {0U, 2U, 4U, 5U, 6U, 7U, 0U, 1U, 0xFEU, 0xFFU, 0xFFU, 0xFFU};
     mirror_register_ = initial_mirror_ == MirrorMode::Horizontal ? 1U : 0U;
-    ram_register_ = 0U;
+    ram_register_ = submapper_ == 0U && !nvram_.empty() ? 0x80U : 0U;
     irq_counter_ = 0U;
     irq_reload_ = 0U;
     irq_reload_flag_ = false;
@@ -144,7 +149,7 @@ bool Fk23c::ram_configuration() const {
 }
 
 bool Fk23c::ram_enabled() const {
-    return submapper_ == 2U && (ram_register_ & 0x80U) != 0U && !volatile_wram_.empty();
+    return (ram_register_ & 0x80U) != 0U && (!volatile_wram_.empty() || !nvram_.empty());
 }
 
 bool Fk23c::outer_registers_enabled() const {
@@ -175,14 +180,14 @@ std::size_t Fk23c::wram_offset(unsigned bank, Address addr) const {
 
 Byte Fk23c::read_wram(Address addr) const {
     const unsigned bank = ram_configuration() ? ram_register_ & 3U : 0U;
-    const auto& storage = (bank & 1U) != 0U ? nvram_ : volatile_wram_;
+    const auto& storage = (submapper_ == 0U || (bank & 1U)) ? nvram_ : volatile_wram_;
     const auto offset = wram_offset(bank, addr);
     return offset < storage.size() ? storage[offset] : 0U;
 }
 
 void Fk23c::write_wram(Address addr, Byte value) {
     const unsigned bank = ram_configuration() ? ram_register_ & 3U : 0U;
-    auto& storage = (bank & 1U) != 0U ? nvram_ : volatile_wram_;
+    auto& storage = (submapper_ == 0U || (bank & 1U)) ? nvram_ : volatile_wram_;
     const auto offset = wram_offset(bank, addr);
     if (offset < storage.size())
         storage[offset] = value;
@@ -529,6 +534,13 @@ void Fk23c::apply_state(RuntimeState state) {
 }
 
 void Fk23c::load_state(StateReader& reader) {
+    load_registers(reader, true);
+}
+void Fk23c::load_state_version(StateReader& reader, std::uint32_t) {
+    // Controller records follow the mapper in full-machine state versions 17+.
+    load_registers(reader, false);
+}
+void Fk23c::load_registers(StateReader& reader, bool exact_size) {
     const auto tag = reader.read<uint16_t>();
     const auto prg_size = reader.read<uint32_t>();
     const auto chr_size = reader.read<uint32_t>();
@@ -556,7 +568,7 @@ void Fk23c::load_state(StateReader& reader) {
     const Byte max_prg_msb = submapper_ == 3U ? 0x0FU : submapper_ == 5U ? 0x3FU : 0U;
     const Byte max_chr_msb = submapper_ == 3U ? 0x0FU : 0U;
     const bool valid =
-        reader.ok() && reader.remaining() == 0U && tag == state_tag() &&
+        reader.ok() && (!exact_size || reader.remaining() == 0U) && tag == state_tag() &&
         prg_size == prg_rom_.size() && chr_size == chr_rom_.size() &&
         state.prg_base <= (submapper_ == 5U ? 0x1FU : 0x7FU) && state.prg_base_msb <= max_prg_msb &&
         state.chr_base_msb <= max_chr_msb && state.extended <= (extended_profile ? 2U : 0U) &&

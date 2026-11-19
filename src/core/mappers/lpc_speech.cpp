@@ -16,6 +16,15 @@ void LpcSpeech::reset() {
     *this = LpcSpeech{};
     cpu_clock_ = cpu_clock;
 }
+void LpcSpeech::write_control(Byte data) {
+    // NESdev defines both control pins high as data and both low as reset.
+    // Mixed control levels are unspecified; leave the device alone.
+    if ((data & 0x50U) == 0x50U)
+        write_nibble(data);
+    else if ((data & 0x50U) == 0U)
+        reset();
+}
+
 void LpcSpeech::write_nibble(Byte data) {
     // Writes while !ready still fit until the actual 128-bit FIFO is full.
     // Overflow drops the complete nibble, without corrupting queued data.

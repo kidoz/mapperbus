@@ -320,7 +320,7 @@ TEST_CASE("Bandai EEPROM and WRAM saves contain exactly their physical persisten
         }
     } cleanup{root};
     std::filesystem::create_directories(root);
-    for (const auto h :
+    for (const auto& h :
          {fcg_header(16U, 5U, 256U), fcg_header(159U, 0U, 128U), fcg_header(153U, 0U, 8192U)}) {
         const auto path = root / (std::to_string(h.mapper_number) + ".sav");
         {
@@ -579,14 +579,14 @@ TEST_CASE("Bandai metadata selects physical memories and rejects unsupported var
     const auto create = [](INesHeader h, std::size_t prg, std::size_t chr) {
         return MapperRegistry::instance().create(h, fcg_rom(prg, 0x4000U), fcg_rom(chr, 0x400U));
     };
-    for (const auto h : {fcg_header(16U),
-                         fcg_header(16U, 4U),
-                         fcg_header(16U, 5U),
-                         fcg_header(16U, 5U, 256U),
-                         fcg_header(16U, 1U, 128U),
-                         fcg_header(16U, 3U, 8192U),
-                         fcg_header(153U, 0U, 8192U),
-                         fcg_header(159U, 0U, 128U)}) {
+    for (const auto& h : {fcg_header(16U),
+                          fcg_header(16U, 4U),
+                          fcg_header(16U, 5U),
+                          fcg_header(16U, 5U, 256U),
+                          fcg_header(16U, 1U, 128U),
+                          fcg_header(16U, 3U, 8192U),
+                          fcg_header(153U, 0U, 8192U),
+                          fcg_header(159U, 0U, 128U)}) {
         const bool ram = h.chr_ram_size != 0U;
         REQUIRE(create(h, ram ? 0x80000U : 0x40000U, ram ? 0U : 0x40000U));
         REQUIRE_FALSE(create(h, 0x4000U, ram ? 0U : 0x40000U));
@@ -630,10 +630,10 @@ TEST_CASE("Bandai metadata selects physical memories and rejects unsupported var
 
 TEST_CASE("Bandai serial reads preserve CPU open bus and IRQs run during OAM DMA",
           "[mappers][fcg][bus]") {
-    for (const auto h : {fcg_header(16U, 4U),
-                         fcg_header(16U, 5U, 256U),
-                         fcg_header(153U, 0U, 8192U),
-                         fcg_header(159U, 0U, 128U)}) {
+    for (const auto& h : {fcg_header(16U, 4U),
+                          fcg_header(16U, 5U, 256U),
+                          fcg_header(153U, 0U, 8192U),
+                          fcg_header(159U, 0U, 128U)}) {
         auto cart = fcg_cartridge(h, false);
         MemoryBus bus;
         Ppu ppu;
