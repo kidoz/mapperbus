@@ -54,6 +54,7 @@
 #include "core/mappers/mapper126.hpp"
 #include "core/mappers/mapper128.hpp"
 #include "core/mappers/mapper142_ks202.hpp"
+#include "core/mappers/mapper144.hpp"
 #include "core/mappers/maxi15.hpp"
 #include "core/mappers/mmc1.hpp"
 #include "core/mappers/mmc2.hpp"
@@ -195,6 +196,8 @@ namespace {
         return Tec9719::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 128U || header.mapper_number == 265U)
         return Mapper128::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 144U)
+        return Mapper144::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 99U)
         return VsSystem::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 30U || header.mapper_number == 111U)
@@ -1127,6 +1130,7 @@ void register_builtin_mappers() {
     registry.register_mapper(126, make_factory<Tec9719>());
     for (const uint16_t id : {128U, 265U})
         registry.register_mapper(id, make_factory<Mapper128>());
+    registry.register_mapper(144, make_factory<Mapper144>());
 }
 
 } // namespace mapperbus::core
