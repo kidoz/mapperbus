@@ -13,6 +13,7 @@
 #include "core/mappers/datach.hpp"
 #include "core/mappers/decathlon.hpp"
 #include "core/mappers/discrete.hpp"
+#include "core/mappers/fds_conversion108.hpp"
 #include "core/mappers/ffe_super_magic_card.hpp"
 #include "core/mappers/flash_boards.hpp"
 #include "core/mappers/g0151.hpp"
@@ -124,6 +125,8 @@ namespace {
         return OekaKids::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 105U)
         return NesEvent::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 108U)
+        return FdsConversion108::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 12U)
         return Mapper012::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 14U)
@@ -1058,6 +1061,7 @@ void register_builtin_mappers() {
         registry.register_mapper(id, make_factory<ConyYoko>());
     registry.register_mapper(96, make_factory<OekaKids>());
     registry.register_mapper(105, make_factory<NesEvent>());
+    registry.register_mapper(108, make_factory<FdsConversion108>());
     registry.register_mapper(12, make_factory<Mapper012>());
     registry.register_mapper(14, make_factory<Sl1632>());
     registry.register_mapper(15, make_factory<Mapper015>());
