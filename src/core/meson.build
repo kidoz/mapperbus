@@ -334,6 +334,7 @@ core_sources = files(
     'mappers/education_440_442.cpp',
     'mappers/san2.cpp',
     'mappers/fds_conversion_535.cpp',
+    'mappers/mmc3_multicart_536_537.cpp',
     'mappers/fs305.cpp',
     'mappers/mapper127.cpp',
     'mappers/yh001.cpp',

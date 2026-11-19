@@ -614,3 +614,80 @@ TEST_CASE("Spanish PEC system-ROM-only population leaves the empty game socket u
     CHECK(c->prg_read_mask(0xD100) == 0);
 }
 
+TEST_CASE("N42S-2 switches between 16K, 32K and MMC3 PRG while retaining flat CHR RAM",
+          "[mapper536][cartridge]") {
+    register_builtin_mappers();
+    auto c = Cartridge::from_data(image(536, 64, 0, 0, 7));
+    REQUIRE(c);
+    CHECK(c->read_prg(0x8000) == 32);
+    CHECK(c->read_prg(0xFFFF) == 33);
+    c->write_prg(0x6000, 3);
+    CHECK(c->read_prg(0x8000) == 32);
+    c->write_prg(0xA001, 0x80);
+    c->write_prg(0x7FFE, 3);
+    CHECK(c->read_prg(0x8000) == 3);
+    CHECK(c->read_prg(0xFFFF) == 3);
+    c->write_prg(0x6000, 0x25);
+    CHECK(c->read_prg(0x8000) == 4);
+    CHECK(c->read_prg(0xC000) == 5);
+    c->write_prg(0x6000, 0x81);
+    c->write_prg(0x8000, 6);
+    c->write_prg(0x8001, 2);
+    CHECK(c->read_prg(0x8000) == 3);
+    CHECK(c->read_prg(0xE000) == 7);
+    c->write_prg(0xA001, 0xC0);
+    c->write_prg(0x6000, 0);
+    CHECK(c->read_prg(0x8000) == 3);
+    CHECK(c->prg_read_mask(0x7000) == 0);
+    c->write_chr(0x1000, 0x25);
+    c->write_prg(0x8000, 2);
+    c->write_prg(0x8001, 7);
+    CHECK(c->read_chr(0x1000) == 0x25);
+    c->write_prg(0xC000, 1);
+    c->write_prg(0xE001, 0);
+    c->clock_irq_counter();
+    CHECK_FALSE(c->irq_pending());
+    c->clock_irq_counter();
+    CHECK(c->irq_pending());
+    c->reset();
+    CHECK(c->read_prg(0x8000) == 32);
+    CHECK(c->read_chr(0x1000) == 0x25);
+}
+TEST_CASE("JY4M4 applies both outer registers to MMC3 switched and fixed slots",
+          "[mapper537][cartridge]") {
+    register_builtin_mappers();
+    for (Byte prg : {24U, 32U}) {
+        auto c = Cartridge::from_data(image(537, prg, 64));
+        REQUIRE(c);
+        CHECK(c->read_prg(0xE000) == 15);
+        CHECK(c->read_chr(0) == 0);
+        c->write_prg(0xA001, 0x80);
+        c->write_prg(0x6000, 0xC0);
+        c->write_prg(0x8000, 6);
+        c->write_prg(0x8001, 4);
+        CHECK(c->read_prg(0x8000) == 18);
+        CHECK(c->read_prg(0xE000) == 23);
+        c->write_prg(0x8000, 2);
+        c->write_prg(0x8001, 16);
+        CHECK(c->read_chr(0x1000) == 34);
+        c->write_prg(0x6001, 1);
+        if (prg == 32) {
+            CHECK(c->read_prg(0x8000) == 26);
+            CHECK(c->read_prg(0xE000) == 31);
+        } else
+            CHECK(c->prg_read_mask(0x8000) == 0);
+        c->write_prg(0xA000, 1);
+        CHECK(c->mirror_mode() == MirrorMode::Horizontal);
+        StateWriter w;
+        c->save_state(w);
+        c->reset();
+        CHECK(c->read_chr(0x1000) == 2);
+        StateReader r(w.data());
+        c->load_state(r);
+        REQUIRE(r.ok());
+        CHECK(c->read_chr(0x1000) == 34);
+    }
+    REQUIRE_FALSE(Cartridge::from_data(image(537, 16, 64)));
+}
+
+} // namespace

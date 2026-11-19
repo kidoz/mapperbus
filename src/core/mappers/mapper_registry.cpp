@@ -280,6 +280,7 @@
 #include "core/mappers/mmc1a.hpp"
 #include "core/mappers/mmc2.hpp"
 #include "core/mappers/mmc3.hpp"
+#include "core/mappers/mmc3_multicart_536_537.hpp"
 #include "core/mappers/mmc4.hpp"
 #include "core/mappers/mmc5.hpp"
 #include "core/mappers/multicart060.hpp"
@@ -924,6 +925,8 @@ namespace {
         return Mmc3::validate_littlecom(header, prg_size, chr_size);
     if (header.mapper_number == 534U)
         return Mapper422::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 536U || header.mapper_number == 537U)
+        return Mmc3Multicart536537::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 535U || header.mapper_number == 538U ||
         header.mapper_number == 539U)
         return FdsConversion535::validate_geometry(header, prg_size, chr_size);
@@ -1927,6 +1930,8 @@ void register_builtin_mappers() {
     registry.register_mapper(533, make_factory<Sachen>());
     registry.register_mapper(534, make_factory<Mapper422>());
     registry.register_mapper(535, make_factory<FdsConversion535>());
+    registry.register_mapper(536, make_factory<Mmc3Multicart536537>());
+    registry.register_mapper(537, make_factory<Mmc3Multicart536537>());
     registry.register_mapper(538, make_factory<FdsConversion535>());
     registry.register_mapper(539, make_factory<FdsConversion535>());
     registry.register_mapper(541, make_factory<MulticartLatches>());
