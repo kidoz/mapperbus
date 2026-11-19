@@ -5343,7 +5343,7 @@ some historical aliases share a factory with another ID.
 | 545 | ST-80 | Registered: Mmc3 | [r23190](https://www.nesdev.org/w/index.php?oldid=23190) |
 | 546 | 03-101 | Registered: Mmc1 | [r8169](https://www.nesdev.org/w/index.php?oldid=8169) |
 | 547 | Konami VRC5 / QTa | Registered: Mapper547 | [r23763](https://www.nesdev.org/w/index.php?oldid=23763) |
-| 548 | Board-specific specification | Not registered | [r8186](https://www.nesdev.org/w/index.php?oldid=8186) |
+| 548 | CTC-15 | Registered: Mapper548 | [r8186](https://www.nesdev.org/w/index.php?oldid=8186) |
 | 549 | Board-specific specification | Not registered | [r21240](https://www.nesdev.org/w/index.php?oldid=21240) |
 | 550 | JY820845C | Registered: Mmc1 | [r8188](https://www.nesdev.org/w/index.php?oldid=8188) |
 | 551 | Jncota | Registered: Fs305 | [r8189](https://www.nesdev.org/w/index.php?oldid=8189) |
