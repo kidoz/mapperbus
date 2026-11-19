@@ -6,6 +6,7 @@
 #include "core/mappers/axrom.hpp"
 #include "core/mappers/bandai_fcg.hpp"
 #include "core/mappers/bxrom_wram.hpp"
+#include "core/mappers/caltron_041.hpp"
 #include "core/mappers/cnrom.hpp"
 #include "core/mappers/color_dreams.hpp"
 #include "core/mappers/datach.hpp"
@@ -86,6 +87,8 @@ namespace {
         return Mmc3Multicart37::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 40U)
         return Ntdec2722::validate_geometry(header, prg_size, chr_size);
+    if (header.mapper_number == 41U)
+        return Caltron041::validate_geometry(header, prg_size, chr_size);
     if (header.mapper_number == 30U || header.mapper_number == 111U)
         return FlashBoards::validate_geometry(header, prg_size, chr_size);
     if (JyCompany::supports_mapper(header.mapper_number))
@@ -978,6 +981,7 @@ void register_builtin_mappers() {
     registry.register_mapper(29, make_factory<RetCufrom>());
     registry.register_mapper(37, make_factory<Mmc3Multicart37>());
     registry.register_mapper(40, make_factory<Ntdec2722>());
+    registry.register_mapper(41, make_factory<Caltron041>());
 }
 
 } // namespace mapperbus::core
