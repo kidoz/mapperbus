@@ -330,10 +330,10 @@ test_mappers = executable('test-mappers',
     'unit/test_mapper234.cpp',
     dependencies : [mapperbus_core_dep, catch2_dep],
 )
-# Full-chip snapshot validation is more expensive under ASan/UBSan.
+# Full-chip snapshot validation is more expensive without optimization or under ASan/UBSan.
 mapper_test_sanitize = get_option('b_sanitize')
 mapper_test_timeout = 60
-if mapper_test_sanitize.contains('address') or mapper_test_sanitize.contains('undefined')
+if get_option('optimization') == '0' or mapper_test_sanitize.contains('address') or mapper_test_sanitize.contains('undefined')
     mapper_test_timeout = 120
 endif
 # Keep the older multicart matrices separate from unrelated mapper families.
