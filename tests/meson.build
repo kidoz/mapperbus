@@ -708,6 +708,7 @@ test('fs305', executable('test-fs305',
     dependencies : [mapperbus_core_dep, catch2_dep],
 ), timeout : mapper_test_timeout)
 
+test('middle_boards', executable('test-middle_boards',
     'unit/test_middle_boards.cpp',
     dependencies : [mapperbus_core_dep, catch2_dep],
 ), timeout : mapper_test_timeout)

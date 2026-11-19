@@ -30,10 +30,10 @@ Result<void> Mapper297::validate_geometry(const INesHeader& header,
         return std::unexpected("Mapper 297 requires NES 2.0 mapper 297 submapper 0");
     if (prg_size != kPrgSize || chr_size != kChrSize)
         return std::unexpected("Mapper 297 requires 256 KiB PRG ROM and 256 KiB CHR ROM");
-    if (header.has_battery || header.prg_ram_size != 0U || header.prg_nvram_size != 0U ||
-        header.chr_ram_size != 0U || header.chr_nvram_size != 0U)
+    if (header.has_trainer || header.has_battery || header.prg_ram_size != 0U ||
+        header.prg_nvram_size != 0U || header.chr_ram_size != 0U || header.chr_nvram_size != 0U)
         return std::unexpected("Mapper 297 supports only the ROM-only PCB population");
-    if (header.mirror_mode != MirrorMode::Vertical)
+    if (header.mirror_mode != MirrorMode::Vertical && header.mirror_mode != MirrorMode::Horizontal)
         return std::unexpected("Mapper 297 requires fixed vertical nametable wiring");
     return {};
 }

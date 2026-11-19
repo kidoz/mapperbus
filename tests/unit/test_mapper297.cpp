@@ -105,7 +105,7 @@ TEST_CASE("Mapper 297 accepts only the documented ROM-only NES 2.0 population", 
             h.chr_nvram_size = 8192U;
             break;
         case 7U:
-            h.mirror_mode = MirrorMode::Horizontal;
+            h.has_trainer = true;
             break;
         case 8U:
             h.mirror_mode = MirrorMode::FourScreen;

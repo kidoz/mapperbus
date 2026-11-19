@@ -31,6 +31,23 @@ std::vector<Byte> image(unsigned mapper, Byte prg, Byte chr, Byte prg_ram = 0U, 
     return data;
 }
 
+TEST_CASE("Mapper 297 registry routes the expansion mode bit to both ROM chips",
+          "[mapper297][cartridge]") {
+    register_builtin_mappers();
+    auto rom = image(297, 16, 32);
+    rom[6] &= 0xFEU; // The known NES 2.0 dump uses H metadata on this fixed-V PCB.
+    auto cart = Cartridge::from_data(rom);
+    REQUIRE(cart);
+    REQUIRE(cart->read_prg(0x8000) == 0);
+    REQUIRE(cart->read_prg(0xFFFF) == 3);
+    REQUIRE(cart->read_chr(0) == 0);
+    cart->write_expansion(0x4120, 1);
+    CHECK(cart->read_prg(0x8000) == 8);
+    CHECK(cart->read_prg(0xFFFF) == 15);
+    CHECK(cart->read_chr(0) == 16);
+    CHECK(cart->mirror_mode() == MirrorMode::Vertical);
+}
+
 TEST_CASE("Asder PC-95 returns active-low key rows through the cartridge port",
           "[mapper365][cartridge]") {
     register_builtin_mappers();

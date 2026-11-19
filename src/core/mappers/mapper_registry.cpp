@@ -2027,6 +2027,7 @@ void register_builtin_mappers() {
     registry.register_mapper(293, make_factory<Mapper293>());
     registry.register_mapper(294, make_factory<Mapper294>());
     registry.register_mapper(284, make_factory<Drip>());
+    registry.register_mapper(297, make_factory<Mapper297>());
     registry.register_mapper(298, make_factory<UnlTf1201>());
     registry.register_mapper(299, make_factory<Mapper299>());
     registry.register_mapper(300, make_factory<Mapper300>());
