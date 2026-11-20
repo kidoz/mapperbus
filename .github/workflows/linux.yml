@@ -47,10 +47,10 @@ jobs:
           wayland wayland-protocols libxkbcommon freetype2 fontconfig harfbuzz glib2 ttf-dejavu
           glslang vulkan-headers vulkan-icd-loader vulkan-swrast mesa
           desktop-file-utils
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Configure
         run: >-
-          meson setup build -Denable_sdl3=${{ matrix.sdl }}
+          meson setup build -Dwerror=true -Denable_sdl3=${{ matrix.sdl }}
           -Denable_nodalkit_gui=${{ matrix.gui }}
           -Dvulkan_shaders=${{ matrix.shaders }}
           -Db_lto=false ${{ matrix.force_fallback }}

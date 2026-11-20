@@ -30,28 +30,31 @@ jobs:
             cc: clang-19
             cxx: clang++-19
             ldflags: -lstdc++exp
+            gui: 'false'
           - os: ubuntu-24.04
             compiler: gcc
             cc: gcc-14
             cxx: g++-14
             ldflags: -lstdc++exp
+            gui: 'false'
           - os: macos-26
             compiler: clang
             cc: clang
             cxx: clang++
             ldflags: ""
+            gui: 'true'
     env:
       CC: ${{ matrix.cc }}
       CXX: ${{ matrix.cxx }}
       LDFLAGS: ${{ matrix.ldflags }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build pkg-config libarchive-dev zlib1g-dev liblzma-dev libsdl2-dev g++-14 \
+          sudo apt-get install -y ninja-build pkg-config libarchive-dev zlib1g-dev liblzma-dev libegl-dev libgl-dev g++-14 \
             libx11-dev libxext-dev libxrandr-dev libxinerama-dev \
             libxcursor-dev libxi-dev libwayland-dev libxkbcommon-dev \
             libdecor-0-dev libdbus-1-dev libibus-1.0-dev libpulse-dev \
@@ -65,15 +68,15 @@ jobs:
         run: |
           brew install ninja pkg-config xz
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
 
       - name: Install Meson
         run: pip install meson==${MESON_VERSION}
 
-      - name: Configure (no GUI frontend)
-        run: meson setup buildDir -Denable_nodalkit_gui=false
+      - name: Configure
+        run: meson setup buildDir -Dwerror=true -Denable_nodalkit_gui=${{ matrix.gui }}
 
       - name: Build
         run: meson compile -C buildDir
@@ -81,21 +84,72 @@ jobs:
       - name: Test
         run: meson test -C buildDir --print-errorlogs --suite=mapperbus
 
+      - name: Build and verify macOS app bundle
+        if: runner.os == 'macOS'
+        run: |
+          meson compile -C buildDir mapperbus-macos-app
+          test -x buildDir/MapperBus.app/Contents/MacOS/mapperbus
+          plutil -lint buildDir/MapperBus.app/Contents/Info.plist
+
+  windows:
+    name: build / smoke test (Windows / MinGW)
+    runs-on: windows-2025
+    defaults:
+      run:
+        shell: msys2 {0}
+    env:
+      CC: gcc
+      CXX: g++
+      LDFLAGS: -lstdc++exp
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            git
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-libarchive
+            mingw-w64-ucrt-x86_64-meson
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-sdl3
+
+      - name: Configure
+        run: meson setup buildDir -Dwerror=true -Db_lto=false -Denable_tests=false -Dvulkan_shaders=disabled
+
+      - name: Build
+        run: meson compile -C buildDir
+
+      - name: Smoke test both frontends
+        run: |
+          set -euo pipefail
+          for frontend in cli sdl3; do
+            status=0
+            output=$("./buildDir/src/frontends/$frontend/mapperbus-$frontend.exe" 2>&1) || status=$?
+            printf '%s\n' "$output"
+            test "$status" -eq 1
+            grep -F "Usage: mapperbus-$frontend" <<< "$output"
+          done
+
   lint:
     name: format check + clang-tidy
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y ninja-build pkg-config libarchive-dev clang-format-18 \
-            clang-19 clang-tidy-19 g++-14 libsdl2-dev libx11-dev libwayland-dev \
+            clang-19 clang-tidy-19 g++-14 libegl-dev libgl-dev libx11-dev libwayland-dev \
             libxkbcommon-dev libdecor-0-dev libdbus-1-dev libasound2-dev \
-            libudev-dev libusb-1.0-0-dev libpipewire-0.3-dev
+            libudev-dev libusb-1.0-0-dev libpipewire-0.3-dev wayland-protocols \
+            libfreetype-dev libfontconfig1-dev libharfbuzz-dev libglib2.0-dev
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
 
@@ -112,28 +166,29 @@ jobs:
           CC: clang-19
           CXX: clang++-19
           LDFLAGS: -lstdc++exp
-        run: meson setup buildDir -Denable_nodalkit_gui=false
+        run: meson setup buildDir -Dwerror=true -Denable_nodalkit_gui=true -Dvulkan_shaders=disabled
 
       - name: clang-tidy
         run: |
-          find src -name '*.cpp' ! -path 'src/frontends/nodalkit/*' | sort | \
+          find src -name '*.cpp' | sort | \
             xargs clang-tidy-19 -p buildDir --header-filter='src/.*'
 
   sanitize:
     name: sanitize (ASan + UBSan)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build pkg-config libarchive-dev clang-19 g++-14 \
-            libsdl2-dev libx11-dev \
+          sudo apt-get install -y ninja-build pkg-config libarchive-dev clang-19 llvm-19 libclang-rt-19-dev g++-14 \
+            libegl-dev libgl-dev libx11-dev \
             libwayland-dev libxkbcommon-dev libdecor-0-dev libdbus-1-dev \
-            libasound2-dev libudev-dev libusb-1.0-0-dev libpipewire-0.3-dev
+            libasound2-dev libudev-dev libusb-1.0-0-dev libpipewire-0.3-dev \
+            wayland-protocols libfreetype-dev libfontconfig1-dev libharfbuzz-dev libglib2.0-dev fonts-dejavu-core
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
 
@@ -147,11 +202,12 @@ jobs:
           LDFLAGS: -lstdc++exp
         run: |
           meson setup buildDir-sanitize \
+            -Dwerror=true \
             -Db_sanitize=address,undefined \
             -Doptimization=1 \
             -Db_lto=false \
             -Db_lundef=false \
-            -Denable_nodalkit_gui=false
+            -Denable_nodalkit_gui=true
 
       - name: Build with sanitizers
         env:
@@ -162,5 +218,6 @@ jobs:
       - name: Test with sanitizers
         env:
           ASAN_OPTIONS: halt_on_error=1:abort_on_error=1:detect_leaks=1
+          ASAN_SYMBOLIZER_PATH: /usr/bin/llvm-symbolizer-19
           UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
         run: meson test -C buildDir-sanitize --print-errorlogs --suite=mapperbus

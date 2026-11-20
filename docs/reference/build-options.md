@@ -1,8 +1,8 @@
 # Build options
 
 The authoritative project options are in [meson_options.txt](../../meson_options.txt).
-The [root build](../../meson.build) sets C++23, warning level 3, warnings as
-errors, and link-time optimization by default.
+The [root build](../../meson.build) sets C++23, warning level 3, and link-time
+optimization by default. CI configures `-Dwerror=true`.
 
 ## Project options
 
