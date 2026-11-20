@@ -192,6 +192,15 @@ class Mapper {
     virtual void on_ppu_hblank() {}
     /// One M2/CPU cycle, including stalled and DMA cycles. Independent of audio.
     virtual void clock_cpu() {}
+    /// Factories for boards with immutable pin wiring may resolve this once at creation.
+    /// Other boards can enable their observers later through registers or a restored state.
+    void cache_fixed_ppu_observers() {
+        may_observe_ppu_pins_ =
+            observes_ppu_a12() || observes_ppu_address() || observes_ppu_reads();
+    }
+    [[nodiscard]] bool may_observe_ppu_pins() const {
+        return may_observe_ppu_pins_;
+    }
     /// Optional PPU address-pin observation, separate from cached pixel reads.
     virtual bool observes_ppu_a12() const {
         return false;
@@ -248,6 +257,9 @@ class Mapper {
         return false;
     }
     virtual void set_microphone_sample(Byte /*sample*/) {}
+
+  private:
+    bool may_observe_ppu_pins_ = true;
 };
 
 } // namespace mapperbus::core

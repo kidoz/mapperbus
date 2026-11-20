@@ -13,6 +13,7 @@ namespace mapperbus::core {
 void Ppu::connect_cartridge(Cartridge* cartridge) {
     cartridge_ = cartridge;
     render_context_ = cartridge && cartridge->uses_render_context();
+    may_observe_pins_ = cartridge != nullptr && cartridge->may_observe_ppu_pins();
     const auto* cabinet = cartridge ? cartridge->vs_cabinet() : nullptr;
     rgb_ppu_ = cabinet ? cabinet->ppu_type() : kCompositePpu;
     const unsigned palette = (rgb_ppu_ >= 2U && rgb_ppu_ <= 5U) ? rgb_ppu_ - 1U : 0U;
@@ -242,9 +243,9 @@ void Ppu::step(uint32_t cpu_cycles) {
 }
 
 void Ppu::step_dots(uint32_t ppu_dots) {
-    const bool observe_pins = cartridge_ != nullptr && (cartridge_->observes_ppu_a12() ||
-                                                        cartridge_->observes_ppu_address() ||
-                                                        cartridge_->observes_ppu_reads());
+    const bool observe_pins = may_observe_pins_ && (cartridge_->observes_ppu_a12() ||
+                                                    cartridge_->observes_ppu_address() ||
+                                                    cartridge_->observes_ppu_reads());
     for (uint32_t i = 0; i < ppu_dots; ++i) {
         if (skip_dot_ && cycle_ == 339) {
             // Replace the final pre-render dot with the first visible-line idle dot.
@@ -346,7 +347,7 @@ void Ppu::step_dots(uint32_t ppu_dots) {
 }
 
 void Ppu::drive_mapper_pins(bool read_strobe) {
-    if (cartridge_ == nullptr)
+    if (!may_observe_pins_)
         return;
     const bool reads = cartridge_->observes_ppu_reads();
     const bool full_address = cartridge_->observes_ppu_address() || reads;
@@ -449,7 +450,7 @@ Byte Ppu::read_register(uint8_t reg) {
         } else {
             read_buffer_ = read_vram(reg_v_);
         }
-        if (cartridge_ != nullptr && cartridge_->observes_ppu_reads()) {
+        if (may_observe_pins_ && cartridge_->observes_ppu_reads()) {
             // Palette RAM is internal; its hidden buffer refill is the single
             // external read. Debugger/renderer read_vram calls have no strobe.
             const Address addr = reg_v_ & 0x3FFFU;

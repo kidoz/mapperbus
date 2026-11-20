@@ -195,6 +195,9 @@ class Cartridge {
     void clock_cpu() {
         mapper_->clock_cpu();
     }
+    [[nodiscard]] bool may_observe_ppu_pins() const {
+        return mapper_->may_observe_ppu_pins();
+    }
     [[nodiscard]] bool observes_ppu_a12() const {
         return mapper_->observes_ppu_a12();
     }

@@ -132,6 +132,31 @@ constexpr std::array<std::uint32_t, 4> kAttributePaletteColors = {
 
 } // namespace
 
+TEST_CASE("PPU observes mapper 394 reads after a live switch to J.Y. mode", "[ppu][mapper394]") {
+    register_builtin_mappers();
+    constexpr std::array<Byte, 9> kHeader{'N', 'E', 'S', 0x1A, 2, 1, 0xA0, 0x88, 1};
+    std::vector<Byte> image(16 + 32768 + 8192);
+    std::ranges::copy(kHeader, image.begin());
+    auto cartridge = Cartridge::from_data(image);
+    REQUIRE(cartridge);
+    Ppu ppu;
+    ppu.connect_cartridge(&*cartridge);
+    REQUIRE_FALSE(cartridge->observes_ppu_reads());
+    ppu.write_register(1, 8);
+    ppu.step_dots(16); // Let PPUMASK take effect before enabling mapper observation.
+
+    cartridge->write_expansion(0x5009, 0x10); // Switch from MMC3 to J.Y. without reconnecting.
+    cartridge->write_prg(0xC001, 0x42);       // Count up on external PPU reads.
+    cartridge->write_prg(0xC004, 0xFE);
+    cartridge->write_prg(0xC005, 0xFF);
+    cartridge->write_prg(0xC003, 0); // Enable IRQ on the second read.
+    REQUIRE_FALSE(cartridge->irq_pending());
+    (void)ppu.read_register(7);
+    REQUIRE_FALSE(cartridge->irq_pending());
+    ppu.step_dots(1); // Dot 17 supplies a rendering read strobe.
+    CHECK(cartridge->irq_pending());
+}
+
 TEST_CASE("Only rendered odd NTSC frames omit a dot", "[ppu][timing]") {
     for (const auto region : {Region::NTSC, Region::PAL, Region::Dendy}) {
         for (const Byte mask : {0, 0x08, 0x10, 0x18}) {

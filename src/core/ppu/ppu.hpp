@@ -120,6 +120,7 @@ class Ppu {
     bool frame_ready_ = false;
     Cartridge* cartridge_ = nullptr;
     bool render_context_ = false;
+    bool may_observe_pins_ = false;
 
     uint16_t scanline_ = 0;
     uint16_t cycle_ = 0;

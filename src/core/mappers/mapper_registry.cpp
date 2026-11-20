@@ -1765,6 +1765,15 @@ template <typename T> MapperFactory make_factory() {
     };
 }
 
+template <typename T>
+std::unique_ptr<Mapper> make_mapper_with_fixed_ppu_observers(const INesHeader& header,
+                                                             std::vector<Byte> prg_rom,
+                                                             std::vector<Byte> chr_rom) {
+    auto mapper = std::make_unique<T>(header, std::move(prg_rom), std::move(chr_rom));
+    mapper->cache_fixed_ppu_observers();
+    return mapper;
+}
+
 // A few old iNES assignments describe different hardware depending on the dump.
 // Match the chip identities recorded by NES 2.0 XML (2026-09-26) and the
 // original Nestopia board list. In particular, the Novel Diamond mapper hack
@@ -1886,11 +1895,11 @@ void register_builtin_mappers() {
     for (const uint16_t id :
          {35U, 90U, 160U, 209U, 211U, 281U, 282U, 295U, 358U, 386U, 387U, 388U, 397U})
         registry.register_mapper(id, make_factory<JyCompany>());
-    registry.register_mapper(0, make_factory<Nrom>());
-    registry.register_mapper(1, make_factory<Mmc1>());
+    registry.register_mapper(0, make_mapper_with_fixed_ppu_observers<Nrom>);
+    registry.register_mapper(1, make_mapper_with_fixed_ppu_observers<Mmc1>);
     registry.register_mapper(2, make_factory<Uxrom>());
     registry.register_mapper(3, make_factory<Cnrom>());
-    registry.register_mapper(4, make_factory<Mmc3>());
+    registry.register_mapper(4, make_mapper_with_fixed_ppu_observers<Mmc3>);
     registry.register_mapper(100, make_factory<NesticleMmc3>());
     registry.register_mapper(182, make_factory<Yh001>());
     registry.register_mapper(114, make_factory<Mmc3>());
@@ -1957,7 +1966,7 @@ void register_builtin_mappers() {
                                  return std::make_unique<FlashBoards>(h, std::move(prg), chr);
                              });
     registry.register_mapper(7, make_factory<Axrom>());
-    registry.register_mapper(5, make_factory<Mmc5>());
+    registry.register_mapper(5, make_mapper_with_fixed_ppu_observers<Mmc5>);
     registry.register_mapper(9, make_factory<Mmc2>());
     registry.register_mapper(11, make_factory<ColorDreams>());
     registry.register_mapper(19, make_factory<Namco163>());
