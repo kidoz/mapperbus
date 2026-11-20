@@ -89,8 +89,6 @@ core::Result<PreparedStateStorage> prepare_state_storage(const StateStorageSetti
                                                          const std::string& identity) {
     if (!settings.directory.empty() && !settings.directory.is_absolute())
         return std::unexpected("Choose an absolute save-state folder path");
-    if (!valid_game_identity(identity))
-        return std::unexpected("No valid game identity for save-state storage");
     auto directory = checked_state_directory_for_game(settings, rom, identity);
     if (!directory)
         return std::unexpected(directory.error());

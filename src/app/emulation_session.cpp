@@ -424,6 +424,8 @@ std::string EmulationSession::game_identity() const {
 }
 
 std::string EmulationSession::state_path_for_slot(int slot) const {
+    if (state_directory_.empty())
+        return {};
     return (state_directory_ / ("slot-" + std::to_string(slot) + ".state")).string();
 }
 
@@ -466,7 +468,7 @@ core::Result<void> EmulationSession::load_state(int slot) {
             "Importing a legacy sibling state; old versions cannot verify ROM identity: {}", *path);
     }
     auto data =
-        core::read_binary_file_capped(*path, core::Emulator::kMaxStateBytes, "save-state file");
+        core::read_binary_file_capped(*path, emulator_->state_size_limit(), "save-state file");
     if (!data)
         return std::unexpected(data.error());
     return load_state_data(*data, legacy);

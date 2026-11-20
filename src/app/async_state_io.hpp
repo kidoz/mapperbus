@@ -17,6 +17,7 @@ struct StateLoadRequest {
     std::filesystem::path primary;
     // Empty for archived ROMs and FDS, which cannot import sibling states.
     std::filesystem::path legacy;
+    std::size_t max_bytes = core::Emulator::kMaxStateBytes;
 };
 
 struct LoadedState {

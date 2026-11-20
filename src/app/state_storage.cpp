@@ -68,6 +68,8 @@ core::Result<std::filesystem::path> locate_state_directory(const StateStorageSet
                                                            const std::filesystem::path& rom,
                                                            std::string_view identity,
                                                            bool strict) {
+    if (!valid_game_identity(identity))
+        return std::unexpected("No valid game identity for save-state storage");
     const auto root = !settings.directory.empty() ? settings.directory
                       : settings.mode == StateStorageMode::Portable
                           ? std::filesystem::absolute(rom).parent_path() / "mapperbus-states"
@@ -81,7 +83,7 @@ core::Result<std::filesystem::path> locate_state_directory(const StateStorageSet
     const auto end = std::filesystem::directory_iterator{};
     while (!error && iterator != end) {
         if (iterator->path().filename().string().ends_with(suffix) &&
-            iterator->is_directory(error)) {
+            std::filesystem::is_directory(iterator->symlink_status(error))) {
             matches.push_back(iterator->path());
         }
         iterator.increment(error);
@@ -101,7 +103,7 @@ core::Result<std::filesystem::path> locate_state_directory(const StateStorageSet
 std::filesystem::path state_directory_for_game(const StateStorageSettings& settings,
                                                const std::filesystem::path& rom,
                                                std::string_view identity) {
-    return *locate_state_directory(settings, rom, identity, false);
+    return locate_state_directory(settings, rom, identity, false).value_or(std::filesystem::path{});
 }
 
 core::Result<std::filesystem::path> checked_state_directory_for_game(
@@ -113,7 +115,13 @@ core::Result<std::filesystem::path> checked_state_directory_for_game(
 
 core::Result<StateLoadPath> resolve_state_load_path(const std::filesystem::path& primary,
                                                     const std::filesystem::path& legacy) {
+    if (primary.empty())
+        return std::unexpected("No valid save-state path");
     std::error_code error;
+    const auto directory = primary.parent_path();
+    if (std::filesystem::is_symlink(std::filesystem::symlink_status(directory, error))) {
+        return std::unexpected("Save-state directory is a symbolic link: " + directory.string());
+    }
     if (std::filesystem::exists(primary, error))
         return StateLoadPath{primary.string(), false};
     if (error)
@@ -131,6 +139,9 @@ core::Result<StateLoadPath> resolve_state_load_path(const std::filesystem::path&
 
 core::Result<void> ensure_state_directory(const std::filesystem::path& directory) {
     std::error_code error;
+    if (std::filesystem::is_symlink(std::filesystem::symlink_status(directory, error))) {
+        return std::unexpected("Save-state directory is a symbolic link: " + directory.string());
+    }
     std::filesystem::create_directories(directory, error);
     if (error) {
         return std::unexpected("Failed to create save-state directory: " + directory.string() +

@@ -11,8 +11,7 @@ core::Result<LoadedState> read_state(const StateLoadRequest& request) {
     auto resolved = resolve_state_load_path(request.primary, request.legacy);
     if (!resolved)
         return std::unexpected(resolved.error());
-    auto data = core::read_binary_file_capped(
-        resolved->path, core::Emulator::kMaxStateBytes, "save-state file");
+    auto data = core::read_binary_file_capped(resolved->path, request.max_bytes, "save-state file");
     if (!data)
         return std::unexpected(data.error());
     return LoadedState{std::move(resolved->path), std::move(*data), resolved->legacy};

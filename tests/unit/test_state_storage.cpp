@@ -92,6 +92,11 @@ TEST_CASE("Central states survive ROM moves and selected slots follow content",
     REQUIRE(session.save_state(9));
     const auto path = session.state_path_for_slot(9);
     REQUIRE(std::filesystem::path(path).filename() == "slot-9.state");
+#if !defined(_WIN32)
+    const auto permissions = std::filesystem::status(path).permissions();
+    CHECK((permissions & (std::filesystem::perms::group_all |
+                          std::filesystem::perms::others_all)) == std::filesystem::perms::none);
+#endif
     REQUIRE(
         std::filesystem::path(path).parent_path().filename().string().ends_with("--" + identity));
     const auto snapshot = session.emulator().save_state();
@@ -137,6 +142,37 @@ TEST_CASE("States save outside a read-only ROM library", "[app][state][storage]"
     REQUIRE(fixture.session.save_state());
     REQUIRE(std::filesystem::exists(fixture.session.state_path_for_slot()));
     REQUIRE_FALSE(std::filesystem::exists(legacy_state_path(fixture.rom, 0)));
+}
+
+TEST_CASE("Save-state directories cannot redirect state writes through symlinks",
+          "[app][state][storage]") {
+    StateFixture fixture;
+    auto& session = fixture.session;
+    REQUIRE(session.open_rom(fixture.rom.string()));
+    const auto directory = session.state_directory();
+    const auto outside = fixture.root / "outside";
+    std::filesystem::create_directories(outside);
+    std::filesystem::create_directories(directory.parent_path());
+    const auto alias = directory.parent_path() / ("A--" + session.game_identity());
+    std::error_code error;
+    std::filesystem::create_directory_symlink(outside, alias, error);
+    if (error == std::errc::permission_denied || error == std::errc::operation_not_supported)
+        SKIP("Cannot create symlinks: " << error.message());
+    REQUIRE_FALSE(error);
+    CHECK(state_directory_for_game(fixture.settings, fixture.rom, session.game_identity()) ==
+          directory);
+    std::filesystem::create_directory_symlink(outside, directory);
+    CHECK_FALSE(session.save_state());
+    CHECK_FALSE(session.load_state());
+    CHECK(std::filesystem::is_empty(outside));
+}
+
+TEST_CASE("State storage requires a SHA-256 game identity", "[app][state][storage]") {
+    StateFixture fixture;
+    const std::string invalid_identity = "invalid";
+    CHECK(state_directory_for_game(fixture.settings, fixture.rom, invalid_identity).empty());
+    CHECK_FALSE(prepare_state_storage(fixture.settings, fixture.rom, invalid_identity));
+    CHECK_FALSE(std::filesystem::exists(fixture.settings.directory));
 }
 
 TEST_CASE("Legacy sibling import is read-only and never masks a corrupt centralized state",
@@ -337,6 +373,7 @@ TEST_CASE("Async reads preserve primary and legacy state selection rules", "[app
     fixture.write(primary, std::vector<core::Byte>{1, 2, 3});
     auto selected = read_state(StateLoadRequest{primary, legacy});
     REQUIRE(selected);
+    CHECK_FALSE(read_state(StateLoadRequest{primary, legacy, 2}));
     CHECK_FALSE(selected->legacy);
     CHECK(selected->path == primary);
     // Present corrupt primary files must never silently import a sibling.

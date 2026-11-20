@@ -161,8 +161,10 @@ Result<void> Emulator::load_cartridge(Cartridge cartridge,
             if (ec)
                 return std::unexpected("Cannot access Datach unit save: " + ec.message());
             if (exists) {
-                auto data = read_binary_file_capped(
-                    shared_path, cartridge.shared_nvram().size(), "Datach unit save");
+                auto data = read_binary_file_capped(shared_path,
+                                                    cartridge.shared_nvram().size(),
+                                                    "Datach unit save",
+                                                    SymlinkPolicy::Reject);
                 if (!data)
                     return std::unexpected(data.error());
                 if (data->size() != cartridge.shared_nvram().size())
@@ -181,8 +183,8 @@ Result<void> Emulator::load_cartridge(Cartridge cartridge,
         if (error && error != std::errc::no_such_file_or_directory)
             return std::unexpected("Cannot access " + label + ": " + error.message());
         if (std::filesystem::exists(status)) {
-            auto data =
-                read_binary_file_capped(battery_path, cartridge.battery_ram().size(), label);
+            auto data = read_binary_file_capped(
+                battery_path, cartridge.battery_ram().size(), label, SymlinkPolicy::Reject);
             if (!data)
                 return std::unexpected(data.error());
             if (cartridge.has_flash_storage() && data->size() != cartridge.battery_ram().size())
@@ -262,7 +264,7 @@ Result<void> Emulator::load_fds(std::span<const Byte> bios,
             return std::unexpected("Cannot access FDS disk save: " + error.message());
         if (exists) {
             auto saved = read_binary_file_capped(
-                changes_path, Fds::kMaxDiskImageBytes + 72, "FDS disk save");
+                changes_path, Fds::kMaxDiskImageBytes + 72, "FDS disk save", SymlinkPolicy::Reject);
             if (!saved)
                 return std::unexpected(saved.error());
             // MBFD v1, immutable source identity, payload digest, raw .fds sides.
@@ -617,7 +619,8 @@ Result<void> Emulator::load_battery_ram(const std::string& path) {
     if (!cartridge_) {
         return std::unexpected("No cartridge loaded");
     }
-    auto data = read_binary_file_capped(path, cartridge_->battery_ram().size(), "battery save");
+    auto data = read_binary_file_capped(
+        path, cartridge_->battery_ram().size(), "battery save", SymlinkPolicy::Reject);
     if (!data) {
         return std::unexpected(data.error());
     }

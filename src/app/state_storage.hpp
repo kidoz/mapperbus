@@ -20,7 +20,7 @@ struct StateStorageSettings {
 
 [[nodiscard]] std::filesystem::path mapperbus_data_directory();
 [[nodiscard]] bool valid_game_identity(std::string_view identity);
-/// Reuses an existing folder with this content identity, regardless of the ROM's name.
+/// Reuses an existing folder with this content identity. Returns empty for an invalid identity.
 [[nodiscard]] std::filesystem::path state_directory_for_game(const StateStorageSettings& settings,
                                                              const std::filesystem::path& rom,
                                                              std::string_view identity);

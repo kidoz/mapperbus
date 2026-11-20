@@ -13,14 +13,21 @@
 
 namespace mapperbus::core {
 
+enum class SymlinkPolicy { Follow, Reject };
+
 /// Reads a whole binary file, rejecting anything larger than `max_bytes`
 /// before allocating the buffer. `label` is the noun used in error text
 /// ("ROM file", "save-state file").
-[[nodiscard]] inline Result<std::vector<Byte>> read_binary_file_capped(const std::string& path,
-                                                                       std::size_t max_bytes,
-                                                                       std::string_view label) {
+[[nodiscard]] inline Result<std::vector<Byte>> read_binary_file_capped(
+    const std::string& path,
+    std::size_t max_bytes,
+    std::string_view label,
+    SymlinkPolicy links = SymlinkPolicy::Follow) {
     std::error_code error;
-    if (!std::filesystem::is_regular_file(path, error)) {
+    const auto status = links == SymlinkPolicy::Reject
+                            ? std::filesystem::symlink_status(path, error)
+                            : std::filesystem::status(path, error);
+    if (!std::filesystem::is_regular_file(status)) {
         return std::unexpected("Failed to open " + std::string(label) + ": " + path +
                                " (not an accessible regular file)");
     }
