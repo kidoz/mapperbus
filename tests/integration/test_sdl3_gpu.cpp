@@ -297,5 +297,32 @@ TEST_CASE("Changing vsync preserves the renderer's borrowed GPU device", "[sdl3]
     video.shutdown();
 }
 
+TEST_CASE("Both GPU upscalers can stream their first frame after detaching a device",
+          "[sdl3][gpu][fallback]") {
+    SdlVideoScope sdl;
+    require_gpu_device();
+    const std::unique_ptr<SDL_GPUDevice, decltype(&SDL_DestroyGPUDevice)> device(
+        SDL_CreateGPUDevice(gpu_shader_formats(), false, nullptr), SDL_DestroyGPUDevice);
+    REQUIRE(device);
+
+    GpuUpscaler xbrz(2);
+    GpuFsr1Upscaler fsr(2);
+    constexpr uint32_t kPixel = 0xFFFF0000U;
+    std::array<uint32_t, 6> source{};
+    source.fill(kPixel);
+    for (auto* upscaler :
+         {static_cast<platform::Upscaler*>(&xbrz), static_cast<platform::Upscaler*>(&fsr)}) {
+        std::array<uint32_t, 24> output{};
+        upscaler->set_gpu_device(device.get());
+        upscaler->scale(source, 3, 2, {});
+        REQUIRE(upscaler->get_gpu_texture() != nullptr);
+        upscaler->set_gpu_device(nullptr);
+        REQUIRE(upscaler->get_gpu_texture() == nullptr);
+        upscaler->scale(source, 3, 2, output);
+        CAPTURE(upscaler == &xbrz, output);
+        REQUIRE(std::ranges::all_of(output, [](uint32_t pixel) { return pixel == kPixel; }));
+    }
+}
+
 } // namespace
 } // namespace mapperbus::frontend

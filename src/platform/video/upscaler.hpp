@@ -24,6 +24,7 @@ class Upscaler {
         return nullptr;
     }
 
+    // A null handle releases the borrowed device and enables CPU readback.
     virtual void set_gpu_device(void* /*device_handle*/) {}
 };
 

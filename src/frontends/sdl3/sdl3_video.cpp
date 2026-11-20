@@ -101,79 +101,87 @@ bool Sdl3Video::initialize(int width, int height) {
 }
 
 void Sdl3Video::render(const core::FrameBuffer& frame) {
+    if (!renderer_)
+        return;
+    const auto* upload_pixels = frame.pixels.data();
+    int upload_width = src_width_;
     if (upscaler_) {
         int scale = upscaler_->scale_factor();
         int dst_w = src_width_ * scale;
         int dst_h = src_height_ * scale;
 
         if (using_zero_copy_) {
-            // GPU path: scale dispatches compute shaders; the CPU buffer is fallback storage.
-            upscaler_->scale(frame.pixels, src_width_, src_height_, scaled_buffer_);
+            upscaler_->scale(frame.pixels, src_width_, src_height_, {});
             if (!texture_) {
                 void* gpu_tex = upscaler_->get_gpu_texture();
                 if (gpu_tex) {
-                    SDL_PropertiesID tex_props = SDL_CreateProperties();
-                    SDL_SetNumberProperty(
-                        tex_props, SDL_PROP_TEXTURE_CREATE_FORMAT_NUMBER, SDL_PIXELFORMAT_RGBA32);
-                    SDL_SetNumberProperty(
-                        tex_props, SDL_PROP_TEXTURE_CREATE_ACCESS_NUMBER, SDL_TEXTUREACCESS_STATIC);
-                    SDL_SetNumberProperty(tex_props, SDL_PROP_TEXTURE_CREATE_WIDTH_NUMBER, dst_w);
-                    SDL_SetNumberProperty(tex_props, SDL_PROP_TEXTURE_CREATE_HEIGHT_NUMBER, dst_h);
-                    SDL_SetPointerProperty(
-                        tex_props, SDL_PROP_TEXTURE_CREATE_GPU_TEXTURE_POINTER, gpu_tex);
-                    texture_ = SDL_CreateTextureWithProperties(renderer_, tex_props);
-                    SDL_DestroyProperties(tex_props);
-                    if (texture_) {
-                        SDL_SetTextureBlendMode(texture_, SDL_BLENDMODE_NONE);
-                    } else {
-                        // The wrap will not succeed on a retry; latch the
-                        // fallback so later frames take the streaming path
-                        // instead of logging (and showing black) forever.
+                    const SDL_PropertiesID tex_props = SDL_CreateProperties();
+                    if (tex_props != 0) {
+                        if (SDL_SetNumberProperty(tex_props,
+                                                  SDL_PROP_TEXTURE_CREATE_FORMAT_NUMBER,
+                                                  SDL_PIXELFORMAT_RGBA32) &&
+                            SDL_SetNumberProperty(tex_props,
+                                                  SDL_PROP_TEXTURE_CREATE_ACCESS_NUMBER,
+                                                  SDL_TEXTUREACCESS_STATIC) &&
+                            SDL_SetNumberProperty(
+                                tex_props, SDL_PROP_TEXTURE_CREATE_WIDTH_NUMBER, dst_w) &&
+                            SDL_SetNumberProperty(
+                                tex_props, SDL_PROP_TEXTURE_CREATE_HEIGHT_NUMBER, dst_h) &&
+                            SDL_SetPointerProperty(
+                                tex_props, SDL_PROP_TEXTURE_CREATE_GPU_TEXTURE_POINTER, gpu_tex)) {
+                            texture_ = SDL_CreateTextureWithProperties(renderer_, tex_props);
+                        }
+                        SDL_DestroyProperties(tex_props);
+                    }
+                    if (texture_ && !SDL_SetTextureBlendMode(texture_, SDL_BLENDMODE_NONE)) {
+                        SDL_DestroyTexture(texture_);
+                        texture_ = nullptr;
+                    }
+                    if (!texture_) {
                         SDL_LogCritical(SDL_LOG_CATEGORY_VIDEO,
                                         "Failed to create GPU texture wrapper, falling back to "
                                         "streaming upload: %s",
                                         SDL_GetError());
-                        using_zero_copy_ = false;
                     }
-                } else {
+                }
+                if (!texture_) {
+                    upscaler_->set_gpu_device(nullptr);
                     using_zero_copy_ = false;
                 }
-                if (!using_zero_copy_) {
-                    texture_ = SDL_CreateTexture(renderer_,
-                                                 SDL_PIXELFORMAT_ARGB8888,
-                                                 SDL_TEXTUREACCESS_STREAMING,
-                                                 dst_w,
-                                                 dst_h);
-                    if (texture_) {
-                        SDL_UpdateTexture(texture_,
-                                          nullptr,
-                                          scaled_buffer_.data(),
-                                          dst_w * static_cast<int>(sizeof(std::uint32_t)));
-                    }
+            }
+        }
+        if (!using_zero_copy_) {
+            if (!texture_) {
+                texture_ = SDL_CreateTexture(
+                    renderer_, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, dst_w, dst_h);
+                if (!texture_) {
+                    SDL_LogError(SDL_LOG_CATEGORY_VIDEO,
+                                 "Failed to create streaming texture: %s",
+                                 SDL_GetError());
+                    return;
                 }
             }
-        } else {
             upscaler_->scale(frame.pixels, src_width_, src_height_, scaled_buffer_);
-            SDL_UpdateTexture(texture_,
-                              nullptr,
-                              scaled_buffer_.data(),
-                              dst_w * static_cast<int>(sizeof(std::uint32_t)));
+            upload_pixels = scaled_buffer_.data();
+            upload_width = dst_w;
         }
-    } else {
-        SDL_UpdateTexture(texture_,
-                          nullptr,
-                          frame.pixels.data(),
-                          core::kScreenWidth * static_cast<int>(sizeof(std::uint32_t)));
     }
 
-    if (!texture_) {
+    if (!texture_)
+        return;
+    if (!using_zero_copy_ &&
+        !SDL_UpdateTexture(texture_,
+                           nullptr,
+                           upload_pixels,
+                           upload_width * static_cast<int>(sizeof(std::uint32_t)))) {
+        SDL_LogError(SDL_LOG_CATEGORY_VIDEO, "Failed to upload video frame: %s", SDL_GetError());
         return;
     }
-
-    SDL_SetRenderDrawColor(renderer_, 0, 0, 0, 255);
-    SDL_RenderClear(renderer_);
-    SDL_RenderTexture(renderer_, texture_, nullptr, nullptr);
-    SDL_RenderPresent(renderer_);
+    if (!SDL_SetRenderDrawColor(renderer_, 0, 0, 0, 255) || !SDL_RenderClear(renderer_) ||
+        !SDL_RenderTexture(renderer_, texture_, nullptr, nullptr) ||
+        !SDL_RenderPresent(renderer_)) {
+        SDL_LogError(SDL_LOG_CATEGORY_VIDEO, "Failed to present video frame: %s", SDL_GetError());
+    }
 }
 
 void Sdl3Video::set_upscaler(std::unique_ptr<platform::Upscaler> upscaler) {

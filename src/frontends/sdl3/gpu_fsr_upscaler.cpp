@@ -25,7 +25,9 @@ GpuFsr1Upscaler::~GpuFsr1Upscaler() {
 }
 
 void GpuFsr1Upscaler::set_gpu_device(void* device_handle) {
-    if (!device_) {
+    if (!device_handle && external_device_) {
+        cleanup_gpu();
+    } else if (device_handle && !device_) {
         device_ = static_cast<SDL_GPUDevice*>(device_handle);
         external_device_ = true;
     }
@@ -184,6 +186,7 @@ void GpuFsr1Upscaler::cleanup_gpu() {
     }
 #endif
     device_ = nullptr;
+    external_device_ = false;
     easu_pipeline_ = nullptr;
     rcas_pipeline_ = nullptr;
     src_texture_ = nullptr;
@@ -195,6 +198,7 @@ void GpuFsr1Upscaler::cleanup_gpu() {
         fences_[i] = nullptr;
     }
     initialized_ = false;
+    frame_index_ = 0;
 }
 
 void GpuFsr1Upscaler::scale(std::span<const std::uint32_t> source,
@@ -328,19 +332,16 @@ void GpuFsr1Upscaler::scale(std::span<const std::uint32_t> source,
 
     fences_[current_idx] = SDL_SubmitGPUCommandBufferAndAcquireFence(cmd);
 
-    // Read back the previous frame to minimize blocking
-    if (frame_index_ > 0 && download_bufs_[prev_idx]) {
-        if (fences_[prev_idx]) {
-            SDL_WaitForGPUFences(device_, true, &fences_[prev_idx], 1);
-            // We do NOT release prev_idx fence here, because it will be released
-            // when it becomes current_idx on the next iteration.
-        }
+    // Fill the first frame immediately, then pipeline subsequent readbacks.
+    const uint32_t read_idx = frame_index_ == 0 ? current_idx : prev_idx;
+    if (!target.empty() && fences_[read_idx] &&
+        SDL_WaitForGPUFences(device_, true, &fences_[read_idx], 1)) {
 
-        void* mapped = SDL_MapGPUTransferBuffer(device_, download_bufs_[prev_idx], false);
+        void* mapped = SDL_MapGPUTransferBuffer(device_, download_bufs_[read_idx], false);
         if (mapped) {
             auto* src_pixels = static_cast<const uint32_t*>(mapped);
             rgba_to_argb({src_pixels, target.size()}, target);
-            SDL_UnmapGPUTransferBuffer(device_, download_bufs_[prev_idx]);
+            SDL_UnmapGPUTransferBuffer(device_, download_bufs_[read_idx]);
         }
     }
 

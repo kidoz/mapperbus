@@ -25,7 +25,9 @@ GpuUpscaler::~GpuUpscaler() {
 }
 
 void GpuUpscaler::set_gpu_device(void* device_handle) {
-    if (!device_) {
+    if (!device_handle && external_device_) {
+        cleanup_gpu();
+    } else if (device_handle && !device_) {
         device_ = static_cast<SDL_GPUDevice*>(device_handle);
         external_device_ = true;
     }
@@ -165,6 +167,7 @@ void GpuUpscaler::cleanup_gpu() {
     }
 #endif
     device_ = nullptr;
+    external_device_ = false;
     preprocess_pipeline_ = nullptr;
     pipeline_ = nullptr;
     src_texture_ = nullptr;
