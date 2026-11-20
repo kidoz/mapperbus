@@ -5,6 +5,63 @@ All notable changes to MapperBus are documented in this file.
 The format is based on Keep a Changelog, and this project adheres to Semantic
 Versioning.
 
+## [0.5.0] - 2026-11-20
+
+### Added
+
+- MMC5 multiplier registers at `$5205`/`$5206`, with power-on clearing,
+  soft-reset retention and snapshot persistence at machine state version 22.
+
+- CPU JAM state in machine snapshots at version 21; older snapshots restore
+  with the latch clear.
+
+- Checked GUI close handling that reports persistence failures and keeps the
+  ROM open, using a noncancellable file-operation sheet.
+
+- Exception guards at the SDL3 and headless CLI entry points.
+
+- A project-maintained SDL3 3.4.20 Meson port for the wrap fallback, including
+  the dummy audio driver for headless tests.
+
+- Windows MinGW smoke tests, macOS app-bundle verification and expanded GUI,
+  sanitizer and lint coverage in CI.
+
+### Changed
+
+- SDL3 playback, microphone, gamepad-selection and native-permission adapters
+  moved into the platform layer and shared by the SDL3 and NodalKit frontends.
+  The SDL3 composition root moved to `src/frontends/sdl3/main.cpp`.
+
+- GUI session-close orchestration moved from the controller into
+  `gui_session_close.cpp`.
+
+- Warnings-as-errors is now a CI gate configured with `-Dwerror=true` instead
+  of a default build option.
+
+- Persistent writes sync their data and use owner-only permissions. Save-state
+  storage rejects symlinked directories and invalid game identities, and state
+  loads enforce the cartridge's size limit.
+
+- Mapper tests 403, 405, 407 and 497 receive longer timeouts.
+
+### Fixed
+
+- High-rate audio output drains complete frames up to 192 kHz, including PAL.
+
+- GPU xBRZ and FSR1 upscalers release a borrowed device, fall back to CPU
+  readback after detach, and report streaming upload failures instead of
+  presenting a stale frame.
+
+- PPU background tile caching is invalidated by CHR writes.
+
+- CPU interrupt sampling fails explicitly when its sample capacity is
+  exhausted instead of silently overrunning release builds.
+
+- Cartridge unload failures are returned and checked by frontends and tests.
+
+- Native save-state records reject invalid boolean fields before restoring,
+  and serial EEPROM word-address staging is named consistently.
+
 ## [0.4.0] - 2026-11-19
 
 ### Added
@@ -298,6 +355,7 @@ Versioning.
 - Initial release with the emulator core, SDL3 frontend, CPU and GPU FSR
   upscaling, and BlipBuffer-based audio output.
 
+[0.5.0]: https://github.com/kidoz/mapperbus/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/kidoz/mapperbus/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/kidoz/mapperbus/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/kidoz/mapperbus/compare/v0.1.0...v0.2.0
