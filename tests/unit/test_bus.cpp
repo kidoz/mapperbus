@@ -926,6 +926,8 @@ namespace {
 struct NativePpuProbe {
     std::array<Byte, 16> values{};
     Byte open_bus_mask = 0xFFU;
+    unsigned open_bus_queries = 0U;
+    Byte prg_mask = 0xFFU;
     uint16_t read_claims = 0xFFFFU;
     uint16_t write_claims = 0xFFFFU;
     Address read_address = 0U;
@@ -958,7 +960,11 @@ class NativePpuMapper final : public Nrom {
         probe_->values[addr & 15U] = value;
         return true;
     }
+    Byte prg_read_mask(Address) const override {
+        return probe_->prg_mask;
+    }
     Byte cpu_open_bus_mask() const override {
+        ++probe_->open_bus_queries;
         return probe_->open_bus_mask;
     }
     void observe_cpu_read(Address addr, Byte value) override {
@@ -1005,6 +1011,25 @@ std::vector<Byte> ppu_state(const Ppu& ppu) {
     return w.take();
 }
 } // namespace
+
+TEST_CASE("CPU reads consult the open-bus mask only for floating data", "[bus]") {
+    auto probe = std::make_shared<NativePpuProbe>();
+    auto cartridge = native_ppu_cartridge(probe);
+    MemoryBus bus;
+    bus.connect_cartridge(&cartridge);
+    probe->open_bus_mask = 0xF0;
+    bus.write(0, 0xAC);
+    CHECK(bus.read_cpu(0) == 0xAC);
+    CHECK(bus.read_cpu(0x8000) == 0);
+    CHECK(probe->open_bus_queries == 0);
+
+    bus.write(0, 0xAC);
+    probe->prg_mask = 0x0F;
+    CHECK(bus.read_cpu(0x8000) == 0xA0);
+    CHECK(probe->open_bus_queries == 1);
+    CHECK(bus.read_cpu(0x4000) == 0xA0);
+    CHECK(probe->open_bus_queries == 2);
+}
 
 TEST_CASE("Native PPU register hooks receive raw addresses and CPU open bus before mirroring",
           "[bus][native-ppu]") {

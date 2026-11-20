@@ -246,9 +246,9 @@ Byte MemoryBus::read_cycle(Address addr, Address cpu_address, bool dma) {
     set_controller_oe(ntsc_io() && joypad ? static_cast<Byte>(internal - 0x4015) : Byte{0});
     // External memory still sees the DMA address, even when the internal APU
     // decoder selects a register. Its $4015 read never drives external open bus.
-    Byte external = open_bus();
-    if (addr < 0x4000 || addr == 0x4011 || addr >= 0x4018)
-        external = (this->*(read_map_[static_cast<uint32_t>(addr) >> 10U]))(addr);
+    const bool mapped_read = addr < 0x4000 || addr == 0x4011 || addr >= 0x4018;
+    Byte external =
+        mapped_read ? (this->*(read_map_[static_cast<uint32_t>(addr) >> 10U]))(addr) : open_bus();
     if (internal == 0x4015 && apu_enabled) {
         if (cartridge_ != nullptr)
             cartridge_->observe_cpu_read(addr, external);
@@ -491,8 +491,11 @@ Byte MemoryBus::read_prg(Address addr) {
         if (!cartridge_->maps_prg(addr)) {
             return open_bus();
         }
-        const auto mask = cartridge_->prg_read_mask(addr);
-        return static_cast<Byte>((cartridge_->read_prg(addr) & mask) | (open_bus() & ~mask));
+        const unsigned mask = cartridge_->prg_read_mask(addr);
+        const Byte value = cartridge_->read_prg(addr);
+        if (mask == 0xFFU)
+            return value;
+        return static_cast<Byte>((value & mask) | (open_bus() & ~mask));
     }
     return open_bus();
 }
