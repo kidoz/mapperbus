@@ -11,6 +11,7 @@
 #include <nk/style/theme.h>
 #include <nk/text/font.h>
 #include <nk/ui_core/widget.h>
+#include <nk/widgets/dialog.h>
 #include <nk/widgets/preferences.h>
 #include <nk/widgets/scroll_area.h>
 #include <optional>
@@ -20,6 +21,20 @@
 #include <vector>
 
 namespace mapperbus::frontend {
+
+// Noncancellable file writes keep their sheet visible until
+// completion, including when Escape or Return reaches the dialog itself.
+class FileOperationDialog final : public nk::Dialog {
+  public:
+    FileOperationDialog(std::string title, bool cancellable)
+        : nk::Dialog(std::move(title), {}), cancellable_(cancellable) {}
+    bool handle_key_event(const nk::KeyEvent& event) override {
+        return !cancellable_ || nk::Dialog::handle_key_event(event);
+    }
+
+  private:
+    bool cancellable_;
+};
 
 inline std::shared_ptr<nk::ScrollArea> rectangular_scroll_area() {
     auto theme = nk::Theme::active();

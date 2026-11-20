@@ -497,8 +497,11 @@ TEST_CASE("Closing Settings rejects stale picker callbacks and completed BIOS re
     auto settings = Access::settings(*fixture.gui);
     click(*settings, "Choose FDS BIOS");
     auto stale_picker = fixture.take_picker();
+    const auto closed_settings = std::weak_ptr{settings};
     settings->close(nk::DialogResponse::Cancel);
     fixture.drain();
+    settings.reset();
+    REQUIRE(closed_settings.expired());
     fixture.settings();
     settings = Access::settings(*fixture.gui);
     click(*settings, "Choose FDS BIOS");

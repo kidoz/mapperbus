@@ -4,6 +4,7 @@ sdl3_audio_dep = dependency('sdl3', required : false, fallback : ['sdl3', 'sdl3_
 mapperbus_gui_controller_sources = files(
     'gui_audio_backend.cpp',
     'gui_controller.cpp',
+    'gui_session_close.cpp',
     '../../platform/video/fsr1.cpp',
     '../../platform/video/xbrz.cpp',
 )
