@@ -4855,7 +4855,7 @@ some historical aliases share a factory with another ID.
 | 002 | UxROM | Registered: Uxrom | [r24147](https://www.nesdev.org/w/index.php?oldid=24147) |
 | 003 | CNROM | Registered: Cnrom | [r24346](https://www.nesdev.org/w/index.php?oldid=24346) |
 | 004 | MMC3 / MMC6, T9552 submapper 5 | Registered: Mmc3 | [r24445](https://www.nesdev.org/w/index.php?oldid=24445) |
-| 005 | MMC5 / ExROM | Registered: Mmc5 | [r24329](https://www.nesdev.org/w/index.php?oldid=24329) |
+| 005 | MMC5 / ExROM | Registered: Mmc5, including the `$5205/$5206` multiplier | [r24329](https://www.nesdev.org/w/index.php?oldid=24329) |
 | 006 | FFE Magic Card | Registered: FfeMagicCard | [r18921](https://www.nesdev.org/w/index.php?oldid=18921) |
 | 007 | AxROM | Registered: Axrom | [r24152](https://www.nesdev.org/w/index.php?oldid=24152) |
 | 008 | FFE Magic Card alias | Registered: FfeMagicCard | [r18921](https://www.nesdev.org/w/index.php?oldid=18921) |

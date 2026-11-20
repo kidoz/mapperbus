@@ -348,8 +348,12 @@ void Mmc5::save_state(StateWriter& w) const {
     w.write(irq_enabled_);
     w.write(irq_pending_);
     w.write(in_frame_);
+    w.write_array(multiplier_operands_);
 }
 void Mmc5::load_state(StateReader& r) {
+    load_state_version(r, kMultiplierStateVersion);
+}
+void Mmc5::load_state_version(StateReader& r, std::uint32_t version) {
     r.read_array(prg_ram_);
     r.read_array(chr_ram_);
     r.read(prg_mode_);
@@ -380,6 +384,9 @@ void Mmc5::load_state(StateReader& r) {
     r.read(irq_enabled_);
     r.read(irq_pending_);
     r.read(in_frame_);
+    multiplier_operands_.fill(0);
+    if (version >= kMultiplierStateVersion)
+        r.read_array(multiplier_operands_);
     if (chr_mode_ > 3) {
         chr_mode_ = 3;
         r.fail();

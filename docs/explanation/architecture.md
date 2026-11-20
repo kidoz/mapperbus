@@ -96,6 +96,8 @@ RAM. User configuration describes host preferences such as input mappings and
 audio settings. Keeping these separate means a UI preference does not become
 part of cartridge hardware state.
 
+Version 22 saves both MMC5 multiplier operands. Older snapshots initialize them to zero.
+
 Version 21 saves the CPU JAM latch. Restoring an older snapshot starts the CPU
 with that latch clear.
 

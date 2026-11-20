@@ -48,6 +48,38 @@ std::vector<Byte> banked_chr(int banks_1k) {
 
 } // namespace
 
+TEST_CASE("MMC5 multiplier retains both operands across soft reset and snapshots", "[mmc5]") {
+    Mmc5 mapper(header_for(5, 4, 1), banked_prg(8), banked_chr(8));
+    const auto product = [&] {
+        const unsigned low = mapper.read_expansion(0x5205);
+        const unsigned high = mapper.read_expansion(0x5206);
+        return (high << 8U) | low;
+    };
+    mapper.write_expansion(0x5206, 0xFF);
+    REQUIRE(product() == 0);
+    mapper.write_expansion(0x5205, 0xFF);
+    REQUIRE(product() == 65025);
+    mapper.reset();
+    REQUIRE(product() == 65025);
+
+    StateWriter writer;
+    mapper.save_state(writer);
+    mapper.power_on();
+    REQUIRE(product() == 0);
+    StateReader current(writer.data());
+    mapper.load_state(current);
+    REQUIRE(current.ok());
+    REQUIRE(current.remaining() == 0);
+    mapper.write_expansion(0x5206, 2);
+    REQUIRE(product() == 510);
+
+    StateReader legacy(std::span{writer.data()}.first(writer.data().size() - 2));
+    mapper.load_state_version(legacy, 21);
+    REQUIRE(legacy.ok());
+    REQUIRE(legacy.remaining() == 0);
+    REQUIRE(product() == 0);
+}
+
 TEST_CASE("MMC5 PRG mode 3 selects four independent 8 KB banks", "[mmc5]") {
     Mmc5 m(header_for(5, 4, 1), banked_prg(8), banked_chr(8));
     m.write_expansion(0x5100, 0x03);     // PRG mode 3

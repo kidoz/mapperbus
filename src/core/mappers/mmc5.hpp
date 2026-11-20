@@ -44,6 +44,7 @@ class Mmc5 : public Mapper {
     Byte read_chr(Address addr) override;
     void write_chr(Address addr, Byte value) override;
     MirrorMode mirror_mode() const override;
+    void power_on() override;
     void reset() override;
 
     bool has_expansion_audio() const override {
@@ -55,6 +56,7 @@ class Mmc5 : public Mapper {
     void write_expansion(Address addr, Byte value) override;
     void save_state(StateWriter& writer) const override;
     void load_state(StateReader& reader) override;
+    void load_state_version(StateReader& reader, std::uint32_t version) override;
     std::span<const Byte> battery_ram() const override;
     void set_battery_ram(std::span<const Byte> data) override;
 
@@ -70,6 +72,8 @@ class Mmc5 : public Mapper {
     void on_ppu_frame_start() override;
 
   private:
+    static constexpr std::uint32_t kMultiplierStateVersion = 22;
+
     std::vector<Byte> prg_rom_;
     std::vector<Byte> chr_rom_;
     std::array<Byte, 0x10000> prg_ram_{}; // up to 64 KB battery/work RAM
@@ -88,6 +92,7 @@ class Mmc5 : public Mapper {
     std::array<uint16_t, 8> chr_banks_1k_{};
 
     MirrorMode mirror_mode_ = MirrorMode::Vertical;
+    std::array<Byte, 2> multiplier_operands_{};
 
     // Scanline IRQ state
     uint8_t irq_target_ = 0;

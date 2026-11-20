@@ -65,6 +65,11 @@ Mmc5::Mmc5(const INesHeader& header, std::vector<Byte> prg_rom, std::vector<Byte
     reset();
 }
 
+void Mmc5::power_on() {
+    multiplier_operands_.fill(0);
+    reset();
+}
+
 void Mmc5::reset() {
     prg_mode_ = 3;
     prg_banks_.fill(0);
@@ -265,6 +270,10 @@ Byte Mmc5::read_expansion(Address addr) {
         irq_pending_ = false;
         return status;
     }
+    if (addr == 0x5205 || addr == 0x5206) {
+        const unsigned product = unsigned{multiplier_operands_[0]} * multiplier_operands_[1];
+        return static_cast<Byte>(addr == 0x5205 ? product : product >> 8U);
+    }
     return 0;
 }
 
@@ -368,6 +377,10 @@ void Mmc5::write_expansion(Address addr, Byte value) {
         break;
     case 0x5204:
         irq_enabled_ = (value & 0x80) != 0;
+        break;
+    case 0x5205:
+    case 0x5206:
+        multiplier_operands_[addr - 0x5205] = value;
         break;
 
     // CHR banking
