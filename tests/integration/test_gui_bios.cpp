@@ -419,6 +419,29 @@ TEST_CASE("Video settings select and persist Hybrid while keeping the game pause
     CHECK(Access::snapshot(*fixture.gui).region == core::Region::NTSC);
 }
 
+TEST_CASE("State confirmations use the displayed slot number", "[gui][state]") {
+    Fixture fixture(SettingsMode::Saved);
+    auto* overlay =
+        find_widget<nk::ToastOverlay>(*fixture.window.child(), [](const auto&) { return true; });
+    REQUIRE(overlay);
+    overlay->dismiss_all();
+
+    fixture.action("emu.save-state");
+    fixture.wait([&] { return overlay->current_toast() != nullptr; });
+    CHECK(overlay->current_toast()->title == "Saved state to Slot 1.");
+
+    const auto directory = fixture.root / "states";
+    const auto game = std::filesystem::directory_iterator(directory);
+    REQUIRE(game != std::filesystem::directory_iterator{});
+    CHECK(std::filesystem::is_regular_file(game->path() / "slot-0.state"));
+    CHECK_FALSE(std::filesystem::exists(game->path() / "slot-1.state"));
+
+    overlay->dismiss_all();
+    fixture.action("emu.load-state");
+    fixture.wait([&] { return overlay->current_toast() != nullptr; });
+    CHECK(overlay->current_toast()->title == "Loaded state from Slot 1.");
+}
+
 TEST_CASE("Settings BIOS selection applies in memory and preserves a paused game on rejection",
           "[gui][fds][bios][session-only]") {
     Fixture fixture;

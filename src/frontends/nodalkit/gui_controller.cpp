@@ -3110,10 +3110,11 @@ void MapperBusGuiController::poll_state_operation() {
             return;
         }
     }
-    finish_state_operation(
-        std::string(pending_state_operation_->save ? "Saved state to " : "Loaded state from ") +
-            basename_for_display(loaded.path) + ".",
-        true);
+    const auto& operation = *pending_state_operation_;
+    finish_state_operation(std::format("{} Slot {}.",
+                                       operation.save ? "Saved state to" : "Loaded state from",
+                                       operation.slot + 1),
+                           true);
 }
 
 void MapperBusGuiController::save_session_state(int slot) {
