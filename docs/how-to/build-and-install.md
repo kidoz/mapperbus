@@ -36,7 +36,7 @@ meson compile -C buildDir
 This builds SDL3, the headless CLI, and tests. Launch SDL3 with:
 
 ```sh
-./buildDir/src/app/mapperbus-sdl3 "/path/to/game.nes"
+./buildDir/src/frontends/sdl3/mapperbus-sdl3 "/path/to/game.nes"
 ```
 
 ## Build the NodalKit GUI

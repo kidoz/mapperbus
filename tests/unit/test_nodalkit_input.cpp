@@ -7,7 +7,7 @@
 #include "../support/virtual_gamepads.hpp"
 #include "app/configuration.hpp"
 #include "frontends/nodalkit/nodalkit_input.hpp"
-#include "frontends/sdl3/gamepad_assignment.hpp"
+#include "platform/sdl3/gamepad_assignment.hpp"
 
 namespace mapperbus::frontend {
 namespace {

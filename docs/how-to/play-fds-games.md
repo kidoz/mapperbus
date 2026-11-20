@@ -26,7 +26,7 @@ Without Saving**, the new BIOS path applies only for that session.
 For SDL3, pass the BIOS explicitly or use the saved path:
 
 ```sh
-./buildDir/src/app/mapperbus-sdl3 --fds-bios "/path/to/disksys.rom" "/path/to/game.fds"
+./buildDir/src/frontends/sdl3/mapperbus-sdl3 --fds-bios "/path/to/disksys.rom" "/path/to/game.fds"
 ```
 
 The headless CLI can run a longer boot check without opening a window:

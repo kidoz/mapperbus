@@ -9,14 +9,14 @@ to the configuration file.
 Choose the SDL gamepad index for player 1:
 
 ```sh
-./buildDir/src/app/mapperbus-sdl3 --gamepad 0 "/path/to/game.nes"
+./buildDir/src/frontends/sdl3/mapperbus-sdl3 --gamepad 0 "/path/to/game.nes"
 ```
 
 To use the left stick for the D-pad while keeping A on the east face button
 and B on the south face button:
 
 ```sh
-./buildDir/src/app/mapperbus-sdl3 \
+./buildDir/src/frontends/sdl3/mapperbus-sdl3 \
     --gamepad-map 'a=east,b=south,up=lefty-,down=lefty+,left=leftx-,right=leftx+' \
     "/path/to/game.nes"
 ```
@@ -27,7 +27,7 @@ range is 1–32767. Each player combines their keyboard and gamepad input.
 Player 2 uses gamepad index 1 by default. To select its device explicitly:
 
 ```sh
-./buildDir/src/app/mapperbus-sdl3 --gamepad 0 --gamepad2 1 "/path/to/game.nes"
+./buildDir/src/frontends/sdl3/mapperbus-sdl3 --gamepad 0 --gamepad2 1 "/path/to/game.nes"
 ```
 
 Use `--gamepad2-map` with the same mapping format to remap player 2.
@@ -48,13 +48,13 @@ Choose a factor from 2 to 6 and one mode:
 
 ```sh
 # CPU xBRZ
-./buildDir/src/app/mapperbus-sdl3 --scale 3 "/path/to/game.nes"
+./buildDir/src/frontends/sdl3/mapperbus-sdl3 --scale 3 "/path/to/game.nes"
 # CPU FSR 1
-./buildDir/src/app/mapperbus-sdl3 --scale 4 --fsr "/path/to/game.nes"
+./buildDir/src/frontends/sdl3/mapperbus-sdl3 --scale 4 --fsr "/path/to/game.nes"
 # GPU xBRZ
-./buildDir/src/app/mapperbus-sdl3 --scale 3 --gpu "/path/to/game.nes"
+./buildDir/src/frontends/sdl3/mapperbus-sdl3 --scale 3 --gpu "/path/to/game.nes"
 # GPU FSR 1
-./buildDir/src/app/mapperbus-sdl3 --scale 4 --gpu-fsr "/path/to/game.nes"
+./buildDir/src/frontends/sdl3/mapperbus-sdl3 --scale 4 --gpu-fsr "/path/to/game.nes"
 ```
 
 An upscaler flag needs `--scale` to activate upscaling at launch. Without an
@@ -67,7 +67,7 @@ to cycle modes. `F11` toggles fullscreen and `V` toggles vsync.
 ## Override the region
 
 ```sh
-./buildDir/src/app/mapperbus-sdl3 --region pal "/path/to/game.nes"
+./buildDir/src/frontends/sdl3/mapperbus-sdl3 --region pal "/path/to/game.nes"
 ```
 
 Use `ntsc`, `pal`, or `hybrid`. Omit the option to use automatic cartridge region
@@ -79,7 +79,7 @@ preference.
 For a 48 kHz output request with enhanced Famicom filtering:
 
 ```sh
-./buildDir/src/app/mapperbus-sdl3 --sample-rate 48000 \
+./buildDir/src/frontends/sdl3/mapperbus-sdl3 --sample-rate 48000 \
     --filter-mode enhanced --filter-profile famicom "/path/to/game.nes"
 ```
 

@@ -16,12 +16,13 @@ Paths are relative to the repository root.
 | `src/core/state/` | Binary state reader and writer |
 | `src/core/types.hpp` | Shared numeric types, frame buffers, region timings, results |
 | `src/platform/` | Video, audio, input interfaces and null backends; CPU upscalers |
+| `src/platform/sdl3/` | SDL3 playback, microphone capture, gamepad selection, and native permissions |
 | `src/app/emulation_session.*` | Session lifecycle, ticks, pause, input/audio/video coordination, save slots |
 | `src/app/rom_source.*` | Shared raw/ZIP/7z loading, member selection, BIOS and persistence paths |
 | `src/app/configuration.*` | Shared frontend configuration parsing and persistence |
 | `src/app/session_actions.*` | Shared session action definitions and dispatch |
 | `src/app/app.*` | SDL3 application's session wrapper and run loop |
-| `src/app/main.cpp` | SDL3 composition root and command-line parsing |
+| `src/frontends/sdl3/main.cpp` | SDL3 composition root and command-line parsing |
 | `src/frontends/sdl3/` | SDL3 backends, GPU upscalers, embedded and compiled shaders |
 | `src/frontends/nodalkit/` | NodalKit GUI entry point, controller, widgets, audio/input adapters |
 | `src/frontends/cli/` | Headless CLI entry point |

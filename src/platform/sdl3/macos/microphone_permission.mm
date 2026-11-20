@@ -1,4 +1,4 @@
-#include "frontends/sdl3/macos/microphone_permission.hpp"
+#include "platform/sdl3/macos/microphone_permission.hpp"
 
 #import <AVFoundation/AVFoundation.h>
 #include <atomic>

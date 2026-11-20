@@ -48,17 +48,16 @@ subdir('src/core')
 subdir('src/platform')
 subdir('packaging')
 
-mapperbus_microphone_permission_dep = declare_dependency()
-if host_machine.system() == 'darwin' and (get_option('enable_sdl3') or get_option('enable_nodalkit_gui'))
-    subdir('src/frontends/sdl3/macos')
+if get_option('enable_sdl3') or get_option('enable_nodalkit_gui') or get_option('enable_cli') or get_option('enable_tests')
+    subdir('src/app')
+endif
+
+if get_option('enable_sdl3') or get_option('enable_nodalkit_gui')
+    subdir('src/platform/sdl3')
 endif
 
 if get_option('enable_sdl3')
     subdir('src/frontends/sdl3')
-endif
-
-if get_option('enable_sdl3') or get_option('enable_nodalkit_gui') or get_option('enable_cli') or get_option('enable_tests')
-    subdir('src/app')
 endif
 
 if get_option('enable_nodalkit_gui')

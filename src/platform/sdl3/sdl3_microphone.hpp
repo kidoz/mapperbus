@@ -1,6 +1,7 @@
 #pragma once
 
 #include <SDL3/SDL_audio.h>
+#include <chrono>
 #include <memory>
 
 #include "platform/audio/microphone_backend.hpp"
@@ -28,6 +29,7 @@ class Sdl3Microphone final : public platform::MicrophoneBackend {
     SDL_AudioDeviceID physical_ = 0;
     bool initialized_ = false;
     bool system_default_ = false;
+    std::chrono::steady_clock::time_point next_device_check_{};
     std::vector<SDL_AudioDeviceID> initial_devices_;
     std::string default_name_;
 };

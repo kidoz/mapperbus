@@ -1,26 +1,22 @@
 nodalkit_dep = dependency('nodalkit', version : '>=0.5.0', fallback : ['nodalkit', 'nk_dep'])
-sdl3_audio_dep = dependency('sdl3', required : false, fallback : ['sdl3', 'sdl3_dep'])
 
 mapperbus_gui_controller_sources = files(
     'gui_audio_backend.cpp',
     'gui_controller.cpp',
     'gui_session_close.cpp',
-    '../../platform/video/fsr1.cpp',
-    '../../platform/video/xbrz.cpp',
 )
 
 mapperbus_gui_sources = files('main.cpp') + mapperbus_gui_controller_sources
 
-mapperbus_gui_deps = [mapperbus_app_dep, nodalkit_dep]
+mapperbus_gui_deps = [mapperbus_app_dep, nodalkit_dep, mapperbus_upscalers_dep]
 if host_machine.system() == 'windows'
     mapperbus_gui_deps += [cpp.find_library('user32'), cpp.find_library('shell32')]
 endif
 
 mapperbus_gui_cpp_args = ['-DMAPPERBUS_VERSION="' + meson.project_version() + '"']
 
-if sdl3_audio_dep.found()
-    mapperbus_gui_sources += files('../sdl3/sdl3_audio.cpp', '../sdl3/sdl3_microphone.cpp')
-    mapperbus_gui_deps += [sdl3_audio_dep, mapperbus_microphone_permission_dep]
+if sdl3_dep.found()
+    mapperbus_gui_deps += mapperbus_sdl3_audio_dep
     mapperbus_gui_cpp_args += ['-DMAPPERBUS_HAVE_SDL3_AUDIO', '-DMAPPERBUS_HAVE_SDL3_GAMEPAD']
 endif
 

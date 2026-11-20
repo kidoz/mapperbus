@@ -844,9 +844,7 @@ test('state-storage', test_state_storage)
 
 test_xbrz = executable('test-xbrz',
     'unit/test_xbrz.cpp',
-    '../src/platform/video/xbrz.cpp',
-    include_directories : mapperbus_inc,
-    dependencies : catch2_dep,
+    dependencies : [mapperbus_upscalers_dep, catch2_dep],
 )
 test('xbrz', test_xbrz)
 
@@ -856,7 +854,7 @@ if get_option('enable_nodalkit_gui')
     test_gui_bios = executable('test-gui-bios',
         'integration/test_gui_bios.cpp',
         mapperbus_gui_controller_sources,
-        dependencies : [mapperbus_app_dep, nodalkit_dep, catch2_dep],
+        dependencies : [mapperbus_app_dep, nodalkit_dep, mapperbus_upscalers_dep, catch2_dep],
         cpp_args : ['-DMAPPERBUS_VERSION="' + meson.project_version() + '"'],
     )
     test('gui-bios', test_gui_bios, timeout : 60)
@@ -880,10 +878,10 @@ if get_option('enable_nodalkit_gui')
     )
     test('input-binding-table', test_input_binding_table)
 
-    if sdl3_audio_dep.found()
+    if sdl3_dep.found()
         test_nodalkit_input = executable('test-nodalkit-input',
             'unit/test_nodalkit_input.cpp',
-            dependencies : [mapperbus_app_dep, nodalkit_dep, sdl3_audio_dep, catch2_dep],
+            dependencies : [mapperbus_app_dep, nodalkit_dep, sdl3_dep, catch2_dep],
             cpp_args : ['-DMAPPERBUS_HAVE_SDL3_GAMEPAD'],
         )
         test('nodalkit-input', test_nodalkit_input)

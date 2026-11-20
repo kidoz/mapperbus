@@ -38,7 +38,7 @@ Ninja, and [archive build dependencies](docs/how-to/build-and-install.md#prepare
 meson setup buildDir
 meson compile -C buildDir
 meson test -C buildDir --suite mapperbus --print-errorlogs
-./buildDir/src/app/mapperbus-sdl3 "/path/to/game.nes"
+./buildDir/src/frontends/sdl3/mapperbus-sdl3 "/path/to/game.nes"
 ```
 
 The default build includes SDL3, the headless CLI, and tests. The NodalKit GUI

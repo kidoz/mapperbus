@@ -5,10 +5,10 @@
 #include "../support/test_rom.hpp"
 #include "app/emulation_session.hpp"
 #include "core/mappers/mapper_registry.hpp"
-#include "frontends/sdl3/sdl3_audio.hpp"
-#include "frontends/sdl3/sdl3_microphone.hpp"
 #include "platform/audio/null_audio.hpp"
 #include "platform/input/null_input.hpp"
+#include "platform/sdl3/sdl3_audio.hpp"
+#include "platform/sdl3/sdl3_microphone.hpp"
 #include "platform/video/null_video.hpp"
 
 namespace {

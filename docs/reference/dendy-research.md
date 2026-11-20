@@ -6,7 +6,7 @@ the GUI, or pass `--region hybrid` to SDL3 or the headless CLI.
 
 ```sh
 ./buildDir/src/frontends/cli/mapperbus-cli game.nes --region hybrid --frames 120
-./buildDir/src/app/mapperbus-sdl3 --region hybrid game.nes
+./buildDir/src/frontends/sdl3/mapperbus-sdl3 --region hybrid game.nes
 ```
 
 ## Hardware profile

@@ -1,11 +1,11 @@
-#include "frontends/sdl3/sdl3_microphone.hpp"
+#include "platform/sdl3/sdl3_microphone.hpp"
 
 #include <SDL3/SDL.h>
 #include <algorithm>
 #include <limits>
 
 #if defined(__APPLE__)
-#include "frontends/sdl3/macos/microphone_permission.hpp"
+#include "platform/sdl3/macos/microphone_permission.hpp"
 #endif
 
 namespace mapperbus::frontend {
@@ -136,6 +136,7 @@ core::Result<void> Sdl3Microphone::start(std::string_view device) {
         stop();
         return std::unexpected(error);
     }
+    next_device_check_ = std::chrono::steady_clock::now() + std::chrono::seconds(1);
     return {};
 }
 
@@ -156,6 +157,11 @@ core::Result<void> Sdl3Microphone::check_connected() {
         stop();
         return result;
     }
+    // Check authorization before every read. SDL's device list only needs a
+    // periodic refresh to detect changes to the selected input.
+    const auto now = std::chrono::steady_clock::now();
+    if (now < next_device_check_)
+        return {};
     int count = 0;
     auto* ids = SDL_GetAudioRecordingDevices(&count);
     if (!ids)
@@ -173,6 +179,7 @@ core::Result<void> Sdl3Microphone::check_connected() {
         stop();
         return std::unexpected("Recording device disconnected; choose a device or retry");
     }
+    next_device_check_ = now + std::chrono::seconds(1);
     return {};
 }
 
@@ -188,8 +195,8 @@ core::Result<std::size_t> Sdl3Microphone::read(std::span<float> samples) {
         return std::unexpected("Capture read is too large");
     if (static_cast<std::size_t>(available) > samples.size_bytes()) {
         // Drop an old backlog in constant time instead of replaying stale speech.
-        if (auto result = discard(); !result)
-            return std::unexpected(result.error());
+        if (!SDL_ClearAudioStream(stream_))
+            return std::unexpected(std::string(SDL_GetError()));
         return 0;
     }
     const int bytes =

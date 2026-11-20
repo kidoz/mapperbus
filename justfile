@@ -37,19 +37,19 @@ test: build
 
 # Run the SDL3 frontend (pass ROM path as argument)
 run rom: build
-    ./{{build_dir}}/src/app/mapperbus-sdl3 {{rom}}
+    ./{{build_dir}}/src/frontends/sdl3/mapperbus-sdl3 {{rom}}
 
 # Run with xBRZ upscaling (scale: 2-6)
 run-xbrz rom scale="3": build
-    ./{{build_dir}}/src/app/mapperbus-sdl3 --scale {{scale}} {{rom}}
+    ./{{build_dir}}/src/frontends/sdl3/mapperbus-sdl3 --scale {{scale}} {{rom}}
 
 # Run with GPU-accelerated xBRZ upscaling (scale: 2-6)
 run-gpu rom scale="3": build
-    ./{{build_dir}}/src/app/mapperbus-sdl3 --scale {{scale}} --gpu {{rom}}
+    ./{{build_dir}}/src/frontends/sdl3/mapperbus-sdl3 --scale {{scale}} --gpu {{rom}}
 
 # Run with GPU-accelerated FSR1 upscaling (scale: 2-6)
 run-gpu-fsr rom scale="4": build
-    ./{{build_dir}}/src/app/mapperbus-sdl3 --scale {{scale}} --gpu-fsr {{rom}}
+    ./{{build_dir}}/src/frontends/sdl3/mapperbus-sdl3 --scale {{scale}} --gpu-fsr {{rom}}
 
 # Run the headless CLI frontend (pass ROM path as argument)
 run-cli rom: build
@@ -136,7 +136,7 @@ test-sanitize: build-sanitize
 
 # Run SDL3 frontend with sanitizers (pass ROM path as argument)
 run-sanitize rom: build-sanitize
-    ./{{sanitize_dir}}/src/app/mapperbus-sdl3 {{rom}}
+    ./{{sanitize_dir}}/src/frontends/sdl3/mapperbus-sdl3 {{rom}}
 
 # Clean the build directory
 clean:

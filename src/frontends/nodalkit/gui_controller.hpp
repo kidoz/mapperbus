@@ -41,7 +41,7 @@
 #include "platform/video/upscaler.hpp"
 
 #ifdef MAPPERBUS_HAVE_SDL3_GAMEPAD
-#include "frontends/sdl3/gamepad_assignment.hpp"
+#include "platform/sdl3/gamepad_assignment.hpp"
 #endif
 
 namespace nk {

@@ -47,7 +47,7 @@ Paths are relative to a build directory such as `buildDir`.
 
 | Component | Meson target | Executable path |
 |---|---|---|
-| SDL3 | `mapperbus-sdl3` | `src/app/mapperbus-sdl3` |
+| SDL3 | `mapperbus-sdl3` | `src/frontends/sdl3/mapperbus-sdl3` |
 | Headless CLI | `mapperbus-cli` | `src/frontends/cli/mapperbus-cli` |
 | GUI on macOS | `mapperbus` (`mapperbus-gui` alias) | `src/frontends/nodalkit/mapperbus` |
 | GUI on Linux | `mapperbus-gui` | `src/frontends/nodalkit/mapperbus-gui` |

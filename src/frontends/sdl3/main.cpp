@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <exception>
 #include <memory>
 #include <optional>
 #include <string_view>
@@ -14,14 +15,23 @@
 #include "core/mappers/mapper_registry.hpp"
 #include "frontends/sdl3/gpu_fsr_upscaler.hpp"
 #include "frontends/sdl3/gpu_upscaler.hpp"
-#include "frontends/sdl3/sdl3_audio.hpp"
 #include "frontends/sdl3/sdl3_input.hpp"
-#include "frontends/sdl3/sdl3_microphone.hpp"
 #include "frontends/sdl3/sdl3_video.hpp"
+#include "platform/sdl3/sdl3_audio.hpp"
+#include "platform/sdl3/sdl3_microphone.hpp"
 #include "platform/video/fsr1.hpp"
 #include "platform/video/xbrz.hpp"
 
 namespace {
+
+std::optional<int> integer_in_range(std::string_view text, int minimum, int maximum) {
+    int value = 0;
+    const auto parsed = std::from_chars(text.data(), text.data() + text.size(), value);
+    if (parsed.ec != std::errc{} || parsed.ptr != text.data() + text.size() || value < minimum ||
+        value > maximum)
+        return std::nullopt;
+    return value;
+}
 
 enum class RuntimeScalerMode {
     Xbrz,
@@ -92,10 +102,11 @@ std::unique_ptr<mapperbus::platform::Upscaler> make_runtime_upscaler(RuntimeScal
 
 } // namespace
 
-int main(int argc, char* argv[]) {
+int main(int argc, char* argv[]) try {
     if (argc < 2) {
         mapperbus::core::logger::error("Usage: mapperbus-sdl3 [options] <rom-file>");
-        mapperbus::core::logger::info("  --scale N             xBRZ/FSR upscale factor (2-6)");
+        mapperbus::core::logger::info(
+            "  --scale N             upscale factor (1 disables, 2-6 upscale)");
         mapperbus::core::logger::info("  --gpu                 GPU-accelerated upscaling (xBRZ)");
         mapperbus::core::logger::info("  --gpu-fsr             Use Native GPU MSL FSR1 upscaling");
         mapperbus::core::logger::info("  --fsr                 Use CPU FSR 1.0 upscaling");
@@ -187,16 +198,28 @@ int main(int argc, char* argv[]) {
     std::array<bool, mapperbus::platform::kInputProfileCount> gamepad_index_overrides{};
 
     for (int i = 1; i < argc; ++i) {
-        if (std::strcmp(argv[i], "--scale") == 0 && i + 1 < argc) {
-            upscale_factor = std::atoi(argv[++i]);
+        if (std::strcmp(argv[i], "--scale") == 0) {
+            const auto scale = i + 1 < argc ? integer_in_range(argv[++i], 1, 6) : std::nullopt;
+            if (!scale) {
+                mapperbus::core::logger::error("--scale requires an integer from 1 to 6");
+                return EXIT_FAILURE;
+            }
+            upscale_factor = *scale;
         } else if (std::strcmp(argv[i], "--gpu") == 0) {
             use_gpu = true;
         } else if (std::strcmp(argv[i], "--gpu-fsr") == 0) {
             use_gpu_fsr = true;
         } else if (std::strcmp(argv[i], "--fsr") == 0) {
             use_fsr = true;
-        } else if (std::strcmp(argv[i], "--sample-rate") == 0 && i + 1 < argc) {
-            audio_settings.sample_rate = std::atoi(argv[++i]);
+        } else if (std::strcmp(argv[i], "--sample-rate") == 0) {
+            const auto rate =
+                i + 1 < argc ? integer_in_range(argv[++i], 8000, 192000) : std::nullopt;
+            if (!rate) {
+                mapperbus::core::logger::error(
+                    "--sample-rate requires an integer from 8000 to 192000");
+                return EXIT_FAILURE;
+            }
+            audio_settings.sample_rate = *rate;
         } else if (std::strcmp(argv[i], "--resampling") == 0 && i + 1 < argc) {
             ++i;
             if (std::strcmp(argv[i], "cubic") == 0) {
@@ -336,7 +359,12 @@ int main(int argc, char* argv[]) {
             microphone_settings.enabled = true;
         } else if (std::strcmp(argv[i], "--no-live-microphone") == 0) {
             microphone_settings.enabled = false;
-        } else if (std::strcmp(argv[i], "--microphone-device") == 0 && i + 1 < argc) {
+        } else if (std::strcmp(argv[i], "--microphone-device") == 0) {
+            if (i + 1 >= argc || std::string_view(argv[i + 1]).empty() ||
+                std::string_view(argv[i + 1]).starts_with("--")) {
+                mapperbus::core::logger::error("--microphone-device requires a device name");
+                return EXIT_FAILURE;
+            }
             const std::string_view device(argv[++i]);
             microphone_settings.device = device == "default" ? "" : std::string(device);
         } else if (std::strcmp(argv[i], "--microphone-sensitivity") == 0) {
@@ -351,9 +379,6 @@ int main(int argc, char* argv[]) {
                 return EXIT_FAILURE;
             }
             microphone_settings.sensitivity = sensitivity;
-        } else if (std::strcmp(argv[i], "--microphone-device") == 0) {
-            mapperbus::core::logger::error("--microphone-device requires a device name");
-            return EXIT_FAILURE;
         } else if (std::strcmp(argv[i], "--microphone-audio") == 0) {
             microphone_settings.audio_enabled = true;
         } else if (std::strcmp(argv[i], "--no-microphone-audio") == 0) {
@@ -394,6 +419,10 @@ int main(int argc, char* argv[]) {
                 return EXIT_FAILURE;
             }
         } else {
+            if (std::string_view(argv[i]).starts_with('-')) {
+                mapperbus::core::logger::error("Unknown option: {}", argv[i]);
+                return EXIT_FAILURE;
+            }
             rom_path = argv[i];
         }
     }
@@ -609,4 +638,7 @@ int main(int argc, char* argv[]) {
         return EXIT_FAILURE;
     }
     return EXIT_SUCCESS;
+} catch (const std::exception& error) {
+    mapperbus::core::logger::error("{}", error.what());
+    return EXIT_FAILURE;
 }

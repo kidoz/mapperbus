@@ -19,7 +19,7 @@ Launch the headless frontend:
 Launch SDL3 or the optional GUI:
 
 ```sh
-./buildDir/src/app/mapperbus-sdl3 base.nes --dcs-option option.bin
+./buildDir/src/frontends/sdl3/mapperbus-sdl3 base.nes --dcs-option option.bin
 ./buildDir/src/frontends/nodalkit/mapperbus base.nes --dcs-option option.bin
 ```
 

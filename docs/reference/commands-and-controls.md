@@ -5,7 +5,7 @@ Executable paths below assume a build directory named `buildDir`.
 ## SDL3 frontend
 
 ```text
-./buildDir/src/app/mapperbus-sdl3 [options] <rom-file>
+./buildDir/src/frontends/sdl3/mapperbus-sdl3 [options] <rom-file>
 ```
 
 Fresh-install defaults are listed below. Saved audio, gamepad settings, and
@@ -53,7 +53,7 @@ There is no dedicated `--help` option. Launching without arguments prints usage
 and exits with failure. The parser does not consistently reject unknown flags
 or invalid values; use the documented spellings.
 
-Source: [SDL3 composition root](../../src/app/main.cpp).
+Source: [SDL3 composition root](../../src/frontends/sdl3/main.cpp).
 
 Hybrid reproduces UA6527P/UA6538 timing, commonly called Dendy timing. The legacy
 `--region dendy` spelling remains accepted. Both region parsers reject missing

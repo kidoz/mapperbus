@@ -27,7 +27,7 @@ uses a suitable installed SDL3 or downloads its wrap fallback.
 Replace `/path/to/game.nes` with your ROM's actual path:
 
 ```sh
-./buildDir/src/app/mapperbus-sdl3 "/path/to/game.nes"
+./buildDir/src/frontends/sdl3/mapperbus-sdl3 "/path/to/game.nes"
 ```
 
 A game window should open. Click it to give it keyboard focus. If loading fails,

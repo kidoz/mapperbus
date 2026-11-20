@@ -44,7 +44,7 @@
 #include "platform/video/null_video.hpp"
 #include "platform/video/xbrz.hpp"
 #if defined(MAPPERBUS_HAVE_SDL3_AUDIO)
-#include "frontends/sdl3/sdl3_microphone.hpp"
+#include "platform/sdl3/sdl3_microphone.hpp"
 #endif
 
 #ifndef MAPPERBUS_VERSION

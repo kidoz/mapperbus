@@ -12,9 +12,9 @@ samples, and state serialization. None of these responsibilities requires SDL3
 or NodalKit.
 
 The platform layer describes host capabilities through video, audio, and input
-interfaces. Concrete SDL3 backends implement those interfaces; null backends
-make sessions usable in headless tests. CPU upscalers also live in this layer
-because they transform output without changing emulation.
+interfaces. The SDL3 and NodalKit frontends share the optional SDL3 playback
+and microphone adapters. Null backends make sessions usable in headless tests.
+Both desktop frontends can use the shared CPU upscalers to transform the output.
 
 ```mermaid
 flowchart TD

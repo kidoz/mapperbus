@@ -1,4 +1,4 @@
-#include "frontends/sdl3/sdl3_audio.hpp"
+#include "platform/sdl3/sdl3_audio.hpp"
 
 #include <algorithm>
 #include <cstddef>

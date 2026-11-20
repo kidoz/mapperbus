@@ -13,7 +13,7 @@
 #ifdef MAPPERBUS_HAVE_SDL3_GAMEPAD
 #include <SDL3/SDL.h>
 
-#include "frontends/sdl3/gamepad_selection.hpp"
+#include "platform/sdl3/gamepad_selection.hpp"
 #endif
 
 #include "frontends/nodalkit/input_monitor.hpp"

@@ -13,7 +13,7 @@ Recent games remember both the archive and the chosen member.
 For an archive containing exactly one ROM, pass its path to SDL3 or the CLI:
 
 ```sh
-./buildDir/src/app/mapperbus-sdl3 "/path/to/game.zip"
+./buildDir/src/frontends/sdl3/mapperbus-sdl3 "/path/to/game.zip"
 ./buildDir/src/frontends/cli/mapperbus-cli "/path/to/game.7z"
 ```
 
@@ -22,7 +22,7 @@ their member names and requires an exact, case-sensitive selection:
 
 ```sh
 ./buildDir/src/frontends/cli/mapperbus-cli "/path/to/collection.zip" --entry "folder/Game (E).nes"
-./buildDir/src/app/mapperbus-sdl3 --entry "folder/Game (E).nes" "/path/to/collection.zip"
+./buildDir/src/frontends/sdl3/mapperbus-sdl3 --entry "folder/Game (E).nes" "/path/to/collection.zip"
 ```
 
 Archive extensions and member `.nes`/`.fds` extensions are case-insensitive. Region

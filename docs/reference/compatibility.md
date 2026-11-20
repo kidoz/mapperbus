@@ -225,7 +225,7 @@ For an original Famicom setup, select RF Famicom wiring and timing. The equivale
 SDL3 options are:
 
 ```sh
-./buildDir/src/app/mapperbus-sdl3 'tmp/Bomberman II (Japan).zip' \
+./buildDir/src/frontends/sdl3/mapperbus-sdl3 'tmp/Bomberman II (Japan).zip' \
   --controller-mode standard --controller-wiring rf-famicom \
   --controller-timing rf-famicom --expansion-controllers 1
 ```
@@ -263,7 +263,7 @@ device → Use Selected Gamepad**; see [device identities](configuration.md).
 Wit's also accepts the built-in pads as aliases of its first two players.
 
 ```sh
-./buildDir/src/app/mapperbus-sdl3 "tmp/Wit's (Japan).zip" \
+./buildDir/src/frontends/sdl3/mapperbus-sdl3 "tmp/Wit's (Japan).zip" \
   --controller-mode hori-4-player --controller-wiring rf-famicom \
   --controller-timing rf-famicom \
   --gamepad3 0 --gamepad4 1 --gamepad5 2 --gamepad6 3

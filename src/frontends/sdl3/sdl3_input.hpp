@@ -6,9 +6,9 @@
 #include <optional>
 #include <vector>
 
-#include "frontends/sdl3/gamepad_selection.hpp"
 #include "platform/input/gamepad_config.hpp"
 #include "platform/input/input_backend.hpp"
+#include "platform/sdl3/gamepad_selection.hpp"
 
 namespace mapperbus::frontend {
 

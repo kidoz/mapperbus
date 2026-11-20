@@ -5,7 +5,7 @@
 #include "platform/audio/null_audio.hpp"
 
 #if defined(MAPPERBUS_HAVE_SDL3_AUDIO)
-#include "frontends/sdl3/sdl3_audio.hpp"
+#include "platform/sdl3/sdl3_audio.hpp"
 #endif
 
 namespace mapperbus::frontend {
@@ -72,6 +72,10 @@ int GuiAudioBackend::queued_samples() const {
         return 0;
     }
     return active_->queued_samples();
+}
+
+int GuiAudioBackend::actual_sample_rate() const {
+    return active_ ? active_->actual_sample_rate() : -1;
 }
 
 void GuiAudioBackend::pause() {

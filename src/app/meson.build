@@ -22,13 +22,3 @@ mapperbus_app_dep = declare_dependency(
     dependencies : [mapperbus_core_dep, libarchive_dep, app_threads_dep] + state_storage_platform_deps,
     include_directories : mapperbus_inc,
 )
-
-if get_option('enable_sdl3')
-    executable('mapperbus-sdl3',
-        files('main.cpp') + mapperbus_icon_resources,
-        dependencies : [mapperbus_sdl3_dep, mapperbus_app_dep],
-        link_args : mapperbus_microphone_link_args,
-        link_depends : mapperbus_microphone_link_depends,
-        install : true,
-    )
-endif
