@@ -327,6 +327,7 @@ template <typename T> class RingBuffer {
         return w - r;
     }
 
+    /// The producer and consumer must both be stopped before resetting.
     void reset() {
         producer_read_cache_ = 0;
         write_pos_.store(0, std::memory_order_relaxed);

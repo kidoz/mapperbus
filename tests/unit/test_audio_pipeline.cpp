@@ -257,6 +257,25 @@ TEST_CASE("BlipBuffer sample count accuracy", "[audio][blip]") {
     REQUIRE(n < static_cast<size_t>(expected * 1.1));
 }
 
+TEST_CASE("BlipBuffer drains complete 192 kHz PAL frames", "[audio][blip]") {
+    AudioSettings settings;
+    settings.sample_rate = 192000;
+    settings.stereo_mode = StereoMode::PseudoStereo;
+    Apu apu(settings);
+    apu.set_region(Region::PAL);
+
+    constexpr uint32_t kFrameCycles = 33247;
+    const auto expected = static_cast<std::size_t>(
+        kFrameCycles * static_cast<double>(settings.sample_rate) / kPalTiming.cpu_clock_hz());
+    std::array<float, 8192> output{};
+    for (int frame = 0; frame < 6; ++frame) {
+        apu.step(kFrameCycles);
+        apu.end_audio_frame();
+        const auto count = apu.drain_samples(output.data(), output.size());
+        REQUIRE((count == expected * 2 || count == (expected + 1) * 2));
+    }
+}
+
 TEST_CASE("BlipBuffer rate refresh preserves fractional carry", "[audio][blip]") {
     BlipBuffer buffer;
     buffer.set_rates(10.0, 4.0);

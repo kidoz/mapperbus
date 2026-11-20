@@ -9,7 +9,7 @@
 namespace mapperbus::core {
 
 namespace {
-constexpr size_t kBlipFrameBufferSamples = 2048;
+constexpr size_t kBlipFrameBufferSamples = BlipBuffer::kBufferSize;
 constexpr float kDenormalThreshold = 1.0e-15f;
 
 [[nodiscard]] float snap_denormal(float value) {
@@ -819,7 +819,7 @@ void Apu::end_audio_frame() {
     if (avail <= 0)
         return;
 
-    // ~1600 samples/frame at 96kHz NTSC; 2048 covers all practical cases.
+    // The configured maximum of 192 kHz produces about 3840 samples per PAL frame.
     int to_read = std::min(avail, static_cast<int>(blip_read_buffer_.size()));
     int count = blip_buffer_.read_samples(blip_read_buffer_.data(), to_read);
 

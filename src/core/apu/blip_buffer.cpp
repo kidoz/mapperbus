@@ -72,7 +72,7 @@ void BlipBuffer::add_delta(uint32_t clock_offset, float delta) {
     // constant latency that keeps pre-ringing taps of frame-start deltas
     // from wrapping behind the read pointer into already-cleared slots.
     for (int tap = 0; tap < kKernelSize; ++tap) {
-        int buf_idx = (sample_offset_ + output_index + tap) & buffer_mask_;
+        int buf_idx = (sample_offset_ + sample_count_ + output_index + tap) & buffer_mask_;
         buffer_[buf_idx] += delta * kernel_[phase][tap];
     }
 }
