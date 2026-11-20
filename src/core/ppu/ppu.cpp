@@ -579,6 +579,7 @@ void Ppu::write_vram(Address addr, Byte value) {
     if (addr < 0x2000) {
         if (cartridge_ != nullptr) {
             cartridge_->write_chr(addr, value);
+            bg_tile_cache_ = BgTileCache{};
         }
         return;
     }
