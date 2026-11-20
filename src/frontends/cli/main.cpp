@@ -1,5 +1,6 @@
 #include <charconv>
 #include <cstdlib>
+#include <exception>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -10,7 +11,7 @@
 #include "core/logger.hpp"
 #include "core/mappers/mapper_registry.hpp"
 
-int main(int argc, char* argv[]) {
+int main(int argc, char* argv[]) try {
     std::string path;
     std::string member;
     std::string dcs_option;
@@ -199,4 +200,7 @@ int main(int argc, char* argv[]) {
     }
     mapperbus::core::logger::info("Ran {} frames successfully.", frames);
     return EXIT_SUCCESS;
+} catch (const std::exception& error) {
+    mapperbus::core::logger::error("{}", error.what());
+    return EXIT_FAILURE;
 }
