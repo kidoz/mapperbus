@@ -702,7 +702,9 @@ foreach mapper_id : [
         'unit/test_mapper' + mapper_id + '.cpp',
         dependencies : [mapperbus_core_dep, catch2_dep],
     )
-    test('mapper' + mapper_id, test_mapper, timeout : mapper_test_timeout)
+    # These boards exhaustively exercise their decoded address aliases.
+    timeout = mapper_id in ['403', '405', '407', '497'] ? mapper_test_timeout * 2 : mapper_test_timeout
+    test('mapper' + mapper_id, test_mapper, timeout : timeout)
 endforeach
 
 test('fs305', executable('test-fs305',
