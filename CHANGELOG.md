@@ -5,6 +5,21 @@ All notable changes to MapperBus are documented in this file.
 The format is based on Keep a Changelog, and this project adheres to Semantic
 Versioning.
 
+## [0.5.1] - 2026-11-20
+
+### Changed
+
+- PPU pin observation is cached for mappers with fixed wiring, avoiding
+  per-dot virtual dispatch while retaining live observation for
+  register-switchable boards.
+
+- CPU reads skip open-bus mask queries when the mapper drives all data bits.
+
+### Fixed
+
+- GUI state confirmations report the displayed slot number instead of the
+  internal zero-based slot index.
+
 ## [0.5.0] - 2026-11-20
 
 ### Added
@@ -355,6 +370,7 @@ Versioning.
 - Initial release with the emulator core, SDL3 frontend, CPU and GPU FSR
   upscaling, and BlipBuffer-based audio output.
 
+[0.5.1]: https://github.com/kidoz/mapperbus/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/kidoz/mapperbus/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/kidoz/mapperbus/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/kidoz/mapperbus/compare/v0.2.0...v0.3.0
