@@ -73,8 +73,11 @@ Byte Cpu::read(Address addr) const {
 }
 
 void Cpu::clock_bus(Address addr) const {
+    if (bus_cycles_ >= interrupt_samples_.size()) [[unlikely]] {
+        logger::error("CPU interrupt sample capacity exceeded");
+        std::abort();
+    }
     bus_.begin_cpu_cycle(addr);
-    assert(bus_cycles_ < interrupt_samples_.size());
     interrupt_samples_[bus_cycles_++] = bus_.interrupt_sample();
 }
 
@@ -254,12 +257,6 @@ Byte Cpu::ror(Byte value) {
     value = static_cast<Byte>((value >> 1) | (carry_in ? 0x80 : 0x00));
     set_zero_negative(value);
     return value;
-}
-
-Cpu::AddressResult Cpu::absolute_indexed(Byte index) const {
-    Word base = read_word(pc_);
-    Word address = static_cast<Word>(base + index);
-    return {.address = address, .page_crossed = (base & 0xFF00) != (address & 0xFF00)};
 }
 
 Cpu::AddressResult Cpu::indirect_indexed(Byte zero_page_addr, bool always_dummy) const {

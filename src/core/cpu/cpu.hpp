@@ -129,7 +129,6 @@ class Cpu {
     Byte rol(Byte value);
     Byte ror(Byte value);
 
-    AddressResult absolute_indexed(Byte index) const;
     AddressResult indirect_indexed(Byte zero_page_addr, bool always_dummy = false) const;
 };
 
