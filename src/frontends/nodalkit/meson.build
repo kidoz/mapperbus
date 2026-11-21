@@ -22,6 +22,18 @@ endif
 
 mapperbus_gui_target_name = 'mapperbus-gui'
 mapperbus_gui_install_rpath = ''
+mapperbus_gui_win_subsystem = 'console'
+mapperbus_gui_link_args = []
+if host_machine.system() == 'windows'
+    # Explorer launches should show only the UI, not a console with the log
+    # stream. Terminal launches still inherit the terminal's console.
+    mapperbus_gui_win_subsystem = 'windows'
+    if cpp.get_linker_id() in ['link', 'lld-link']
+        # The GUI entry point is main(); a Windows-subsystem link defaults to
+        # WinMainCRTStartup, so select the main-based CRT entry explicitly.
+        mapperbus_gui_link_args += ['-Xlinker', '/ENTRY:mainCRTStartup']
+    endif
+endif
 if host_machine.system() == 'darwin'
     mapperbus_gui_target_name = 'mapperbus'
 elif host_machine.system() == 'linux' and nodalkit_dep.type_name() == 'internal'
@@ -39,7 +51,8 @@ mapperbus_gui_exe = executable(mapperbus_gui_target_name,
     cpp_args : mapperbus_gui_cpp_args,
     install : true,
     install_rpath : mapperbus_gui_install_rpath,
-    link_args : mapperbus_microphone_link_args,
+    win_subsystem : mapperbus_gui_win_subsystem,
+    link_args : mapperbus_gui_link_args + mapperbus_microphone_link_args,
     link_depends : mapperbus_microphone_link_depends,
 )
 
