@@ -5,13 +5,13 @@ All notable changes to MapperBus are documented in this file.
 The format is based on Keep a Changelog, and this project adheres to Semantic
 Versioning.
 
-## [0.5.2] - 2026-11-21
+## [0.6.0] - 2026-11-22
 
 ### Changed
 
-- Require NodalKit 0.6.0 for the GUI and pin the bundled wrap fallback to the
-  v0.6.0 revision, bringing compositor-paced Wayland repaints, atomic toolkit
-  settings writes, and widget ownership safeguards.
+- ROM archive loading uses a project-maintained libarchive 3.8.11 Meson port
+  with pinned zlib 1.3.2 and liblzma 5.2.12 wraps, so the bundled fallback
+  needs only a C compiler and still prefers installed codec libraries.
 
 ### Fixed
 
@@ -22,6 +22,18 @@ Versioning.
   fetches the `$5120`-`$5127` set, fixing garbled status bars and wrong tiles
   in Castlevania III; PPUDATA reads use whichever set was written last.
   Snapshots gain state version 23 with an older-version reconstruction path.
+
+- The NodalKit GUI builds on Windows, using `localtime_s` instead of
+  `localtime_r`, avoiding the Windows `small` macro, and defining `NOMINMAX`
+  so `std::min`/`std::max` survive dependency headers.
+
+## [0.5.2] - 2026-11-21
+
+### Changed
+
+- Require NodalKit 0.6.0 for the GUI and pin the bundled wrap fallback to the
+  v0.6.0 revision, bringing compositor-paced Wayland repaints, atomic toolkit
+  settings writes, and widget ownership safeguards.
 
 ## [0.5.1] - 2026-11-20
 
@@ -388,6 +400,7 @@ Versioning.
 - Initial release with the emulator core, SDL3 frontend, CPU and GPU FSR
   upscaling, and BlipBuffer-based audio output.
 
+[0.6.0]: https://github.com/kidoz/mapperbus/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/kidoz/mapperbus/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/kidoz/mapperbus/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/kidoz/mapperbus/compare/v0.4.0...v0.5.0

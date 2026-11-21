@@ -1,5 +1,5 @@
 project('mapperbus', 'cpp',
-    version : '0.5.2',
+    version : '0.6.0',
     license : 'MIT',
     default_options : [
         'warning_level=3',
