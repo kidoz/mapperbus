@@ -73,7 +73,11 @@ TEST_CASE("MMC5 multiplier retains both operands across soft reset and snapshots
     mapper.write_expansion(0x5206, 2);
     REQUIRE(product() == 510);
 
-    StateReader legacy(std::span{writer.data()}.first(writer.data().size() - 2));
+    // Cut the current blob down to the version 21 layout: v22 appended two
+    // multiplier operand bytes, v23 appended four background CHR banks, four
+    // $5105 quadrant selects and the PPUDATA set latch.
+    constexpr std::size_t kBytesAddedSinceV21 = 2U + 4U + 4U + 1U;
+    StateReader legacy(std::span{writer.data()}.first(writer.data().size() - kBytesAddedSinceV21));
     mapper.load_state_version(legacy, 21);
     REQUIRE(legacy.ok());
     REQUIRE(legacy.remaining() == 0);

@@ -349,9 +349,14 @@ void Mmc5::save_state(StateWriter& w) const {
     w.write(irq_pending_);
     w.write(in_frame_);
     w.write_array(multiplier_operands_);
+    // Version 23: background CHR register set, $5105 quadrant selects and
+    // the PPUDATA set selection.
+    w.write_array(bg_chr_banks_);
+    w.write_array(nametable_selects_);
+    w.write(static_cast<Byte>(last_write_sprite_set_ ? 1 : 0));
 }
 void Mmc5::load_state(StateReader& r) {
-    load_state_version(r, kMultiplierStateVersion);
+    load_state_version(r, kChrRegisterSetsStateVersion);
 }
 void Mmc5::load_state_version(StateReader& r, std::uint32_t version) {
     r.read_array(prg_ram_);
@@ -387,6 +392,30 @@ void Mmc5::load_state_version(StateReader& r, std::uint32_t version) {
     multiplier_operands_.fill(0);
     if (version >= kMultiplierStateVersion)
         r.read_array(multiplier_operands_);
+    if (version >= kChrRegisterSetsStateVersion) {
+        r.read_array(bg_chr_banks_);
+        r.read_array(nametable_selects_);
+        for (uint8_t select : nametable_selects_) {
+            if (select > 3) {
+                r.fail();
+            }
+        }
+        Byte sprite_set = 0;
+        r.read(sprite_set);
+        if (sprite_set > 1)
+            r.fail();
+        last_write_sprite_set_ = sprite_set != 0;
+    } else {
+        // Older snapshots predate the background register set and the $5105
+        // quadrant decode. The old model rendered everything through the
+        // sprite registers, so mirror them into the background set.
+        bg_chr_banks_ = {static_cast<uint8_t>(chr_banks_1k_[4]),
+                         static_cast<uint8_t>(chr_banks_1k_[5]),
+                         static_cast<uint8_t>(chr_banks_1k_[6]),
+                         static_cast<uint8_t>(chr_banks_1k_[7])};
+        last_write_sprite_set_ = true;
+        nametable_selects_ = selects_from_mirror_mode();
+    }
     if (chr_mode_ > 3) {
         chr_mode_ = 3;
         r.fail();

@@ -60,6 +60,21 @@ class Mmc5 : public Mapper {
     std::span<const Byte> battery_ram() const override;
     void set_battery_ram(std::span<const Byte> data) override;
 
+    // MMC5 separates sprite and background CHR banks and picks the set by
+    // observing which PPU fetch is in flight. The render-context hooks model
+    // that distinction directly; CPU/PPUDATA reads use the last-written set.
+    bool uses_render_context() const override {
+        return !use_chr_ram_;
+    }
+    std::optional<BackgroundFetch> background_fetch(Address nt,
+                                                    Address pattern,
+                                                    unsigned column,
+                                                    unsigned scanline) const override;
+    std::optional<std::array<Byte, 2>> sprite_pattern(unsigned oam,
+                                                      Address pattern,
+                                                      bool tall) const override;
+    std::optional<Address> nametable_address(Address addr) const override;
+
     // Scanline IRQ ($5203/$5204) and PCM IRQ ($5010); both are level IRQs
     // cleared by reading their respective status register.
     bool irq_pending() const override {
@@ -72,7 +87,24 @@ class Mmc5 : public Mapper {
     void on_ppu_frame_start() override;
 
   private:
+    /// CHR bank for a fetch at `addr` in the sprite or background register
+    /// set, in current-window units ($5101 selects the window size).
+    [[nodiscard]] uint16_t chr_bank_for(Address addr, bool sprite_set) const;
+    /// Current $5101 window size in bytes (0x2000 down to 0x0400).
+    [[nodiscard]] uint32_t chr_window_size() const;
+    /// Both pattern planes read through one register set; nullopt on CHR RAM
+    /// carts (the ordinary read_chr path applies there).
+    [[nodiscard]] std::optional<std::array<Byte, 2>> chr_planes(Address pattern,
+                                                                bool sprite_set) const;
+    /// CIRAM page pair matching the header mirroring, for $5105 defaults and
+    /// pre-v23 snapshot reconstruction.
+    [[nodiscard]] std::array<uint8_t, 4> selects_from_mirror_mode() const;
+    /// Nearest single mirror_mode_ for the current $5105 quadrant selects,
+    /// used only as the fallback for the unmodeled ExRAM/fill selections.
+    [[nodiscard]] MirrorMode mirroring_fallback() const;
+
     static constexpr std::uint32_t kMultiplierStateVersion = 22;
+    static constexpr std::uint32_t kChrRegisterSetsStateVersion = 23;
 
     std::vector<Byte> prg_rom_;
     std::vector<Byte> chr_rom_;
@@ -87,9 +119,18 @@ class Mmc5 : public Mapper {
     std::size_t num_prg_8k_ = 0;
     std::size_t num_prg_ram_8k_ = 8; // 64 KB / 8 KB
 
-    // CHR banking: $5101 mode (0:8K, 1:4K, 2:2K, 3:1K), 1 KB granular regs.
+    // CHR banking: $5101 mode (0:8K, 1:4K, 2:2K, 3:1K). Two register sets:
+    // $5120-$5127 for sprites, $5128-$512B for the background (each covering
+    // a mirrored pair of 1 KB windows). Rendered fetches pick a set by fetch
+    // type; PPUDATA uses whichever set was written last.
     uint8_t chr_mode_ = 3;
     std::array<uint16_t, 8> chr_banks_1k_{};
+    std::array<uint8_t, 4> bg_chr_banks_{};
+    bool last_write_sprite_set_ = true;
+
+    // $5105: two bits per nametable quadrant. 0/1 select CIRAM page 0/1;
+    // 2 (ExRAM) and 3 (fill) are not modeled and fall back to mirror_mode_.
+    std::array<uint8_t, 4> nametable_selects_{};
 
     MirrorMode mirror_mode_ = MirrorMode::Vertical;
     std::array<Byte, 2> multiplier_operands_{};

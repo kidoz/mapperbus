@@ -1,5 +1,7 @@
 #include "core/mappers/mmc5.hpp"
 
+#include <utility>
+
 #include "core/apu/apu.hpp"
 
 namespace mapperbus::core {
@@ -76,6 +78,9 @@ void Mmc5::reset() {
     prg_banks_[4] = static_cast<uint8_t>((num_prg_8k_ - 1) & 0x7F); // $5117: last bank
     chr_mode_ = 3;
     chr_banks_1k_.fill(0);
+    bg_chr_banks_.fill(0);
+    last_write_sprite_set_ = true;
+    nametable_selects_ = selects_from_mirror_mode();
     pulse1_ = {};
     pulse2_ = {};
     pcm_output_ = 0;
@@ -199,36 +204,62 @@ bool Mmc5::maps_expansion(Address addr) const {
     return addr >= 0x5000 && addr <= 0x5FFF;
 }
 
+uint16_t Mmc5::chr_bank_for(Address addr, bool sprite_set) const {
+    switch (chr_mode_) {
+    case 0: // 8 KB: $5127 sprites / $512B background
+        return sprite_set ? chr_banks_1k_[7] : bg_chr_banks_[3];
+    case 1: { // 4 KB: $5121/$5123 sprites, $5129/$512B background
+        const unsigned half = (addr >= 0x1000U) ? 1U : 0U;
+        return sprite_set ? chr_banks_1k_[half * 2U + 1U] : bg_chr_banks_[half * 2U + 1U];
+    }
+    case 2: { // 2 KB: $5121/$5123/$5125/$5127 sprites, $5129/$512B pairs
+        const unsigned window = (addr >> 11) & 3U;
+        return sprite_set ? chr_banks_1k_[window * 2U + 1U]
+                          : bg_chr_banks_[(window & 1U) * 2U + 1U];
+    }
+    default: { // 1 KB: $5120-$5127 sprites, $5128-$512B mirrored pairs
+        const unsigned window = (addr >> 10) & 7U;
+        return sprite_set ? chr_banks_1k_[window] : bg_chr_banks_[window & 3U];
+    }
+    }
+}
+
+uint32_t Mmc5::chr_window_size() const {
+    switch (chr_mode_) {
+    case 0:
+        return 0x2000;
+    case 1:
+        return 0x1000;
+    case 2:
+        return 0x0800;
+    default:
+        return 0x0400;
+    }
+}
+
+std::optional<std::array<Byte, 2>> Mmc5::chr_planes(Address pattern, bool sprite_set) const {
+    if (use_chr_ram_ || chr_rom_.empty())
+        return std::nullopt;
+    pattern &= 0x1FFF;
+    const uint32_t window = chr_window_size();
+    const uint32_t offset = static_cast<uint32_t>(chr_bank_for(pattern, sprite_set)) * window +
+                            (pattern & (window - 1));
+    return std::array<Byte, 2>{chr_rom_[offset % chr_rom_.size()],
+                               chr_rom_[(offset + 8) % chr_rom_.size()]};
+}
+
 Byte Mmc5::read_chr(Address addr) {
     if (use_chr_ram_)
         return chr_ram_[addr % 0x2000];
     if (chr_rom_.empty())
         return 0;
 
+    // PPUDATA ($2007) accesses use whichever register set was written last.
     addr &= 0x1FFF;
-    uint32_t offset = 0;
-    switch (chr_mode_) {
-    case 0: { // single 8 KB bank ($5127)
-        offset = static_cast<uint32_t>(chr_banks_1k_[7]) * 0x2000 + addr;
-        break;
-    }
-    case 1: { // two 4 KB banks ($5123 / $5127)
-        const uint16_t bank = (addr < 0x1000) ? chr_banks_1k_[3] : chr_banks_1k_[7];
-        offset = static_cast<uint32_t>(bank) * 0x1000 + (addr & 0x0FFF);
-        break;
-    }
-    case 2: { // four 2 KB banks ($5121/$5123/$5125/$5127)
-        static constexpr std::array<uint8_t, 4> kRegs = {1, 3, 5, 7};
-        const uint16_t bank = chr_banks_1k_[kRegs[addr / 0x0800]];
-        offset = static_cast<uint32_t>(bank) * 0x0800 + (addr & 0x07FF);
-        break;
-    }
-    default: { // mode 3: eight 1 KB banks
-        const uint8_t idx = static_cast<uint8_t>((addr / 0x0400) & 0x07);
-        offset = static_cast<uint32_t>(chr_banks_1k_[idx]) * 0x0400 + (addr & 0x03FF);
-        break;
-    }
-    }
+    const uint32_t window = chr_window_size();
+    const uint32_t offset =
+        static_cast<uint32_t>(chr_bank_for(addr, last_write_sprite_set_)) * window +
+        (addr & (window - 1));
     return chr_rom_[offset % chr_rom_.size()];
 }
 
@@ -383,7 +414,8 @@ void Mmc5::write_expansion(Address addr, Byte value) {
         multiplier_operands_[addr - 0x5205] = value;
         break;
 
-    // CHR banking
+    // CHR banking: $5120-$5127 select sprite banks, $5128-$512B background
+    // banks. PPUDATA uses whichever set received the last write.
     case 0x5120:
     case 0x5121:
     case 0x5122:
@@ -393,26 +425,86 @@ void Mmc5::write_expansion(Address addr, Byte value) {
     case 0x5126:
     case 0x5127:
         chr_banks_1k_[addr - 0x5120] = value;
+        last_write_sprite_set_ = true;
         break;
+    case 0x5128:
+    case 0x5129:
+    case 0x512A:
+    case 0x512B:
+        bg_chr_banks_[addr - 0x5128] = value;
+        last_write_sprite_set_ = false;
+        break;
+    // $512C-$512F are not registers; $5130 (extended CHR bank bits for
+    // extended-attribute mode) is not modeled.
 
-    // Mirroring
+    // Mirroring: two bits per nametable quadrant. 0/1 select CIRAM page 0/1;
+    // 2 (ExRAM) and 3 (fill) are not modeled — accesses to such quadrants
+    // fall back to the header mirror mode.
     case 0x5105: {
-        // Simplified: use bits 0-1 for primary mirroring
-        uint8_t m = value & 0x03;
-        if (m == 0)
-            mirror_mode_ = MirrorMode::SingleLower;
-        else if (m == 1)
-            mirror_mode_ = MirrorMode::SingleUpper;
-        else if (m == 2)
-            mirror_mode_ = MirrorMode::Vertical;
-        else
-            mirror_mode_ = MirrorMode::Horizontal;
+        nametable_selects_ = {static_cast<uint8_t>(value & 0x03),
+                              static_cast<uint8_t>((value >> 2) & 0x03),
+                              static_cast<uint8_t>((value >> 4) & 0x03),
+                              static_cast<uint8_t>((value >> 6) & 0x03)};
+        mirror_mode_ = mirroring_fallback();
         break;
     }
 
     default:
         break;
     }
+}
+
+std::array<uint8_t, 4> Mmc5::selects_from_mirror_mode() const {
+    switch (mirror_mode_) {
+    case MirrorMode::Horizontal:
+        return {0, 1, 0, 1};
+    case MirrorMode::SingleUpper:
+        return {1, 1, 1, 1};
+    case MirrorMode::Vertical:
+        return {0, 0, 1, 1};
+    case MirrorMode::FourScreen:
+        // MMC5 has no four-screen wiring; treat it like single-screen lower.
+        return {0, 0, 0, 0};
+    case MirrorMode::SingleLower:
+    default:
+        return {0, 0, 0, 0};
+    }
+}
+
+MirrorMode Mmc5::mirroring_fallback() const {
+    const auto& selects = nametable_selects_;
+    const bool modeled =
+        selects[0] <= 1U && selects[1] <= 1U && selects[2] <= 1U && selects[3] <= 1U;
+    if (!modeled)
+        return mirror_mode_;
+    if (selects[0] == selects[1] && selects[1] == selects[2] && selects[2] == selects[3])
+        return selects[0] == 0 ? MirrorMode::SingleLower : MirrorMode::SingleUpper;
+    if (selects[0] == selects[2] && selects[1] == selects[3])
+        return MirrorMode::Horizontal;
+    if (selects[0] == selects[1] && selects[2] == selects[3])
+        return MirrorMode::Vertical;
+    return mirror_mode_;
+}
+
+std::optional<BackgroundFetch> Mmc5::background_fetch(Address,
+                                                      Address pattern,
+                                                      unsigned,
+                                                      unsigned) const {
+    if (auto planes = chr_planes(pattern, false))
+        return BackgroundFetch{pattern, std::nullopt, std::move(*planes)};
+    return std::nullopt;
+}
+
+std::optional<std::array<Byte, 2>> Mmc5::sprite_pattern(unsigned, Address pattern, bool) const {
+    return chr_planes(pattern, true);
+}
+
+std::optional<Address> Mmc5::nametable_address(Address addr) const {
+    const unsigned quadrant = (addr >> 10) & 3U;
+    const unsigned page = nametable_selects_[quadrant];
+    if (page <= 1U)
+        return static_cast<Address>(page * 0x400U + (addr & 0x03FFU));
+    return std::nullopt;
 }
 
 void Mmc5::clock_audio() {

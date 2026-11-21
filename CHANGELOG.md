@@ -13,6 +13,16 @@ Versioning.
   v0.6.0 revision, bringing compositor-paced Wayland repaints, atomic toolkit
   settings writes, and widget ownership safeguards.
 
+### Fixed
+
+- MMC5 `$5105` decodes both CIRAM page bits per nametable quadrant instead of
+  only the low bits, restoring correct mirroring in Castlevania III.
+
+- MMC5 background CHR fetches use the `$5128`-`$512B` register set and sprite
+  fetches the `$5120`-`$5127` set, fixing garbled status bars and wrong tiles
+  in Castlevania III; PPUDATA reads use whichever set was written last.
+  Snapshots gain state version 23 with an older-version reconstruction path.
+
 ## [0.5.1] - 2026-11-20
 
 ### Changed

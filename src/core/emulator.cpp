@@ -14,6 +14,8 @@ namespace mapperbus::core {
 namespace {
 // "MBST" — MapperBus STate. Bump kStateVersion on any layout change.
 constexpr std::array<Byte, 4> kStateMagic = {'M', 'B', 'S', 'T'};
+// v23 adds the MMC5 background CHR register set, $5105 quadrant selects and
+// the PPUDATA set selection.
 // v22 adds the MMC5 multiplier operands.
 // v21 stores the CPU JAM latch in the high bit of the interrupt byte.
 // v20 adds the DCS licensing counter; v19 added Hori mode and two host pad states.
@@ -27,7 +29,7 @@ constexpr std::array<Byte, 4> kStateMagic = {'M', 'B', 'S', 'T'};
 // clock remainder. v10 added PPU frame parity and the retained dot-skip decision.
 // v9 added interrupt decisions/detectors and PPU/APU race state. v8 added DMC
 // requests/cadence; v7 the FDS watchdog; v6 audio latches; v5 drive state; v4 SHA-256.
-constexpr std::uint32_t kStateVersion = 22;
+constexpr std::uint32_t kStateVersion = 23;
 
 [[nodiscard]] std::string battery_path_for(const std::string& rom_path) {
     return std::filesystem::path(rom_path).replace_extension(".sav").string();
