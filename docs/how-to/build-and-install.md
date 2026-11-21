@@ -11,13 +11,14 @@ when its build directory already exists.
 - Install Meson and Ninja. The bundled NodalKit GUI requires Meson 1.11 or newer.
 - SDL3 3.4.0 or newer is required by the SDL3 frontend. Meson prefers an installed
   dependency and can fetch the wrap fallback. Tests similarly use Catch2 v3.
-- ROM archive loading uses libarchive 3.6 or newer. Meson prefers an installed
-  copy and falls back to the pinned 3.8.9 WrapDB subproject. The fallback needs
-  a C compiler, zlib and liblzma development files (`zlib1g-dev liblzma-dev` on
-  Debian/Ubuntu, `zlib xz` on Arch, and the macOS SDK plus `brew install xz`).
+- ROM archive loading uses libarchive 3.6 or newer. Meson prefers installed
+  zlib and liblzma libraries and otherwise uses the pinned zlib 1.3.2 and
+  liblzma 5.2.12 wraps; libarchive itself falls back to the pinned 3.8.11
+  Meson port. The fallback needs a C compiler only.
   Optional codecs depend on the libraries available when configuring.
-  To force the bundled build, add `--force-fallback-for=libarchive` to setup.
-  For an installed Homebrew libarchive, use
+  To force the bundled libarchive build, add `--force-fallback-for=libarchive`
+  to setup; add `,zlib,liblzma` to that value to force their bundled builds
+  too. For an installed Homebrew libarchive, use
   `--pkg-config-path="$(brew --prefix libarchive)/lib/pkgconfig"`.
 - Install `pkg-config` for system dependency discovery. `just` is optional.
 - For Vulkan upscaling, install `glslangValidator`, a Vulkan loader, and a driver

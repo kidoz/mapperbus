@@ -7,6 +7,8 @@ project('mapperbus', 'cpp',
         'b_lto=true',
         'sdl3:werror=false',
         'catch2:tests=false',
+        'zlib:default_library=static',
+        'liblzma:default_library=static',
     ],
 )
 
