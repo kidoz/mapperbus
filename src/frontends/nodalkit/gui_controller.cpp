@@ -54,6 +54,15 @@
 namespace mapperbus::frontend {
 namespace {
 
+// localtime_r is POSIX; Windows exposes localtime_s with the arguments swapped.
+bool local_time(std::time_t value, std::tm& out) {
+#if defined(_WIN32)
+    return localtime_s(&out, &value) == 0;
+#else
+    return localtime_r(&value, &out) != nullptr;
+#endif
+}
+
 // NodalKit 0.2.0 lacks the dismissal signal proposed in NK-03. Connect it
 // when available without requiring a locally patched toolkit checkout.
 template <typename Menu> void connect_menu_dismissed(Menu& menu, std::function<void()> callback) {
@@ -570,13 +579,13 @@ std::string recent_media_type(const std::filesystem::path& path) {
 std::string recent_opened_date(std::int64_t unix_seconds) {
     const auto opened = static_cast<std::time_t>(unix_seconds);
     std::tm opened_local{};
-    if (localtime_r(&opened, &opened_local) == nullptr) {
+    if (!local_time(opened, opened_local)) {
         return "earlier";
     }
 
     const auto now = std::time(nullptr);
     std::tm today{};
-    if (localtime_r(&now, &today) == nullptr) {
+    if (!local_time(now, today)) {
         return "earlier";
     }
     if (opened_local.tm_year == today.tm_year && opened_local.tm_yday == today.tm_yday) {
@@ -3748,11 +3757,17 @@ void MapperBusGuiController::poll_pending_rebind() {
                              .pressed_gamepad_controls(gamepad_capture_controls());
     auto& initially_pressed = pending_rebind_->initially_pressed_gamepad_controls;
     std::erase_if(initially_pressed, [&pressed](const platform::GamepadControl& control) {
-        return std::find(pressed.begin(), pressed.end(), control) == pressed.end();
+        return std::none_of(
+            pressed.begin(), pressed.end(), [&](const platform::GamepadControl& candidate) {
+                return candidate == control;
+            });
     });
     for (const auto& control : pressed) {
-        if (std::find(initially_pressed.begin(), initially_pressed.end(), control) ==
-            initially_pressed.end()) {
+        const auto already_pressed = std::any_of(
+            initially_pressed.begin(),
+            initially_pressed.end(),
+            [&](const platform::GamepadControl& candidate) { return candidate == control; });
+        if (!already_pressed) {
             apply_gamepad_rebind(pending_rebind_->button, control);
             return;
         }

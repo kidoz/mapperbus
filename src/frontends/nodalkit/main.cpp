@@ -93,17 +93,17 @@ int main(int argc, char** argv) try {
                                       GetSystemMetrics(SM_CXICON),
                                       GetSystemMetrics(SM_CYICON),
                                       LR_SHARED);
-        const auto small = LoadImageW(instance,
-                                      MAKEINTRESOURCEW(1),
-                                      IMAGE_ICON,
-                                      GetSystemMetrics(SM_CXSMICON),
-                                      GetSystemMetrics(SM_CYSMICON),
-                                      LR_SHARED);
+        const auto small_icon = LoadImageW(instance,
+                                           MAKEINTRESOURCEW(1),
+                                           IMAGE_ICON,
+                                           GetSystemMetrics(SM_CXSMICON),
+                                           GetSystemMetrics(SM_CYSMICON),
+                                           LR_SHARED);
         if (large) {
             SendMessageW(hwnd, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(large));
         }
-        if (small) {
-            SendMessageW(hwnd, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(small));
+        if (small_icon) {
+            SendMessageW(hwnd, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(small_icon));
         }
     }
 #endif

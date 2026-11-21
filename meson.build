@@ -43,6 +43,12 @@ add_project_arguments(
     language : 'cpp',
 )
 
+if host_machine.system() == 'windows'
+    # Windows SDK headers define min/max macros; they leak into project headers
+    # through dependencies such as <archive_entry.h> and break std::min/max.
+    add_project_arguments('-DNOMINMAX', language : 'cpp')
+endif
+
 mapperbus_inc = include_directories('src')
 
 subdir('src/core')
