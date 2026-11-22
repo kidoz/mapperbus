@@ -83,6 +83,9 @@ enum class RegionPreference {
 
 struct MapperBusFrontendConfiguration {
     int preview_scale_index = 0;
+    /// GUI picture fit: 4:3 letterbox (0), fill with center crop (1), or
+    /// stretch to the canvas (2).
+    int picture_fit_index = 0;
     int ui_density_index = 0;
     /// Last Settings pane: Input (0), Video (1), Audio (2), or General (3).
     int settings_page_index = 0;

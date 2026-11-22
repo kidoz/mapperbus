@@ -265,6 +265,12 @@ constexpr std::array<std::string_view, 4> kPreviewScaleLabels = {
     "FSR 2x",
 };
 
+constexpr std::array<std::string_view, 3> kPictureFitLabels = {
+    "4:3 (fit)",
+    "Fill (crop)",
+    "Stretch",
+};
+
 constexpr std::array<std::string_view, 4> kDensityLabels = {
     "System Default",
     "Standard",
@@ -358,6 +364,42 @@ std::string preview_scale_description(MapperBusGuiController::PreviewScaleOption
     case MapperBusGuiController::PreviewScaleOption::PixelPerfect:
     default:
         return "Video scale set to pixel perfect.";
+    }
+}
+
+int picture_fit_index(PreviewFit option) {
+    switch (option) {
+    case PreviewFit::Fill:
+        return 1;
+    case PreviewFit::Stretch:
+        return 2;
+    case PreviewFit::FourThree:
+    default:
+        return 0;
+    }
+}
+
+PreviewFit picture_fit_for_index(int index) {
+    switch (index) {
+    case 1:
+        return PreviewFit::Fill;
+    case 2:
+        return PreviewFit::Stretch;
+    case 0:
+    default:
+        return PreviewFit::FourThree;
+    }
+}
+
+std::string picture_fit_description(PreviewFit option) {
+    switch (option) {
+    case PreviewFit::Fill:
+        return "Picture fit set to fill; the picture is cropped to the window.";
+    case PreviewFit::Stretch:
+        return "Picture fit set to stretch; the picture fills the window.";
+    case PreviewFit::FourThree:
+    default:
+        return "Picture fit set to 4:3 with borders.";
     }
 }
 
@@ -482,6 +524,10 @@ std::string platform_family_name(nk::PlatformFamily family) {
 
 std::string renderer_backend_label(nk::RendererBackend backend) {
     switch (backend) {
+    case nk::RendererBackend::D3D11:
+        return "Direct3D 11";
+    case nk::RendererBackend::D3D12:
+        return "Direct3D 12";
     case nk::RendererBackend::Metal:
         return "Metal";
     case nk::RendererBackend::OpenGL:
@@ -1259,6 +1305,7 @@ void MapperBusGuiController::finish_startup(app::LoadedConfiguration loaded, boo
     configuration_saves_enabled_ = allow_saving;
     settings_page_ = static_cast<SettingsPage>(configuration_.frontend.settings_page_index);
     preview_scale_option_ = preview_scale_for_index(configuration_.frontend.preview_scale_index);
+    picture_fit_option_ = picture_fit_for_index(configuration_.frontend.picture_fit_index);
     auto theme_selection = app_.theme_selection();
     theme_selection.density = density_for_index(configuration_.frontend.ui_density_index);
     app_.set_theme_selection(theme_selection);
@@ -1269,6 +1316,7 @@ void MapperBusGuiController::finish_startup(app::LoadedConfiguration loaded, boo
     else if (preview_scale_option_ == PreviewScaleOption::Fsr2x)
         preview_upscaler_ = std::make_unique<platform::Fsr1Upscaler>(2);
     preview_->set_integer_scaling(preview_scale_option_ == PreviewScaleOption::PixelPerfect);
+    preview_->set_picture_fit(picture_fit_option_);
     startup_ready_ = true;
     header_open_button_->set_sensitive(true);
     refresh_welcome_view();
@@ -1423,6 +1471,7 @@ void MapperBusGuiController::build_ui() {
     (void)window_.on_scale_factor_changed().connect(
         [this](float scale) { preview_->set_display_scale(scale); });
     preview_->set_integer_scaling(preview_scale_option_ == PreviewScaleOption::PixelPerfect);
+    preview_->set_picture_fit(picture_fit_option_);
 
     welcome_view_ = build_welcome_view();
     main_slot_ = ContentSlot::create();
@@ -1862,6 +1911,7 @@ void MapperBusGuiController::update_native_toolbar() {
         fullscreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right",
         "win.toggle-fullscreen",
         !modal);
+    add("fit-window", "Fit Window to Game", "viewfinder", "win.fit-window", !modal);
     window_.set_native_toolbar(std::move(toolbar));
 }
 
@@ -1927,6 +1977,7 @@ void MapperBusGuiController::rebuild_header_menu() {
     }
     add_action(session_label(window_.is_fullscreen() ? "Leave Fullscreen" : "Fullscreen", "F11"),
                "win.toggle-fullscreen");
+    add_action("Fit Window to Game", "win.fit-window");
     add_action(menu_label("Settings…", "Ctrl+,"), "settings.open");
     add_action("About MapperBus", "help.about");
     add_separator();
@@ -1958,12 +2009,64 @@ void MapperBusGuiController::update_fullscreen_chrome() {
     if (status_bar_) {
         status_bar_->set_visible(!fullscreen);
     }
+    if (preview_) {
+        // Fullscreen keeps the aspect: the windowed fill/stretch modes would
+        // crop or distort the picture on a widescreen monitor, so present at
+        // 4:3 with pillarbox bars instead.
+        preview_->set_picture_fit(fullscreen ? PreviewFit::FourThree : picture_fit_option_);
+    }
     if (fullscreen != announced_fullscreen_) {
         announced_fullscreen_ = fullscreen;
         set_message(fullscreen ? "Fullscreen — press F11 to leave." : "Left fullscreen.");
     }
     focus_game_surface();
     update_native_toolbar();
+}
+
+void MapperBusGuiController::fit_window_to_picture() {
+    if (!startup_ready_ || window_.is_fullscreen() || window_.is_maximized()) {
+        return;
+    }
+
+    const auto size = window_.size();
+    float chrome = 0.0F;
+    if (headerbar_ && headerbar_->is_visible()) {
+        chrome += headerbar_->allocation().height;
+    }
+    if (status_bar_ && status_bar_->is_visible()) {
+        chrome += status_bar_->allocation().height;
+    }
+    const float canvas_width = size.width;
+    const float canvas_height = size.height - chrome;
+    if (canvas_height <= 0.0F) {
+        return;
+    }
+
+    float ideal_width = canvas_width;
+    float ideal_height = canvas_height;
+    if (picture_fit_option_ == PreviewFit::FourThree &&
+        preview_scale_option_ == PreviewScaleOption::PixelPerfect) {
+        // Whole-pixel scaling: size the canvas to the largest exact multiple
+        // of the picture that fits, so the integer path fills it border-free.
+        const double dpr = window_.scale_factor() > 0.0F ? window_.scale_factor() : 1.0F;
+        const double whole_scale = std::floor(std::min(canvas_width * dpr / core::kScreenWidth,
+                                                       canvas_height * dpr / core::kScreenHeight));
+        const int whole = std::max(1, static_cast<int>(whole_scale));
+        ideal_width = static_cast<float>(core::kScreenWidth * whole / dpr);
+        ideal_height = static_cast<float>(core::kScreenHeight * whole / dpr);
+    } else {
+        const double aspect = picture_fit_option_ == PreviewFit::FourThree
+                                  ? 4.0 / 3.0
+                                  : double{core::kScreenWidth} / double{core::kScreenHeight};
+        ideal_height = std::max(200.0F, std::round(float(canvas_width / aspect)));
+    }
+
+    const int width = std::max(1, static_cast<int>(std::lround(ideal_width)));
+    const int height = std::max(1, static_cast<int>(std::lround(ideal_height + chrome)));
+    if (width == static_cast<int>(size.width) && height == static_cast<int>(size.height)) {
+        return;
+    }
+    window_.resize(width, height);
 }
 
 void MapperBusGuiController::browse_for_rom(bool recovering) {
@@ -2492,6 +2595,7 @@ void MapperBusGuiController::finish_rom_open(const std::string& rom_path,
     set_message("Loaded " + title_for_display(member.empty() ? rom_path : member) +
                 (dcs_pair ? " with DCS option ROM." : "."));
     refresh_ui();
+    fit_window_to_picture();
     focus_game_surface();
 }
 
@@ -3200,6 +3304,15 @@ void MapperBusGuiController::set_preview_scale_option(PreviewScaleOption option)
     }
 }
 
+void MapperBusGuiController::set_picture_fit_option(PreviewFit option) {
+    if (picture_fit_option_ == option) {
+        return;
+    }
+
+    picture_fit_option_ = option;
+    preview_->set_picture_fit(option);
+}
+
 void MapperBusGuiController::update_preview_surface(const std::uint32_t* data,
                                                     int width,
                                                     int height) {
@@ -3252,6 +3365,7 @@ void MapperBusGuiController::update_configuration_from_state() {
     }
     configuration_.audio = actions_->snapshot().audio_settings;
     configuration_.frontend.preview_scale_index = preview_scale_index(preview_scale_option_);
+    configuration_.frontend.picture_fit_index = picture_fit_index(picture_fit_option_);
     configuration_.frontend.ui_density_index = density_index(app_.theme_selection().density);
     configuration_.frontend.audio_muted = audio_backend_->is_muted();
 }
@@ -4509,6 +4623,17 @@ std::shared_ptr<nk::Widget> MapperBusGuiController::build_settings_page_content(
         });
         display_group->add(pref_row("Scale", scale_combo));
 
+        auto fit_combo = nk::ComboBox::create();
+        fit_combo->set_items(owned_labels(kPictureFitLabels));
+        fit_combo->set_selected_index(picture_fit_index(picture_fit_option_));
+        (void)fit_combo->on_selection_changed().connect([this](int index) {
+            const auto option = picture_fit_for_index(index);
+            set_picture_fit_option(option);
+            save_configuration_state();
+            set_message(picture_fit_description(option));
+        });
+        display_group->add(pref_row("Picture fit", fit_combo));
+
         auto density_combo = nk::ComboBox::create();
         density_combo->set_items(owned_labels(kDensityLabels));
         density_combo->set_selected_index(density_index(app_.theme_selection().density));
@@ -5035,6 +5160,10 @@ void MapperBusGuiController::handle_menu_action(std::string_view action) {
     }
     if (action == "win.toggle-fullscreen") {
         toggle_fullscreen();
+        return;
+    }
+    if (action == "win.fit-window") {
+        fit_window_to_picture();
         return;
     }
     if (action == "settings.open") {

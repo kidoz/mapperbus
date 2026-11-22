@@ -765,6 +765,7 @@ TEST_CASE("MapperBus configuration round-trips universal settings", "[app][confi
     configuration.audio.drc_deadzone = 0.08f;
     configuration.audio.drc_rate_adjustment = 0.01;
     configuration.frontend.preview_scale_index = 2;
+    configuration.frontend.picture_fit_index = 2;
     configuration.frontend.ui_density_index = 3;
     configuration.frontend.settings_page_index = 3;
     configuration.frontend.audio_muted = true;
@@ -799,6 +800,7 @@ TEST_CASE("MapperBus configuration round-trips universal settings", "[app][confi
     REQUIRE(loaded.audio.drc_deadzone == 0.08f);
     REQUIRE(loaded.audio.drc_rate_adjustment == 0.01);
     REQUIRE(loaded.frontend.preview_scale_index == 2);
+    REQUIRE(loaded.frontend.picture_fit_index == 2);
     REQUIRE(loaded.frontend.ui_density_index == 3);
     REQUIRE(loaded.frontend.settings_page_index == 3);
     REQUIRE(loaded.frontend.audio_muted);
@@ -867,6 +869,47 @@ TEST_CASE("Recent ROM entries can be pruned individually", "[app][configuration]
     REQUIRE(configuration.recent_roms.size() == 1);
 
     std::filesystem::remove(existing);
+}
+
+TEST_CASE("MapperBus configuration clamps picture_fit to the GUI choices", "[app][configuration]") {
+    const auto path = temporary_config_path();
+    std::filesystem::create_directories(path.parent_path());
+    {
+        std::ofstream file(path);
+        file << "[frontend]\n";
+        file << "preview_scale=1\n";
+        file << "picture_fit=2\n";
+        file.close();
+    }
+    const auto filled = load_mapperbus_configuration_from_file(path);
+    REQUIRE(filled.frontend.picture_fit_index == 2);
+
+    {
+        std::ofstream file(path);
+        file << "[frontend]\n";
+        file << "picture_fit=9\n";
+        file.close();
+    }
+    const auto clamped = load_mapperbus_configuration_from_file(path);
+    REQUIRE(clamped.frontend.picture_fit_index == 2);
+
+    {
+        std::ofstream file(path);
+        file << "[frontend]\n";
+        file << "picture_fit=oops\n";
+        file.close();
+    }
+    const auto defaulted = load_mapperbus_configuration_from_file(path);
+    REQUIRE(defaulted.frontend.picture_fit_index == 0);
+
+    // Saving a filled configuration writes the canonical key.
+    MapperBusConfiguration configuration;
+    configuration.frontend.picture_fit_index = 1;
+    REQUIRE(save_mapperbus_configuration_to_file(configuration, path));
+    const auto reloaded = load_mapperbus_configuration_from_file(path);
+    REQUIRE(reloaded.frontend.picture_fit_index == 1);
+
+    std::filesystem::remove_all(path.parent_path());
 }
 
 TEST_CASE("MapperBus configuration accepts legacy flat settings", "[app][configuration]") {
@@ -987,7 +1030,9 @@ TEST_CASE("Recent archive members round-trip and deduplicate independently",
                        std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     std::filesystem::create_directories(root);
     const auto path = root / "collection.zip";
-    { std::ofstream file(path); }
+    {
+        std::ofstream file(path);
+    }
     MapperBusConfiguration configuration;
     touch_recent_rom(configuration, path, "one.nes");
     touch_recent_rom(configuration, path, "folder/two#;\n.nes");
@@ -1034,7 +1079,7 @@ struct ConfigurationGate {
         changed.notify_all();
         changed.wait(lock, [this] { return released; });
     }
-    bool wait(bool ConfigurationGate::*flag) {
+    bool wait(bool ConfigurationGate::* flag) {
         std::unique_lock lock(mutex);
         return changed.wait_for(
             lock, std::chrono::seconds(5), [this, flag] { return this->*flag; });

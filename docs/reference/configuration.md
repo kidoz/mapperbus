@@ -89,6 +89,7 @@ as GUI presentation settings or as its startup region override.
 | `[frontend]` key | Default | Values |
 |---|---|---|
 | `preview_scale` | `0` | Index 0–3 in the GUI's preview-scale choices |
+| `picture_fit` | `0` | Index 0–2 in the GUI's picture-fit choices: 4:3 letterbox, fill with a center crop, or stretch to the window |
 | `ui_density` | `0` | Index 0–3 in the GUI's density choices |
 | `audio_muted` | `false` | Boolean |
 | `audio_volume` | `100` | Integer percentage, 0–100 |

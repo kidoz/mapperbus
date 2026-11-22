@@ -919,6 +919,13 @@ class InsetStage : public nk::Widget {
     float padding_ = 0.0F;
 };
 
+/// How the emulated picture is fitted into the available canvas.
+enum class PreviewFit {
+    FourThree, // Aspect-fit at a 4:3 presentation size, letterboxed.
+    Fill,      // Uniform zoom that covers the canvas; overflow is cropped.
+    Stretch,   // Exact canvas fill; the picture may be distorted.
+};
+
 class PreviewCanvas : public nk::Widget {
   public:
     static std::shared_ptr<PreviewCanvas> create() {
@@ -962,6 +969,17 @@ class PreviewCanvas : public nk::Widget {
             integer_scaling_ = enabled;
             queue_redraw();
         }
+    }
+
+    void set_picture_fit(PreviewFit fit) {
+        if (picture_fit_ != fit) {
+            picture_fit_ = fit;
+            queue_redraw();
+        }
+    }
+
+    [[nodiscard]] PreviewFit picture_fit() const {
+        return picture_fit_;
     }
 
     [[nodiscard]] nk::ScaleMode scale_mode() const {
@@ -1013,7 +1031,7 @@ class PreviewCanvas : public nk::Widget {
             return;
         }
 
-        if (integer_scaling_) {
+        if (integer_scaling_ && picture_fit_ == PreviewFit::FourThree) {
             const float dpr = display_scale_;
             const float physical_width = std::max(1.0F, matte.width * dpr);
             const float physical_height = std::max(1.0F, matte.height * dpr);
@@ -1039,6 +1057,35 @@ class PreviewCanvas : public nk::Widget {
             }
             // Below one whole scale the window is too small: keep the
             // aspect-fit fallback rather than distorting the picture.
+        }
+
+        if (picture_fit_ == PreviewFit::Stretch) {
+            // The image rect equals the matte, so no clipping is needed.
+            ctx.add_image(matte, pixels_.data(), src_width_, src_height_, scale_mode_);
+            return;
+        }
+
+        if (picture_fit_ == PreviewFit::Fill) {
+            // Uniform zoom that covers the matte; the overflow outside the
+            // matte is the center crop. The full source maps positionally
+            // across the oversized rect, so the visible interior shows the
+            // middle of the picture in every renderer.
+            const float scale = std::max(matte.width / static_cast<float>(src_width_),
+                                         matte.height / static_cast<float>(src_height_));
+            const float cover_width = static_cast<float>(src_width_) * scale;
+            const float cover_height = static_cast<float>(src_height_) * scale;
+            const nk::Rect cover{
+                matte.x + (matte.width - cover_width) * 0.5F,
+                matte.y + (matte.height - cover_height) * 0.5F,
+                cover_width,
+                cover_height,
+            };
+            // push_container does not clip on the GPU renderers; rounded
+            // clip with a zero radius is the cross-backend rectangle clip.
+            ctx.push_rounded_clip(matte, 0.0F);
+            ctx.add_image(cover, pixels_.data(), src_width_, src_height_, scale_mode_);
+            ctx.pop_container();
+            return;
         }
 
         constexpr float presentation_aspect = 4.0F / 3.0F;
@@ -1070,6 +1117,7 @@ class PreviewCanvas : public nk::Widget {
     nk::ScaleMode scale_mode_ = nk::ScaleMode::NearestNeighbor;
     float display_scale_ = 1.0F;
     bool integer_scaling_ = false;
+    PreviewFit picture_fit_ = PreviewFit::FourThree;
 };
 
 class HeroBanner : public nk::Widget {

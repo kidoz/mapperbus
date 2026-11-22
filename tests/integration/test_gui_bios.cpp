@@ -101,11 +101,11 @@ struct Gate {
         finished = true;
         changed.notify_all();
     }
-    bool reached(bool Gate::*flag) {
+    bool reached(bool Gate::* flag) {
         const std::lock_guard lock(mutex);
         return this->*flag;
     }
-    bool wait(bool Gate::*flag) {
+    bool wait(bool Gate::* flag) {
         std::unique_lock lock(mutex);
         return changed.wait_for(lock, 5s, [&] { return this->*flag; });
     }
@@ -417,6 +417,46 @@ TEST_CASE("Video settings select and persist Hybrid while keeping the game pause
     combo->set_selected_index(0);
     fixture.settle_saves();
     CHECK(Access::snapshot(*fixture.gui).region == core::Region::NTSC);
+}
+
+TEST_CASE("Video settings select and persist the picture fit",
+          "[gui][picture-fit][saved-settings]") {
+    Fixture fixture(SettingsMode::Saved);
+    fixture.settings();
+    Access::tabs(*fixture.gui)->set_selected_index(1);
+    fixture.settle_saves();
+    auto* combo = find_widget<nk::ComboBox>(*Access::settings(*fixture.gui), [](const auto& item) {
+        return item.item_count() == 3 && item.item(0) == "4:3 (fit)";
+    });
+    REQUIRE(combo);
+    CHECK(combo->item(1) == "Fill (crop)");
+    CHECK(combo->item(2) == "Stretch");
+    combo->set_selected_index(1);
+    fixture.settle_saves();
+    CHECK(combo->selected_text() == "Fill (crop)");
+    const auto bytes = fixture.saved_bytes();
+    CHECK(std::string(bytes.begin(), bytes.end()).find("picture_fit=1\n") != std::string::npos);
+    combo->set_selected_index(0);
+    fixture.settle_saves();
+    const auto reset = fixture.saved_bytes();
+    CHECK(std::string(reset.begin(), reset.end()).find("picture_fit=0\n") != std::string::npos);
+}
+
+TEST_CASE("Loading a ROM fits the window to the picture", "[gui][picture-fit][saved-settings]") {
+    Fixture fixture(SettingsMode::Saved);
+    // The fixture constructor loaded a ROM, which hugs the window once. The
+    // default scale is Pixel Perfect, so the canvas becomes an exact multiple
+    // of the 256x240 picture (whole scale 3 at 1120x900, dpr 1): 768x720.
+    const auto hugged = fixture.window.size();
+    CHECK(hugged.width == 3 * 256);
+    CHECK(hugged.height == 3 * 240);
+
+    fixture.window.resize(1600, 1300);
+    fixture.action("win.fit-window");
+    // At 1600x1300 the largest whole scale that fits is 5: 1280x1200.
+    const auto refitted = fixture.window.size();
+    CHECK(refitted.width == 5 * 256);
+    CHECK(refitted.height == 5 * 240);
 }
 
 TEST_CASE("State confirmations use the displayed slot number", "[gui][state]") {

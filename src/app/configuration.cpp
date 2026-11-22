@@ -381,6 +381,10 @@ void apply_setting(MapperBusConfiguration& configuration,
             std::clamp(parse_int(value, 0, full_key), 0, 3);
         return;
     }
+    if (full_key == "frontend.picture_fit") {
+        configuration.frontend.picture_fit_index = std::clamp(parse_int(value, 0, full_key), 0, 2);
+        return;
+    }
     if (full_key == "frontend.ui_density" || full_key == "ui.density") {
         configuration.frontend.ui_density_index = std::clamp(parse_int(value, 0, full_key), 0, 3);
         return;
@@ -1039,6 +1043,7 @@ void write_configuration(std::ostream& file, const MapperBusConfiguration& confi
 
     file << "[frontend]\n";
     file << "preview_scale=" << configuration.frontend.preview_scale_index << '\n';
+    file << "picture_fit=" << configuration.frontend.picture_fit_index << '\n';
     file << "ui_density=" << configuration.frontend.ui_density_index << '\n';
     file << "settings_page=" << configuration.frontend.settings_page_index << '\n';
     file << "audio_muted=" << (configuration.frontend.audio_muted ? "true" : "false") << '\n';

@@ -24,6 +24,18 @@ Versioning.
 
 ## [0.6.0] - 2026-11-22
 
+### Added
+
+- GUI "Picture fit" display setting in Settings → Video: 4:3 letterbox (default),
+  fill with a center crop, or stretch to the window; persisted as
+  `frontend.picture_fit`.
+
+- Loading a ROM in the GUI resizes the window to hug the picture (a whole
+  multiple of it with the Pixel Perfect scale), leaving only the toolbar and
+  status strips; "Fit Window to Game" re-applies the sizing on demand.
+  Fullscreen always presents at the 4:3 aspect with pillarbox bars, never
+  stretched.
+
 ### Changed
 
 - ROM archive loading uses a project-maintained libarchive 3.8.11 Meson port

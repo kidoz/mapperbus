@@ -299,4 +299,13 @@ The first optional argument opens an initial ROM. With no argument, the GUI
 opens without a cartridge. Settings and session actions are available in the
 GUI; SDL3 command-line flags are not parsed by this entry point.
 
+Loading a ROM resizes the window once so the picture fills the content area,
+leaving only the toolbar and status strips. With the Pixel Perfect scale the
+window is sized to a whole multiple of the picture instead, so the integer
+scaled image fills it exactly. "Fit Window to Game" in the window
+menu (toolbar on macOS) re-applies that sizing after you resize the window by
+hand; maximized and fullscreen windows are never resized. Fullscreen always
+presents the picture at the 4:3 aspect with pillarbox bars on wide monitors —
+the fill and stretch modes apply only to the windowed picture.
+
 Source: [GUI entry point](../../src/frontends/nodalkit/main.cpp).

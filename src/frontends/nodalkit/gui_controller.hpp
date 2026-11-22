@@ -78,12 +78,20 @@ class MapperBusGuiController {
                           std::string_view dcs_option_path = {},
                           app::CartridgeLaunchOptions cartridge_options = {});
 
+    /// Resize the window so the picture fills the content area exactly (only
+    /// the toolbar/status strips remain). Follows the current Picture fit:
+    /// 4:3 in the letterbox mode, the raw picture aspect in fill/stretch.
+    /// Skipped while maximized or fullscreen.
+    void fit_window_to_picture();
+
     enum class PreviewScaleOption {
         PixelPerfect,
         Smooth,
         Xbrz2x,
         Fsr2x,
     };
+
+    // The picture fit choices come from PreviewFit in gui_widgets.hpp.
 
   private:
     friend struct MapperBusGuiTestAccess;
@@ -192,6 +200,7 @@ class MapperBusGuiController {
     void refresh_settings_dialog_sections();
     void handle_menu_action(std::string_view action);
     void set_preview_scale_option(PreviewScaleOption option);
+    void set_picture_fit_option(PreviewFit option);
     void update_preview_surface(const std::uint32_t* data, int width, int height);
     void update_configuration_from_state();
     void save_configuration_state();
@@ -385,6 +394,7 @@ class MapperBusGuiController {
     SettingsPage settings_page_ = SettingsPage::Input;
     SettingsPage settings_built_page_ = SettingsPage::Input;
     PreviewScaleOption preview_scale_option_ = PreviewScaleOption::PixelPerfect;
+    PreviewFit picture_fit_option_ = PreviewFit::FourThree;
     std::optional<PendingInputRebind> pending_rebind_;
     std::unique_ptr<platform::Upscaler> preview_upscaler_;
     std::vector<std::uint32_t> preview_staging_pixels_;
