@@ -5,24 +5,7 @@ All notable changes to MapperBus are documented in this file.
 The format is based on Keep a Changelog, and this project adheres to Semantic
 Versioning.
 
-## [Unreleased]
-
-### Fixed
-
-- iNES headers signed with the old "DiskDude!" dumper tag are repaired during
-  parsing: the tag's text no longer masquerades as the extended mapper nibble
-  (Jackal (U) now loads as its true UNROM board instead of GNROM), and the
-  byte-7 tag variant drops its clobbered PRG-RAM and PAL fields; region falls
-  back to the content database or the ROM filename.
-
-### Changed
-
-- Require NodalKit 0.7.1 for the GUI and pin the bundled wrap fallback to the
-  v0.7.1 revision, fixing overlay hit testing so a combo box dropdown opened
-  inside a dialog selects the clicked item instead of activating the control
-  painted beneath the popup row.
-
-## [0.6.0] - 2026-11-22
+## [0.6.1] - 2026-11-22
 
 ### Added
 
@@ -35,6 +18,27 @@ Versioning.
   status strips; "Fit Window to Game" re-applies the sizing on demand.
   Fullscreen always presents at the 4:3 aspect with pillarbox bars, never
   stretched.
+
+### Changed
+
+- Require NodalKit 0.7.1 for the GUI and pin the bundled wrap fallback to the
+  v0.7.1 revision, fixing overlay hit testing so a combo box dropdown opened
+  inside a dialog selects the clicked item instead of activating the control
+  painted beneath the popup row.
+
+- The NodalKit GUI links as a Windows GUI application, so Explorer launches
+  show only the emulator window instead of a console with the log stream;
+  terminal launches still inherit the terminal's console.
+
+### Fixed
+
+- iNES headers signed with the old "DiskDude!" dumper tag are repaired during
+  parsing: the tag's text no longer masquerades as the extended mapper nibble
+  (Jackal (U) now loads as its true UNROM board instead of GNROM), and the
+  byte-7 tag variant drops its clobbered PRG-RAM and PAL fields; region falls
+  back to the content database or the ROM filename.
+
+## [0.6.0] - 2026-11-22
 
 ### Changed
 
@@ -429,6 +433,7 @@ Versioning.
 - Initial release with the emulator core, SDL3 frontend, CPU and GPU FSR
   upscaling, and BlipBuffer-based audio output.
 
+[0.6.1]: https://github.com/kidoz/mapperbus/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/kidoz/mapperbus/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/kidoz/mapperbus/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/kidoz/mapperbus/compare/v0.5.0...v0.5.1
