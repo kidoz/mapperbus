@@ -5,6 +5,15 @@ All notable changes to MapperBus are documented in this file.
 The format is based on Keep a Changelog, and this project adheres to Semantic
 Versioning.
 
+## [Unreleased]
+
+### Changed
+
+- Require NodalKit 0.7.1 for the GUI and pin the bundled wrap fallback to the
+  v0.7.1 revision, fixing overlay hit testing so a combo box dropdown opened
+  inside a dialog selects the clicked item instead of activating the control
+  painted beneath the popup row.
+
 ## [0.6.0] - 2026-11-22
 
 ### Changed
