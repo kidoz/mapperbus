@@ -33,7 +33,10 @@ Thumbs.db
 # Meson wraps (downloaded sources)
 subprojects/Catch2-*/
 subprojects/SDL3-*/
+subprojects/libarchive-*/
 subprojects/nodalkit-*/
+subprojects/xz-*/
+subprojects/zlib-*/
 subprojects/packagecache/
 
 # Test ROM images (not redistributable)
