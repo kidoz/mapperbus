@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <catch2/catch_test_macros.hpp>
 #include <vector>
 
@@ -97,6 +98,74 @@ TEST_CASE("iNES 1.0 region detection", "[region]") {
     SECTION("byte 9 PAL") {
         auto r = parse_ines_header(make_rom(0x00, 0x01, 0));
         REQUIRE(r->region == Region::PAL);
+    }
+}
+
+TEST_CASE("DiskDude! tag corruption is repaired", "[region][ines][cartridge]") {
+    constexpr char kTag[] = "DiskDude!";
+
+    SECTION("tag over flags7 masks mapper, PRG-RAM, and PAL fields") {
+        // Jackal (U) layout: the credit overwrites bytes 7-15, so the UNROM
+        // low nibble in flags6 pairs with the tag's 'D' to read as mapper 66,
+        // and the tag characters light up the PRG-RAM byte and the PAL bit.
+        auto rom = make_rom(0x00, 0, 0);
+        rom[4] = 8;
+        rom[6] = 0x21;
+        std::copy(kTag, kTag + 9, rom.begin() + 7);
+
+        const auto r = parse_ines_header(rom);
+
+        REQUIRE(r.has_value());
+        CHECK(r->mapper_number == 2);
+        CHECK_FALSE(r->is_nes2);
+        CHECK(r->region == Region::NTSC);
+        CHECK(r->prg_ram_size == 8192);
+    }
+
+    SECTION("tag at byte 12 masks only the mapper nibble") {
+        // Classic layout: bytes 12-15 hold "Disk" and "Dude!" spills into PRG
+        // data, leaving byte 8 and byte 9 genuine.
+        auto rom = make_rom(0x40, 0x01, 0);
+        rom[6] = 0x20;
+        std::copy(kTag, kTag + 9, rom.begin() + 12);
+
+        const auto r = parse_ines_header(rom);
+
+        REQUIRE(r.has_value());
+        CHECK(r->mapper_number == 2);
+        CHECK_FALSE(r->is_nes2);
+        CHECK(r->region == Region::PAL);
+        CHECK(r->prg_ram_size == 8192);
+    }
+
+    SECTION("partial tag without PRG spill leaves the header alone") {
+        // A 16-byte image cannot confirm the classic tag because its tail
+        // lives in PRG data, so the extended mapper nibble stays.
+        std::vector<Byte> rom(16, 0);
+        rom[0] = 'N';
+        rom[1] = 'E';
+        rom[2] = 'S';
+        rom[3] = 0x1A;
+        rom[4] = 1;
+        rom[6] = 0x20;
+        rom[7] = 0x40;
+        constexpr char kDisk[] = "Disk";
+        std::copy(kDisk, kDisk + 4, rom.begin() + 12);
+
+        const auto r = parse_ines_header(rom);
+
+        REQUIRE(r.has_value());
+        CHECK(r->mapper_number == 66);
+    }
+
+    SECTION("clean headers keep the extended mapper nibble") {
+        auto rom = make_rom(0x40, 0, 0);
+        rom[6] = 0x20;
+
+        const auto r = parse_ines_header(rom);
+
+        REQUIRE(r.has_value());
+        CHECK(r->mapper_number == 66);
     }
 }
 

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <limits>
+#include <string_view>
 
 namespace mapperbus::core {
 namespace {
@@ -50,6 +51,24 @@ Result<INesHeader> parse_ines_header(std::span<const Byte> rom_data) {
 
     Byte flags6 = rom_data[6];
     Byte flags7 = rom_data[7];
+
+    // Some old dumping tools signed dumps by writing a "DiskDude!" credit over
+    // the reserved header bytes. The tag spans either bytes 7-15, overwriting
+    // flags7 through the header tail (e.g. Jackal (U)), or bytes 12-20, with
+    // the last five bytes spilling into PRG data. Dumps signed that way predate
+    // the extended mapper field, so the flags7 upper nibble is tag text, not a
+    // field. The variant starting at byte 7 also clobbers the PRG-RAM byte and
+    // the weak iNES 1.0 PAL flag. Mask those fields off; region detection then
+    // falls back to the content database or the ROM filename.
+    const auto tag_matches = [&rom_data](std::size_t offset) {
+        return std::string_view(reinterpret_cast<const char*>(rom_data.data() + offset), 9) ==
+               "DiskDude!";
+    };
+    const bool tag_over_flags7 = tag_matches(7);
+    if (tag_over_flags7 || (rom_data.size() >= 21 && tag_matches(12))) {
+        flags7 &= 0x0FU;
+    }
+    const bool tag_clobbers_low_fields = tag_over_flags7;
 
     header.has_battery = (flags6 & 0x02) != 0;
     header.has_trainer = (flags6 & 0x04) != 0;
@@ -101,7 +120,8 @@ Result<INesHeader> parse_ines_header(std::span<const Byte> rom_data) {
         header.chr_ram_size = ram_size(rom_data[11] & 15);
         header.chr_nvram_size = ram_size(rom_data[11] >> 4);
     } else {
-        const std::size_t ram_size = (rom_data[8] == 0 ? 1 : rom_data[8]) * std::size_t{8192};
+        const Byte prg_ram_byte = tag_clobbers_low_fields ? 0U : rom_data[8];
+        const std::size_t ram_size = (prg_ram_byte == 0 ? 1 : prg_ram_byte) * std::size_t{8192};
         header.prg_ram_size = header.has_battery ? 0 : ram_size;
         header.prg_nvram_size = header.has_battery ? ram_size : 0;
         header.chr_ram_size = *chr_size == 0 ? 8192 : 0;
@@ -137,7 +157,7 @@ Result<INesHeader> parse_ines_header(std::span<const Byte> rom_data) {
         }
     } else {
         // iNES 1.0: byte 9, bit 0 (rarely set, weak signal)
-        if (rom_data[9] & 0x01) {
+        if (!tag_clobbers_low_fields && (rom_data[9] & 0x01)) {
             header.region = Region::PAL;
         }
     }

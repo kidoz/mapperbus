@@ -7,6 +7,14 @@ Versioning.
 
 ## [Unreleased]
 
+### Fixed
+
+- iNES headers signed with the old "DiskDude!" dumper tag are repaired during
+  parsing: the tag's text no longer masquerades as the extended mapper nibble
+  (Jackal (U) now loads as its true UNROM board instead of GNROM), and the
+  byte-7 tag variant drops its clobbered PRG-RAM and PAL fields; region falls
+  back to the content database or the ROM filename.
+
 ### Changed
 
 - Require NodalKit 0.7.1 for the GUI and pin the bundled wrap fallback to the
