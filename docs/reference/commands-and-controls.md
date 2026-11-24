@@ -85,7 +85,8 @@ controller identities; see [configuration](configuration.md).
 ### Gamepad mapping tokens
 
 Input action names are `a`, `b`, `start`, `select`, `up`, `down`, `left`, `right`,
-`turbo_a`, `turbo_b`, and `microphone` (alias `mic`). Use `none` as a control value to clear a binding.
+`turbo_a`, `turbo_b`, `microphone` (alias `mic`), and `rewind`. Use `none` to clear a
+binding. The control token `l3+r3` requires holding both stick clicks.
 SDL controls include physical face positions `south`, `east`, `west`, `north`,
 aliases `a`, `b`, `x`, `y`, D-pad tokens `dpup`, `dpdown`, `dpleft`, `dpright`,
 and buttons such as `start`, `back`, `leftshoulder`, and `rightshoulder`.
@@ -118,10 +119,11 @@ switch 1. The headless CLI also accepts the DIP mask.
 | Select | Right Shift |
 | Start | Enter / Return |
 | D-pad | Arrow keys |
+| Rewind | Backspace |
 
 These are player 1 defaults, overridden by `[input.keyboard]`. Player 2 uses
 `[input.player2.keyboard]` and starts unbound. Code `0` means unbound. Configure
-any of the four profiles with the selector in GUI Settings → Input.
+the player profile with the selector in GUI Settings → Input.
 
 Hold Turbo A or Turbo B to repeat that button; release to stop. Ordinary A/B
 remain continuous holds, including when their turbo action is also held.
@@ -152,8 +154,18 @@ of a second. Games with large machine states can have a shorter history. A ROM
 change, reset, power cycle, or successful manual state load starts fresh.
 Rewinding leaves the ten manual save slots available for longer-term saves.
 
-A custom gameplay binding for Backspace takes priority. For keyboard cartridges,
-use the gamepad chord in either frontend or Command/Super + Backspace in SDL3.
+To change either default, open **Settings → Input**, select the player, and find
+**Rewind** under **Bindings**. Click the keyboard or gamepad cell and press the
+new control. Choose **Clear** to disable that binding, or **Use L3 + R3** to
+restore the gamepad chord. Both frontends read these saved settings.
+
+In `mapperbus.conf`, for example, set `rewind=13` under `[input.keyboard]`
+for the J key and `rewind=leftshoulder` under `[input.gamepad]` for the left
+shoulder button. SDL3 also accepts `--gamepad-map rewind=leftshoulder`.
+
+A gameplay binding on the same key takes priority during normal play. With
+keyboard cartridges, use the configured gamepad control in either frontend or
+hold Command/Super with the configured rewind key in SDL3.
 
 ### SDL3 runtime shortcuts
 

@@ -687,6 +687,36 @@ TEST_CASE("New turbo defaults do not overlap existing custom bindings",
     std::filesystem::remove_all(path.parent_path());
 }
 
+TEST_CASE("Rewind bindings migrate and round-trip independently for each player",
+          "[configuration][rewind]") {
+    constexpr auto rewind = platform::button_index(platform::InputAction::Rewind);
+    const MapperBusConfiguration defaults;
+    CHECK(defaults.input.keyboard_bindings[rewind] == 42);
+    CHECK(platform::gamepad_control_token(defaults.input.gamepad.bindings[rewind]) == "l3+r3");
+    for (int player = 1; player < platform::kInputProfileCount; ++player) {
+        CHECK(defaults.input.keyboard_profile(player)[rewind] == 0);
+        CHECK(defaults.input.gamepad_profile(player).bindings[rewind].kind ==
+              platform::GamepadControlKind::None);
+    }
+
+    const auto legacy = parse_mapperbus_configuration("[input.player2.keyboard]\na=42\n");
+    CHECK(legacy.input.keyboard_bindings[rewind] == 0);
+    CHECK(legacy.input.player2_keyboard_bindings[platform::button_index(core::Button::A)] == 42);
+
+    const auto custom = parse_mapperbus_configuration(
+        "[input.keyboard]\nrewind=0\n[input.gamepad]\nrewind=none\n"
+        "[input.player2.keyboard]\nrewind=13\n[input.player2.gamepad]\nrewind=righttrigger+\n");
+    const auto path = temporary_config_path();
+    REQUIRE(save_mapperbus_configuration_to_file(custom, path));
+    const auto loaded = load_mapperbus_configuration_from_file(path);
+    CHECK(loaded.input.keyboard_bindings[rewind] == 0);
+    CHECK(platform::gamepad_control_token(loaded.input.gamepad.bindings[rewind]) == "none");
+    CHECK(loaded.input.player2_keyboard_bindings[rewind] == 13);
+    CHECK(platform::gamepad_control_token(loaded.input.player2_gamepad.bindings[rewind]) ==
+          "righttrigger+");
+    std::filesystem::remove_all(path.parent_path());
+}
+
 TEST_CASE("Microphone bindings persist and legacy keys keep their meaning",
           "[configuration][microphone]") {
     const auto mic = platform::button_index(platform::InputAction::Microphone);

@@ -3919,6 +3919,18 @@ void MapperBusGuiController::poll_pending_rebind() {
 }
 
 void MapperBusGuiController::apply_keyboard_rebind(platform::InputAction button, nk::KeyCode key) {
+    if (button == platform::InputAction::Rewind && key != nk::KeyCode::Unknown) {
+        for (int player = 0; player < platform::kInputProfileCount; ++player) {
+            if (player != settings_input_player_ &&
+                input_backend_->player_input(player).has_gameplay_key(key)) {
+                close_rebind_dialog();
+                set_message(key_label(key) + " is used by " +
+                            input_profile_name(player, actions_->snapshot().controller_mode) +
+                            ". Choose another rewind key or change that binding first.");
+                return;
+            }
+        }
+    }
     const auto previous = input_backend_->player_input(settings_input_player_).binding(button);
     std::optional<platform::InputAction> conflict_button;
     for (const auto other : kBindingOrder) {

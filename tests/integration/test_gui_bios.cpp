@@ -65,6 +65,9 @@ struct MapperBusGuiTestAccess {
     static auto change(MapperBusGuiController& gui) {
         return gui.configuration_change_dialog_;
     }
+    static auto rebind(MapperBusGuiController& gui) {
+        return gui.rebind_dialog_;
+    }
     static auto closing(MapperBusGuiController& gui) {
         return gui.close_save_dialog_;
     }
@@ -878,6 +881,51 @@ TEST_CASE("GUI Turbo Game Doctor startup keeps its firmware through retry", "[gu
     fixture.wait([&] { return Access::identity(*fixture.gui) == expected->content_hash(); });
     const std::lock_guard lock(fixture.work->mutex);
     CHECK(fixture.work->requests.back().cartridge_options.game_doctor_bios_path == bios.string());
+}
+
+TEST_CASE("Rewind can be remapped and cleared from the Input settings", "[gui][input][rewind]") {
+    Fixture fixture(SettingsMode::Saved);
+    auto& gui = *fixture.gui;
+    fixture.settings();
+    Access::tabs(gui)->set_selected_index(0);
+    fixture.drain();
+    const auto edit = [&] {
+        click(*Access::settings(gui), "Rebind Rewind keyboard");
+        fixture.drain();
+        REQUIRE(Access::rebind(gui));
+    };
+    const auto saved_key = [&] {
+        fixture.wait([&] { return !Access::rebind(gui); });
+        fixture.settle_saves();
+        return app::load_mapperbus_configuration_from_file(fixture.configuration)
+            .input.keyboard_bindings[platform::button_index(platform::InputAction::Rewind)];
+    };
+    edit();
+    fixture.window.dispatch_key_event({.type = nk::KeyEvent::Type::Press, .key = nk::KeyCode::J});
+    fixture.window.dispatch_key_event({.type = nk::KeyEvent::Type::Release, .key = nk::KeyCode::J});
+    REQUIRE(saved_key() == static_cast<int>(nk::KeyCode::J));
+
+    Access::settings(gui)->close(nk::DialogResponse::Cancel);
+    fixture.window.dispatch_window_event({.type = nk::WindowEvent::Type::FocusIn});
+    fixture.action("emu.pause");
+    const auto start = Access::cycles(gui);
+    fixture.window.dispatch_key_event(
+        {.type = nk::KeyEvent::Type::Press, .key = nk::KeyCode::Backspace});
+    fixture.wait([&] { return Access::cycles(gui) > start + 900000; });
+    CHECK_FALSE(Access::rewinding(gui));
+    fixture.window.dispatch_key_event(
+        {.type = nk::KeyEvent::Type::Release, .key = nk::KeyCode::Backspace});
+    fixture.window.dispatch_key_event({.type = nk::KeyEvent::Type::Press, .key = nk::KeyCode::J});
+    fixture.wait([&] { return Access::rewinding(gui); });
+    fixture.window.dispatch_key_event({.type = nk::KeyEvent::Type::Release, .key = nk::KeyCode::J});
+    fixture.wait([&] { return !Access::rewinding(gui); });
+
+    fixture.settings();
+    Access::tabs(gui)->set_selected_index(0);
+    fixture.drain();
+    edit();
+    click(*Access::rebind(gui), "Clear");
+    CHECK(saved_key() == 0);
 }
 
 TEST_CASE("Holding Backspace on the game surface browses and resumes the selected past",

@@ -70,8 +70,12 @@ class NodalKitPlayerInput {
 
     [[nodiscard]] bool is_action_pressed(platform::InputAction button,
                                          bool use_keyboard = true) const {
-        return (use_keyboard && keyboard_button_pressed(binding(button))) ||
+        return (use_keyboard && keyboard_action_pressed(button)) ||
                is_gamepad_button_pressed(button);
+    }
+
+    [[nodiscard]] bool keyboard_action_pressed(platform::InputAction action) const {
+        return keyboard_button_pressed(binding(action));
     }
 
     void set_binding(platform::InputAction button, nk::KeyCode key) {
@@ -644,7 +648,7 @@ class NodalKitInput : public platform::InputBackend {
             const auto action = platform::InputAction::Rewind;
             if (player.is_action_pressed(action, false))
                 return true;
-            if (cartridge_keyboard_active() || !player.is_action_pressed(action))
+            if (cartridge_keyboard_active() || !player.keyboard_action_pressed(action))
                 continue;
             if (std::ranges::none_of(players_, [&](const auto& profile) {
                     return profile.has_gameplay_key(player.binding(action));
@@ -737,9 +741,8 @@ class NodalKitInput : public platform::InputBackend {
 
   private:
     static platform::GamepadInputConfig disabled_profile(int index) {
-        platform::GamepadInputConfig config;
+        platform::GamepadInputConfig config(index);
         config.enabled = false;
-        config.gamepad_index = index;
         return config;
     }
     std::array<NodalKitPlayerInput, platform::kInputProfileCount> players_;

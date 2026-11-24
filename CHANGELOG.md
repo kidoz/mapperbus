@@ -34,6 +34,7 @@ Versioning.
 
 - Hold Backspace or both stick clicks on Player 1’s gamepad to rewind up to
   ten seconds in SDL3 and NodalKit. Release to continue from the displayed frame.
+  Both controls can be remapped or cleared in Settings → Input → Bindings.
 
 ### Fixed
 

@@ -555,6 +555,7 @@ Keyboard values are integer NodalKit / USB HID-style key codes, not characters.
 | `turbo_b` | `4` | A |
 | `start` | `40` | Return |
 | `select` | `229` | Right Shift |
+| `rewind` | `42` | Backspace |
 
 | `[input.gamepad]` key | Default |
 |---|---|
@@ -565,12 +566,14 @@ Keyboard values are integer NodalKit / USB HID-style key codes, not characters.
 | `a`, `b` | `east`, `south` |
 | `turbo_a`, `turbo_b` | `north`, `west` |
 | `start`, `select` | `start`, `back` |
+| `rewind` | `l3+r3` (both stick clicks) |
 
 See [mapping tokens](commands-and-controls.md#gamepad-mapping-tokens) for accepted
 control names. These sections configure player 1. Player 2 has independent
 `[input.player2.keyboard]` and `[input.player2.gamepad]` sections with the same
 keys. Its keyboard defaults to unbound (`0`) for every action, and its gamepad
-defaults to index `1`; the other gamepad defaults match player 1.
+defaults to index `1`. Rewind starts unbound on every gamepad after player 1.
+Use `rewind=0` for an unbound keyboard shortcut or `rewind=none` for an unbound gamepad control.
 
 External pads use `player3` and `player4` sections as described above.
 

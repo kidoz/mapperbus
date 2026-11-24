@@ -37,6 +37,34 @@ TEST_CASE("GUI hold-to-rewind respects typing, custom bindings and assignment ca
     CHECK_FALSE(input.rewind_held());
 }
 
+TEST_CASE("GUI rewind uses a replacement gamepad binding until cleared or restored",
+          "[gui][input][rewind]") {
+    tests::IdentityGamepads pads;
+    pads.attach(0, 0);
+    nk::Window window({.title = "Rewind bindings", .width = 320, .height = 240});
+    NodalKitInput input(window, platform::GamepadInputConfig(0), platform::GamepadInputConfig(1));
+    auto& player = input.player_input(0);
+    constexpr auto rewind = platform::InputAction::Rewind;
+    player.set_gamepad_binding(
+        rewind, platform::gamepad_button_control(platform::GamepadButton::LeftShoulder));
+    REQUIRE(SDL_SetJoystickVirtualButton(pads.joysticks[0], SDL_GAMEPAD_BUTTON_LEFT_STICK, true));
+    REQUIRE(SDL_SetJoystickVirtualButton(pads.joysticks[0], SDL_GAMEPAD_BUTTON_RIGHT_STICK, true));
+    input.poll();
+    CHECK_FALSE(input.rewind_held());
+    REQUIRE(
+        SDL_SetJoystickVirtualButton(pads.joysticks[0], SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, true));
+    input.poll();
+    CHECK(input.rewind_held());
+    player.set_gamepad_binding(rewind, {.kind = platform::GamepadControlKind::None});
+    CHECK_FALSE(input.rewind_held());
+    player.reset_default_gamepad_bindings();
+    input.poll();
+    CHECK(input.rewind_held());
+    REQUIRE(SDL_SetJoystickVirtualButton(pads.joysticks[0], SDL_GAMEPAD_BUTTON_RIGHT_STICK, false));
+    input.poll();
+    CHECK_FALSE(input.rewind_held());
+}
+
 TEST_CASE("Game-specific layouts switch devices without copying them into global assignments",
           "[gui][input][game-assignments]") {
     tests::IdentityGamepads pads;

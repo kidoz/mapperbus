@@ -8,20 +8,7 @@ namespace mapperbus::frontend {
 namespace {
 
 [[nodiscard]] Sdl3KeyboardBindings default_keyboard_bindings() {
-    Sdl3KeyboardBindings bindings{};
-    bindings[platform::button_index(platform::InputAction::Up)] = SDL_SCANCODE_UP;
-    bindings[platform::button_index(platform::InputAction::Down)] = SDL_SCANCODE_DOWN;
-    bindings[platform::button_index(platform::InputAction::Left)] = SDL_SCANCODE_LEFT;
-    bindings[platform::button_index(platform::InputAction::Right)] = SDL_SCANCODE_RIGHT;
-    bindings[platform::button_index(platform::InputAction::A)] = SDL_SCANCODE_X;
-    bindings[platform::button_index(platform::InputAction::B)] = SDL_SCANCODE_Z;
-    bindings[platform::button_index(platform::InputAction::Start)] = SDL_SCANCODE_RETURN;
-    bindings[platform::button_index(platform::InputAction::Select)] = SDL_SCANCODE_RSHIFT;
-    bindings[platform::button_index(platform::InputAction::TurboA)] = SDL_SCANCODE_S;
-    bindings[platform::button_index(platform::InputAction::TurboB)] = SDL_SCANCODE_A;
-    bindings[platform::button_index(platform::InputAction::Microphone)] = SDL_SCANCODE_M;
-    bindings[platform::button_index(platform::InputAction::Rewind)] = SDL_SCANCODE_BACKSPACE;
-    return bindings;
+    return app::MapperBusInputConfiguration{}.keyboard_bindings;
 }
 
 [[nodiscard]] SDL_GamepadButton to_sdl_button(platform::GamepadButton button) {
@@ -242,9 +229,7 @@ void Sdl3Input::poll() {
 
     open_configured_gamepad();
     for (int player = 0; player < player_count_; ++player)
-        button_state_[player] =
-            gamepad_state(player) |
-            (cartridge_keyboard_active() ? 0 : keyboard_state(keyboard_bindings_[player]));
+        button_state_[player] = gamepad_state(player) | keyboard_state(keyboard_bindings_[player]);
 }
 
 void Sdl3Input::open_configured_gamepad() {
@@ -332,7 +317,12 @@ std::uint16_t Sdl3Input::keyboard_state(const Sdl3KeyboardBindings& bindings) co
     std::uint16_t state = 0;
     for (const auto button : platform::input_actions()) {
         const int scancode = bindings[platform::button_index(button)];
-        if (scancode > 0 && scancode < key_count && keys[scancode]) {
+        if (scancode <= 0 || scancode >= key_count)
+            continue;
+        const bool held = button == platform::InputAction::Rewind
+                              ? host_shortcut_keys_[scancode]
+                              : !cartridge_keyboard_active() && keys[scancode];
+        if (held) {
             state |= (1U << platform::button_index(button));
         }
     }
@@ -384,15 +374,9 @@ bool Sdl3Input::is_action_pressed(int player, platform::InputAction button) cons
 bool Sdl3Input::rewind_held() const {
     if (!window_focused_)
         return false;
-    for (int player = 0; player < player_count_; ++player) {
-        const auto key =
-            keyboard_bindings_[player][platform::button_index(platform::InputAction::Rewind)];
-        if ((key > 0 && key < SDL_SCANCODE_COUNT && host_shortcut_keys_[key]) ||
-            is_control_pressed(player,
-                               platform::gamepad_control_for_button(configs_[player],
-                                                                    platform::InputAction::Rewind)))
+    for (int player = 0; player < player_count_; ++player)
+        if (is_action_pressed(player, platform::InputAction::Rewind))
             return true;
-    }
     return false;
 }
 

@@ -40,6 +40,56 @@ TEST_CASE("SDL rewind follows key release, focus, and cartridge keyboard routing
     CHECK_FALSE(input.rewind_held());
 }
 
+TEST_CASE("SDL uses the configured player's rewind key and gamepad control",
+          "[sdl3][input][rewind]") {
+    tests::IdentityGamepads pads;
+    pads.attach(0, 0);
+    pads.attach(1, 1);
+    constexpr auto rewind = platform::InputAction::Rewind;
+    Sdl3TwoPlayerInputConfig profiles;
+    REQUIRE(platform::apply_gamepad_mapping(profiles.player1, "rewind=none"));
+    REQUIRE(platform::apply_gamepad_mapping(profiles.player2, "rewind=leftshoulder"));
+    Sdl3KeyboardBindings player2{};
+    player2[platform::button_index(rewind)] = SDL_SCANCODE_J;
+    Sdl3Input input(profiles, Sdl3KeyboardBindings{}, player2);
+    const auto key = [&](Uint32 type, SDL_Scancode code, SDL_Keymod mod = SDL_KMOD_NONE) {
+        SDL_Event event{};
+        event.type = type;
+        event.key.scancode = code;
+        event.key.mod = mod;
+        REQUIRE(SDL_PushEvent(&event));
+        input.poll();
+    };
+    key(SDL_EVENT_KEY_DOWN, SDL_SCANCODE_BACKSPACE);
+    CHECK_FALSE(input.rewind_held());
+    key(SDL_EVENT_KEY_DOWN, SDL_SCANCODE_J);
+    CHECK(input.is_action_pressed(1, rewind));
+    CHECK(input.rewind_held());
+    key(SDL_EVENT_KEY_UP, SDL_SCANCODE_J);
+    CHECK_FALSE(input.rewind_held());
+    input.set_cartridge_keyboard_active(true);
+    key(SDL_EVENT_KEY_DOWN, SDL_SCANCODE_J);
+    CHECK_FALSE(input.rewind_held());
+    key(SDL_EVENT_KEY_UP, SDL_SCANCODE_J);
+    key(SDL_EVENT_KEY_DOWN, SDL_SCANCODE_J, SDL_KMOD_GUI);
+    CHECK(input.rewind_held());
+    key(SDL_EVENT_KEY_UP, SDL_SCANCODE_J);
+    for (auto control : {SDL_GAMEPAD_BUTTON_LEFT_STICK,
+                         SDL_GAMEPAD_BUTTON_RIGHT_STICK,
+                         SDL_GAMEPAD_BUTTON_LEFT_SHOULDER})
+        REQUIRE(SDL_SetJoystickVirtualButton(pads.joysticks[0], control, true));
+    input.poll();
+    CHECK_FALSE(input.rewind_held());
+    REQUIRE(
+        SDL_SetJoystickVirtualButton(pads.joysticks[1], SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, true));
+    input.poll();
+    CHECK(input.rewind_held());
+    REQUIRE(
+        SDL_SetJoystickVirtualButton(pads.joysticks[1], SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, false));
+    input.poll();
+    CHECK_FALSE(input.rewind_held());
+}
+
 TEST_CASE("Typing on cartridge keyboards leaves SDL runtime commands available through Super",
           "[sdl3][input][cartridge-keyboard]") {
     Sdl3Input input;
