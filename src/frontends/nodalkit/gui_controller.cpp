@@ -2048,9 +2048,11 @@ void MapperBusGuiController::fit_window_to_picture() {
         preview_scale_option_ == PreviewScaleOption::PixelPerfect) {
         // Whole-pixel scaling: size the canvas to the largest exact multiple
         // of the picture that fits, so the integer path fills it border-free.
-        const double dpr = window_.scale_factor() > 0.0F ? window_.scale_factor() : 1.0F;
-        const double whole_scale = std::floor(std::min(canvas_width * dpr / core::kScreenWidth,
-                                                       canvas_height * dpr / core::kScreenHeight));
+        const double dpr =
+            window_.scale_factor() > 0.0F ? static_cast<double>(window_.scale_factor()) : 1.0;
+        const double whole_scale =
+            std::floor(std::min(static_cast<double>(canvas_width) * dpr / core::kScreenWidth,
+                                static_cast<double>(canvas_height) * dpr / core::kScreenHeight));
         const int whole = std::max(1, static_cast<int>(whole_scale));
         ideal_width = static_cast<float>(core::kScreenWidth * whole / dpr);
         ideal_height = static_cast<float>(core::kScreenHeight * whole / dpr);
@@ -2058,7 +2060,8 @@ void MapperBusGuiController::fit_window_to_picture() {
         const double aspect = picture_fit_option_ == PreviewFit::FourThree
                                   ? 4.0 / 3.0
                                   : double{core::kScreenWidth} / double{core::kScreenHeight};
-        ideal_height = std::max(200.0F, std::round(float(canvas_width / aspect)));
+        ideal_height = std::max(
+            200.0F, std::round(static_cast<float>(static_cast<double>(canvas_width) / aspect)));
     }
 
     const int width = std::max(1, static_cast<int>(std::lround(ideal_width)));
