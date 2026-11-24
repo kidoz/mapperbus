@@ -23,6 +23,13 @@ class AudioBackend {
         return -1;
     }
 
+    /// Frames consumed in one device read, at actual_sample_rate(). Returns
+    /// zero when the backend has no device buffer information. Channel count
+    /// does not affect this value.
+    [[nodiscard]] virtual int buffer_size_frames() const {
+        return 0;
+    }
+
     /// Suspend playback so the device buffer does not run dry (and click on
     /// resume) while the emulator is paused. Default no-op for backends
     /// without a real device.

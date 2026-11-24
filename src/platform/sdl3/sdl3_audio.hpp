@@ -15,6 +15,7 @@ class Sdl3Audio : public platform::AudioBackend {
     void shutdown() override;
     int queued_samples() const override;
     [[nodiscard]] int actual_sample_rate() const override;
+    [[nodiscard]] int buffer_size_frames() const override;
     void pause() override;
     void resume() override;
     void clear() override;
@@ -24,6 +25,7 @@ class Sdl3Audio : public platform::AudioBackend {
     int channels_ = 1;
     int requested_rate_ = 0;
     int actual_rate_ = 0;
+    int buffer_size_frames_ = 0;
 };
 
 } // namespace mapperbus::frontend

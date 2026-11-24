@@ -46,11 +46,21 @@ bool Sdl3Audio::initialize(int sample_rate, int buffer_size, int channels) {
         actual_rate_ = sample_rate;
     }
 
+    SDL_AudioSpec device_spec{};
+    int device_frames = 0;
+    // SDL may choose a different chunk size from the requested hint.
+    // https://wiki.libsdl.org/SDL3/SDL_GetAudioDeviceFormat
+    buffer_size_frames_ =
+        SDL_GetAudioDeviceFormat(SDL_GetAudioStreamDevice(stream_), &device_spec, &device_frames) &&
+                device_frames > 0
+            ? device_frames
+            : requested_frames;
+
     // Pre-fill one buffer of silence so the device starts fed rather than
     // running empty until the first emulated frame arrives. An empty device
     // underruns and then snaps to full amplitude on the first real frame,
     // which is heard as a startup pop.
-    const int frame_count = std::max(256, buffer_size);
+    const int frame_count = buffer_size_frames_;
     const std::size_t silence_samples = static_cast<std::size_t>(frame_count) * channels;
     std::vector<float> silence(silence_samples, 0.0f);
     SDL_PutAudioStreamData(
@@ -74,10 +84,15 @@ void Sdl3Audio::shutdown() {
     }
     requested_rate_ = 0;
     actual_rate_ = 0;
+    buffer_size_frames_ = 0;
 }
 
 int Sdl3Audio::actual_sample_rate() const {
     return actual_rate_;
+}
+
+int Sdl3Audio::buffer_size_frames() const {
+    return buffer_size_frames_;
 }
 
 int Sdl3Audio::queued_samples() const {

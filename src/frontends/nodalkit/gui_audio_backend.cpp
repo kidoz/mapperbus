@@ -78,6 +78,10 @@ int GuiAudioBackend::actual_sample_rate() const {
     return active_ ? active_->actual_sample_rate() : -1;
 }
 
+int GuiAudioBackend::buffer_size_frames() const {
+    return active_ ? active_->buffer_size_frames() : 0;
+}
+
 void GuiAudioBackend::pause() {
     if (active_) {
         active_->pause();

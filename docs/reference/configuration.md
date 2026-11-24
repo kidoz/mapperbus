@@ -534,6 +534,11 @@ aliases. Boolean values accept `true/false`, `yes/no`, `on/off`, and `1/0`.
 | `drc_deadzone` | `0.05` | Decimal, 0–1 |
 | `drc_rate_adjustment` | `0.005` | Decimal, 0–0.05 |
 
+The GUI refills playback below 25 ms or one actual device buffer queued,
+whichever is larger, and applies backpressure above twice that reserve. This
+prevents large device reads from starving playback at lower sample rates. The
+device may choose a different buffer size from the configured `buffer_size` hint.
+
 ## Keyboard and gamepad
 
 Keyboard values are integer NodalKit / USB HID-style key codes, not characters.

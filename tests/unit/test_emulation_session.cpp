@@ -50,6 +50,10 @@ class TestAudioBackend : public platform::AudioBackend {
         return queued_sample_count;
     }
 
+    int buffer_size_frames() const override {
+        return device_buffer_frames;
+    }
+
     void pause() override {
         pause_calls += 1;
         device_paused = true;
@@ -72,6 +76,7 @@ class TestAudioBackend : public platform::AudioBackend {
     int last_buffer_size = 0;
     int last_channels = 0;
     int queued_sample_count = 0;
+    int device_buffer_frames = 0;
     int queued_batches = 0;
     std::size_t queued_sample_total = 0;
 };
@@ -510,6 +515,43 @@ TEST_CASE("SessionActions exposes audio queue watermarks", "[app][actions]") {
     REQUIRE(actions.audio_queued_samples() == 1234);
     REQUIRE(actions.audio_low_watermark_samples() == 2400);
     REQUIRE(actions.audio_high_watermark_samples() == 4800);
+}
+
+TEST_CASE("Audio refill reserves a full device read at every sample rate",
+          "[app][session][audio]") {
+    core::register_builtin_mappers();
+    const auto rom = tests::write_visible_nrom_test_rom("audio-device-buffer");
+    for (const int rate : {44100, 48000, 96000}) {
+        for (const auto stereo : {core::StereoMode::Mono, core::StereoMode::PseudoStereo}) {
+            CAPTURE(rate, stereo);
+            auto audio = std::make_unique<TestAudioBackend>();
+            auto* device = audio.get();
+            core::AudioSettings settings;
+            settings.sample_rate = rate;
+            settings.stereo_mode = stereo;
+            EmulationSession session(std::make_unique<platform::NullVideo>(),
+                                     std::move(audio),
+                                     std::make_unique<platform::NullInput>(),
+                                     settings);
+            REQUIRE(session.load_rom(rom.string()));
+            SessionActions actions(session);
+            // A driver can negotiate a larger or smaller buffer than the
+            // configured 2048-frame hint, including after a device change.
+            for (const int chunk : {512, 2048, 4096}) {
+                CAPTURE(chunk);
+                device->device_buffer_frames = chunk;
+                const int reserve = actions.audio_low_watermark_samples();
+                // The GUI stops preroll at this level. A whole device read
+                // must fit without substituting silence for missing samples.
+                CHECK(reserve >= chunk);
+                // Leave space to refill another chunk above that reserve;
+                // backpressure must not prevent the producer from doing so.
+                device->queued_sample_count = reserve + chunk;
+                CHECK(actions.tick() == TickResult::FrameAdvanced);
+            }
+        }
+    }
+    std::filesystem::remove(rom);
 }
 
 namespace {

@@ -160,6 +160,7 @@ TEST_CASE("SDL recording opens, polls and closes a dummy input without hardware"
 TEST_CASE("SDL playback clear removes queued microphone sound while paused", "[sdl3][microphone]") {
     mapperbus::frontend::Sdl3Audio playback;
     REQUIRE(playback.initialize(48000, 256, 2));
+    CHECK(playback.buffer_size_frames() > 0);
     playback.pause();
     std::array<float, 4096> sound{};
     sound.fill(0.25F);
@@ -169,5 +170,6 @@ TEST_CASE("SDL playback clear removes queued microphone sound while paused", "[s
     CHECK(playback.queued_samples() == 0);
     playback.resume();
     playback.shutdown();
+    CHECK(playback.buffer_size_frames() == 0);
     playback.clear();
 }

@@ -376,7 +376,11 @@ int EmulationSession::audio_queued_samples() const {
 }
 
 int EmulationSession::audio_low_watermark_samples() const {
-    return audio_settings_.sample_rate / 40;
+    // SDL consumes whole device buffers. At 44.1/48 kHz a 2048-frame
+    // read spans more than the nominal 25 ms reserve, so keep at least one
+    // complete read queued before the GUI stops its audio preroll.
+    const int device_frames = audio_ ? audio_->buffer_size_frames() : 0;
+    return std::max(audio_settings_.sample_rate / 40, device_frames);
 }
 
 int EmulationSession::audio_high_watermark_samples() const {
@@ -611,7 +615,9 @@ void EmulationSession::reset_audio_fill_ratio_history() {
 }
 
 int EmulationSession::max_queued_samples() const {
-    return audio_settings_.sample_rate / 20;
+    // Allow a refill above the reserve without immediately applying
+    // backpressure; the DRC's default 50% target also stays at that reserve.
+    return audio_low_watermark_samples() * 2;
 }
 
 core::Result<void> EmulationSession::reinitialize_audio_backend() {

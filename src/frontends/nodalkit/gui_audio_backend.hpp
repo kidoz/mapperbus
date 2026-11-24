@@ -18,6 +18,7 @@ class GuiAudioBackend : public platform::AudioBackend {
     void shutdown() override;
     int queued_samples() const override;
     [[nodiscard]] int actual_sample_rate() const override;
+    [[nodiscard]] int buffer_size_frames() const override;
     void pause() override;
     void resume() override;
     void clear() override;
