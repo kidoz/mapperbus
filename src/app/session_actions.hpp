@@ -62,7 +62,7 @@ class SessionActions {
     core::Result<void> load_state(int slot = 0);
     [[nodiscard]] std::string state_path(int slot = 0) const;
 
-    TickResult tick();
+    TickResult tick(bool allow_rewind = true);
     TickResult step_frame();
 
     [[nodiscard]] SessionSnapshot snapshot() const;

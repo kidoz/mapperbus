@@ -84,6 +84,7 @@ core::Result<void> EmulationSession::open_rom(const std::string& rom_path,
         if (auto saved = flush_disk_changes(); !saved)
             return saved;
     }
+    finish_rewind();
     auto result = load_rom_source(*emulator_,
                                   rom_path,
                                   member,
@@ -98,6 +99,7 @@ core::Result<void> EmulationSession::open_rom(const std::string& rom_path,
         return std::unexpected(result.error());
     }
 
+    clear_rewind();
     suspend_live_microphone();
     emulator_->set_microphone_active(false);
     emulator_->power_on();
@@ -118,6 +120,7 @@ core::Result<void> EmulationSession::open_rom(const std::string& rom_path,
 }
 
 void EmulationSession::adopt_rom(PreparedRom media) {
+    clear_rewind();
     // Outgoing persistence was checked by the worker. Retirement performs no I/O.
     emulator_->set_persistence_enabled(false);
     emulator_ = std::move(media.emulator);
@@ -143,6 +146,7 @@ core::Result<void> EmulationSession::insert_disk_side(int side) {
         return std::unexpected("Invalid disk side");
     if (auto saved = background_disk_saves_ ? request_disk_save() : flush_disk_changes(); !saved)
         return saved;
+    clear_rewind();
     emulator_->fds().insert_side(side);
     return {};
 }
@@ -151,12 +155,14 @@ core::Result<void> EmulationSession::eject_disk() {
         return std::unexpected("No FDS game is loaded");
     if (auto saved = background_disk_saves_ ? request_disk_save() : flush_disk_changes(); !saved)
         return saved;
+    clear_rewind();
     emulator_->fds().eject();
     return {};
 }
 core::Result<void> EmulationSession::set_disk_write_protected(bool protected_disk) {
     if (!emulator_->is_fds())
         return std::unexpected("No FDS game is loaded");
+    clear_rewind();
     emulator_->fds().set_write_protected(protected_disk);
     return {};
 }
@@ -211,6 +217,7 @@ core::Result<void> EmulationSession::retry_disk_save() {
 core::Result<void> EmulationSession::close_rom() {
     if (!rom_loaded_)
         return {};
+    finish_rewind();
     auto fence = disk_saver_.begin_handoff();
     fence();
     auto saved = emulator_->unload_cartridge();
@@ -221,6 +228,7 @@ core::Result<void> EmulationSession::close_rom() {
     emulator_->set_microphone_active(false);
     turbo_input_.reset();
     configure_cartridge_keyboard();
+    clear_rewind();
     rom_loaded_ = false;
     running_ = false;
     // Resume a suspended device as well as clearing the session flag.
@@ -232,7 +240,7 @@ core::Result<void> EmulationSession::close_rom() {
     return {};
 }
 
-TickResult EmulationSession::tick() {
+TickResult EmulationSession::tick(bool allow_rewind) {
     if (background_disk_saves_)
         poll_disk_saves();
     if (!running_) {
@@ -242,8 +250,7 @@ TickResult EmulationSession::tick() {
 
     input_->poll();
     if (input_->should_quit()) {
-        suspend_live_microphone();
-        running_ = false;
+        request_stop();
         return TickResult::Stopped;
     }
 
@@ -255,6 +262,23 @@ TickResult EmulationSession::tick() {
     if (paused_) {
         suspend_live_microphone();
         return TickResult::Paused;
+    }
+
+    if (allow_rewind && input_->rewind_held()) {
+        const bool starting = !rewinding();
+        if (rewind_.preview(std::chrono::steady_clock::now())) {
+            if (starting) {
+                suspend_live_microphone();
+                audio_->pause();
+                audio_->clear();
+            }
+            video_->render(display_frame());
+            return TickResult::RewindPreview;
+        }
+        if (rewinding())
+            return TickResult::RewindWaiting;
+    } else {
+        finish_rewind();
     }
 
     if (audio_->queued_samples() > max_queued_samples()) {
@@ -282,6 +306,7 @@ TickResult EmulationSession::tick() {
 }
 
 TickResult EmulationSession::step_frame() {
+    finish_rewind();
     if (!running_) {
         suspend_live_microphone();
         return TickResult::Stopped;
@@ -294,8 +319,7 @@ TickResult EmulationSession::step_frame() {
 
     input_->poll();
     if (input_->should_quit()) {
-        suspend_live_microphone();
-        running_ = false;
+        request_stop();
         return TickResult::Stopped;
     }
 
@@ -307,6 +331,7 @@ TickResult EmulationSession::step_frame() {
 
 void EmulationSession::reset() {
     suspend_live_microphone();
+    clear_rewind();
     emulator_->reset();
     turbo_input_.reset();
     configure_cartridge_keyboard();
@@ -317,6 +342,7 @@ void EmulationSession::power_cycle() {
         return;
     }
     suspend_live_microphone();
+    clear_rewind();
     emulator_->power_on();
     turbo_input_.reset();
     configure_cartridge_keyboard();
@@ -324,6 +350,7 @@ void EmulationSession::power_cycle() {
 }
 
 void EmulationSession::request_stop() {
+    finish_rewind();
     suspend_live_microphone();
     running_ = false;
 }
@@ -333,6 +360,7 @@ void EmulationSession::set_paused(bool paused) {
         return;
     }
     paused_ = paused;
+    finish_rewind();
     // Suspend/resume the device so its buffer does not run dry during the
     // pause (a dry device underruns into hard silence and then snaps to
     // full amplitude on resume — an audible pop).
@@ -368,6 +396,8 @@ void EmulationSession::configure_live_microphone(LiveMicrophoneSettings settings
 }
 
 void EmulationSession::set_region(core::Region region) {
+    if (emulator_->region() != region)
+        clear_rewind();
     emulator_->set_region(region);
 }
 
@@ -389,6 +419,7 @@ int EmulationSession::audio_high_watermark_samples() const {
 
 core::Result<void> EmulationSession::apply_audio_settings(const core::AudioSettings& settings) {
     suspend_live_microphone();
+    clear_rewind();
     const auto previous_settings = audio_settings_;
     audio_settings_ = settings;
     emulator_->apply_audio_settings(audio_settings_);
@@ -447,6 +478,7 @@ core::Result<std::string> EmulationSession::state_load_path_for_slot(int slot) c
 }
 
 core::Result<void> EmulationSession::save_state(int slot) {
+    finish_rewind();
     if (slot < 0 || slot >= kSaveStateSlotCount) {
         return std::unexpected(std::string("State slot must be between 1 and 10"));
     }
@@ -484,11 +516,41 @@ core::Result<void> EmulationSession::load_state_data(std::span<const core::Byte>
         return std::unexpected("No ROM loaded to load state into");
     if (!emulator_->load_state(data, allow_legacy))
         return std::unexpected("Save-state is invalid or does not match the loaded ROM");
+    clear_rewind();
+    after_state_restore();
+    return {};
+}
+
+void EmulationSession::after_state_restore() {
     suspend_live_microphone();
     turbo_input_.reset();
     configure_cartridge_keyboard();
     reset_audio_fill_ratio_history();
-    return {};
+}
+
+void EmulationSession::finish_rewind() {
+    if (!rewinding())
+        return;
+    if (rewind_.restore(*emulator_)) {
+        after_state_restore();
+    } else {
+        core::logger::error("Could not restore rewind checkpoint");
+        video_->render(emulator_->frame_buffer());
+    }
+    if (!paused_)
+        audio_->resume();
+}
+
+void EmulationSession::clear_rewind() {
+    if (rewinding())
+        audio_->resume();
+    rewind_.clear();
+}
+
+const core::FrameBuffer& EmulationSession::display_frame() const {
+    if (const auto* picture = rewind_.picture())
+        return *picture;
+    return emulator_->frame_buffer();
 }
 
 core::Result<void> EmulationSession::set_upscaler(std::unique_ptr<platform::Upscaler> upscaler) {
@@ -510,7 +572,7 @@ core::Result<void> EmulationSession::set_upscaler(std::unique_ptr<platform::Upsc
     }
 
     if (rom_loaded_) {
-        video_->render(emulator_->frame_buffer());
+        video_->render(display_frame());
     }
 
     return {};
@@ -578,7 +640,8 @@ void EmulationSession::sync_input() {
 }
 
 void EmulationSession::submit_current_frame() {
-    video_->render(emulator_->frame_buffer());
+    const auto& frame = emulator_->frame_buffer();
+    video_->render(frame);
 
     const std::size_t count = emulator_->drain_audio(audio_staging_.data(), audio_staging_.size());
     if (count > 0) {
@@ -593,6 +656,7 @@ void EmulationSession::submit_current_frame() {
                                         0.0f,
                                         1.0f);
     emulator_->update_audio_rate_control(smooth_audio_fill_ratio(fill_ratio));
+    rewind_.record(*emulator_, frame);
 }
 
 float EmulationSession::smooth_audio_fill_ratio(float fill_ratio) {

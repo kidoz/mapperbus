@@ -20,6 +20,7 @@ namespace {
     bindings[platform::button_index(platform::InputAction::TurboA)] = SDL_SCANCODE_S;
     bindings[platform::button_index(platform::InputAction::TurboB)] = SDL_SCANCODE_A;
     bindings[platform::button_index(platform::InputAction::Microphone)] = SDL_SCANCODE_M;
+    bindings[platform::button_index(platform::InputAction::Rewind)] = SDL_SCANCODE_BACKSPACE;
     return bindings;
 }
 
@@ -82,13 +83,13 @@ namespace {
 Sdl3FourPlayerInputConfig::Sdl3FourPlayerInputConfig() {
     keyboards[0] = default_keyboard_bindings();
     for (int player = 0; player < 4; ++player)
-        players[player].gamepad_index = player;
+        players[player] = Sdl3InputConfig(player);
 }
 
 Sdl3SixPlayerInputConfig::Sdl3SixPlayerInputConfig() {
     keyboards[0] = default_keyboard_bindings();
     for (int player = 0; player < platform::kInputProfileCount; ++player)
-        players[player].gamepad_index = player;
+        players[player] = Sdl3InputConfig(player);
 }
 
 Sdl3Input::Sdl3Input(Sdl3InputConfig config, std::optional<Sdl3KeyboardBindings> keyboard_bindings)
@@ -262,7 +263,12 @@ void Sdl3Input::handle_event(const SDL_Event& event) {
         return;
     }
 
+    if (event.type == SDL_EVENT_WINDOW_FOCUS_GAINED) {
+        window_focused_ = true;
+        return;
+    }
     if (event.type == SDL_EVENT_WINDOW_FOCUS_LOST) {
+        window_focused_ = false;
         host_shortcut_keys_.fill(false);
         return;
     }
@@ -273,6 +279,22 @@ void Sdl3Input::handle_event(const SDL_Event& event) {
     }
     if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat &&
         (!cartridge_keyboard_active() || (event.key.mod & SDL_KMOD_GUI))) {
+        const int key = event.key.scancode;
+        const auto profiles = std::span(keyboard_bindings_).first(player_count_);
+        if (key > 0 && key < SDL_SCANCODE_COUNT &&
+            std::ranges::any_of(
+                profiles,
+                [key](const auto& profile) {
+                    return profile[platform::button_index(platform::InputAction::Rewind)] == key;
+                }) &&
+            (cartridge_keyboard_active() || std::ranges::none_of(
+                                                profiles,
+                                                [key](const auto& profile) {
+                                                    return platform::has_gameplay_key(profile, key);
+                                                }))) {
+            host_shortcut_keys_[key] = true;
+            return;
+        }
         const bool shift = (event.key.mod & SDL_KMOD_SHIFT) != 0;
 
         const bool ctrl = (event.key.mod & SDL_KMOD_CTRL) != 0;
@@ -335,6 +357,8 @@ bool Sdl3Input::is_control_pressed(int player, const GamepadControl& control) co
         return false;
     const auto deadzone = std::max(1, static_cast<int>(configs_[player].axis_deadzone));
     switch (control.kind) {
+    case GamepadControlKind::BothStickClicks:
+        return selections_[player].both_stick_clicks_held();
     case GamepadControlKind::None:
         return false;
     case GamepadControlKind::Button:
@@ -355,6 +379,21 @@ bool Sdl3Input::is_action_pressed(int player, platform::InputAction button) cons
     if (player < 0 || player >= player_count_)
         return false;
     return (button_state_[player] & (1U << platform::button_index(button))) != 0;
+}
+
+bool Sdl3Input::rewind_held() const {
+    if (!window_focused_)
+        return false;
+    for (int player = 0; player < player_count_; ++player) {
+        const auto key =
+            keyboard_bindings_[player][platform::button_index(platform::InputAction::Rewind)];
+        if ((key > 0 && key < SDL_SCANCODE_COUNT && host_shortcut_keys_[key]) ||
+            is_control_pressed(player,
+                               platform::gamepad_control_for_button(configs_[player],
+                                                                    platform::InputAction::Rewind)))
+            return true;
+    }
+    return false;
 }
 
 bool Sdl3Input::keyboard_key_down(core::Byte usage) const {

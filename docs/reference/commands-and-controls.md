@@ -141,6 +141,20 @@ unbind it. Conflicts use the existing swap confirmation. When reading an older
 configuration, a new turbo default that conflicts with another binding starts
 unbound; existing custom controls keep their values.
 
+### Rewind gameplay
+
+In SDL3 and NodalKit, hold **Backspace** or press and hold **both stick clicks
+(L3 + R3) on Player 1’s gamepad**. Release when you see the moment you
+want to play from. Rewind works during running play. Audio resumes with the game.
+
+The session keeps up to about ten seconds in memory, in steps of about a tenth
+of a second. Games with large machine states can have a shorter history. A ROM
+change, reset, power cycle, or successful manual state load starts fresh.
+Rewinding leaves the ten manual save slots available for longer-term saves.
+
+A custom gameplay binding for Backspace takes priority. For keyboard cartridges,
+use the gamepad chord in either frontend or Command/Super + Backspace in SDL3.
+
 ### SDL3 runtime shortcuts
 
 For keyboard cartridges 329, 365, 371, 440, 442 and 531, hold Command on macOS

@@ -10,6 +10,7 @@
 
 #include "../support/fds_image.hpp"
 #include "../support/legacy_state.hpp"
+#include "../support/rewind_input.hpp"
 #include "../support/test_rom.hpp"
 #include "app/async_disk_export.hpp"
 #include "app/async_disk_save.hpp"
@@ -306,7 +307,7 @@ struct StateIOGate {
         changed.notify_all();
         changed.wait(lock, [this] { return released; });
     }
-    bool wait(bool StateIOGate::*flag) {
+    bool wait(bool StateIOGate::* flag) {
         std::unique_lock lock(mutex);
         return changed.wait_for(
             lock, std::chrono::seconds(5), [this, flag] { return this->*flag; });
@@ -994,6 +995,47 @@ TEST_CASE("Exclusive persistence waits for the earlier snapshot before saving cu
     core::Emulator restored;
     REQUIRE(restored.load_fds(tests::make_fds_bios(), disk, path.string()));
     CHECK(restored.fds().disk_image()[75] == 43);
+}
+
+TEST_CASE("Closing after rewind persists the selected disk even with an older write in flight",
+          "[app][fds][async][rewind]") {
+    StateFixture fixture;
+    auto gate = std::make_shared<StateIOGate>();
+    auto input = std::make_unique<tests::RewindInput>();
+    auto* controls = input.get();
+    EmulationSession session(std::make_unique<platform::NullVideo>(),
+                             std::make_unique<platform::NullAudio>(),
+                             std::move(input),
+                             core::AudioSettings{},
+                             [gate](const auto& snapshot) {
+                                 gate->block();
+                                 return AsyncDiskSave::write_snapshot(snapshot);
+                             });
+    const ReleaseStateIO cleanup{gate};
+    session.set_state_storage(fixture.settings);
+    REQUIRE(session.open_rom(fixture.rom.string()));
+    const auto disk = tests::make_fds_image(2);
+    const auto path = fixture.root / "rewind.save";
+    REQUIRE(session.emulator().load_fds(tests::make_fds_bios(), disk, path.string()));
+    session.emulator().power_on();
+    session.enable_background_disk_saves();
+    for (int frame = 0; frame < 119; ++frame)
+        REQUIRE(session.tick() == TickResult::FrameAdvanced);
+    change_fds_payload(session.emulator().fds(), 42);
+    REQUIRE(session.tick() == TickResult::FrameAdvanced);
+    REQUIRE(gate->wait(&StateIOGate::entered));
+    controls->held = true;
+    REQUIRE(session.tick() == TickResult::RewindPreview);
+    CHECK(session.emulator().fds().disk_image()[75] == 42);
+    controls->held = false;
+    REQUIRE(session.tick() == TickResult::FrameAdvanced);
+    CHECK(session.emulator().fds().disk_image()[75] == disk[75]);
+    CHECK(session.disk_save_pending());
+    gate->release();
+    REQUIRE(session.close_rom());
+    core::Emulator reopened;
+    REQUIRE(reopened.load_fds(tests::make_fds_bios(), disk, path.string()));
+    CHECK(reopened.fds().disk_image()[75] == disk[75]);
 }
 
 TEST_CASE("The GUI session keeps advancing while an FDS autosave is blocked",

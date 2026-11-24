@@ -60,8 +60,8 @@ std::string SessionActions::state_path(int slot) const {
     return session_.state_path_for_slot(slot);
 }
 
-TickResult SessionActions::tick() {
-    return session_.tick();
+TickResult SessionActions::tick(bool allow_rewind) {
+    return session_.tick(allow_rewind);
 }
 
 TickResult SessionActions::step_frame() {

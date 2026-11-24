@@ -30,6 +30,11 @@ Versioning.
   show only the emulator window instead of a console with the log stream;
   terminal launches still inherit the terminal's console.
 
+### Added
+
+- Hold Backspace or both stick clicks on Player 1’s gamepad to rewind up to
+  ten seconds in SDL3 and NodalKit. Release to continue from the displayed frame.
+
 ### Fixed
 
 - iNES headers signed with the old "DiskDude!" dumper tag are repaired during

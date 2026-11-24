@@ -20,6 +20,8 @@ namespace {
 
 [[nodiscard]] int default_keyboard_code_for_button(platform::InputAction button) {
     switch (button) {
+    case platform::InputAction::Rewind:
+        return 42; // Backspace
     case platform::InputAction::Microphone:
         return 16; // M
     case platform::InputAction::TurboA:
@@ -804,9 +806,8 @@ void MapperBusInputConfiguration::configure_four_hori_gamepads() {
 }
 
 MapperBusInputConfiguration::MapperBusInputConfiguration() {
-    player2_gamepad.gamepad_index = 1;
-    for (int player = 2; player < platform::kInputProfileCount; ++player)
-        gamepad_profile(player).gamepad_index = player;
+    for (int player = 1; player < platform::kInputProfileCount; ++player)
+        gamepad_profile(player) = platform::GamepadInputConfig(player);
     for (const auto button : platform::input_actions()) {
         keyboard_bindings[platform::button_index(button)] =
             default_keyboard_code_for_button(button);
@@ -815,6 +816,8 @@ MapperBusInputConfiguration::MapperBusInputConfiguration() {
 
 std::string controller_button_name(platform::InputAction button) {
     switch (button) {
+    case platform::InputAction::Rewind:
+        return "rewind";
     case platform::InputAction::Microphone:
         return "microphone";
     case platform::InputAction::TurboA:
@@ -903,7 +906,8 @@ MapperBusConfiguration parse_configuration(std::istream& file) {
     MapperBusConfiguration configuration;
     constexpr auto kExtraActions = std::array{platform::InputAction::TurboA,
                                               platform::InputAction::TurboB,
-                                              platform::InputAction::Microphone};
+                                              platform::InputAction::Microphone,
+                                              platform::InputAction::Rewind};
     std::array<std::array<bool, kExtraActions.size()>, platform::kInputProfileCount>
         explicit_extra_keyboard{};
     std::array<std::array<bool, kExtraActions.size()>, platform::kInputProfileCount>
@@ -996,21 +1000,21 @@ MapperBusConfiguration parse_configuration(std::istream& file) {
     for (int player = 0; player < platform::kInputProfileCount; ++player)
         if (configuration.input.gamepad_profile(player).identity.guid.empty())
             configuration.input.gamepad_profile(player).identity = {};
-    // A keyboard Microphone binding in any profile drives one shared device.
-    // Avoid adding it over an older binding in another profile as well.
-    const auto mic = platform::button_index(platform::InputAction::Microphone);
-    for (int player = 0; player < platform::kInputProfileCount; ++player) {
-        auto& target = configuration.input.keyboard_profile(player);
-        if (explicit_extra_keyboard[player][2] || target[mic] == 0)
+    // Shared keyboard actions also yield to older bindings in other profiles.
+    for (std::size_t index = 0; index < kExtraActions.size(); ++index) {
+        const auto action = kExtraActions[index];
+        if (action != platform::InputAction::Microphone && action != platform::InputAction::Rewind)
             continue;
-        for (int other = 0; other < platform::kInputProfileCount; ++other) {
-            if (other == player)
+        for (int player = 0; player < platform::kInputProfileCount; ++player) {
+            auto& key =
+                configuration.input.keyboard_profile(player)[platform::button_index(action)];
+            if (explicit_extra_keyboard[player][index] || key == 0)
                 continue;
-            for (const auto action : platform::input_actions())
-                if (action != platform::InputAction::Microphone &&
-                    target[mic] ==
-                        configuration.input.keyboard_profile(other)[platform::button_index(action)])
-                    target[mic] = 0;
+            for (int other = 0; other < platform::kInputProfileCount; ++other)
+                for (auto binding : platform::input_actions())
+                    if (binding != action && configuration.input.keyboard_profile(
+                                                 other)[platform::button_index(binding)] == key)
+                        key = 0;
         }
     }
     apply_gamepad_assignment_records(configuration, assignment_records);

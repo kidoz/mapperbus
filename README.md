@@ -53,6 +53,7 @@ for dependencies, platform details, and reconfiguring an existing build.
 - NTSC, PAL, and Hybrid region detection and overrides.
 - [Famicom Disk System](docs/how-to/play-fds-games.md) BIOS boot, disk sides, writes, and saves.
 - [ZIP and 7z ROM loading](docs/how-to/open-archived-roms.md) through libarchive.
+- [Hold-to-rewind gameplay](docs/reference/commands-and-controls.md#rewind-gameplay) in both interactive frontends.
 - CPU and GPU xBRZ and FSR 1 upscaling, using Metal or Vulkan where available.
 - BLEP resampling, selectable audio filters, dynamic rate control, dithering,
   and pseudo-stereo output.

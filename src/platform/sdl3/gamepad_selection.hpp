@@ -53,6 +53,10 @@ class Sdl3GamepadSelection {
     [[nodiscard]] SDL_Gamepad* gamepad() const {
         return gamepad_;
     }
+    [[nodiscard]] bool both_stick_clicks_held() const {
+        return gamepad_ && SDL_GetGamepadButton(gamepad_, SDL_GAMEPAD_BUTTON_LEFT_STICK) &&
+               SDL_GetGamepadButton(gamepad_, SDL_GAMEPAD_BUTTON_RIGHT_STICK);
+    }
     bool consume_changed() {
         return std::exchange(changed_, false);
     }

@@ -10,6 +10,7 @@
 
 #include "app/async_disk_save.hpp"
 #include "app/live_microphone.hpp"
+#include "app/rewind_history.hpp"
 #include "app/rom_source.hpp"
 #include "app/state_storage.hpp"
 #include "app/turbo_input.hpp"
@@ -30,6 +31,8 @@ enum class TickResult {
     Paused,
     Stopped,
     NoCartridge,
+    RewindPreview,
+    RewindWaiting,
 };
 
 class EmulationSession {
@@ -83,7 +86,11 @@ class EmulationSession {
     [[nodiscard]] core::Result<void> set_disk_write_protected(bool protected_disk);
     [[nodiscard]] core::Result<void> export_disk(const std::string& path);
 
-    TickResult tick();
+    TickResult tick(bool allow_rewind = true);
+    [[nodiscard]] bool rewinding() const {
+        return rewind_.browsing();
+    }
+    [[nodiscard]] const core::FrameBuffer& display_frame() const;
     TickResult step_frame();
 
     void reset();
@@ -92,15 +99,23 @@ class EmulationSession {
     void set_paused(bool paused);
     void set_region(core::Region region);
     void set_controller_timing(core::ControllerTiming timing) {
+        if (emulator_->controller_timing() != timing)
+            clear_rewind();
         emulator_->set_controller_timing(timing);
     }
     void set_expansion_controllers(core::Byte ports) {
+        if (emulator_->expansion_controllers() != ports)
+            clear_rewind();
         emulator_->set_expansion_controllers(ports);
     }
     void set_controller_mode(core::ControllerMode mode) {
+        if (emulator_->controller_mode() != mode)
+            clear_rewind();
         emulator_->set_controller_mode(mode);
     }
     void set_controller_wiring(core::ControllerWiring wiring) {
+        if (emulator_->controller_wiring() != wiring)
+            clear_rewind();
         emulator_->set_controller_wiring(wiring);
         if (wiring != core::ControllerWiring::RfFamicom)
             suspend_live_microphone();
@@ -191,6 +206,10 @@ class EmulationSession {
     }
 
   private:
+    void finish_rewind();
+    void clear_rewind();
+    void after_state_restore();
+    RewindHistory rewind_;
     void sync_input();
     enum class CartridgeKeyboard { None, Transformer, Subor, Pec, Golden };
     void configure_cartridge_keyboard();

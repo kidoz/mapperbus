@@ -21,9 +21,10 @@ enum class InputAction : std::uint8_t {
     TurboA,
     TurboB,
     Microphone,
+    Rewind,
 };
 
-inline constexpr std::size_t kInputActionCount = 11;
+inline constexpr std::size_t kInputActionCount = static_cast<std::size_t>(InputAction::Rewind) + 1;
 // Two built-in pads plus up to four Famicom adapter pads.
 inline constexpr int kInputProfileCount = 6;
 
@@ -38,11 +39,22 @@ inline constexpr int kInputProfileCount = 6;
                       InputAction::Select,
                       InputAction::TurboA,
                       InputAction::TurboB,
-                      InputAction::Microphone};
+                      InputAction::Microphone,
+                      InputAction::Rewind};
 }
 
 [[nodiscard]] constexpr std::size_t button_index(InputAction action) {
     return static_cast<std::size_t>(action);
+}
+
+/// A gameplay binding takes priority over a shared rewind shortcut.
+template <typename Key>
+[[nodiscard]] constexpr bool has_gameplay_key(const std::array<Key, kInputActionCount>& bindings,
+                                              Key key) {
+    for (auto action : input_actions())
+        if (action != InputAction::Rewind && bindings[button_index(action)] == key)
+            return true;
+    return false;
 }
 
 [[nodiscard]] constexpr InputAction input_action(core::Button button) {

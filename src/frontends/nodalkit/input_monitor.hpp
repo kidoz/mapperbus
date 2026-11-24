@@ -71,7 +71,8 @@ inline std::vector<InputMonitorRow> input_monitor_rows(
                                          "Select",
                                          "Turbo A",
                                          "Turbo B",
-                                         "Microphone"};
+                                         "Microphone",
+                                         "Rewind"};
     std::vector<InputMonitorRow> rows;
     for (const int player : active) {
         const auto& profile = profiles[player];

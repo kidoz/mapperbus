@@ -148,6 +148,8 @@ int main(int argc, char* argv[]) try {
         mapperbus::core::logger::info(
             "  --gamepad2-map MAP    player 2 gamepad mapping (same format as --gamepad-map)");
         mapperbus::core::logger::info(
+            "Rewind defaults: Backspace or L3 + R3 on gamepad 1 (Settings > Input to rebind)");
+        mapperbus::core::logger::info(
             "Runtime scaler hotkeys: 0/1 native, 2-6 scale factor, F9 cycle scaler mode");
         mapperbus::core::logger::info(
             "Save-state: F5 save, F7 load; Ctrl+1..9/0 selects slots 1..10 (Shift+Fx: slot 2)");

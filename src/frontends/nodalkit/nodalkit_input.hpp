@@ -43,6 +43,10 @@ class NodalKitPlayerInput {
         return window_.is_key_pressed(static_cast<nk::KeyCode>(usage));
     }
 
+    bool has_gameplay_key(nk::KeyCode key) const {
+        return platform::has_gameplay_key(bindings_, key);
+    }
+
     void poll() {
         poll_gamepad();
     }
@@ -326,7 +330,7 @@ class NodalKitPlayerInput {
     }
 
     void reset_default_gamepad_bindings() {
-        gamepad_config_.bindings = platform::default_gamepad_bindings();
+        gamepad_config_.bindings = platform::default_gamepad_bindings(default_gamepad_index_);
         gamepad_config_.axis_deadzone = 12000;
         gamepad_config_.gamepad_index = default_gamepad_index_;
         gamepad_config_.identity = {};
@@ -336,7 +340,7 @@ class NodalKitPlayerInput {
     }
 
     [[nodiscard]] bool uses_default_gamepad_bindings() const {
-        const auto defaults = platform::default_gamepad_bindings();
+        const auto defaults = platform::default_gamepad_bindings(default_gamepad_index_);
         return gamepad_config_.enabled && gamepad_config_.gamepad_index == default_gamepad_index_ &&
                gamepad_config_.axis_deadzone == 12000 && gamepad_config_.bindings == defaults;
     }
@@ -362,6 +366,8 @@ class NodalKitPlayerInput {
             return nk::KeyCode::Unknown;
         }
         switch (button) {
+        case platform::InputAction::Rewind:
+            return nk::KeyCode::Backspace;
         case platform::InputAction::Microphone:
             return nk::KeyCode::M;
         case platform::InputAction::TurboA:
@@ -527,6 +533,8 @@ class NodalKitPlayerInput {
 
     [[nodiscard]] bool is_control_pressed(const platform::GamepadControl& control) const {
         switch (control.kind) {
+        case platform::GamepadControlKind::BothStickClicks:
+            return selection_.both_stick_clicks_held();
         case platform::GamepadControlKind::None:
             return false;
         case platform::GamepadControlKind::Button:
@@ -627,6 +635,23 @@ class NodalKitInput : public platform::InputBackend {
 
     bool keyboard_key_down(core::Byte usage) const override {
         return !assignment_capture_ && players_[0].keyboard_key_down(usage);
+    }
+
+    bool rewind_held() const override {
+        if (assignment_capture_)
+            return false;
+        for (const auto& player : players_) {
+            const auto action = platform::InputAction::Rewind;
+            if (player.is_action_pressed(action, false))
+                return true;
+            if (cartridge_keyboard_active() || !player.is_action_pressed(action))
+                continue;
+            if (std::ranges::none_of(players_, [&](const auto& profile) {
+                    return profile.has_gameplay_key(player.binding(action));
+                }))
+                return true;
+        }
+        return false;
     }
 
     bool should_quit() const override {

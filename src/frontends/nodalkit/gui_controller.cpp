@@ -91,7 +91,8 @@ constexpr auto kBindingOrder = std::array{platform::InputAction::Up,
                                           platform::InputAction::TurboB,
                                           platform::InputAction::Start,
                                           platform::InputAction::Select,
-                                          platform::InputAction::Microphone};
+                                          platform::InputAction::Microphone,
+                                          platform::InputAction::Rewind};
 
 constexpr std::array<KeyBindingOption, 18> kKeyBindingOptions = {{
     {nk::KeyCode::M, "M"},
@@ -114,7 +115,7 @@ constexpr std::array<KeyBindingOption, 18> kKeyBindingOptions = {{
     {nk::KeyCode::LeftShift, "Left Shift"},
 }};
 
-constexpr std::array<GamepadControlOption, 22> kGamepadControlOptions = {{
+constexpr std::array<GamepadControlOption, 24> kGamepadControlOptions = {{
     {platform::gamepad_button_control(platform::GamepadButton::DpadUp), "D-pad Up"},
     {platform::gamepad_button_control(platform::GamepadButton::DpadDown), "D-pad Down"},
     {platform::gamepad_button_control(platform::GamepadButton::DpadLeft), "D-pad Left"},
@@ -127,6 +128,12 @@ constexpr std::array<GamepadControlOption, 22> kGamepadControlOptions = {{
     {platform::gamepad_button_control(platform::GamepadButton::Back), "Back"},
     {platform::gamepad_button_control(platform::GamepadButton::LeftShoulder), "L"},
     {platform::gamepad_button_control(platform::GamepadButton::RightShoulder), "R"},
+    {platform::gamepad_axis_control(platform::GamepadAxis::LeftTrigger,
+                                    platform::GamepadControlKind::AxisPositive),
+     "Left Trigger"},
+    {platform::gamepad_axis_control(platform::GamepadAxis::RightTrigger,
+                                    platform::GamepadControlKind::AxisPositive),
+     "Right Trigger"},
     {platform::gamepad_button_control(platform::GamepadButton::LeftStick), "L3"},
     {platform::gamepad_button_control(platform::GamepadButton::RightStick), "R3"},
     {platform::gamepad_axis_control(platform::GamepadAxis::LeftX,
@@ -822,6 +829,8 @@ std::string file_dialog_error_text(nk::FileDialogError error) {
 
 std::string button_name(platform::InputAction button) {
     switch (button) {
+    case platform::InputAction::Rewind:
+        return "Rewind";
     case platform::InputAction::Microphone:
         return "Microphone";
     case platform::InputAction::Up:
@@ -1006,6 +1015,8 @@ std::string key_label(nk::KeyCode key) {
 }
 
 std::string gamepad_control_label(const platform::GamepadControl& control) {
+    if (control.kind == platform::GamepadControlKind::BothStickClicks)
+        return "L3 + R3";
     if (control.kind == platform::GamepadControlKind::None)
         return "Unbound";
     for (const auto& option : kGamepadControlOptions) {
@@ -1157,7 +1168,8 @@ MapperBusGuiController::MapperBusGuiController(
         }
 
         const auto needs_audio_preroll = [this, &snapshot]() {
-            return snapshot.running && !snapshot.paused && audio_backend_->uses_realtime_output() &&
+            return snapshot.running && !snapshot.paused && !session_->rewinding() &&
+                   audio_backend_->uses_realtime_output() &&
                    actions_->audio_queued_samples() < actions_->audio_low_watermark_samples();
         };
 
@@ -1166,13 +1178,17 @@ MapperBusGuiController::MapperBusGuiController(
         bool state_changed = false;
         while ((frame_accumulator_ >= target_frame_duration || needs_audio_preroll()) &&
                steps < 4) {
-            const auto result = actions_->tick();
-            if (result == app::TickResult::FrameAdvanced) {
+            const auto result =
+                actions_->tick(window_.is_focused() &&
+                               nk::has_flag(preview_->state_flags(), nk::StateFlags::Focused) &&
+                               !modal_dialog_presented());
+            if (result == app::TickResult::FrameAdvanced ||
+                result == app::TickResult::RewindPreview) {
                 preview_changed = true;
+                state_changed = true;
             }
 
-            if (result == app::TickResult::FrameAdvanced || result == app::TickResult::Paused ||
-                result == app::TickResult::NoCartridge) {
+            if (result == app::TickResult::Paused || result == app::TickResult::NoCartridge) {
                 state_changed = true;
             }
 
@@ -1649,7 +1665,7 @@ void MapperBusGuiController::clear_preview() {
 void MapperBusGuiController::refresh_preview() {
     if (machine_worker_active())
         return;
-    const auto& frame = session_->emulator().frame_buffer();
+    const auto& frame = session_->display_frame();
     update_preview_surface(
         frame.pixels.data(), mapperbus::core::kScreenWidth, mapperbus::core::kScreenHeight);
 }
@@ -1757,7 +1773,10 @@ void MapperBusGuiController::refresh_ui() {
         }
     }
 #endif
-    const std::string state_text = loaded ? (paused ? "Paused" : "Running") : "Ready";
+    const std::string state_text = loaded ? (paused                  ? "Paused"
+                                             : session_->rewinding() ? "Rewinding"
+                                                                     : "Running")
+                                          : "Ready";
     const std::string display_title =
         title_for_display(snapshot.rom_member.empty() ? snapshot.rom_path : snapshot.rom_member);
     if (loaded == welcome_active_) {
@@ -3781,6 +3800,14 @@ void MapperBusGuiController::open_rebind_dialog(RebindDevice device, platform::I
     content->append(SecondaryText::create(keyboard ? "Press a keyboard key. Escape cancels."
                                                    : "Press a gamepad button or move a stick."));
     content->append(SecondaryText::create("Conflicts are swapped with the previous binding."));
+
+    if (!keyboard && button == platform::InputAction::Rewind) {
+        auto chord = nk::Button::create("Use L3 + R3");
+        (void)chord->on_clicked().connect([this, button] {
+            apply_gamepad_rebind(button, {.kind = platform::GamepadControlKind::BothStickClicks});
+        });
+        content->append(chord);
+    }
 
     if (keyboard) {
         auto keyboard_controller = std::make_shared<nk::KeyboardController>();

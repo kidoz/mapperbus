@@ -17,6 +17,7 @@ enum class GamepadControlKind {
     Button,
     AxisNegative,
     AxisPositive,
+    BothStickClicks,
 };
 
 enum class GamepadButton {
@@ -69,6 +70,7 @@ struct GamepadInputConfig {
     std::array<GamepadControl, kInputActionCount> bindings{};
 
     GamepadInputConfig();
+    explicit GamepadInputConfig(int player);
 };
 
 /// Device choice only. Button bindings and deadzones remain shared preferences.
@@ -121,7 +123,8 @@ inline void apply_gamepad_assignment(GamepadInputConfig& config,
     return {.kind = kind, .axis = axis};
 }
 
-[[nodiscard]] inline std::array<GamepadControl, kInputActionCount> default_gamepad_bindings() {
+[[nodiscard]] inline std::array<GamepadControl, kInputActionCount> default_gamepad_bindings(
+    int player = 0) {
     std::array<GamepadControl, kInputActionCount> bindings{};
     bindings[button_index(core::Button::Up)] = gamepad_button_control(GamepadButton::DpadUp);
     bindings[button_index(core::Button::Down)] = gamepad_button_control(GamepadButton::DpadDown);
@@ -134,10 +137,14 @@ inline void apply_gamepad_assignment(GamepadInputConfig& config,
     bindings[button_index(InputAction::TurboA)] = gamepad_button_control(GamepadButton::North);
     bindings[button_index(InputAction::TurboB)] = gamepad_button_control(GamepadButton::West);
     bindings[button_index(InputAction::Microphone)] = {.kind = GamepadControlKind::None};
+    bindings[button_index(InputAction::Rewind)] = {
+        .kind = player == 0 ? GamepadControlKind::BothStickClicks : GamepadControlKind::None};
     return bindings;
 }
 
-inline GamepadInputConfig::GamepadInputConfig() : bindings(default_gamepad_bindings()) {}
+inline GamepadInputConfig::GamepadInputConfig() : GamepadInputConfig(0) {}
+inline GamepadInputConfig::GamepadInputConfig(int player)
+    : gamepad_index(player), bindings(default_gamepad_bindings(player)) {}
 
 [[nodiscard]] inline const GamepadControl& gamepad_control_for_button(
     const GamepadInputConfig& config, core::Button button) {
@@ -205,6 +212,8 @@ inline GamepadInputConfig::GamepadInputConfig() : bindings(default_gamepad_bindi
 
 [[nodiscard]] inline core::Result<InputAction> parse_input_action(std::string_view text) {
     const auto name = normalized_token(text);
+    if (name == "rewind")
+        return InputAction::Rewind;
     if (name == "turboa")
         return InputAction::TurboA;
     if (name == "turbob")
@@ -345,6 +354,8 @@ inline GamepadInputConfig::GamepadInputConfig() : bindings(default_gamepad_bindi
         return std::unexpected(std::string("empty gamepad control"));
     }
 
+    if (normalized_token(token) == "l3+r3")
+        return GamepadControl{.kind = GamepadControlKind::BothStickClicks};
     if (normalized_token(token) == "none") {
         return GamepadControl{.kind = GamepadControlKind::None};
     }
@@ -456,6 +467,8 @@ inline GamepadInputConfig::GamepadInputConfig() : bindings(default_gamepad_bindi
 }
 
 [[nodiscard]] inline std::string gamepad_control_token(const GamepadControl& control) {
+    if (control.kind == GamepadControlKind::BothStickClicks)
+        return "l3+r3";
     if (control.kind == GamepadControlKind::None)
         return "none";
     if (control.kind == GamepadControlKind::Button) {

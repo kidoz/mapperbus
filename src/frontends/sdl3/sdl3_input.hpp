@@ -72,7 +72,7 @@ struct Sdl3WindowCommand {
 /// Independent gamepad profiles for the two NES ports.
 struct Sdl3TwoPlayerInputConfig {
     Sdl3InputConfig player1{};
-    Sdl3InputConfig player2{};
+    Sdl3InputConfig player2{1};
 };
 
 struct Sdl3FourPlayerInputConfig {
@@ -102,6 +102,7 @@ class Sdl3Input : public platform::InputBackend {
     bool is_button_pressed(int player, core::Button button) const override;
     bool is_action_pressed(int player, platform::InputAction action) const override;
     bool keyboard_key_down(core::Byte usage) const override;
+    bool rewind_held() const override;
     bool should_quit() const override;
     [[nodiscard]] Sdl3ScalerCommand consume_scaler_command();
     [[nodiscard]] static Sdl3ScalerCommand scaler_command_for_scancode(SDL_Scancode scancode);
@@ -141,6 +142,7 @@ class Sdl3Input : public platform::InputBackend {
     std::array<Sdl3KeyboardBindings, platform::kInputProfileCount> keyboard_bindings_{};
     std::array<bool, SDL_SCANCODE_COUNT> host_shortcut_keys_{};
     int player_count_ = 1;
+    bool window_focused_ = true;
     bool quit_requested_ = false;
     bool gamepad_initialized_ = false;
     std::array<Sdl3GamepadSelection, platform::kInputProfileCount> selections_;

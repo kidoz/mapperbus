@@ -35,6 +35,12 @@ struct MapperBusGuiTestAccess {
     static auto snapshot(MapperBusGuiController& gui) {
         return gui.actions_->snapshot();
     }
+    static auto cycles(MapperBusGuiController& gui) {
+        return gui.session_->emulator().cpu().cycles();
+    }
+    static bool rewinding(MapperBusGuiController& gui) {
+        return gui.session_->rewinding();
+    }
     static auto state(MapperBusGuiController& gui) {
         return gui.session_->emulator().save_state();
     }
@@ -872,6 +878,28 @@ TEST_CASE("GUI Turbo Game Doctor startup keeps its firmware through retry", "[gu
     fixture.wait([&] { return Access::identity(*fixture.gui) == expected->content_hash(); });
     const std::lock_guard lock(fixture.work->mutex);
     CHECK(fixture.work->requests.back().cartridge_options.game_doctor_bios_path == bios.string());
+}
+
+TEST_CASE("Holding Backspace on the game surface browses and resumes the selected past",
+          "[gui][rewind]") {
+    Fixture fixture(SettingsMode::Saved);
+    auto& gui = *fixture.gui;
+    fixture.window.dispatch_window_event({.type = nk::WindowEvent::Type::FocusIn});
+    fixture.action("emu.pause");
+    const auto first = Access::cycles(gui);
+    fixture.wait([&] { return Access::cycles(gui) > first + 900000; });
+    fixture.window.dispatch_key_event(
+        {.type = nk::KeyEvent::Type::Press, .key = nk::KeyCode::Backspace});
+    fixture.wait([&] { return Access::rewinding(gui); });
+    const auto before = Access::cycles(gui);
+    const auto until = std::chrono::steady_clock::now() + 250ms;
+    fixture.wait([&] { return std::chrono::steady_clock::now() >= until; });
+    CHECK(Access::cycles(gui) == before);
+    fixture.window.dispatch_key_event(
+        {.type = nk::KeyEvent::Type::Release, .key = nk::KeyCode::Backspace});
+    fixture.wait([&] { return !Access::rewinding(gui); });
+    CHECK(Access::cycles(gui) < before);
+    CHECK_FALSE(Access::snapshot(gui).paused);
 }
 
 TEST_CASE("GUI session hotkeys yield to a keyboard cartridge and return after a ROM switch",

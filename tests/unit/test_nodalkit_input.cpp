@@ -2,6 +2,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 #include <filesystem>
+#include <nk/platform/events.h>
 #include <nk/platform/window.h>
 
 #include "../support/virtual_gamepads.hpp"
@@ -11,6 +12,30 @@
 
 namespace mapperbus::frontend {
 namespace {
+
+TEST_CASE("GUI hold-to-rewind respects typing, custom bindings and assignment capture",
+          "[gui][input][rewind]") {
+    tests::IdentityGamepads pads;
+    pads.attach(0, 0);
+    nk::Window window({.title = "Rewind controls", .width = 320, .height = 240});
+    NodalKitInput input(window, platform::GamepadInputConfig{}, platform::GamepadInputConfig{});
+    window.dispatch_key_event({.type = nk::KeyEvent::Type::Press, .key = nk::KeyCode::Backspace});
+    CHECK(input.rewind_held());
+    input.set_cartridge_keyboard_active(true);
+    CHECK_FALSE(input.rewind_held());
+    input.set_cartridge_keyboard_active(false);
+    input.player_input(1).set_binding(platform::InputAction::Start, nk::KeyCode::Backspace);
+    CHECK_FALSE(input.rewind_held());
+    window.dispatch_key_event({.type = nk::KeyEvent::Type::Release, .key = nk::KeyCode::Backspace});
+    REQUIRE(SDL_SetJoystickVirtualButton(pads.joysticks[0], SDL_GAMEPAD_BUTTON_LEFT_STICK, true));
+    input.poll();
+    CHECK_FALSE(input.rewind_held());
+    REQUIRE(SDL_SetJoystickVirtualButton(pads.joysticks[0], SDL_GAMEPAD_BUTTON_RIGHT_STICK, true));
+    input.poll();
+    CHECK(input.rewind_held());
+    input.set_assignment_capture(true);
+    CHECK_FALSE(input.rewind_held());
+}
 
 TEST_CASE("Game-specific layouts switch devices without copying them into global assignments",
           "[gui][input][game-assignments]") {

@@ -29,6 +29,8 @@ void App::run(const std::function<void(EmulationSession&)>& after_tick) {
     while (session_.running()) {
         switch (session_.tick()) {
         case TickResult::AudioBackpressure:
+        case TickResult::RewindWaiting:
+        case TickResult::RewindPreview:
         case TickResult::Paused:
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
             break;

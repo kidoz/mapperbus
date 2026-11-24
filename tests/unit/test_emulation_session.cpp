@@ -6,6 +6,8 @@
 #include <memory>
 #include <vector>
 
+#include "../support/fds_image.hpp"
+#include "../support/rewind_input.hpp"
 #include "../support/test_rom.hpp"
 #include "app/async_rom_loader.hpp"
 #include "app/emulation_session.hpp"
@@ -64,6 +66,12 @@ class TestAudioBackend : public platform::AudioBackend {
         device_paused = false;
     }
 
+    void clear() override {
+        ++clear_calls;
+        queued_sample_count = 0;
+    }
+
+    int clear_calls = 0;
     bool initialized = false;
     bool initialize_result = true;
     bool shutdown_called = false;
@@ -158,6 +166,117 @@ TEST_CASE("EmulationSession can initialize and advance frames headlessly", "[app
     REQUIRE(outcome == TickResult::FrameAdvanced);
     REQUIRE(audio_ptr->queued_batches > 0);
     REQUIRE(audio_ptr->queued_sample_total > 0);
+}
+
+TEST_CASE("Rewind previews without stepping and releases onto the selected branch",
+          "[app][rewind]") {
+    core::register_builtin_mappers();
+    auto input = std::make_unique<tests::RewindInput>();
+    auto* controls = input.get();
+    auto audio = std::make_unique<TestAudioBackend>();
+    auto* device = audio.get();
+    EmulationSession session(
+        std::make_unique<TestVideoBackend>(), std::move(audio), std::move(input));
+    REQUIRE(session.open_rom(test_rom_path()));
+    std::array<std::uint64_t, 14> cycles{};
+    for (auto& count : cycles) {
+        REQUIRE(session.tick() == TickResult::FrameAdvanced);
+        count = session.emulator().cpu().cycles();
+    }
+    device->queued_sample_count = session.audio_settings().sample_rate;
+    controls->held = true;
+    REQUIRE(session.tick() == TickResult::RewindPreview);
+    CHECK(session.rewinding());
+    CHECK(device->device_paused);
+    CHECK(device->clear_calls == 1);
+    CHECK(session.emulator().cpu().cycles() == cycles.back());
+    const int queued = device->queued_batches;
+    SECTION("Release plays forward from frame 13") {
+        controls->held = false;
+        REQUIRE(session.tick() == TickResult::FrameAdvanced);
+        CHECK_FALSE(session.rewinding());
+        CHECK_FALSE(device->device_paused);
+        CHECK(device->queued_batches == queued + 1);
+        CHECK(session.emulator().cpu().cycles() == cycles.back());
+    }
+    SECTION("Pause commits the displayed frame before storage handoff") {
+        session.set_paused(true);
+        CHECK_FALSE(session.rewinding());
+        CHECK(device->device_paused);
+        CHECK(session.emulator().cpu().cycles() == cycles[12]);
+        REQUIRE(session.tick() == TickResult::Paused);
+        CHECK(device->queued_batches == queued);
+    }
+    SECTION("Reset, power cycle, opening media and manual state loads clear history") {
+        const auto state = session.emulator().save_state();
+        SECTION("Reset") {
+            session.reset();
+        }
+        SECTION("Power cycle") {
+            session.power_cycle();
+        }
+        SECTION("Open") {
+            REQUIRE(session.open_rom(test_rom_path()));
+        }
+        SECTION("Load") {
+            REQUIRE(session.load_state_data(state));
+        }
+        CHECK_FALSE(session.rewinding());
+        REQUIRE(session.tick() == TickResult::FrameAdvanced);
+    }
+}
+
+TEST_CASE("Rewind evicts old pictures, paces preview and drops the abandoned future",
+          "[app][rewind]") {
+    core::register_builtin_mappers();
+    core::Emulator machine;
+    REQUIRE(machine.load_cartridge(test_rom_path()));
+    bool large_disk = false;
+    unsigned stride = 6;
+    SECTION("Ten seconds of NTSC checkpoints") {}
+    SECTION("Ten seconds of PAL checkpoints") {
+        machine.set_region(core::Region::PAL);
+        stride = 5;
+    }
+    SECTION("Large disk images hit the byte budget first") {
+        large_disk = true;
+        REQUIRE(machine.load_fds(tests::make_fds_bios(), tests::make_fds_image(16)));
+    }
+    machine.power_on();
+    RewindHistory history;
+    core::FrameBuffer frame;
+    for (unsigned i = 1; i <= 608; ++i) {
+        frame.pixels[0] = i;
+        history.record(machine, frame);
+    }
+    auto now = std::chrono::steady_clock::time_point{};
+    REQUIRE(history.preview(now));
+    const unsigned newest = 1 + (607 / stride) * stride;
+    CHECK(history.picture()->pixels[0] == newest);
+    CHECK_FALSE(history.preview(now));
+    std::size_t count = 1;
+    while (history.preview(now += std::chrono::milliseconds(100))) {
+        ++count;
+    }
+    if (large_disk) {
+        CHECK(count >= 2);
+        CHECK(count * (machine.save_state().capacity() + sizeof(frame)) <= 64U * 1024 * 1024);
+    } else {
+        CHECK(count == 100);
+        CHECK(history.picture()->pixels[0] == newest - 99 * stride);
+    }
+    const auto oldest = history.picture()->pixels[0];
+    REQUIRE(history.restore(machine));
+    CHECK_FALSE(history.browsing());
+    CHECK(history.picture()->pixels[0] == oldest);
+    frame.pixels[0] = 999;
+    for (unsigned i = 0; i <= stride; ++i)
+        history.record(machine, frame);
+    REQUIRE(history.preview(now));
+    CHECK(history.picture()->pixels[0] == 999);
+    REQUIRE(history.preview(now += std::chrono::milliseconds(100)));
+    CHECK(history.picture()->pixels[0] == oldest);
+    CHECK_FALSE(history.preview(now += std::chrono::milliseconds(100)));
 }
 
 TEST_CASE("EmulationSession reports audio backpressure and paused state", "[app][session]") {

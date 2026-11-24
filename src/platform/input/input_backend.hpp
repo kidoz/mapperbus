@@ -17,6 +17,7 @@ class InputBackend {
         switch (action) {
         case InputAction::TurboA:
         case InputAction::TurboB:
+        case InputAction::Rewind:
         case InputAction::Microphone:
             return false;
         default:
@@ -43,6 +44,9 @@ class InputBackend {
     }
     /// A physical keyboard key from USB HID usage page 0x07.
     virtual bool keyboard_key_down(core::Byte /*usage*/) const {
+        return false;
+    }
+    virtual bool rewind_held() const {
         return false;
     }
     virtual bool should_quit() const = 0;

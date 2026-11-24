@@ -14,6 +14,32 @@
 namespace mapperbus::frontend {
 namespace {
 
+TEST_CASE("SDL rewind follows key release, focus, and cartridge keyboard routing",
+          "[sdl3][input][rewind]") {
+    Sdl3Input input;
+    const auto send = [&](Uint32 type, SDL_Keymod mod = SDL_KMOD_NONE) {
+        SDL_Event event{};
+        event.type = type;
+        event.key.scancode = SDL_SCANCODE_BACKSPACE;
+        event.key.mod = mod;
+        REQUIRE(SDL_PushEvent(&event));
+        input.poll();
+    };
+    send(SDL_EVENT_KEY_DOWN);
+    CHECK(input.rewind_held());
+    send(SDL_EVENT_WINDOW_FOCUS_LOST);
+    CHECK_FALSE(input.rewind_held());
+    send(SDL_EVENT_WINDOW_FOCUS_GAINED);
+    CHECK_FALSE(input.rewind_held());
+    input.set_cartridge_keyboard_active(true);
+    send(SDL_EVENT_KEY_DOWN);
+    CHECK_FALSE(input.rewind_held());
+    send(SDL_EVENT_KEY_DOWN, SDL_KMOD_GUI);
+    CHECK(input.rewind_held());
+    send(SDL_EVENT_KEY_UP);
+    CHECK_FALSE(input.rewind_held());
+}
+
 TEST_CASE("Typing on cartridge keyboards leaves SDL runtime commands available through Super",
           "[sdl3][input][cartridge-keyboard]") {
     Sdl3Input input;
