@@ -2,6 +2,8 @@
 
 #include <SDL3/SDL.h>
 #include <memory>
+#include <string>
+#include <string_view>
 #include <vector>
 
 #include "platform/video/upscaler.hpp"
@@ -18,10 +20,13 @@ class Sdl3Video : public platform::VideoBackend {
     void shutdown() override;
 
     void set_upscaler(std::unique_ptr<platform::Upscaler> upscaler) override;
+    void set_window_status(std::string_view status);
     void toggle_fullscreen() override;
     void set_vsync(bool on) override;
 
   private:
+    [[nodiscard]] std::string window_title() const;
+    std::string window_status_;
     SDL_Window* window_ = nullptr;
     SDL_Renderer* renderer_ = nullptr;
     SDL_Texture* texture_ = nullptr;

@@ -38,6 +38,9 @@ struct MapperBusGuiTestAccess {
     static auto cycles(MapperBusGuiController& gui) {
         return gui.session_->emulator().cpu().cycles();
     }
+    static const auto& status_bar(MapperBusGuiController& gui) {
+        return *gui.status_bar_;
+    }
     static bool rewinding(MapperBusGuiController& gui) {
         return gui.session_->rewinding();
     }
@@ -936,16 +939,21 @@ TEST_CASE("Holding Backspace on the game surface browses and resumes the selecte
     fixture.action("emu.pause");
     const auto first = Access::cycles(gui);
     fixture.wait([&] { return Access::cycles(gui) > first + 900000; });
+    const auto& bar = Access::status_bar(gui);
+    const auto normal_segments = bar.segment_count();
     fixture.window.dispatch_key_event(
         {.type = nk::KeyEvent::Type::Press, .key = nk::KeyCode::Backspace});
     fixture.wait([&] { return Access::rewinding(gui); });
     const auto before = Access::cycles(gui);
-    const auto until = std::chrono::steady_clock::now() + 250ms;
-    fixture.wait([&] { return std::chrono::steady_clock::now() >= until; });
+    CHECK(bar.segment(0) == "Rewinding");
+    fixture.wait([&] { return bar.segment(0) == "Oldest frame · Release to play"; });
+    CHECK(bar.segment_count() == 1);
     CHECK(Access::cycles(gui) == before);
     fixture.window.dispatch_key_event(
         {.type = nk::KeyEvent::Type::Release, .key = nk::KeyCode::Backspace});
     fixture.wait([&] { return !Access::rewinding(gui); });
+    CHECK(bar.segment(0) == "Running");
+    CHECK(bar.segment_count() == normal_segments);
     CHECK(Access::cycles(gui) < before);
     CHECK_FALSE(Access::snapshot(gui).paused);
 }

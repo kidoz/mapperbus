@@ -21,7 +21,7 @@ bool Sdl3Video::initialize(int width, int height) {
     int win_w = width * display_scale;
     int win_h = height * display_scale;
 
-    window_ = SDL_CreateWindow("MapperBus", win_w, win_h, SDL_WINDOW_RESIZABLE);
+    window_ = SDL_CreateWindow(window_title().c_str(), win_w, win_h, SDL_WINDOW_RESIZABLE);
     if (!window_) {
         return false;
     }
@@ -186,6 +186,18 @@ void Sdl3Video::render(const core::FrameBuffer& frame) {
 
 void Sdl3Video::set_upscaler(std::unique_ptr<platform::Upscaler> upscaler) {
     upscaler_ = std::move(upscaler);
+}
+
+std::string Sdl3Video::window_title() const {
+    return window_status_.empty() ? "MapperBus" : "MapperBus — " + window_status_;
+}
+
+void Sdl3Video::set_window_status(std::string_view status) {
+    if (window_status_ == status)
+        return;
+    window_status_ = status;
+    if (window_ != nullptr)
+        SDL_SetWindowTitle(window_, window_title().c_str());
 }
 
 void Sdl3Video::toggle_fullscreen() {

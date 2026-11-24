@@ -90,6 +90,12 @@ class EmulationSession {
     [[nodiscard]] bool rewinding() const {
         return rewind_.browsing();
     }
+    /// Text for the displayed checkpoint, empty during normal gameplay.
+    [[nodiscard]] std::string_view rewind_status() const {
+        if (!rewinding())
+            return {};
+        return rewind_.at_oldest() ? "Oldest frame · Release to play" : "Rewinding";
+    }
     [[nodiscard]] const core::FrameBuffer& display_frame() const;
     TickResult step_frame();
 

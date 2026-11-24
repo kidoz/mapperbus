@@ -254,6 +254,33 @@ TEST_CASE("GPU FSR returns the previous frame with correct channels", "[sdl3][gp
     }
 }
 
+TEST_CASE("SDL window shows rewind status across renderer recreation and release",
+          "[sdl3][video][rewind]") {
+    SdlVideoScope sdl;
+    Sdl3Video video;
+    if (!video.initialize(core::kScreenWidth, core::kScreenHeight))
+        SKIP("SDL video unavailable: " << SDL_GetError());
+
+    const auto title = [] {
+        int count = 0;
+        const std::unique_ptr<SDL_Window*, decltype(&SDL_free)> windows(SDL_GetWindows(&count),
+                                                                        SDL_free);
+        REQUIRE(windows != nullptr);
+        REQUIRE(count == 1);
+        return std::string(SDL_GetWindowTitle(windows.get()[0]));
+    };
+    CHECK(title() == "MapperBus");
+    video.set_window_status("Rewinding");
+    CHECK(title() == "MapperBus — Rewinding");
+    video.set_window_status("Oldest frame · Release to play");
+    CHECK(title() == "MapperBus — Oldest frame · Release to play");
+    video.shutdown();
+    REQUIRE(video.initialize(core::kScreenWidth, core::kScreenHeight));
+    CHECK(title() == "MapperBus — Oldest frame · Release to play");
+    video.set_window_status({});
+    CHECK(title() == "MapperBus");
+}
+
 TEST_CASE("Changing vsync preserves the renderer's borrowed GPU device", "[sdl3][gpu]") {
     SdlVideoScope sdl;
     require_gpu_device();

@@ -24,6 +24,9 @@ class RewindHistory {
     [[nodiscard]] bool browsing() const {
         return cursor_.has_value();
     }
+    [[nodiscard]] bool at_oldest() const {
+        return cursor_ == 0;
+    }
     [[nodiscard]] const core::FrameBuffer* picture() const;
     bool restore(core::Emulator& emulator);
     void clear();

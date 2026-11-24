@@ -438,6 +438,7 @@ int main(int argc, char* argv[]) try {
 
     // --- Composition root: create and configure backends ---
     auto video = std::make_unique<mapperbus::frontend::Sdl3Video>();
+    auto* sdl_video = video.get();
 
     if (upscale_factor >= 2 && upscale_factor <= 6) {
         if (use_gpu_fsr) {
@@ -539,6 +540,7 @@ int main(int argc, char* argv[]) try {
         }
     };
     app.run([&](mapperbus::app::EmulationSession& session) {
+        sdl_video->set_window_status(session.rewind_status());
         remember_gamepads();
         if (const auto window_command = sdl_input->consume_window_command()) {
             if (window_command.kind ==

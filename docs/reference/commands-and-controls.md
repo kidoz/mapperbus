@@ -147,7 +147,10 @@ unbound; existing custom controls keep their values.
 
 In SDL3 and NodalKit, hold **Backspace** or press and hold **both stick clicks
 (L3 + R3) on Player 1’s gamepad**. Release when you see the moment you
-want to play from. Rewind works during running play. Audio resumes with the game.
+want to play from. Rewind works during running play. At the earliest available
+frame, the NodalKit status bar and SDL3 window title show **Oldest frame ·
+Release to play**. The frame stays on screen until you release the control, then
+gameplay and audio resume.
 
 The session keeps up to about ten seconds in memory, in steps of about a tenth
 of a second. Games with large machine states can have a shorter history. A ROM

@@ -226,6 +226,29 @@ TEST_CASE("Rewind previews without stepping and releases onto the selected branc
     }
 }
 
+TEST_CASE("Rewind held at startup stops on the first recorded frame until release",
+          "[app][rewind]") {
+    core::register_builtin_mappers();
+    auto input = std::make_unique<tests::RewindInput>();
+    auto* controls = input.get();
+    EmulationSession session(std::make_unique<TestVideoBackend>(),
+                             std::make_unique<TestAudioBackend>(),
+                             std::move(input));
+    REQUIRE(session.open_rom(test_rom_path()));
+    controls->held = true;
+    REQUIRE(session.tick() == TickResult::FrameAdvanced);
+    CHECK(session.rewind_status().empty());
+    const auto first = session.emulator().cpu().cycles();
+    REQUIRE(session.tick() == TickResult::RewindPreview);
+    CHECK(session.rewind_status() == "Oldest frame · Release to play");
+    CHECK(session.tick() == TickResult::RewindWaiting);
+    CHECK(session.emulator().cpu().cycles() == first);
+    controls->held = false;
+    CHECK(session.tick() == TickResult::FrameAdvanced);
+    CHECK(session.emulator().cpu().cycles() > first);
+    CHECK(session.rewind_status().empty());
+}
+
 TEST_CASE("Rewind evicts old pictures, paces preview and drops the abandoned future",
           "[app][rewind]") {
     core::register_builtin_mappers();
@@ -251,6 +274,7 @@ TEST_CASE("Rewind evicts old pictures, paces preview and drops the abandoned fut
     }
     auto now = std::chrono::steady_clock::time_point{};
     REQUIRE(history.preview(now));
+    CHECK_FALSE(history.at_oldest());
     const unsigned newest = 1 + (607 / stride) * stride;
     CHECK(history.picture()->pixels[0] == newest);
     CHECK_FALSE(history.preview(now));
@@ -265,9 +289,11 @@ TEST_CASE("Rewind evicts old pictures, paces preview and drops the abandoned fut
         CHECK(count == 100);
         CHECK(history.picture()->pixels[0] == newest - 99 * stride);
     }
+    REQUIRE(history.at_oldest());
     const auto oldest = history.picture()->pixels[0];
     REQUIRE(history.restore(machine));
     CHECK_FALSE(history.browsing());
+    CHECK_FALSE(history.at_oldest());
     CHECK(history.picture()->pixels[0] == oldest);
     frame.pixels[0] = 999;
     for (unsigned i = 0; i <= stride; ++i)

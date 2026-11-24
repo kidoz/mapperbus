@@ -1773,10 +1773,10 @@ void MapperBusGuiController::refresh_ui() {
         }
     }
 #endif
-    const std::string state_text = loaded ? (paused                  ? "Paused"
-                                             : session_->rewinding() ? "Rewinding"
-                                                                     : "Running")
-                                          : "Ready";
+    std::string state_text = loaded ? (paused ? "Paused" : "Running") : "Ready";
+    const auto rewind = session_->rewind_status();
+    if (!rewind.empty())
+        state_text = rewind;
     const std::string display_title =
         title_for_display(snapshot.rom_member.empty() ? snapshot.rom_path : snapshot.rom_member);
     if (loaded == welcome_active_) {
@@ -1794,7 +1794,7 @@ void MapperBusGuiController::refresh_ui() {
         }
     }
     std::vector<std::string> segments;
-    if (loaded) {
+    if (loaded && rewind.empty()) {
         segments = {state_text,
                     region_name(snapshot.region),
                     nominal_fps_label(snapshot.region),
@@ -1829,8 +1829,9 @@ void MapperBusGuiController::refresh_ui() {
     // right-aligned in the secondary text color. The capability probe keeps
     // the frontend buildable against NodalKit revisions without the slot.
     if constexpr (requires { status_bar_->set_trailing(std::string{}); }) {
-        status_bar_->set_trailing(loaded ? mapper_detail(snapshot.mapper_number) : "");
-    } else if (loaded) {
+        status_bar_->set_trailing(loaded && rewind.empty() ? mapper_detail(snapshot.mapper_number)
+                                                           : "");
+    } else if (loaded && rewind.empty()) {
         status_bar_->set_segments({state_text,
                                    region_name(snapshot.region),
                                    nominal_fps_label(snapshot.region),
