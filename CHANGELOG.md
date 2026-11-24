@@ -5,6 +5,25 @@ All notable changes to MapperBus are documented in this file.
 The format is based on Keep a Changelog, and this project adheres to Semantic
 Versioning.
 
+## [0.7.0] - 2026-11-24
+
+### Added
+
+- Hold Backspace or both stick clicks on Player 1’s gamepad to rewind up to
+  ten seconds in SDL3 and NodalKit. Release to continue from the displayed
+  frame. Both controls can be remapped or cleared in Settings → Input →
+  Bindings.
+
+- While rewinding, the NodalKit status bar and the SDL3 window title show
+  "Rewinding"; at the earliest available frame they show "Oldest frame ·
+  Release to play" until the control is released.
+
+### Fixed
+
+- The GUI keeps at least one complete device audio read queued, or 25 ms of
+  audio if that is larger, and applies backpressure above twice that reserve;
+  large device reads no longer starve playback at lower sample rates.
+
 ## [0.6.1] - 2026-11-22
 
 ### Added
@@ -29,12 +48,6 @@ Versioning.
 - The NodalKit GUI links as a Windows GUI application, so Explorer launches
   show only the emulator window instead of a console with the log stream;
   terminal launches still inherit the terminal's console.
-
-### Added
-
-- Hold Backspace or both stick clicks on Player 1’s gamepad to rewind up to
-  ten seconds in SDL3 and NodalKit. Release to continue from the displayed frame.
-  Both controls can be remapped or cleared in Settings → Input → Bindings.
 
 ### Fixed
 
@@ -439,6 +452,7 @@ Versioning.
 - Initial release with the emulator core, SDL3 frontend, CPU and GPU FSR
   upscaling, and BlipBuffer-based audio output.
 
+[0.7.0]: https://github.com/kidoz/mapperbus/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/kidoz/mapperbus/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/kidoz/mapperbus/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/kidoz/mapperbus/compare/v0.5.1...v0.5.2
